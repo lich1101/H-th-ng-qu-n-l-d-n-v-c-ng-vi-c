@@ -1,67 +1,60 @@
 import React from 'react';
-import Authenticated from '@/Layouts/Authenticated';
-import { Head } from '@inertiajs/inertia-react';
-
-const modules = [
-    'Quan ly du an: Kanban / Timeline / Gantt',
-    'Order va phan cong task theo luong Sales -> Leader -> San xuat',
-    'Nhac deadline tu dong (3 ngay, 1 ngay, qua han)',
-    'Nop tai lieu va link video ban giao theo version',
-    'Bao cao KPI theo ca nhan, du an va dich vu',
-    'Lich meet, chat noi bo, log system, mini CRM',
-];
-
-const stitchReferences = [
-    'manager_dashboard_overview',
-    'project_kanban_board_view',
-    'task_details_and_collaboration',
-    'service_performance_reports',
-    't_ng_quan_dashboard_ng_b_kh_i',
-];
+import PageContainer from '@/Components/PageContainer';
 
 export default function Dashboard(props) {
     return (
-        <Authenticated
+        <PageContainer
             auth={props.auth}
-            errors={props.errors}
-            header={
-                <h2 className="font-semibold text-xl text-gray-800 leading-tight">
-                    Internal Task Manager
-                </h2>
-            }
+            title="Tổng quan vận hành"
+            description="Theo dõi nhanh tiến độ dự án, hiệu suất nhân sự và các hạng mục cần xử lý trong ngày."
+            stats={[
+                { label: 'Dự án đang triển khai', value: '18', note: '+2 so với tuần trước' },
+                { label: 'Task sắp đến hạn (3 ngày)', value: '26', note: 'Cần ưu tiên nhóm sản xuất' },
+                { label: 'Task quá hạn', value: '7', note: 'Đã gửi nhắc tự động' },
+                { label: 'Tỷ lệ đúng deadline', value: '87%', note: 'Mục tiêu tháng: 90%' },
+            ]}
         >
-            <Head title="Internal Task Manager" />
-
-            <div className="py-12">
-                <div className="max-w-7xl mx-auto sm:px-6 lg:px-8">
-                    <div className="grid gap-4 md:grid-cols-2">
-                        <div className="bg-white overflow-hidden shadow-sm sm:rounded-lg">
-                            <div className="p-6 bg-white border-b border-gray-200">
-                                <p className="font-semibold text-gray-900 mb-2">Module tong quan</p>
-                                <ul className="list-disc list-inside text-sm text-gray-600 space-y-1">
-                                    {modules.map((item) => (
-                                        <li key={item}>{item}</li>
-                                    ))}
-                                </ul>
+            <div className="grid gap-4 xl:grid-cols-3">
+                <div className="xl:col-span-2 bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+                    <h3 className="font-semibold text-slate-900 mb-4">Việc cần làm hôm nay</h3>
+                    <div className="space-y-3">
+                        {[
+                            ['Kiểm duyệt task backlinks batch 03', 'Trưởng phòng sản xuất', '14:00'],
+                            ['Meeting bàn giao dự án Acme', 'Sales + Leader', '15:30'],
+                            ['Xuất báo cáo KPI tuần', 'Admin', '17:00'],
+                        ].map(([task, owner, time]) => (
+                            <div key={task} className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
+                                <div>
+                                    <p className="font-medium text-slate-800">{task}</p>
+                                    <p className="text-xs text-slate-500">{owner}</p>
+                                </div>
+                                <span className="text-sm font-semibold text-sky-700">{time}</span>
                             </div>
-                        </div>
+                        ))}
+                    </div>
+                </div>
 
-                        <div className="bg-white overflow-hidden shadow-sm sm:rounded-lg">
-                            <div className="p-6 bg-white border-b border-gray-200">
-                                <p className="font-semibold text-gray-900 mb-2">Mau giao dien stitch</p>
-                                <p className="text-sm text-gray-500 mb-3">
-                                    Ban web se bám theo cac template ban da cung cap:
-                                </p>
-                                <ul className="list-disc list-inside text-sm text-gray-600 space-y-1">
-                                    {stitchReferences.map((item) => (
-                                        <li key={item}>{item}</li>
-                                    ))}
-                                </ul>
+                <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+                    <h3 className="font-semibold text-slate-900 mb-4">Năng lực phòng ban</h3>
+                    <div className="space-y-4">
+                        {[
+                            ['Kinh doanh', '68%'],
+                            ['Sản xuất', '82%'],
+                            ['QA / Duyệt', '74%'],
+                        ].map(([label, val]) => (
+                            <div key={label}>
+                                <div className="flex justify-between text-sm">
+                                    <span>{label}</span>
+                                    <span className="font-semibold">{val}</span>
+                                </div>
+                                <div className="mt-1 h-2 bg-slate-200 rounded-full">
+                                    <div className="h-2 bg-sky-500 rounded-full" style={{ width: val }} />
+                                </div>
                             </div>
-                        </div>
+                        ))}
                     </div>
                 </div>
             </div>
-        </Authenticated>
+        </PageContainer>
     );
 }

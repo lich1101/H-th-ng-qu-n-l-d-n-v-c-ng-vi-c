@@ -1,49 +1,95 @@
-import React, { useState } from 'react';
-import ApplicationLogo from '@/Components/ApplicationLogo';
+import React, { useMemo, useState } from 'react';
 import Dropdown from '@/Components/Dropdown';
-import NavLink from '@/Components/NavLink';
-import ResponsiveNavLink from '@/Components/ResponsiveNavLink';
 import { Link } from '@inertiajs/inertia-react';
 
 export default function Authenticated({ auth, header, children }) {
-    const [showingNavigationDropdown, setShowingNavigationDropdown] = useState(false);
+    const [showSidebar, setShowSidebar] = useState(false);
+
+    const menus = useMemo(
+        () => [
+            { label: 'Tổng quan', routeName: 'dashboard', href: route('dashboard') },
+            { label: 'Dự án', routeName: 'projects.kanban', href: route('projects.kanban') },
+            { label: 'Công việc', routeName: 'tasks.board', href: route('tasks.board') },
+            { label: 'Deadline', routeName: 'deadlines.index', href: route('deadlines.index') },
+            { label: 'Bàn giao', routeName: 'handover.index', href: route('handover.index') },
+            { label: 'Báo cáo KPI', routeName: 'reports.kpi', href: route('reports.kpi') },
+            { label: 'Quy trình dịch vụ', routeName: 'services.workflows', href: route('services.workflows') },
+            { label: 'Lịch họp', routeName: 'meetings.index', href: route('meetings.index') },
+            { label: 'Chat nội bộ', routeName: 'chat.internal', href: route('chat.internal') },
+            { label: 'Nhật ký hệ thống', routeName: 'activity.logs', href: route('activity.logs') },
+            { label: 'CRM mini', routeName: 'crm.index', href: route('crm.index') },
+            { label: 'Phân quyền', routeName: 'roles.permissions', href: route('roles.permissions') },
+        ],
+        []
+    );
 
     return (
-        <div className="min-h-screen bg-gray-100">
-            <nav className="bg-white border-b border-gray-100">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="flex justify-between h-16">
-                        <div className="flex">
-                            <div className="shrink-0 flex items-center">
-                                <Link href="/">
-                                    <ApplicationLogo className="block h-9 w-auto text-gray-500" />
-                                </Link>
-                            </div>
-
-                            <div className="hidden space-x-8 sm:-my-px sm:ml-10 sm:flex">
-                                <NavLink href={route('dashboard')} active={route().current('dashboard')}>
-                                    Dashboard
-                                </NavLink>
-                            </div>
+        <div className="min-h-screen bg-slate-100 text-slate-800">
+            <div className="flex min-h-screen">
+                <aside className={`fixed inset-y-0 left-0 z-40 w-72 bg-slate-900 text-slate-100 transform transition-transform duration-200 ${showSidebar ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 lg:static lg:inset-auto`}>
+                    <div className="h-full flex flex-col">
+                        <div className="px-5 py-5 border-b border-slate-800">
+                            <p className="text-sm uppercase tracking-wide text-slate-400">WinMap</p>
+                            <p className="text-lg font-semibold">Quản lý nội bộ</p>
+                            <p className="text-xs text-slate-400 mt-1">Sales • Sản xuất • Admin</p>
                         </div>
 
-                        <div className="hidden sm:flex sm:items-center sm:ml-6">
-                            <div className="ml-3 relative">
+                        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
+                            {menus.map((menu) => {
+                                const active = route().current(menu.routeName);
+                                return (
+                                    <Link
+                                        key={menu.routeName}
+                                        href={menu.href}
+                                        className={`block px-3 py-2 rounded-lg text-sm transition ${
+                                            active
+                                                ? 'bg-sky-500/20 text-sky-300'
+                                                : 'text-slate-200 hover:bg-slate-800'
+                                        }`}
+                                        onClick={() => setShowSidebar(false)}
+                                    >
+                                        {menu.label}
+                                    </Link>
+                                );
+                            })}
+                        </nav>
+
+                        <div className="p-4 border-t border-slate-800 text-xs text-slate-400">
+                            Phiên bản nội bộ v1.0
+                        </div>
+                    </div>
+                </aside>
+
+                <div className="flex-1 lg:ml-0">
+                    <header className="bg-white border-b border-slate-200 sticky top-0 z-30">
+                        <div className="px-4 md:px-8 py-3 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowSidebar((prev) => !prev)}
+                                    className="lg:hidden inline-flex items-center justify-center rounded-md border border-slate-300 px-2 py-1 text-slate-700"
+                                >
+                                    Menu
+                                </button>
+                                <div>
+                                    <p className="text-sm text-slate-500">Hệ thống quản lý dự án</p>
+                                    <p className="font-semibold">Bảng điều khiển</p>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-3">
+                                <span className="hidden md:inline-flex rounded-full bg-emerald-100 text-emerald-700 px-2.5 py-1 text-xs">
+                                    {auth?.user?.role || 'user'}
+                                </span>
                                 <Dropdown>
                                     <Dropdown.Trigger>
                                         <span className="inline-flex rounded-md">
                                             <button
                                                 type="button"
-                                                className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-gray-500 bg-white hover:text-gray-700 focus:outline-none transition ease-in-out duration-150"
+                                                className="inline-flex items-center px-3 py-2 border border-slate-200 text-sm leading-4 font-medium rounded-md text-slate-600 bg-white hover:text-slate-800"
                                             >
                                                 {auth.user.name}
-
-                                                <svg
-                                                    className="ml-2 -mr-0.5 h-4 w-4"
-                                                    xmlns="http://www.w3.org/2000/svg"
-                                                    viewBox="0 0 20 20"
-                                                    fill="currentColor"
-                                                >
+                                                <svg className="ml-2 -mr-0.5 h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
                                                     <path
                                                         fillRule="evenodd"
                                                         d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
@@ -56,68 +102,19 @@ export default function Authenticated({ auth, header, children }) {
 
                                     <Dropdown.Content>
                                         <Dropdown.Link href={route('logout')} method="post" as="button">
-                                            Log Out
+                                            Đăng xuất
                                         </Dropdown.Link>
                                     </Dropdown.Content>
                                 </Dropdown>
                             </div>
                         </div>
+                    </header>
 
-                        <div className="-mr-2 flex items-center sm:hidden">
-                            <button
-                                onClick={() => setShowingNavigationDropdown((previousState) => !previousState)}
-                                className="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none focus:bg-gray-100 focus:text-gray-500 transition duration-150 ease-in-out"
-                            >
-                                <svg className="h-6 w-6" stroke="currentColor" fill="none" viewBox="0 0 24 24">
-                                    <path
-                                        className={!showingNavigationDropdown ? 'inline-flex' : 'hidden'}
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        strokeWidth="2"
-                                        d="M4 6h16M4 12h16M4 18h16"
-                                    />
-                                    <path
-                                        className={showingNavigationDropdown ? 'inline-flex' : 'hidden'}
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        strokeWidth="2"
-                                        d="M6 18L18 6M6 6l12 12"
-                                    />
-                                </svg>
-                            </button>
-                        </div>
-                    </div>
+                    {header && <div className="px-4 md:px-8 py-5">{header}</div>}
+
+                    <main className="px-4 md:px-8 pb-8">{children}</main>
                 </div>
-
-                <div className={(showingNavigationDropdown ? 'block' : 'hidden') + ' sm:hidden'}>
-                    <div className="pt-2 pb-3 space-y-1">
-                        <ResponsiveNavLink href={route('dashboard')} active={route().current('dashboard')}>
-                            Dashboard
-                        </ResponsiveNavLink>
-                    </div>
-
-                    <div className="pt-4 pb-1 border-t border-gray-200">
-                        <div className="px-4">
-                            <div className="font-medium text-base text-gray-800">{auth.user.name}</div>
-                            <div className="font-medium text-sm text-gray-500">{auth.user.email}</div>
-                        </div>
-
-                        <div className="mt-3 space-y-1">
-                            <ResponsiveNavLink method="post" href={route('logout')} as="button">
-                                Log Out
-                            </ResponsiveNavLink>
-                        </div>
-                    </div>
-                </div>
-            </nav>
-
-            {header && (
-                <header className="bg-white shadow">
-                    <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">{header}</div>
-                </header>
-            )}
-
-            <main>{children}</main>
+            </div>
         </div>
     );
 }

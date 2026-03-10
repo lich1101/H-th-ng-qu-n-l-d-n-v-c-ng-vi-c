@@ -102,3 +102,20 @@ Dashboard hien tai da dat san danh sach template tham chieu tu bo giao dien `sti
 - `task_details_and_collaboration`
 - `service_performance_reports`
 - `t_ng_quan_dashboard_ng_b_kh_i`
+
+## Giao dien web tieng Viet (da tao)
+
+Da bo sung bo giao dien day du theo module nghiep vu:
+
+- `dashboard`: tong quan van hanh
+- `du-an`: quan ly du an theo Kanban
+- `cong-viec`: danh sach task va tien do
+- `deadline`: canh bao va lich nhac han
+- `ban-giao`: tai lieu/video + version
+- `bao-cao-kpi`: bao cao tong hop va theo dich vu
+- `quy-trinh-dich-vu`: backlinks/content/audit/website care
+- `lich-hop`: quan ly meeting ban giao
+- `chat-noi-bo`: giao tiep theo task
+- `nhat-ky-he-thong`: theo doi thao tac va thay doi trang thai
+- `crm-mini`: quan ly khach hang va thanh toan
+- `phan-quyen`: ma tran vai tro va quyen
