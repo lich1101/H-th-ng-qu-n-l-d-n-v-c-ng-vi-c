@@ -1095,6 +1095,10 @@ input:where([type='file']):focus {
   --tw-bg-opacity: 1;
   background-color: rgb(238 242 255 / var(--tw-bg-opacity, 1));
 }
+.bg-rose-100 {
+  --tw-bg-opacity: 1;
+  background-color: rgb(255 228 230 / var(--tw-bg-opacity, 1));
+}
 .bg-rose-50 {
   --tw-bg-opacity: 1;
   background-color: rgb(255 241 242 / var(--tw-bg-opacity, 1));
@@ -1109,6 +1113,10 @@ input:where([type='file']):focus {
 }
 .bg-sky-500\/20 {
   background-color: rgb(14 165 233 / 0.2);
+}
+.bg-sky-600 {
+  --tw-bg-opacity: 1;
+  background-color: rgb(2 132 199 / var(--tw-bg-opacity, 1));
 }
 .bg-slate-100 {
   --tw-bg-opacity: 1;
@@ -1230,6 +1238,10 @@ input:where([type='file']):focus {
 .py-5 {
   padding-top: 1.25rem;
   padding-bottom: 1.25rem;
+}
+.py-6 {
+  padding-top: 1.5rem;
+  padding-bottom: 1.5rem;
 }
 .pb-8 {
   padding-bottom: 2rem;
@@ -1360,6 +1372,10 @@ input:where([type='file']):focus {
 .text-red-600 {
   --tw-text-opacity: 1;
   color: rgb(220 38 38 / var(--tw-text-opacity, 1));
+}
+.text-rose-700 {
+  --tw-text-opacity: 1;
+  color: rgb(190 18 60 / var(--tw-text-opacity, 1));
 }
 .text-sky-300 {
   --tw-text-opacity: 1;
@@ -1503,6 +1519,10 @@ input:where([type='file']):focus {
   --tw-bg-opacity: 1;
   background-color: rgb(249 250 251 / var(--tw-bg-opacity, 1));
 }
+.hover\:bg-sky-700:hover {
+  --tw-bg-opacity: 1;
+  background-color: rgb(3 105 161 / var(--tw-bg-opacity, 1));
+}
 .hover\:bg-slate-800:hover {
   --tw-bg-opacity: 1;
   background-color: rgb(30 41 59 / var(--tw-bg-opacity, 1));
@@ -1598,6 +1618,9 @@ input:where([type='file']):focus {
   --tw-text-opacity: 1;
   color: rgb(55 65 81 / var(--tw-text-opacity, 1));
 }
+.disabled\:opacity-50:disabled {
+  opacity: 0.5;
+}
 @media (min-width: 640px) {
 
   .sm\:ml-0 {
@@ -1673,6 +1696,10 @@ input:where([type='file']):focus {
 
   .md\:grid-cols-2 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .md\:grid-cols-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .md\:border-l {

@@ -125,3 +125,11 @@ Da bo sung bo giao dien day du theo module nghiep vu:
 
 - Da bo sung bieu do cot thanh (bar chart) cho dashboard va tai khoan nguoi dung.
 - Da bo sung cac progress chart cho KPI/trang thai de theo doi nhanh.
+
+## API tai khoan nguoi dung (real data)
+
+- `GET /api/v1/users/accounts`
+  - Ho tro query: `search`, `role`, `status` (`active|inactive`), `per_page`
+  - Tra ve danh sach co phan trang de hien thi bang tai khoan.
+- `GET /api/v1/users/accounts/stats`
+  - Tra ve thong ke realtime: tong so tai khoan, so dang hoat dong/tam khoa, phan bo theo role.

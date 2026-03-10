@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\V1\SystemMetaController;
 use App\Http\Controllers\Api\V1\TaskAttachmentController;
 use App\Http\Controllers\Api\V1\TaskCommentController;
 use App\Http\Controllers\Api\V1\TaskController;
+use App\Http\Controllers\Api\V1\UserAccountController;
 
 /*
 |--------------------------------------------------------------------------
@@ -83,6 +84,11 @@ Route::prefix('v1')->group(function () {
             ->middleware('role:admin,truong_phong_san_xuat');
 
         Route::get('/activity-logs', [ActivityLogController::class, 'index'])
+            ->middleware('role:admin,truong_phong_san_xuat');
+
+        Route::get('/users/accounts', [UserAccountController::class, 'index'])
+            ->middleware('role:admin,truong_phong_san_xuat');
+        Route::get('/users/accounts/stats', [UserAccountController::class, 'stats'])
             ->middleware('role:admin,truong_phong_san_xuat');
     });
 });
