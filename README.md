@@ -189,3 +189,4 @@ Da bo sung bo giao dien day du theo module nghiep vu:
 - Da bo sung bo loc va dieu huong phan trang ngay tren UI `lich-hop` va `crm-mini`.
 - Da dong bo bo loc/phan trang vao URL query de reload/truyen link van giu nguyen trang thai.
 - Da bo sung toast thong bao thanh cong/that bai cho thao tac CRUD va tai du lieu.
+- Toast duoc quan ly theo co che dung chung: `ToastProvider` + hook `useToast` (file `resources/js/Contexts/ToastContext.jsx`).

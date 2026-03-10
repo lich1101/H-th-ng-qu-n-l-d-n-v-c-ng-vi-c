@@ -1,7 +1,8 @@
 import React from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import axios from 'axios';
 import PageContainer from '@/Components/PageContainer';
+import { useToast } from '@/Contexts/ToastContext';
 
 export default function CRM(props) {
     const initialQuery = (() => {
@@ -40,8 +41,6 @@ export default function CRM(props) {
     const [paymentFilters, setPaymentFilters] = useState({ status: initialQuery.p_status, per_page: initialQuery.p_per_page });
     const [editingClientId, setEditingClientId] = useState(null);
     const [editingPaymentId, setEditingPaymentId] = useState(null);
-    const [toast, setToast] = useState(null);
-    const toastTimerRef = useRef(null);
     const [clientForm, setClientForm] = useState({
         name: '',
         company: '',
@@ -57,14 +56,7 @@ export default function CRM(props) {
         invoice_no: '',
         note: '',
     });
-
-    const showToast = (type, message) => {
-        setToast({ type, message });
-        if (toastTimerRef.current) {
-            clearTimeout(toastTimerRef.current);
-        }
-        toastTimerRef.current = setTimeout(() => setToast(null), 3000);
-    };
+    const toast = useToast();
 
     const getErrorMessage = (error, fallback) => {
         return error?.response?.data?.message || fallback;
@@ -107,7 +99,7 @@ export default function CRM(props) {
             setClientPage(resolvedPage);
             syncUrl({ nextClientFilters: filtersArg, nextClientPage: resolvedPage });
         } catch (error) {
-            showToast('error', getErrorMessage(error, 'Không tải được danh sách khách hàng.'));
+            toast.error(getErrorMessage(error, 'Không tải được danh sách khách hàng.'));
         }
     };
 
@@ -129,7 +121,7 @@ export default function CRM(props) {
             setPaymentPage(resolvedPage);
             syncUrl({ nextPaymentFilters: filtersArg, nextPaymentPage: resolvedPage });
         } catch (error) {
-            showToast('error', getErrorMessage(error, 'Không tải được danh sách thanh toán.'));
+            toast.error(getErrorMessage(error, 'Không tải được danh sách thanh toán.'));
         }
     };
 
@@ -147,14 +139,6 @@ export default function CRM(props) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    useEffect(() => {
-        return () => {
-            if (toastTimerRef.current) {
-                clearTimeout(toastTimerRef.current);
-            }
-        };
-    }, []);
-
     const submitClient = async (e) => {
         e.preventDefault();
         try {
@@ -166,9 +150,9 @@ export default function CRM(props) {
             setEditingClientId(null);
             setClientForm({ name: '', company: '', email: '', phone: '', notes: '' });
             await fetchClients(clientPage);
-            showToast('success', editingClientId ? 'Cập nhật khách hàng thành công.' : 'Tạo khách hàng thành công.');
+            toast.success(editingClientId ? 'Cập nhật khách hàng thành công.' : 'Tạo khách hàng thành công.');
         } catch (error) {
-            showToast('error', getErrorMessage(error, 'Lưu khách hàng thất bại.'));
+            toast.error(getErrorMessage(error, 'Lưu khách hàng thất bại.'));
         }
     };
 
@@ -191,9 +175,9 @@ export default function CRM(props) {
                 setClientForm({ name: '', company: '', email: '', phone: '', notes: '' });
             }
             await fetchClients(clientPage);
-            showToast('success', 'Xóa khách hàng thành công.');
+            toast.success('Xóa khách hàng thành công.');
         } catch (error) {
-            showToast('error', getErrorMessage(error, 'Xóa khách hàng thất bại.'));
+            toast.error(getErrorMessage(error, 'Xóa khách hàng thất bại.'));
         }
     };
 
@@ -221,9 +205,9 @@ export default function CRM(props) {
                 note: '',
             });
             await fetchPayments(paymentPage);
-            showToast('success', editingPaymentId ? 'Cập nhật thanh toán thành công.' : 'Tạo thanh toán thành công.');
+            toast.success(editingPaymentId ? 'Cập nhật thanh toán thành công.' : 'Tạo thanh toán thành công.');
         } catch (error) {
-            showToast('error', getErrorMessage(error, 'Lưu thanh toán thất bại.'));
+            toast.error(getErrorMessage(error, 'Lưu thanh toán thất bại.'));
         }
     };
 
@@ -254,9 +238,9 @@ export default function CRM(props) {
                 });
             }
             await fetchPayments(paymentPage);
-            showToast('success', 'Xóa thanh toán thành công.');
+            toast.success('Xóa thanh toán thành công.');
         } catch (error) {
-            showToast('error', getErrorMessage(error, 'Xóa thanh toán thất bại.'));
+            toast.error(getErrorMessage(error, 'Xóa thanh toán thất bại.'));
         }
     };
 
@@ -306,18 +290,6 @@ export default function CRM(props) {
                 { label: 'Sửa thanh toán', value: editingPaymentId ? 'Có' : 'Không' },
             ]}
         >
-            {toast && (
-                <div
-                    className={`mb-4 rounded-lg px-4 py-3 text-sm font-medium ${
-                        toast.type === 'success'
-                            ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
-                            : 'bg-rose-50 border border-rose-200 text-rose-800'
-                    }`}
-                >
-                    {toast.message}
-                </div>
-            )}
-
             <div className="grid gap-4 lg:grid-cols-2 mb-4">
                 <form onSubmit={submitClient} className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm grid gap-3">
                     <h3 className="font-semibold">{editingClientId ? 'Sửa khách hàng' : 'Thêm khách hàng'}</h3>

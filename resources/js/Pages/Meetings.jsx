@@ -1,7 +1,8 @@
 import React from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import axios from 'axios';
 import PageContainer from '@/Components/PageContainer';
+import { useToast } from '@/Contexts/ToastContext';
 
 export default function Meetings(props) {
     const initialQuery = (() => {
@@ -34,8 +35,6 @@ export default function Meetings(props) {
         per_page: initialQuery.per_page,
     });
     const [editingId, setEditingId] = useState(null);
-    const [toast, setToast] = useState(null);
-    const toastTimerRef = useRef(null);
     const [form, setForm] = useState({
         title: '',
         scheduled_at: '',
@@ -43,14 +42,7 @@ export default function Meetings(props) {
         description: '',
         minutes: '',
     });
-
-    const showToast = (type, message) => {
-        setToast({ type, message });
-        if (toastTimerRef.current) {
-            clearTimeout(toastTimerRef.current);
-        }
-        toastTimerRef.current = setTimeout(() => setToast(null), 3000);
-    };
+    const toast = useToast();
 
     const getErrorMessage = (error, fallback) => {
         return error?.response?.data?.message || fallback;
@@ -87,7 +79,7 @@ export default function Meetings(props) {
             setMeetingPage(resolvedPage);
             syncMeetingUrl(filtersArg, resolvedPage);
         } catch (error) {
-            showToast('error', getErrorMessage(error, 'Không tải được danh sách lịch họp.'));
+            toast.error(getErrorMessage(error, 'Không tải được danh sách lịch họp.'));
         }
     };
 
@@ -101,14 +93,6 @@ export default function Meetings(props) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    useEffect(() => {
-        return () => {
-            if (toastTimerRef.current) {
-                clearTimeout(toastTimerRef.current);
-            }
-        };
-    }, []);
-
     const createMeeting = async (e) => {
         e.preventDefault();
         try {
@@ -119,9 +103,9 @@ export default function Meetings(props) {
             setForm({ title: '', scheduled_at: '', meeting_link: '', description: '', minutes: '' });
             setEditingId(null);
             await fetchMeetings(meetingPage);
-            showToast('success', 'Tạo lịch họp thành công.');
+            toast.success('Tạo lịch họp thành công.');
         } catch (error) {
-            showToast('error', getErrorMessage(error, 'Tạo lịch họp thất bại.'));
+            toast.error(getErrorMessage(error, 'Tạo lịch họp thất bại.'));
         }
     };
 
@@ -147,9 +131,9 @@ export default function Meetings(props) {
             setForm({ title: '', scheduled_at: '', meeting_link: '', description: '', minutes: '' });
             setEditingId(null);
             await fetchMeetings(meetingPage);
-            showToast('success', 'Cập nhật lịch họp thành công.');
+            toast.success('Cập nhật lịch họp thành công.');
         } catch (error) {
-            showToast('error', getErrorMessage(error, 'Cập nhật lịch họp thất bại.'));
+            toast.error(getErrorMessage(error, 'Cập nhật lịch họp thất bại.'));
         }
     };
 
@@ -161,9 +145,9 @@ export default function Meetings(props) {
                 setForm({ title: '', scheduled_at: '', meeting_link: '', description: '', minutes: '' });
             }
             await fetchMeetings(meetingPage);
-            showToast('success', 'Xóa lịch họp thành công.');
+            toast.success('Xóa lịch họp thành công.');
         } catch (error) {
-            showToast('error', getErrorMessage(error, 'Xóa lịch họp thất bại.'));
+            toast.error(getErrorMessage(error, 'Xóa lịch họp thất bại.'));
         }
     };
 
@@ -196,18 +180,6 @@ export default function Meetings(props) {
                 { label: 'Hỗ trợ', value: 'CRUD đầy đủ' },
             ]}
         >
-            {toast && (
-                <div
-                    className={`mb-4 rounded-lg px-4 py-3 text-sm font-medium ${
-                        toast.type === 'success'
-                            ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
-                            : 'bg-rose-50 border border-rose-200 text-rose-800'
-                    }`}
-                >
-                    {toast.message}
-                </div>
-            )}
-
             <form
                 onSubmit={editingId ? updateMeeting : createMeeting}
                 className="mb-4 bg-white rounded-xl border border-slate-200 p-4 shadow-sm grid gap-3 md:grid-cols-2"
