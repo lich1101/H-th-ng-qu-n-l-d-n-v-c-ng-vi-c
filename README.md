@@ -119,3 +119,9 @@ Da bo sung bo giao dien day du theo module nghiep vu:
 - `nhat-ky-he-thong`: theo doi thao tac va thay doi trang thai
 - `crm-mini`: quan ly khach hang va thanh toan
 - `phan-quyen`: ma tran vai tro va quyen
+- `tai-khoan`: bang dieu khien tai khoan nguoi dung (phan bo role, trang thai, canh bao)
+
+## Giao dien bieu do
+
+- Da bo sung bieu do cot thanh (bar chart) cho dashboard va tai khoan nguoi dung.
+- Da bo sung cac progress chart cho KPI/trang thai de theo doi nhanh.

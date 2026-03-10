@@ -1,5 +1,6 @@
 import React from 'react';
 import PageContainer from '@/Components/PageContainer';
+import RoleBarChart from '@/Components/RoleBarChart';
 
 export default function Dashboard(props) {
     return (
@@ -35,24 +36,14 @@ export default function Dashboard(props) {
                 </div>
 
                 <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
-                    <h3 className="font-semibold text-slate-900 mb-4">Năng lực phòng ban</h3>
-                    <div className="space-y-4">
-                        {[
-                            ['Kinh doanh', '68%'],
-                            ['Sản xuất', '82%'],
-                            ['QA / Duyệt', '74%'],
-                        ].map(([label, val]) => (
-                            <div key={label}>
-                                <div className="flex justify-between text-sm">
-                                    <span>{label}</span>
-                                    <span className="font-semibold">{val}</span>
-                                </div>
-                                <div className="mt-1 h-2 bg-slate-200 rounded-full">
-                                    <div className="h-2 bg-sky-500 rounded-full" style={{ width: val }} />
-                                </div>
-                            </div>
-                        ))}
-                    </div>
+                    <h3 className="font-semibold text-slate-900 mb-4">Biểu đồ năng lực phòng ban</h3>
+                    <RoleBarChart
+                        data={[
+                            { label: 'Kinh doanh', value: 68 },
+                            { label: 'Sản xuất', value: 82 },
+                            { label: 'QA / Duyệt', value: 74 },
+                        ]}
+                    />
                 </div>
             </div>
         </PageContainer>

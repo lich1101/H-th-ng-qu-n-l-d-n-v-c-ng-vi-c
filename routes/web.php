@@ -68,6 +68,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         return Inertia::render('CRM');
     })->name('crm.index');
 
+    Route::get('/tai-khoan', function () {
+        return Inertia::render('UserAccountsDashboard');
+    })->name('accounts.dashboard');
+
     Route::get('/phan-quyen', function () {
         return Inertia::render('RolesPermissions');
     })->name('roles.permissions');

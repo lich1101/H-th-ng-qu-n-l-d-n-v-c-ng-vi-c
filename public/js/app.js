@@ -2424,11 +2424,12 @@ function PageContainer(_ref) {
   return /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsxs)(_Layouts_Authenticated__WEBPACK_IMPORTED_MODULE_2__["default"], {
     auth: auth,
     header: /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsxs)("div", {
+      className: "rounded-2xl bg-gradient-to-r from-slate-900 via-slate-800 to-sky-900 text-white p-5 shadow-lg",
       children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsx)("h1", {
-        className: "text-2xl font-semibold text-slate-900",
+        className: "text-2xl font-semibold",
         children: title
       }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsx)("p", {
-        className: "text-sm text-slate-600 mt-1",
+        className: "text-sm text-slate-200 mt-1",
         children: description
       })]
     }),
@@ -2443,7 +2444,7 @@ function PageContainer(_ref) {
             className: "text-sm text-slate-500",
             children: item.label
           }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsx)("p", {
-            className: "mt-2 text-2xl font-semibold text-slate-900",
+            className: "mt-2 text-2xl font-semibold bg-gradient-to-r from-sky-700 to-indigo-700 bg-clip-text text-transparent",
             children: item.value
           }), item.note && /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsx)("p", {
             className: "mt-1 text-xs text-slate-400",
@@ -2452,6 +2453,61 @@ function PageContainer(_ref) {
         }, item.label);
       })
     }), children]
+  });
+}
+
+/***/ },
+
+/***/ "./resources/js/Components/RoleBarChart.jsx"
+/*!**************************************************!*\
+  !*** ./resources/js/Components/RoleBarChart.jsx ***!
+  \**************************************************/
+(__unused_webpack_module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   "default": () => (/* binding */ RoleBarChart)
+/* harmony export */ });
+/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "./node_modules/react/index.js");
+/* harmony import */ var react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! react/jsx-runtime */ "./node_modules/react/jsx-runtime.js");
+function _toConsumableArray(r) { return _arrayWithoutHoles(r) || _iterableToArray(r) || _unsupportedIterableToArray(r) || _nonIterableSpread(); }
+function _nonIterableSpread() { throw new TypeError("Invalid attempt to spread non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
+function _unsupportedIterableToArray(r, a) { if (r) { if ("string" == typeof r) return _arrayLikeToArray(r, a); var t = {}.toString.call(r).slice(8, -1); return "Object" === t && r.constructor && (t = r.constructor.name), "Map" === t || "Set" === t ? Array.from(r) : "Arguments" === t || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(t) ? _arrayLikeToArray(r, a) : void 0; } }
+function _iterableToArray(r) { if ("undefined" != typeof Symbol && null != r[Symbol.iterator] || null != r["@@iterator"]) return Array.from(r); }
+function _arrayWithoutHoles(r) { if (Array.isArray(r)) return _arrayLikeToArray(r); }
+function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length); for (var e = 0, n = Array(a); e < a; e++) n[e] = r[e]; return n; }
+
+
+function RoleBarChart(_ref) {
+  var data = _ref.data;
+  var max = Math.max.apply(Math, _toConsumableArray(data.map(function (item) {
+    return item.value;
+  })).concat([1]));
+  return /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)("div", {
+    className: "space-y-3",
+    children: data.map(function (item) {
+      return /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsxs)("div", {
+        children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsxs)("div", {
+          className: "flex justify-between text-sm mb-1",
+          children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)("span", {
+            className: "text-slate-700",
+            children: item.label
+          }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)("span", {
+            className: "font-semibold text-slate-900",
+            children: item.value
+          })]
+        }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)("div", {
+          className: "h-2 bg-slate-200 rounded-full overflow-hidden",
+          children: /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)("div", {
+            className: "h-2 rounded-full bg-gradient-to-r from-sky-500 to-indigo-500",
+            style: {
+              width: "".concat(item.value / max * 100, "%")
+            }
+          })
+        })]
+      }, item.label);
+    })
   });
 }
 
@@ -2571,6 +2627,10 @@ function Authenticated(_ref) {
       label: 'CRM mini',
       routeName: 'crm.index',
       href: route('crm.index')
+    }, {
+      label: 'Tài khoản người dùng',
+      routeName: 'accounts.dashboard',
+      href: route('accounts.dashboard')
     }, {
       label: 'Phân quyền',
       routeName: 'roles.permissions',
@@ -3480,7 +3540,8 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "./node_modules/react/index.js");
 /* harmony import */ var _Components_PageContainer__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! @/Components/PageContainer */ "./resources/js/Components/PageContainer.jsx");
-/* harmony import */ var react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! react/jsx-runtime */ "./node_modules/react/jsx-runtime.js");
+/* harmony import */ var _Components_RoleBarChart__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! @/Components/RoleBarChart */ "./resources/js/Components/RoleBarChart.jsx");
+/* harmony import */ var react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! react/jsx-runtime */ "./node_modules/react/jsx-runtime.js");
 function _slicedToArray(r, e) { return _arrayWithHoles(r) || _iterableToArrayLimit(r, e) || _unsupportedIterableToArray(r, e) || _nonIterableRest(); }
 function _nonIterableRest() { throw new TypeError("Invalid attempt to destructure non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
 function _unsupportedIterableToArray(r, a) { if (r) { if ("string" == typeof r) return _arrayLikeToArray(r, a); var t = {}.toString.call(r).slice(8, -1); return "Object" === t && r.constructor && (t = r.constructor.name), "Map" === t || "Set" === t ? Array.from(r) : "Arguments" === t || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(t) ? _arrayLikeToArray(r, a) : void 0; } }
@@ -3490,8 +3551,9 @@ function _arrayWithHoles(r) { if (Array.isArray(r)) return r; }
 
 
 
+
 function Dashboard(props) {
-  return /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(_Components_PageContainer__WEBPACK_IMPORTED_MODULE_1__["default"], {
+  return /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsx)(_Components_PageContainer__WEBPACK_IMPORTED_MODULE_1__["default"], {
     auth: props.auth,
     title: "T\u1ED5ng quan v\u1EADn h\xE0nh",
     description: "Theo d\xF5i nhanh ti\u1EBFn \u0111\u1ED9 d\u1EF1 \xE1n, hi\u1EC7u su\u1EA5t nh\xE2n s\u1EF1 v\xE0 c\xE1c h\u1EA1ng m\u1EE5c c\u1EA7n x\u1EED l\xFD trong ng\xE0y.",
@@ -3512,68 +3574,53 @@ function Dashboard(props) {
       value: '87%',
       note: 'Mục tiêu tháng: 90%'
     }],
-    children: /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsxs)("div", {
+    children: /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsxs)("div", {
       className: "grid gap-4 xl:grid-cols-3",
-      children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsxs)("div", {
+      children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsxs)("div", {
         className: "xl:col-span-2 bg-white rounded-xl border border-slate-200 p-5 shadow-sm",
-        children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)("h3", {
+        children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsx)("h3", {
           className: "font-semibold text-slate-900 mb-4",
           children: "Vi\u1EC7c c\u1EA7n l\xE0m h\xF4m nay"
-        }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)("div", {
+        }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsx)("div", {
           className: "space-y-3",
           children: [['Kiểm duyệt task backlinks batch 03', 'Trưởng phòng sản xuất', '14:00'], ['Meeting bàn giao dự án Acme', 'Sales + Leader', '15:30'], ['Xuất báo cáo KPI tuần', 'Admin', '17:00']].map(function (_ref) {
             var _ref2 = _slicedToArray(_ref, 3),
               task = _ref2[0],
               owner = _ref2[1],
               time = _ref2[2];
-            return /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsxs)("div", {
+            return /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsxs)("div", {
               className: "flex items-center justify-between rounded-lg border border-slate-200 p-3",
-              children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsxs)("div", {
-                children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)("p", {
+              children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsxs)("div", {
+                children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsx)("p", {
                   className: "font-medium text-slate-800",
                   children: task
-                }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)("p", {
+                }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsx)("p", {
                   className: "text-xs text-slate-500",
                   children: owner
                 })]
-              }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)("span", {
+              }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsx)("span", {
                 className: "text-sm font-semibold text-sky-700",
                 children: time
               })]
             }, task);
           })
         })]
-      }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsxs)("div", {
+      }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsxs)("div", {
         className: "bg-white rounded-xl border border-slate-200 p-5 shadow-sm",
-        children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)("h3", {
+        children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsx)("h3", {
           className: "font-semibold text-slate-900 mb-4",
-          children: "N\u0103ng l\u1EF1c ph\xF2ng ban"
-        }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)("div", {
-          className: "space-y-4",
-          children: [['Kinh doanh', '68%'], ['Sản xuất', '82%'], ['QA / Duyệt', '74%']].map(function (_ref3) {
-            var _ref4 = _slicedToArray(_ref3, 2),
-              label = _ref4[0],
-              val = _ref4[1];
-            return /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsxs)("div", {
-              children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsxs)("div", {
-                className: "flex justify-between text-sm",
-                children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)("span", {
-                  children: label
-                }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)("span", {
-                  className: "font-semibold",
-                  children: val
-                })]
-              }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)("div", {
-                className: "mt-1 h-2 bg-slate-200 rounded-full",
-                children: /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)("div", {
-                  className: "h-2 bg-sky-500 rounded-full",
-                  style: {
-                    width: val
-                  }
-                })
-              })]
-            }, label);
-          })
+          children: "Bi\u1EC3u \u0111\u1ED3 n\u0103ng l\u1EF1c ph\xF2ng ban"
+        }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsx)(_Components_RoleBarChart__WEBPACK_IMPORTED_MODULE_2__["default"], {
+          data: [{
+            label: 'Kinh doanh',
+            value: 68
+          }, {
+            label: 'Sản xuất',
+            value: 82
+          }, {
+            label: 'QA / Duyệt',
+            value: 74
+          }]
         })]
       })]
     })
@@ -4319,6 +4366,181 @@ function TasksBoard(props) {
         })
       })]
     })
+  });
+}
+
+/***/ },
+
+/***/ "./resources/js/Pages/UserAccountsDashboard.jsx"
+/*!******************************************************!*\
+  !*** ./resources/js/Pages/UserAccountsDashboard.jsx ***!
+  \******************************************************/
+(__unused_webpack_module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   "default": () => (/* binding */ UserAccountsDashboard)
+/* harmony export */ });
+/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "./node_modules/react/index.js");
+/* harmony import */ var _Components_PageContainer__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! @/Components/PageContainer */ "./resources/js/Components/PageContainer.jsx");
+/* harmony import */ var _Components_RoleBarChart__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! @/Components/RoleBarChart */ "./resources/js/Components/RoleBarChart.jsx");
+/* harmony import */ var react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! react/jsx-runtime */ "./node_modules/react/jsx-runtime.js");
+
+
+
+
+var users = [['Nguyễn Văn An', 'admin', 'quản trị', 'Đang hoạt động', '92%'], ['Trần Mỹ Linh', 'nhan_su_kinh_doanh', 'kinh doanh', 'Đang hoạt động', '78%'], ['Lê Hoàng Minh', 'truong_phong_san_xuat', 'sản xuất', 'Đang hoạt động', '85%'], ['Phạm Quốc Huy', 'nhan_su_san_xuat', 'sản xuất', 'Đang hoạt động', '81%'], ['Đỗ Thanh Vy', 'nhan_su_san_xuat', 'sản xuất', 'Tạm khóa', '35%']];
+function UserAccountsDashboard(props) {
+  return /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsxs)(_Components_PageContainer__WEBPACK_IMPORTED_MODULE_1__["default"], {
+    auth: props.auth,
+    title: "B\u1EA3ng \u0111i\u1EC1u khi\u1EC3n t\xE0i kho\u1EA3n ng\u01B0\u1EDDi d\xF9ng",
+    description: "Theo d\xF5i ph\xE2n b\u1ED5 vai tr\xF2, tr\u1EA1ng th\xE1i ho\u1EA1t \u0111\u1ED9ng v\xE0 hi\u1EC7u su\u1EA5t x\u1EED l\xFD c\xF4ng vi\u1EC7c c\u1EE7a nh\xE2n s\u1EF1.",
+    stats: [{
+      label: 'Tổng tài khoản',
+      value: '56'
+    }, {
+      label: 'Đang hoạt động',
+      value: '51'
+    }, {
+      label: 'Tạm khóa',
+      value: '5'
+    }, {
+      label: 'Đăng nhập hôm nay',
+      value: '39'
+    }],
+    children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsxs)("div", {
+      className: "grid gap-4 xl:grid-cols-3 mb-4",
+      children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsxs)("div", {
+        className: "bg-white rounded-xl border border-slate-200 p-5 shadow-sm xl:col-span-2",
+        children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsx)("h3", {
+          className: "font-semibold text-slate-900 mb-3",
+          children: "Danh s\xE1ch t\xE0i kho\u1EA3n"
+        }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsx)("div", {
+          className: "overflow-x-auto",
+          children: /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsxs)("table", {
+            className: "min-w-full text-sm",
+            children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsx)("thead", {
+              className: "bg-slate-50 text-slate-600",
+              children: /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsxs)("tr", {
+                children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsx)("th", {
+                  className: "text-left px-3 py-2",
+                  children: "H\u1ECD t\xEAn"
+                }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsx)("th", {
+                  className: "text-left px-3 py-2",
+                  children: "Vai tr\xF2"
+                }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsx)("th", {
+                  className: "text-left px-3 py-2",
+                  children: "Ph\xF2ng ban"
+                }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsx)("th", {
+                  className: "text-left px-3 py-2",
+                  children: "Tr\u1EA1ng th\xE1i"
+                }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsx)("th", {
+                  className: "text-left px-3 py-2",
+                  children: "Hi\u1EC7u su\u1EA5t"
+                })]
+              })
+            }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsx)("tbody", {
+              children: users.map(function (row) {
+                return /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsx)("tr", {
+                  className: "border-t border-slate-100",
+                  children: row.map(function (cell) {
+                    return /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsx)("td", {
+                      className: "px-3 py-2",
+                      children: cell
+                    }, "".concat(row[0], "-").concat(cell));
+                  })
+                }, row[0]);
+              })
+            })]
+          })
+        })]
+      }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsxs)("div", {
+        className: "bg-white rounded-xl border border-slate-200 p-5 shadow-sm",
+        children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsx)("h3", {
+          className: "font-semibold text-slate-900 mb-3",
+          children: "Bi\u1EC3u \u0111\u1ED3 ph\xE2n b\u1ED5 vai tr\xF2"
+        }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsx)(_Components_RoleBarChart__WEBPACK_IMPORTED_MODULE_2__["default"], {
+          data: [{
+            label: 'Admin',
+            value: 3
+          }, {
+            label: 'Kinh doanh',
+            value: 14
+          }, {
+            label: 'Trưởng phòng',
+            value: 4
+          }, {
+            label: 'Nhân sự sản xuất',
+            value: 35
+          }]
+        })]
+      })]
+    }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsxs)("div", {
+      className: "grid gap-4 md:grid-cols-2",
+      children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsxs)("div", {
+        className: "bg-white rounded-xl border border-slate-200 p-5 shadow-sm",
+        children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsx)("h3", {
+          className: "font-semibold mb-3",
+          children: "Bi\u1EC3u \u0111\u1ED3 tr\u1EA1ng th\xE1i t\xE0i kho\u1EA3n"
+        }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsxs)("div", {
+          className: "space-y-3 text-sm",
+          children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsxs)("div", {
+            children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsxs)("div", {
+              className: "flex justify-between",
+              children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsx)("span", {
+                children: "Ho\u1EA1t \u0111\u1ED9ng"
+              }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsx)("span", {
+                children: "91%"
+              })]
+            }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsx)("div", {
+              className: "h-2 bg-slate-200 rounded-full mt-1",
+              children: /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsx)("div", {
+                className: "h-2 rounded-full bg-emerald-500",
+                style: {
+                  width: '91%'
+                }
+              })
+            })]
+          }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsxs)("div", {
+            children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsxs)("div", {
+              className: "flex justify-between",
+              children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsx)("span", {
+                children: "T\u1EA1m kh\xF3a"
+              }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsx)("span", {
+                children: "9%"
+              })]
+            }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsx)("div", {
+              className: "h-2 bg-slate-200 rounded-full mt-1",
+              children: /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsx)("div", {
+                className: "h-2 rounded-full bg-rose-500",
+                style: {
+                  width: '9%'
+                }
+              })
+            })]
+          })]
+        })]
+      }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsxs)("div", {
+        className: "bg-white rounded-xl border border-slate-200 p-5 shadow-sm",
+        children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsx)("h3", {
+          className: "font-semibold mb-3",
+          children: "C\u1EA3nh b\xE1o t\xE0i kho\u1EA3n"
+        }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsxs)("ul", {
+          className: "space-y-2 text-sm",
+          children: [/*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsx)("li", {
+            className: "rounded-lg border border-amber-200 bg-amber-50 p-3",
+            children: "3 t\xE0i kho\u1EA3n ch\u01B0a \u0111\u1ED5i m\u1EADt kh\u1EA9u h\u01A1n 90 ng\xE0y"
+          }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsx)("li", {
+            className: "rounded-lg border border-sky-200 bg-sky-50 p-3",
+            children: "5 t\xE0i kho\u1EA3n c\u1EA7n n\xE2ng quy\u1EC1n \u0111\u1EC3 duy\u1EC7t b\xE0n giao"
+          }), /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsx)("li", {
+            className: "rounded-lg border border-rose-200 bg-rose-50 p-3",
+            children: "2 t\xE0i kho\u1EA3n \u0111\u0103ng nh\u1EADp b\u1EA5t th\u01B0\u1EDDng trong 24h"
+          })]
+        })]
+      })]
+    })]
   });
 }
 
@@ -58939,6 +59161,7 @@ var map = {
 	"./RolesPermissions.jsx": "./resources/js/Pages/RolesPermissions.jsx",
 	"./ServiceWorkflows.jsx": "./resources/js/Pages/ServiceWorkflows.jsx",
 	"./TasksBoard.jsx": "./resources/js/Pages/TasksBoard.jsx",
+	"./UserAccountsDashboard.jsx": "./resources/js/Pages/UserAccountsDashboard.jsx",
 	"./Welcome.jsx": "./resources/js/Pages/Welcome.jsx"
 };
 

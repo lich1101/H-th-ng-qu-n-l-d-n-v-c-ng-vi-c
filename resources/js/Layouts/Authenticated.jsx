@@ -18,6 +18,7 @@ export default function Authenticated({ auth, header, children }) {
             { label: 'Chat nội bộ', routeName: 'chat.internal', href: route('chat.internal') },
             { label: 'Nhật ký hệ thống', routeName: 'activity.logs', href: route('activity.logs') },
             { label: 'CRM mini', routeName: 'crm.index', href: route('crm.index') },
+            { label: 'Tài khoản người dùng', routeName: 'accounts.dashboard', href: route('accounts.dashboard') },
             { label: 'Phân quyền', routeName: 'roles.permissions', href: route('roles.permissions') },
         ],
         []
