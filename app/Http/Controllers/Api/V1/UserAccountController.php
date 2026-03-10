@@ -3,12 +3,41 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Models\ActivityLog;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rule;
 
 class UserAccountController extends Controller
 {
+    public function store(Request $request): JsonResponse
+    {
+        $validated = $request->validate($this->rules());
+
+        $user = User::create([
+            'name' => $validated['name'],
+            'email' => $validated['email'],
+            'password' => Hash::make($validated['password']),
+            'role' => $validated['role'],
+            'department' => $validated['department'] ?? null,
+            'phone' => $validated['phone'] ?? null,
+            'workload_capacity' => $validated['workload_capacity'] ?? 100,
+            'is_active' => $validated['is_active'] ?? true,
+        ]);
+
+        $this->log($request, 'user_created', 'user', $user->id, [
+            'name' => ['old' => null, 'new' => $user->name],
+            'role' => ['old' => null, 'new' => $user->role],
+        ]);
+
+        return response()->json([
+            'message' => 'Tạo tài khoản thành công.',
+            'user' => $user,
+        ], 201);
+    }
+
     public function index(Request $request): JsonResponse
     {
         $query = User::query()
@@ -18,6 +47,7 @@ class UserAccountController extends Controller
                 'email',
                 'role',
                 'department',
+                'phone',
                 'is_active',
                 'workload_capacity',
                 'created_at',
@@ -86,6 +116,107 @@ class UserAccountController extends Controller
             'login_today' => $active,
             'average_capacity' => round($averageCapacity, 1),
             'role_distribution' => $roleCounts,
+        ]);
+    }
+
+    public function update(Request $request, User $user): JsonResponse
+    {
+        $validated = $request->validate($this->rules($user->id, false));
+
+        $payload = [
+            'name' => $validated['name'],
+            'email' => $validated['email'],
+            'role' => $validated['role'],
+            'department' => $validated['department'] ?? null,
+            'phone' => $validated['phone'] ?? null,
+            'workload_capacity' => $validated['workload_capacity'] ?? 100,
+            'is_active' => $validated['is_active'] ?? true,
+        ];
+
+        if (!empty($validated['password'])) {
+            $payload['password'] = Hash::make($validated['password']);
+        }
+
+        $before = $user->only(['name', 'role', 'is_active']);
+        $user->update($payload);
+
+        $this->log($request, 'user_updated', 'user', $user->id, [
+            'name' => ['old' => $before['name'], 'new' => $user->name],
+            'role' => ['old' => $before['role'], 'new' => $user->role],
+            'is_active' => ['old' => (bool) $before['is_active'], 'new' => (bool) $user->is_active],
+        ]);
+
+        return response()->json([
+            'message' => 'Cập nhật tài khoản thành công.',
+            'user' => $user->fresh(),
+        ]);
+    }
+
+    public function destroy(Request $request, User $user): JsonResponse
+    {
+        if ((int) $request->user()->id === (int) $user->id) {
+            return response()->json([
+                'message' => 'Không thể tự xóa tài khoản đang đăng nhập.',
+            ], 422);
+        }
+
+        if ($user->role === 'admin') {
+            $admins = User::where('role', 'admin')->count();
+            if ($admins <= 1) {
+                return response()->json([
+                    'message' => 'Không thể xóa admin cuối cùng.',
+                ], 422);
+            }
+        }
+
+        $user->delete();
+
+        $this->log($request, 'user_deleted', 'user', $user->id, []);
+
+        return response()->json([
+            'message' => 'Xóa tài khoản thành công.',
+        ]);
+    }
+
+    private function rules(?int $userId = null, bool $requirePassword = true): array
+    {
+        return [
+            'name' => ['required', 'string', 'max:255'],
+            'email' => [
+                'required',
+                'email',
+                'max:255',
+                Rule::unique('users', 'email')->ignore($userId),
+            ],
+            'password' => [
+                $requirePassword ? 'required' : 'nullable',
+                'string',
+                'min:8',
+            ],
+            'role' => ['required', 'string', Rule::in([
+                'admin',
+                'truong_phong_san_xuat',
+                'nhan_su_san_xuat',
+                'nhan_su_kinh_doanh',
+            ])],
+            'department' => ['nullable', 'string', 'max:100'],
+            'phone' => ['nullable', 'string', 'max:30'],
+            'workload_capacity' => ['nullable', 'integer', 'min:0', 'max:200'],
+            'is_active' => ['nullable', 'boolean'],
+        ];
+    }
+
+    private function log(Request $request, string $action, string $subjectType, int $subjectId, array $changes): void
+    {
+        ActivityLog::create([
+            'user_id' => $request->user()->id,
+            'action' => $action,
+            'subject_type' => $subjectType,
+            'subject_id' => $subjectId,
+            'changes' => $changes,
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'created_at' => now(),
         ]);
     }
 }

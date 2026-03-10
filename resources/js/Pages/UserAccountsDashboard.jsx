@@ -28,6 +28,20 @@ export default function UserAccountsDashboard(props) {
         role_distribution: [],
     });
     const [loading, setLoading] = useState(true);
+    const [submitting, setSubmitting] = useState(false);
+    const [editingId, setEditingId] = useState(null);
+    const [form, setForm] = useState({
+        name: '',
+        email: '',
+        password: '',
+        role: 'nhan_su_san_xuat',
+        department: 'san_xuat',
+        phone: '',
+        workload_capacity: 100,
+        is_active: true,
+    });
+    const [message, setMessage] = useState('');
+    const [errorMessage, setErrorMessage] = useState('');
 
     const fetchAccounts = async (activeFilters) => {
         setLoading(true);
@@ -75,6 +89,85 @@ export default function UserAccountsDashboard(props) {
 
     const toRoleLabel = (role) => roleLabels[role] || role;
 
+    const resetForm = () => {
+        setEditingId(null);
+        setForm({
+            name: '',
+            email: '',
+            password: '',
+            role: 'nhan_su_san_xuat',
+            department: 'san_xuat',
+            phone: '',
+            workload_capacity: 100,
+            is_active: true,
+        });
+    };
+
+    const submitAccount = async (e) => {
+        e.preventDefault();
+        setSubmitting(true);
+        setMessage('');
+        setErrorMessage('');
+        try {
+            const payload = {
+                ...form,
+                workload_capacity: Number(form.workload_capacity),
+                is_active: Boolean(form.is_active),
+            };
+
+            if (!editingId && !payload.password) {
+                setErrorMessage('Mật khẩu là bắt buộc khi tạo tài khoản.');
+                setSubmitting(false);
+                return;
+            }
+
+            if (editingId) {
+                await axios.put(`/api/v1/users/accounts/${editingId}`, payload);
+                setMessage('Cập nhật tài khoản thành công.');
+            } else {
+                await axios.post('/api/v1/users/accounts', payload);
+                setMessage('Tạo tài khoản thành công.');
+            }
+            resetForm();
+            fetchAccounts(filters);
+        } catch (error) {
+            setErrorMessage(error?.response?.data?.message || 'Không thể lưu tài khoản.');
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    const startEdit = (user) => {
+        setEditingId(user.id);
+        setForm({
+            name: user.name || '',
+            email: user.email || '',
+            password: '',
+            role: user.role || 'nhan_su_san_xuat',
+            department: user.department || '',
+            phone: user.phone || '',
+            workload_capacity: user.workload_capacity ?? 100,
+            is_active: Boolean(user.is_active),
+        });
+        setMessage('');
+        setErrorMessage('');
+    };
+
+    const deleteAccount = async (user) => {
+        if (!window.confirm(`Xóa tài khoản ${user.name}?`)) {
+            return;
+        }
+        setMessage('');
+        setErrorMessage('');
+        try {
+            await axios.delete(`/api/v1/users/accounts/${user.id}`);
+            setMessage('Xóa tài khoản thành công.');
+            fetchAccounts(filters);
+        } catch (error) {
+            setErrorMessage(error?.response?.data?.message || 'Không thể xóa tài khoản.');
+        }
+    };
+
     return (
         <PageContainer
             auth={props.auth}
@@ -87,6 +180,99 @@ export default function UserAccountsDashboard(props) {
                 { label: 'Đăng nhập hôm nay', value: stats.login_today },
             ]}
         >
+            <div className="mb-4 bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+                <h3 className="font-semibold text-slate-900 mb-3">
+                    {editingId ? 'Sửa tài khoản' : 'Thêm tài khoản mới'}
+                </h3>
+                <form onSubmit={submitAccount} className="grid gap-3 md:grid-cols-4">
+                    <input
+                        type="text"
+                        placeholder="Họ tên"
+                        value={form.name}
+                        onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
+                        className="rounded-lg border-slate-300 text-sm"
+                        required
+                    />
+                    <input
+                        type="email"
+                        placeholder="Email"
+                        value={form.email}
+                        onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
+                        className="rounded-lg border-slate-300 text-sm"
+                        required
+                    />
+                    <input
+                        type="password"
+                        placeholder={editingId ? 'Mật khẩu mới (nếu đổi)' : 'Mật khẩu'}
+                        value={form.password}
+                        onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))}
+                        className="rounded-lg border-slate-300 text-sm"
+                    />
+                    <select
+                        value={form.role}
+                        onChange={(e) => setForm((prev) => ({ ...prev, role: e.target.value }))}
+                        className="rounded-lg border-slate-300 text-sm"
+                    >
+                        <option value="admin">Admin</option>
+                        <option value="truong_phong_san_xuat">Trưởng phòng sản xuất</option>
+                        <option value="nhan_su_san_xuat">Nhân sự sản xuất</option>
+                        <option value="nhan_su_kinh_doanh">Nhân sự kinh doanh</option>
+                    </select>
+                    <input
+                        type="text"
+                        placeholder="Phòng ban"
+                        value={form.department}
+                        onChange={(e) => setForm((prev) => ({ ...prev, department: e.target.value }))}
+                        className="rounded-lg border-slate-300 text-sm"
+                    />
+                    <input
+                        type="text"
+                        placeholder="Số điện thoại"
+                        value={form.phone}
+                        onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))}
+                        className="rounded-lg border-slate-300 text-sm"
+                    />
+                    <input
+                        type="number"
+                        min="0"
+                        max="200"
+                        placeholder="Năng lực (%)"
+                        value={form.workload_capacity}
+                        onChange={(e) => setForm((prev) => ({ ...prev, workload_capacity: e.target.value }))}
+                        className="rounded-lg border-slate-300 text-sm"
+                    />
+                    <select
+                        value={form.is_active ? '1' : '0'}
+                        onChange={(e) => setForm((prev) => ({ ...prev, is_active: e.target.value === '1' }))}
+                        className="rounded-lg border-slate-300 text-sm"
+                    >
+                        <option value="1">Đang hoạt động</option>
+                        <option value="0">Tạm khóa</option>
+                    </select>
+
+                    <div className="md:col-span-4 flex items-center gap-2">
+                        <button
+                            type="submit"
+                            disabled={submitting}
+                            className="rounded-lg bg-sky-600 text-white text-sm font-semibold px-4 py-2 hover:bg-sky-700 disabled:opacity-60"
+                        >
+                            {editingId ? 'Lưu chỉnh sửa' : 'Thêm tài khoản'}
+                        </button>
+                        {editingId && (
+                            <button
+                                type="button"
+                                onClick={resetForm}
+                                className="rounded-lg border border-slate-300 text-sm px-4 py-2"
+                            >
+                                Hủy sửa
+                            </button>
+                        )}
+                        {message && <span className="text-sm text-emerald-700">{message}</span>}
+                        {errorMessage && <span className="text-sm text-rose-700">{errorMessage}</span>}
+                    </div>
+                </form>
+            </div>
+
             <form onSubmit={submitSearch} className="mb-4 bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
                 <div className="grid gap-3 md:grid-cols-4">
                     <input
@@ -137,12 +323,13 @@ export default function UserAccountsDashboard(props) {
                                     <th className="text-left px-3 py-2">Phòng ban</th>
                                     <th className="text-left px-3 py-2">Trạng thái</th>
                                     <th className="text-left px-3 py-2">Hiệu suất</th>
+                                    <th className="text-left px-3 py-2">Thao tác</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {!loading && usersData.length === 0 && (
                                     <tr>
-                                        <td colSpan={5} className="px-3 py-6 text-center text-slate-500">
+                                        <td colSpan={6} className="px-3 py-6 text-center text-slate-500">
                                             Không có tài khoản phù hợp bộ lọc.
                                         </td>
                                     </tr>
@@ -163,6 +350,24 @@ export default function UserAccountsDashboard(props) {
                                             )}
                                         </td>
                                         <td className="px-3 py-2">{user.workload_capacity}%</td>
+                                        <td className="px-3 py-2">
+                                            <div className="flex gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => startEdit(user)}
+                                                    className="text-xs px-2 py-1 rounded bg-amber-100 text-amber-800"
+                                                >
+                                                    Sửa
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => deleteAccount(user)}
+                                                    className="text-xs px-2 py-1 rounded bg-rose-100 text-rose-800"
+                                                >
+                                                    Xóa
+                                                </button>
+                                            </div>
+                                        </td>
                                     </tr>
                                 ))}
                             </tbody>

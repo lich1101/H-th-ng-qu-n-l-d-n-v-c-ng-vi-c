@@ -4,6 +4,7 @@ import { Link } from '@inertiajs/inertia-react';
 
 export default function Authenticated({ auth, header, children }) {
     const [showSidebar, setShowSidebar] = useState(false);
+    const currentRole = auth?.user?.role || '';
 
     const menus = useMemo(
         () => [
@@ -16,6 +17,7 @@ export default function Authenticated({ auth, header, children }) {
             { label: 'Quy trình dịch vụ', routeName: 'services.workflows', href: route('services.workflows') },
             { label: 'Lịch họp', routeName: 'meetings.index', href: route('meetings.index') },
             { label: 'Chat nội bộ', routeName: 'chat.internal', href: route('chat.internal') },
+            { label: 'Thông báo', routeName: 'notifications.center', href: route('notifications.center') },
             { label: 'Nhật ký hệ thống', routeName: 'activity.logs', href: route('activity.logs') },
             { label: 'CRM mini', routeName: 'crm.index', href: route('crm.index') },
             { label: 'Tài khoản người dùng', routeName: 'accounts.dashboard', href: route('accounts.dashboard') },
@@ -23,6 +25,36 @@ export default function Authenticated({ auth, header, children }) {
         ],
         []
     );
+
+    const allowedMenus = menus.filter((menu) => {
+        if (currentRole === 'admin' || currentRole === 'truong_phong_san_xuat') {
+            return true;
+        }
+        if (currentRole === 'nhan_su_kinh_doanh') {
+            return [
+                'dashboard',
+                'projects.kanban',
+                'deadlines.index',
+                'handover.index',
+                'meetings.index',
+                'chat.internal',
+                'notifications.center',
+                'crm.index',
+            ].includes(menu.routeName);
+        }
+        if (currentRole === 'nhan_su_san_xuat') {
+            return [
+                'dashboard',
+                'tasks.board',
+                'deadlines.index',
+                'handover.index',
+                'chat.internal',
+                'notifications.center',
+                'services.workflows',
+            ].includes(menu.routeName);
+        }
+        return menu.routeName === 'dashboard';
+    });
 
     return (
         <div className="min-h-screen bg-slate-100 text-slate-800">
@@ -36,7 +68,7 @@ export default function Authenticated({ auth, header, children }) {
                         </div>
 
                         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
-                            {menus.map((menu) => {
+                            {allowedMenus.map((menu) => {
                                 const active = route().current(menu.routeName);
                                 return (
                                     <Link

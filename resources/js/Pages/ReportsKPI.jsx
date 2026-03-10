@@ -1,28 +1,41 @@
 import React from 'react';
+import { useEffect, useState } from 'react';
+import axios from 'axios';
 import PageContainer from '@/Components/PageContainer';
+import RoleBarChart from '@/Components/RoleBarChart';
 
 export default function ReportsKPI(props) {
+    const [summary, setSummary] = useState({
+        projects: { total: 0, in_progress: 0, pending_review: 0 },
+        tasks: { total: 0, completed: 0, overdue: 0, on_time_rate: 0 },
+        service_breakdown: [],
+    });
+
+    useEffect(() => {
+        axios.get('/api/v1/reports/dashboard-summary').then((res) => {
+            setSummary(res.data);
+        });
+    }, []);
+
     return (
         <PageContainer
             auth={props.auth}
             title="Báo cáo & KPI"
             description="Theo dõi hiệu suất cá nhân, phòng ban, dự án và từng loại dịch vụ."
             stats={[
-                { label: 'Tỷ lệ đúng hạn toàn hệ thống', value: '87%' },
-                { label: 'Task hoàn thành tuần này', value: '143' },
-                { label: 'Hiệu suất phòng sản xuất', value: '82%' },
-                { label: 'Dự án rủi ro', value: '4' },
+                { label: 'Tỷ lệ đúng hạn toàn hệ thống', value: `${summary.tasks.on_time_rate}%` },
+                { label: 'Task hoàn thành', value: summary.tasks.completed },
+                { label: 'Dự án đang triển khai', value: summary.projects.in_progress },
+                { label: 'Task quá hạn', value: summary.tasks.overdue },
             ]}
         >
             <div className="grid gap-4 xl:grid-cols-3">
                 <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm xl:col-span-2">
                     <h3 className="font-semibold mb-3">Báo cáo theo dịch vụ</h3>
-                    <ul className="space-y-2 text-sm">
-                        <li className="rounded-lg border border-slate-200 p-3">Backlinks: 1,240 link live / 1,500 cam kết</li>
-                        <li className="rounded-lg border border-slate-200 p-3">Content: 312 bài hoàn thành, SEO score trung bình 78</li>
-                        <li className="rounded-lg border border-slate-200 p-3">Audit: 524 URL đã audit, 71% issue đã xử lý</li>
-                        <li className="rounded-lg border border-slate-200 p-3">Chăm sóc website: 38 lịch bảo trì, 12 báo cáo traffic tháng</li>
-                    </ul>
+                    <RoleBarChart data={summary.service_breakdown.map((item) => ({
+                        label: item.label,
+                        value: item.value,
+                    }))} />
                 </div>
                 <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
                     <h3 className="font-semibold mb-3">Top nhân sự tuần</h3>

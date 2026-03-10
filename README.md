@@ -4,7 +4,7 @@ Du an web dung Laravel + React + MySQL cho he thong quan ly du an, task va ban g
 
 ## Stack hien tai
 
-- Laravel `8.x` (phu hop PHP `7.3` may hien tai).
+- Laravel `8.x` (duoc cau hinh de deploy voi PHP `8.3`).
 - React + Inertia.
 - MySQL.
 - Laravel Mix (Webpack).
@@ -37,6 +37,8 @@ Du an web dung Laravel + React + MySQL cho he thong quan ly du an, task va ban g
 - `MOBILE_APP_*`: thong tin deep link va ten app Flutter.
 - `MIX_API_BASE_URL`: endpoint API cho frontend.
 - `CORS_ALLOWED_ORIGINS`: danh sach origin duoc phep goi API.
+- `DEADLINE_TELEGRAM_WEBHOOK`: webhook gui nhac han Telegram (tuy chon).
+- `DEADLINE_ZALO_WEBHOOK`: webhook gui nhac han Zalo (tuy chon).
 
 ## API khoi tao
 
@@ -133,3 +135,57 @@ Da bo sung bo giao dien day du theo module nghiep vu:
   - Tra ve danh sach co phan trang de hien thi bang tai khoan.
 - `GET /api/v1/users/accounts/stats`
   - Tra ve thong ke realtime: tong so tai khoan, so dang hoat dong/tam khoa, phan bo theo role.
+- `POST /api/v1/users/accounts`
+  - Them moi tai khoan (admin).
+- `PUT /api/v1/users/accounts/{user}`
+  - Chinh sua tai khoan (admin).
+- `DELETE /api/v1/users/accounts/{user}`
+  - Xoa tai khoan (admin, khong cho xoa chinh minh/khong xoa admin cuoi cung).
+
+## API module mo rong da noi du lieu that
+
+- Meetings:
+  - `GET/POST /api/v1/meetings`
+  - `PUT/DELETE /api/v1/meetings/{meeting}`
+  - Ho tro filter query: `search`, `date_from`, `date_to`, `per_page`, `page`
+- CRM:
+  - `GET/POST /api/v1/crm/clients`
+  - Filter clients: `search`, `per_page`, `page`
+  - `PUT/DELETE /api/v1/crm/clients/{client}`
+  - `GET/POST /api/v1/crm/payments`
+  - Filter payments: `status`, `per_page`, `page`
+  - `PUT/DELETE /api/v1/crm/payments/{payment}`
+- Reports:
+  - `GET /api/v1/reports/dashboard-summary`
+- Public cho app:
+  - `GET /api/v1/public/summary`
+  - `GET /api/v1/public/accounts-summary`
+
+## Scheduler nhac han tu dong
+
+- Command: `php artisan reminders:send-deadline`
+- Da duoc dang ky trong scheduler: chay moi phut (`app/Console/Kernel.php`)
+- Ho tro channel:
+  - `in_app` (danh dau da gui trong DB)
+  - `email` (gui den email nguoi phu trach task neu co)
+  - `telegram` / `zalo` (gui qua webhook neu co cau hinh)
+
+## Trung tam thong bao in-app
+
+- Giao dien web: route `thong-bao` (Notification Center)
+- API: `GET /api/v1/notifications/in-app`
+- API mark read:
+  - `POST /api/v1/notifications/in-app/read`
+  - `POST /api/v1/notifications/in-app/read-all`
+- Du lieu hien thi:
+  - danh sach nhac deadline (deadline_reminders)
+  - danh sach activity logs moi nhat
+  - trang thai da doc/chua doc theo tung user (bang `notification_reads`)
+
+## CRUD UI Meetings/CRM (web)
+
+- `lich-hop`: da ho tro tao/sua/xoa ngay tren giao dien.
+- `crm-mini`: da ho tro tao/sua/xoa khach hang va thanh toan ngay tren giao dien.
+- Da bo sung bo loc va dieu huong phan trang ngay tren UI `lich-hop` va `crm-mini`.
+- Da dong bo bo loc/phan trang vao URL query de reload/truyen link van giu nguyen trang thai.
+- Da bo sung toast thong bao thanh cong/that bai cho thao tac CRUD va tai du lieu.
