@@ -8,6 +8,7 @@ Du an web dung Laravel + React + MySQL cho he thong quan ly du an, task va ban g
 - React + Inertia.
 - MySQL.
 - Laravel Mix (Webpack).
+- Da cap nhat `inertiajs/inertia-laravel` len `^1.3` de tuong thich deploy PHP `8.3`.
 
 ## Cai dat
 
