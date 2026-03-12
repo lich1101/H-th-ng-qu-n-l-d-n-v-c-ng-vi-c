@@ -41,11 +41,8 @@ export default function Opportunities(props) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    const filteredClients = useMemo(() => {
+    const searchFilteredClients = useMemo(() => {
         return clients.filter((client) => {
-            if (selectedLead && String(client.lead_type_id) !== String(selectedLead)) {
-                return false;
-            }
             if (!search.trim()) return true;
             const keyword = search.trim().toLowerCase();
             return (
@@ -55,14 +52,33 @@ export default function Opportunities(props) {
                 (client.phone || '').toLowerCase().includes(keyword)
             );
         });
-    }, [clients, search, selectedLead]);
+    }, [clients, search]);
 
-    const groupedClients = useMemo(() => {
-        return leadTypes.map((type) => ({
-            ...type,
-            items: filteredClients.filter((client) => client.lead_type_id === type.id),
-        }));
-    }, [leadTypes, filteredClients]);
+    const filteredClients = useMemo(() => {
+        return searchFilteredClients.filter((client) => {
+            if (selectedLead && String(client.lead_type_id) !== String(selectedLead)) {
+                return false;
+            }
+            return true;
+        });
+    }, [searchFilteredClients, selectedLead]);
+
+    const leadTypeMap = useMemo(() => {
+        const map = {};
+        leadTypes.forEach((type) => {
+            map[type.id] = type;
+        });
+        return map;
+    }, [leadTypes]);
+
+    const leadTypeCounts = useMemo(() => {
+        const counts = {};
+        searchFilteredClients.forEach((client) => {
+            if (!client.lead_type_id) return;
+            counts[client.lead_type_id] = (counts[client.lead_type_id] || 0) + 1;
+        });
+        return counts;
+    }, [searchFilteredClients]);
 
     const stats = useMemo(() => {
         const total = filteredClients.length;
@@ -105,15 +121,15 @@ export default function Opportunities(props) {
         <PageContainer
             auth={props.auth}
             title="Cơ hội bán hàng"
-            description="Theo dõi khách hàng tiềm năng theo từng trạng thái và pipeline chăm sóc."
+            description="Theo dõi khách hàng tiềm năng theo trạng thái, hiển thị dạng danh sách và tag."
             stats={stats}
         >
             <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card p-5 mb-6">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                     <div>
-                        <h3 className="text-lg font-semibold text-slate-900">Pipeline trạng thái</h3>
+                        <h3 className="text-lg font-semibold text-slate-900">Danh sách cơ hội</h3>
                         <p className="text-sm text-text-muted">
-                            Kéo lọc nhanh theo trạng thái và tìm kiếm khách hàng.
+                            Lọc nhanh theo trạng thái và tìm kiếm khách hàng.
                         </p>
                     </div>
                     <button
@@ -144,86 +160,131 @@ export default function Opportunities(props) {
                         ))}
                     </select>
                     <div className="rounded-2xl border border-dashed border-slate-200/80 px-3 py-2 text-xs text-text-muted">
-                        {canEdit ? 'Chọn trạng thái trong thẻ khách hàng để cập nhật.' : 'Chỉ xem dữ liệu.'}
+                        {canEdit ? 'Chọn trạng thái trong danh sách để cập nhật.' : 'Chỉ xem dữ liệu.'}
                     </div>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                    <button
+                        type="button"
+                        onClick={() => setSelectedLead('')}
+                        className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                            selectedLead === '' ? 'border-primary bg-primary/10 text-primary' : 'border-slate-200 text-slate-600 bg-white'
+                        }`}
+                    >
+                        Tất cả ({searchFilteredClients.length})
+                    </button>
+                    {leadTypes.map((type) => (
+                        <button
+                            key={type.id}
+                            type="button"
+                            onClick={() => setSelectedLead(String(type.id))}
+                            className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                                String(selectedLead) === String(type.id) ? 'ring-2 ring-primary/30' : ''
+                            }`}
+                            style={type.color_hex ? toColorStyle(type.color_hex) : undefined}
+                        >
+                            {type.name} ({leadTypeCounts[type.id] || 0})
+                        </button>
+                    ))}
                 </div>
             </div>
 
-            <div className="flex gap-4 overflow-x-auto pb-4">
-                {groupedClients.map((type) => (
-                    <div key={type.id} className="min-w-[260px] max-w-[320px] flex-1">
-                        <div
-                            className="flex items-center justify-between rounded-2xl border border-slate-200/80 bg-white px-4 py-3 shadow-card"
-                            style={type.color_hex ? toColorStyle(type.color_hex) : undefined}
-                        >
-                            <div>
-                                <p className="text-sm font-semibold">{type.name}</p>
-                                <p className="text-xs opacity-80">{type.items.length} khách hàng</p>
-                            </div>
-                            <span className="text-xs font-semibold">{type.items.length}</span>
-                        </div>
-                        <div className="mt-3 space-y-3">
-                            {type.items.map((client) => (
-                                <div key={client.id} className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-card">
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <p className="font-semibold text-slate-900">{client.name}</p>
-                                            <p className="text-xs text-text-muted">{client.company || 'Chưa có công ty'}</p>
-                                        </div>
-                                        {client.revenue_tier && (
-                                            <span
-                                                className="rounded-full border px-2 py-1 text-[11px] font-semibold"
-                                                style={toColorStyle(client.revenue_tier.color_hex || '#94A3B8')}
-                                            >
-                                                {client.revenue_tier.label}
-                                            </span>
-                                        )}
-                                    </div>
-                                    <div className="mt-3 space-y-1 text-xs text-text-muted">
-                                        <p>{client.phone || 'Chưa có số điện thoại'}</p>
-                                        <p>{client.email || 'Chưa có email'}</p>
-                                        {client.lead_source && (
-                                            <p>
-                                                Nguồn: {client.lead_source} • {client.lead_channel || 'Không có'}
-                                            </p>
-                                        )}
-                                    </div>
-                                    {client.lead_message && (
-                                        <div className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                                            {client.lead_message}
-                                        </div>
-                                    )}
-                                    {canEdit && (
-                                        <div className="mt-3">
-                                            <select
-                                                className="w-full rounded-xl border border-slate-200/80 px-3 py-2 text-xs"
-                                                value={client.lead_type_id || ''}
-                                                onChange={(e) => updateLeadType(client, e.target.value)}
-                                            >
-                                                {leadTypes.map((item) => (
-                                                    <option key={item.id} value={item.id}>
-                                                        {item.name}
-                                                    </option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
-                            {type.items.length === 0 && (
-                                <div className="rounded-2xl border border-dashed border-slate-200/80 bg-slate-50 px-3 py-4 text-center text-xs text-text-muted">
-                                    Chưa có khách hàng ở trạng thái này.
-                                </div>
-                            )}
-                        </div>
+            {leadTypes.length === 0 ? (
+                <div className="w-full rounded-2xl border border-dashed border-slate-200/80 bg-white p-8 text-center text-sm text-text-muted">
+                    Chưa có trạng thái khách hàng. Vui lòng tạo trạng thái ở mục quản trị.
+                </div>
+            ) : (
+                <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card p-5">
+                    <div className="overflow-x-auto">
+                        <table className="min-w-full text-sm">
+                            <thead>
+                                <tr className="text-left text-xs uppercase tracking-wider text-text-subtle border-b border-slate-200">
+                                    <th className="py-2">Khách hàng</th>
+                                    <th className="py-2">Trạng thái</th>
+                                    <th className="py-2">Hạng</th>
+                                    <th className="py-2">Phụ trách</th>
+                                    <th className="py-2">Nguồn</th>
+                                    <th className="py-2">Cập nhật</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filteredClients.map((client) => {
+                                    const leadType = leadTypeMap[client.lead_type_id];
+                                    const assigneeName = client.assigned_staff?.name || client.sales_owner?.name || '—';
+                                    return (
+                                        <tr key={client.id} className="border-b border-slate-100">
+                                            <td className="py-3">
+                                                <div className="font-medium text-slate-900">{client.name || '—'}</div>
+                                                <div className="text-xs text-text-muted">
+                                                    {client.company || 'Chưa có công ty'} • {client.phone || 'Chưa có số điện thoại'}
+                                                </div>
+                                                <div className="text-xs text-text-muted">{client.email || 'Chưa có email'}</div>
+                                                {client.lead_message && (
+                                                    <div className="mt-1 text-xs text-slate-600">
+                                                        {client.lead_message}
+                                                    </div>
+                                                )}
+                                            </td>
+                                            <td className="py-3">
+                                                {leadType ? (
+                                                    <span
+                                                        className="rounded-full border px-2 py-1 text-xs font-semibold"
+                                                        style={leadType.color_hex ? toColorStyle(leadType.color_hex) : undefined}
+                                                    >
+                                                        {leadType.name}
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-xs text-text-muted">—</span>
+                                                )}
+                                            </td>
+                                            <td className="py-3">
+                                                {client.revenue_tier ? (
+                                                    <span
+                                                        className="rounded-full border px-2 py-1 text-xs font-semibold"
+                                                        style={toColorStyle(client.revenue_tier.color_hex || '#94A3B8')}
+                                                    >
+                                                        {client.revenue_tier.label}
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-xs text-text-muted">—</span>
+                                                )}
+                                            </td>
+                                            <td className="py-3 text-xs text-text-muted">{assigneeName}</td>
+                                            <td className="py-3 text-xs text-text-muted">
+                                                {client.lead_source || '—'} {client.lead_channel ? `• ${client.lead_channel}` : ''}
+                                            </td>
+                                            <td className="py-3">
+                                                {canEdit ? (
+                                                    <select
+                                                        className="w-full rounded-xl border border-slate-200/80 px-3 py-2 text-xs"
+                                                        value={client.lead_type_id || ''}
+                                                        onChange={(e) => updateLeadType(client, e.target.value)}
+                                                    >
+                                                        {leadTypes.map((item) => (
+                                                            <option key={item.id} value={item.id}>
+                                                                {item.name}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                ) : (
+                                                    <span className="text-xs text-text-muted">—</span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                                {filteredClients.length === 0 && (
+                                    <tr>
+                                        <td className="py-6 text-center text-sm text-text-muted" colSpan={6}>
+                                            Chưa có cơ hội nào theo bộ lọc hiện tại.
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
                     </div>
-                ))}
-                {groupedClients.length === 0 && (
-                    <div className="w-full rounded-2xl border border-dashed border-slate-200/80 bg-white p-8 text-center text-sm text-text-muted">
-                        Chưa có trạng thái khách hàng. Vui lòng tạo trạng thái ở mục quản trị.
-                    </div>
-                )}
-            </div>
+                </div>
+            )}
         </PageContainer>
     );
 }

@@ -31,6 +31,21 @@ const LABELS = {
     cham_soc_website_tong_the: 'Chăm sóc trang web tổng thể',
 };
 
+const STATUS_STYLES = {
+    moi_tao: 'bg-slate-100 text-slate-700 border-slate-200',
+    dang_trien_khai: 'bg-blue-50 text-blue-700 border-blue-200',
+    cho_duyet: 'bg-amber-50 text-amber-700 border-amber-200',
+    hoan_thanh: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    tam_dung: 'bg-rose-50 text-rose-700 border-rose-200',
+};
+
+const SERVICE_STYLES = {
+    backlinks: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+    viet_content: 'bg-sky-50 text-sky-700 border-sky-200',
+    audit_content: 'bg-amber-50 text-amber-700 border-amber-200',
+    cham_soc_website_tong_the: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+};
+
 export default function ProjectsKanban(props) {
     const toast = useToast();
     const userRole = props?.auth?.user?.role || '';
@@ -44,7 +59,7 @@ export default function ProjectsKanban(props) {
     const [meta, setMeta] = useState({});
     const [editingId, setEditingId] = useState(null);
     const [showForm, setShowForm] = useState(false);
-    const [viewMode, setViewMode] = useState('kanban');
+    const [viewMode, setViewMode] = useState('list');
     const [filters, setFilters] = useState({
         search: '',
         status: '',
@@ -342,12 +357,13 @@ export default function ProjectsKanban(props) {
                             {serviceOptions.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
                         </select>
                     </div>
-                        <div className="flex items-center gap-2">
-                            {[
-                                { key: 'kanban', label: 'Bảng Kanban' },
-                                { key: 'timeline', label: 'Dòng thời gian' },
-                                { key: 'gantt', label: 'Biểu đồ Gantt' },
-                            ].map((tab) => (
+                    <div className="flex items-center gap-2">
+                        {[
+                            { key: 'list', label: 'Danh sách' },
+                            { key: 'kanban', label: 'Bảng Kanban' },
+                            { key: 'timeline', label: 'Dòng thời gian' },
+                            { key: 'gantt', label: 'Biểu đồ Gantt' },
+                        ].map((tab) => (
                                 <button
                                     key={tab.key}
                                     type="button"
@@ -366,6 +382,89 @@ export default function ProjectsKanban(props) {
                             </button>
                         </div>
                     </div>
+
+                    {viewMode === 'list' && (
+                        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card p-4">
+                            <div className="overflow-x-auto">
+                                <table className="min-w-full text-sm">
+                                    <thead>
+                                        <tr className="text-left text-xs uppercase tracking-wider text-text-subtle border-b border-slate-200">
+                                            <th className="py-2">Dự án</th>
+                                            <th className="py-2">Dịch vụ</th>
+                                            <th className="py-2">Trạng thái</th>
+                                            <th className="py-2">Hợp đồng</th>
+                                            <th className="py-2">Hạn chót</th>
+                                            <th className="py-2">Ngân sách</th>
+                                            <th className="py-2"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {projects.map((p) => (
+                                            <tr key={p.id} className="border-b border-slate-100">
+                                                <td className="py-3">
+                                                    <div className="font-medium text-slate-900">{p.name}</div>
+                                                    <div className="text-xs text-text-muted">{p.code}</div>
+                                                </td>
+                                                <td className="py-3">
+                                                    <span
+                                                        className={`rounded-full border px-2 py-1 text-xs font-semibold ${
+                                                            SERVICE_STYLES[p.service_type] || 'bg-slate-100 text-slate-700 border-slate-200'
+                                                        }`}
+                                                    >
+                                                        {LABELS[p.service_type] || p.service_type}
+                                                    </span>
+                                                </td>
+                                                <td className="py-3">
+                                                    <span
+                                                        className={`rounded-full border px-2 py-1 text-xs font-semibold ${
+                                                            STATUS_STYLES[p.status] || 'bg-slate-100 text-slate-700 border-slate-200'
+                                                        }`}
+                                                    >
+                                                        {LABELS[p.status] || p.status}
+                                                    </span>
+                                                </td>
+                                                <td className={`py-3 text-xs ${p.contract ? 'text-text-muted' : 'text-warning'}`}>
+                                                    {p.contract?.code || 'Chưa có hợp đồng'}
+                                                </td>
+                                                <td className="py-3 text-xs text-text-muted">
+                                                    {p.deadline ? String(p.deadline).slice(0, 10) : '—'}
+                                                </td>
+                                                <td className="py-3 text-xs text-text-muted">
+                                                    {p.budget ? Number(p.budget).toLocaleString('vi-VN') : '—'}
+                                                </td>
+                                                <td className="py-3 text-right space-x-2">
+                                                    {canUpdate && (
+                                                        <button className="text-xs font-semibold text-primary" onClick={() => startEdit(p)} type="button">
+                                                            Sửa
+                                                        </button>
+                                                    )}
+                                                    {canDelete && (
+                                                        <button className="text-xs font-semibold text-rose-500" onClick={() => remove(p.id)} type="button">
+                                                            Xóa
+                                                        </button>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                        {loading && (
+                                            <tr>
+                                                <td className="py-6 text-center text-sm text-text-muted" colSpan={7}>
+                                                    Đang tải...
+                                                </td>
+                                            </tr>
+                                        )}
+                                        {!loading && projects.length === 0 && (
+                                            <tr>
+                                                <td className="py-6 text-center text-sm text-text-muted" colSpan={7}>
+                                                    Chưa có dự án theo bộ lọc.
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
 
                     {viewMode === 'kanban' && (
                         <div className="flex gap-4 overflow-x-auto pb-2">

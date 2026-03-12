@@ -25,6 +25,20 @@ const LABELS = {
     blocked: 'Bị chặn',
 };
 
+const STATUS_STYLES = {
+    todo: 'bg-slate-100 text-slate-700 border-slate-200',
+    doing: 'bg-blue-50 text-blue-700 border-blue-200',
+    done: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    blocked: 'bg-rose-50 text-rose-700 border-rose-200',
+};
+
+const PRIORITY_STYLES = {
+    low: 'bg-slate-100 text-slate-700 border-slate-200',
+    medium: 'bg-amber-50 text-amber-700 border-amber-200',
+    high: 'bg-orange-50 text-orange-700 border-orange-200',
+    urgent: 'bg-rose-50 text-rose-700 border-rose-200',
+};
+
 export default function TasksBoard(props) {
     const toast = useToast();
     const userRole = props?.auth?.user?.role || '';
@@ -36,7 +50,7 @@ export default function TasksBoard(props) {
     const [tasks, setTasks] = useState([]);
     const [projects, setProjects] = useState([]);
     const [meta, setMeta] = useState({});
-    const [viewMode, setViewMode] = useState('kanban');
+    const [viewMode, setViewMode] = useState('list');
     const [filters, setFilters] = useState({
         project_id: '',
         status: '',
@@ -325,6 +339,7 @@ export default function TasksBoard(props) {
                     </div>
                     <div className="flex items-center gap-2">
                         {[
+                            { key: 'list', label: 'Danh sách' },
                             { key: 'kanban', label: 'Bảng Kanban' },
                             { key: 'timeline', label: 'Dòng thời gian' },
                             { key: 'gantt', label: 'Biểu đồ Gantt' },
@@ -347,6 +362,108 @@ export default function TasksBoard(props) {
                         </button>
                     </div>
                 </div>
+
+                    {viewMode === 'list' && (
+                        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card p-4">
+                            <div className="overflow-x-auto">
+                                <table className="min-w-full text-sm">
+                                    <thead>
+                                        <tr className="text-left text-xs uppercase tracking-wider text-text-subtle border-b border-slate-200">
+                                            <th className="py-2">Công việc</th>
+                                            <th className="py-2">Dự án</th>
+                                            <th className="py-2">Trạng thái</th>
+                                            <th className="py-2">Ưu tiên</th>
+                                            <th className="py-2">Hạn chót</th>
+                                            <th className="py-2">Tiến độ</th>
+                                            <th className="py-2">Phụ trách</th>
+                                            <th className="py-2"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {tasks.map((t) => {
+                                            const canAck = t.require_acknowledgement && !t.acknowledged_at && (
+                                                t.assignee_id === props?.auth?.user?.id || ['admin', 'quan_ly'].includes(userRole)
+                                            );
+                                            return (
+                                                <tr key={t.id} className="border-b border-slate-100">
+                                                    <td className="py-3">
+                                                        <div className="font-medium text-slate-900">{t.title}</div>
+                                                        <div className="text-xs text-text-muted">{t.description || '—'}</div>
+                                                    </td>
+                                                    <td className="py-3 text-xs text-text-muted">
+                                                        {t.project?.name || 'Chưa gán dự án'}
+                                                    </td>
+                                                    <td className="py-3">
+                                                        <div className="flex flex-wrap gap-2">
+                                                            <span
+                                                                className={`rounded-full border px-2 py-1 text-xs font-semibold ${
+                                                                    STATUS_STYLES[t.status] || 'bg-slate-100 text-slate-700 border-slate-200'
+                                                                }`}
+                                                            >
+                                                                {LABELS[t.status] || t.status}
+                                                            </span>
+                                                            {t.require_acknowledgement && !t.acknowledged_at && (
+                                                                <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">
+                                                                    Chưa xác nhận
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-3">
+                                                        <span
+                                                            className={`rounded-full border px-2 py-1 text-xs font-semibold ${
+                                                                PRIORITY_STYLES[t.priority] || 'bg-slate-100 text-slate-700 border-slate-200'
+                                                            }`}
+                                                        >
+                                                            {PRIORITY_LABELS[t.priority] || t.priority || 'Trung bình'}
+                                                        </span>
+                                                    </td>
+                                                    <td className="py-3 text-xs text-text-muted">
+                                                        {t.deadline ? String(t.deadline).slice(0, 10) : '—'}
+                                                    </td>
+                                                    <td className="py-3 text-xs text-text-muted">{t.progress_percent ?? 0}%</td>
+                                                    <td className="py-3 text-xs text-text-muted">
+                                                        {t.assignee?.name || '—'}
+                                                    </td>
+                                                    <td className="py-3 text-right space-x-2">
+                                                        {canUpdate && (
+                                                            <button className="text-xs font-semibold text-primary" onClick={() => startEdit(t)} type="button">
+                                                                Sửa
+                                                            </button>
+                                                        )}
+                                                        {canDelete && (
+                                                            <button className="text-xs font-semibold text-rose-500" onClick={() => remove(t.id)} type="button">
+                                                                Xóa
+                                                            </button>
+                                                        )}
+                                                        {canAck && (
+                                                            <button className="text-xs font-semibold text-amber-600" onClick={() => acknowledgeTask(t)} type="button">
+                                                                Xác nhận
+                                                            </button>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                        {loading && (
+                                            <tr>
+                                                <td className="py-6 text-center text-sm text-text-muted" colSpan={8}>
+                                                    Đang tải...
+                                                </td>
+                                            </tr>
+                                        )}
+                                        {!loading && tasks.length === 0 && (
+                                            <tr>
+                                                <td className="py-6 text-center text-sm text-text-muted" colSpan={8}>
+                                                    Chưa có công việc theo bộ lọc.
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
 
                     {viewMode === 'kanban' && (
                         <div className="flex gap-4 overflow-x-auto pb-2">
