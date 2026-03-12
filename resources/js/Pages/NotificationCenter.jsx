@@ -37,9 +37,9 @@ export default function NotificationCenter(props) {
         <PageContainer
             auth={props.auth}
             title="Trung tâm thông báo"
-            description="Theo dõi nhắc deadline và hoạt động hệ thống theo thời gian thực."
+            description="Theo dõi nhắc hạn chót và hoạt động hệ thống theo thời gian thực."
             stats={[
-                { label: 'Nhắc deadline', value: reminders.length },
+                { label: 'Nhắc hạn', value: reminders.length },
                 { label: 'Hoạt động mới', value: logs.length },
                 { label: 'Cập nhật tự động', value: '30s/lần' },
                 { label: 'Nguồn', value: 'API nội bộ' },
@@ -48,7 +48,7 @@ export default function NotificationCenter(props) {
             <div className="grid gap-5 xl:grid-cols-2">
                 <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
                     <div className="flex items-center justify-between mb-4">
-                        <h3 className="font-semibold text-slate-900">Nhắc deadline</h3>
+                        <h3 className="font-semibold text-slate-900">Nhắc hạn</h3>
                         <button
                             type="button"
                             className="text-xs text-primary"
@@ -66,7 +66,7 @@ export default function NotificationCenter(props) {
                                 }`}
                             >
                                 <div className="flex items-center justify-between">
-                                    <p className="font-semibold">{item.task_title || 'Task'}</p>
+                                    <p className="font-semibold">{item.task_title || 'Công việc'}</p>
                                     <span className="text-xs text-text-muted">{item.channel}</span>
                                 </div>
                                 <p className="text-xs text-text-muted mt-2">
@@ -84,7 +84,7 @@ export default function NotificationCenter(props) {
                             </div>
                         ))}
                         {reminders.length === 0 && (
-                            <p className="text-text-muted">Chưa có thông báo nhắc deadline.</p>
+                            <p className="text-text-muted">Chưa có thông báo nhắc hạn.</p>
                         )}
                     </div>
                 </div>

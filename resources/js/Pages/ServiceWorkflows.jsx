@@ -1,19 +1,21 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import PageContainer from '@/Components/PageContainer';
+import Modal from '@/Components/Modal';
 
 export default function ServiceWorkflows(props) {
     const tabs = [
-        { key: 'backlinks', label: 'Backlinks' },
-        { key: 'viet_content', label: 'Viết content' },
-        { key: 'audit_content', label: 'Audit content' },
-        { key: 'cham_soc_website_tong_the', label: 'Chăm sóc website' },
+        { key: 'backlinks', label: 'Liên kết trỏ về' },
+        { key: 'viet_content', label: 'Viết nội dung' },
+        { key: 'audit_content', label: 'Rà soát nội dung' },
+        { key: 'cham_soc_website_tong_the', label: 'Chăm sóc trang web' },
     ];
 
     const [activeType, setActiveType] = useState('backlinks');
     const [items, setItems] = useState([]);
     const [projectId, setProjectId] = useState('');
     const [form, setForm] = useState({});
+    const [showForm, setShowForm] = useState(false);
 
     const normalizeType = (type) => {
         if (type === 'viet_content') return 'content';
@@ -40,6 +42,7 @@ export default function ServiceWorkflows(props) {
             ...parsed,
         });
         setForm({});
+        setShowForm(false);
         fetchItems(activeType);
     };
 
@@ -89,7 +92,16 @@ export default function ServiceWorkflows(props) {
 
     const formatValue = (value) => {
         if (value === null || value === undefined || value === '') return '—';
-        return String(value);
+        const raw = String(value);
+        const statusMap = {
+            pending: 'Đang chờ',
+            live: 'Đã lên',
+            approved: 'Đã duyệt',
+            rejected: 'Từ chối',
+            open: 'Đang mở',
+            done: 'Hoàn tất',
+        };
+        return statusMap[raw] || raw;
     };
 
     const renderItemCard = (item) => {
@@ -99,30 +111,30 @@ export default function ServiceWorkflows(props) {
         let meta = [];
 
         if (resolved === 'backlinks') {
-            title = item.domain || item.target_url || 'Backlinks';
+            title = item.domain || item.target_url || 'Liên kết trỏ về';
             status = item.status || 'pending';
             meta = [
-                { label: 'Target URL', value: item.target_url },
-                { label: 'Domain', value: item.domain },
-                { label: 'Anchor text', value: item.anchor_text },
+                { label: 'URL đích', value: item.target_url },
+                { label: 'Tên miền', value: item.domain },
+                { label: 'Văn bản neo', value: item.anchor_text },
                 { label: 'Ngày báo cáo', value: item.report_date },
                 { label: 'Ghi chú', value: item.note },
             ];
         } else if (resolved === 'content') {
-            title = item.main_keyword || 'Content';
+            title = item.main_keyword || 'Nội dung';
             status = item.approval_status || 'pending';
             meta = [
-                { label: 'Keyword chính', value: item.main_keyword },
-                { label: 'Keyword phụ', value: item.secondary_keywords },
-                { label: 'Outline', value: item.outline_status },
+                { label: 'Từ khóa chính', value: item.main_keyword },
+                { label: 'Từ khóa phụ', value: item.secondary_keywords },
+                { label: 'Dàn ý', value: item.outline_status },
                 { label: 'Số từ yêu cầu', value: item.required_words },
                 { label: 'Số từ thực tế', value: item.actual_words },
-                { label: 'SEO score', value: item.seo_score },
-                { label: 'Duplicate %', value: item.duplicate_percent },
-                { label: 'Approval', value: item.approval_status },
+                { label: 'Điểm SEO', value: item.seo_score },
+                { label: 'Tỷ lệ trùng lặp', value: item.duplicate_percent },
+                { label: 'Duyệt', value: item.approval_status },
             ];
         } else if (resolved === 'audit') {
-            title = item.url || 'Audit';
+            title = item.url || 'Rà soát';
             status = item.status || 'open';
             meta = [
                 { label: 'URL', value: item.url },
@@ -132,14 +144,14 @@ export default function ServiceWorkflows(props) {
                 { label: 'Đề xuất', value: item.suggestion },
             ];
         } else {
-            title = item.technical_issue || item.check_date || 'Website care';
+            title = item.technical_issue || item.check_date || 'Chăm sóc trang web';
             status = item.index_status || 'pending';
             meta = [
                 { label: 'Ngày kiểm tra', value: item.check_date },
                 { label: 'Lỗi kỹ thuật', value: item.technical_issue },
-                { label: 'Index', value: item.index_status },
-                { label: 'Traffic', value: item.traffic },
-                { label: 'Biến động rank', value: item.ranking_delta },
+                { label: 'Lập chỉ mục', value: item.index_status },
+                { label: 'Lưu lượng', value: item.traffic },
+                { label: 'Biến động thứ hạng', value: item.ranking_delta },
                 { label: 'Báo cáo tháng', value: item.monthly_report },
             ];
         }
@@ -172,14 +184,14 @@ export default function ServiceWorkflows(props) {
         if (resolved === 'backlinks') {
             return (
                 <>
-                    <input className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Target URL" value={form.target_url || ''} onChange={(e) => setForm((p) => ({ ...p, target_url: e.target.value }))} required />
-                    <input className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Domain" value={form.domain || ''} onChange={(e) => setForm((p) => ({ ...p, domain: e.target.value }))} required />
-                    <input className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Anchor text" value={form.anchor_text || ''} onChange={(e) => setForm((p) => ({ ...p, anchor_text: e.target.value }))} required />
+                    <input className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="URL đích" value={form.target_url || ''} onChange={(e) => setForm((p) => ({ ...p, target_url: e.target.value }))} required />
+                    <input className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Tên miền" value={form.domain || ''} onChange={(e) => setForm((p) => ({ ...p, domain: e.target.value }))} required />
+                    <input className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Văn bản neo" value={form.anchor_text || ''} onChange={(e) => setForm((p) => ({ ...p, anchor_text: e.target.value }))} required />
                     <input type="date" className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" value={form.report_date || ''} onChange={(e) => setForm((p) => ({ ...p, report_date: e.target.value }))} />
                     <input className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Ghi chú" value={form.note || ''} onChange={(e) => setForm((p) => ({ ...p, note: e.target.value }))} />
                     <select className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" value={form.status || 'pending'} onChange={(e) => setForm((p) => ({ ...p, status: e.target.value }))}>
-                        <option value="pending">pending</option>
-                        <option value="live">live</option>
+                        <option value="pending">Đang chờ</option>
+                        <option value="live">Đã lên</option>
                     </select>
                 </>
             );
@@ -187,21 +199,21 @@ export default function ServiceWorkflows(props) {
         if (resolved === 'content') {
             return (
                 <>
-                    <input className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Keyword chính" value={form.main_keyword || ''} onChange={(e) => setForm((p) => ({ ...p, main_keyword: e.target.value }))} required />
-                    <input className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Keyword phụ" value={form.secondary_keywords || ''} onChange={(e) => setForm((p) => ({ ...p, secondary_keywords: e.target.value }))} />
+                    <input className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Từ khóa chính" value={form.main_keyword || ''} onChange={(e) => setForm((p) => ({ ...p, main_keyword: e.target.value }))} required />
+                    <input className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Từ khóa phụ" value={form.secondary_keywords || ''} onChange={(e) => setForm((p) => ({ ...p, secondary_keywords: e.target.value }))} />
                     <select className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" value={form.outline_status || 'pending'} onChange={(e) => setForm((p) => ({ ...p, outline_status: e.target.value }))}>
-                        <option value="pending">outline pending</option>
-                        <option value="approved">outline approved</option>
-                        <option value="rejected">outline rejected</option>
+                        <option value="pending">Dàn ý chờ duyệt</option>
+                        <option value="approved">Dàn ý đã duyệt</option>
+                        <option value="rejected">Dàn ý từ chối</option>
                     </select>
                     <input type="number" className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Số từ yêu cầu" value={form.required_words || ''} onChange={(e) => setForm((p) => ({ ...p, required_words: e.target.value }))} />
                     <input type="number" className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Số từ thực tế" value={form.actual_words || ''} onChange={(e) => setForm((p) => ({ ...p, actual_words: e.target.value }))} />
-                    <input type="number" className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="SEO score" value={form.seo_score || ''} onChange={(e) => setForm((p) => ({ ...p, seo_score: e.target.value }))} />
-                    <input type="number" className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Duplicate %" value={form.duplicate_percent || ''} onChange={(e) => setForm((p) => ({ ...p, duplicate_percent: e.target.value }))} />
+                    <input type="number" className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Điểm SEO" value={form.seo_score || ''} onChange={(e) => setForm((p) => ({ ...p, seo_score: e.target.value }))} />
+                    <input type="number" className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Tỷ lệ trùng lặp (%)" value={form.duplicate_percent || ''} onChange={(e) => setForm((p) => ({ ...p, duplicate_percent: e.target.value }))} />
                     <select className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" value={form.approval_status || 'pending'} onChange={(e) => setForm((p) => ({ ...p, approval_status: e.target.value }))}>
-                        <option value="pending">pending</option>
-                        <option value="approved">approved</option>
-                        <option value="rejected">rejected</option>
+                        <option value="pending">Đang chờ</option>
+                        <option value="approved">Đã duyệt</option>
+                        <option value="rejected">Từ chối</option>
                     </select>
                 </>
             );
@@ -209,16 +221,16 @@ export default function ServiceWorkflows(props) {
         if (resolved === 'audit') {
             return (
                 <>
-                    <input className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="URL audit" value={form.url || ''} onChange={(e) => setForm((p) => ({ ...p, url: e.target.value }))} required />
+                    <input className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="URL cần rà soát" value={form.url || ''} onChange={(e) => setForm((p) => ({ ...p, url: e.target.value }))} required />
                     <input className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Loại lỗi SEO" value={form.issue_type || ''} onChange={(e) => setForm((p) => ({ ...p, issue_type: e.target.value }))} />
                     <select className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" value={form.priority || 'medium'} onChange={(e) => setForm((p) => ({ ...p, priority: e.target.value }))}>
-                        <option value="low">low</option>
-                        <option value="medium">medium</option>
-                        <option value="high">high</option>
+                        <option value="low">Thấp</option>
+                        <option value="medium">Trung bình</option>
+                        <option value="high">Cao</option>
                     </select>
                     <select className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" value={form.status || 'open'} onChange={(e) => setForm((p) => ({ ...p, status: e.target.value }))}>
-                        <option value="open">open</option>
-                        <option value="done">done</option>
+                        <option value="open">Đang mở</option>
+                        <option value="done">Hoàn tất</option>
                     </select>
                     <textarea className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" rows={2} placeholder="Mô tả lỗi" value={form.issue_description || ''} onChange={(e) => setForm((p) => ({ ...p, issue_description: e.target.value }))} />
                     <textarea className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" rows={2} placeholder="Đề xuất chỉnh sửa" value={form.suggestion || ''} onChange={(e) => setForm((p) => ({ ...p, suggestion: e.target.value }))} />
@@ -229,24 +241,24 @@ export default function ServiceWorkflows(props) {
             <>
                 <input type="date" className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" value={form.check_date || ''} onChange={(e) => setForm((p) => ({ ...p, check_date: e.target.value }))} />
                 <input className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Lỗi kỹ thuật" value={form.technical_issue || ''} onChange={(e) => setForm((p) => ({ ...p, technical_issue: e.target.value }))} />
-                <input className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Trạng thái index" value={form.index_status || ''} onChange={(e) => setForm((p) => ({ ...p, index_status: e.target.value }))} />
-                <input type="number" className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Traffic" value={form.traffic || ''} onChange={(e) => setForm((p) => ({ ...p, traffic: e.target.value }))} />
-                <input type="number" className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Biến động rank" value={form.ranking_delta || ''} onChange={(e) => setForm((p) => ({ ...p, ranking_delta: e.target.value }))} />
+                <input className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Trạng thái lập chỉ mục" value={form.index_status || ''} onChange={(e) => setForm((p) => ({ ...p, index_status: e.target.value }))} />
+                <input type="number" className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Lưu lượng" value={form.traffic || ''} onChange={(e) => setForm((p) => ({ ...p, traffic: e.target.value }))} />
+                <input type="number" className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Biến động thứ hạng" value={form.ranking_delta || ''} onChange={(e) => setForm((p) => ({ ...p, ranking_delta: e.target.value }))} />
                 <input className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Báo cáo tháng" value={form.monthly_report || ''} onChange={(e) => setForm((p) => ({ ...p, monthly_report: e.target.value }))} />
             </>
         );
     };
 
-    return (
-        <PageContainer
-            auth={props.auth}
-            title="Quy trình theo dịch vụ"
-            description="Chuẩn hóa checklist nghiệp vụ cho Backlinks, Content, Audit và Chăm sóc website."
+        return (
+            <PageContainer
+                auth={props.auth}
+                title="Quy trình theo dịch vụ"
+                description="Chuẩn hóa checklist nghiệp vụ cho Liên kết trỏ về, Nội dung, Rà soát nội dung và Chăm sóc trang web."
             stats={[
-                { label: 'Template quy trình', value: '24' },
-                { label: 'Backlinks', value: '6 checklist' },
-                { label: 'Content', value: '8 checklist' },
-                { label: 'Audit/Website care', value: '10 checklist' },
+                { label: 'Mẫu quy trình', value: '24' },
+                { label: 'Liên kết trỏ về', value: '6 checklist' },
+                { label: 'Nội dung', value: '8 checklist' },
+                { label: 'Rà soát/Chăm sóc trang web', value: '10 checklist' },
             ]}
         >
             <div className="mb-4 flex flex-wrap gap-2">
@@ -266,25 +278,21 @@ export default function ServiceWorkflows(props) {
                 ))}
             </div>
 
-            <form onSubmit={createItem} className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-card mb-4">
-                <h3 className="font-semibold mb-2">Thêm bản ghi {tabs.find((t) => t.key === activeType)?.label}</h3>
-                <p className="text-xs text-slate-500 mb-2">Nhập thông tin chi tiết theo form nghiệp vụ.</p>
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                    <input
-                        type="number"
-                        min="1"
-                        value={projectId}
-                        onChange={(e) => setProjectId(e.target.value)}
-                        className="rounded-xl border border-slate-200/80 text-sm px-3 py-2"
-                        placeholder="Project ID"
-                        required
-                    />
-                    {renderTypeFields()}
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                <div>
+                    <h3 className="text-lg font-semibold text-slate-900">Danh sách quy trình</h3>
+                    <p className="text-sm text-text-muted">
+                        Lọc theo loại dịch vụ và thêm bản ghi mới khi cần.
+                    </p>
                 </div>
-                <button type="submit" className="mt-3 px-4 py-2 rounded-xl bg-sky-600 text-white text-sm font-semibold">
-                    Tạo bản ghi
+                <button
+                    type="button"
+                    className="rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white"
+                    onClick={() => setShowForm(true)}
+                >
+                    Thêm bản ghi
                 </button>
-            </form>
+            </div>
 
             <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-card">
                 <h3 className="font-semibold mb-3">Danh sách bản ghi {tabs.find((t) => t.key === activeType)?.label}</h3>
@@ -293,6 +301,44 @@ export default function ServiceWorkflows(props) {
                     {items.length === 0 && <p className="text-slate-500">Chưa có dữ liệu.</p>}
                 </div>
             </div>
+
+            <Modal
+                open={showForm}
+                onClose={() => setShowForm(false)}
+                title={`Thêm bản ghi ${tabs.find((t) => t.key === activeType)?.label}`}
+                description="Nhập thông tin chi tiết theo form nghiệp vụ."
+                size="xl"
+            >
+                <form onSubmit={createItem} className="space-y-4">
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                        <input
+                            type="number"
+                            min="1"
+                            value={projectId}
+                            onChange={(e) => setProjectId(e.target.value)}
+                            className="rounded-xl border border-slate-200/80 text-sm px-3 py-2"
+                        placeholder="Mã dự án"
+                            required
+                        />
+                        {renderTypeFields()}
+                    </div>
+                    <div className="flex items-center justify-end gap-2">
+                        <button
+                            type="button"
+                            className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600"
+                            onClick={() => setShowForm(false)}
+                        >
+                            Hủy
+                        </button>
+                        <button
+                            type="submit"
+                            className="rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white"
+                        >
+                            Tạo bản ghi
+                        </button>
+                    </div>
+                </form>
+            </Modal>
         </PageContainer>
     );
 }

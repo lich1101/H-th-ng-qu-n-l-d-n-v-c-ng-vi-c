@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import PageContainer from '@/Components/PageContainer';
+import Modal from '@/Components/Modal';
 import { useToast } from '@/Contexts/ToastContext';
 
 const DEFAULT_STATUSES = [
@@ -12,10 +13,10 @@ const DEFAULT_STATUSES = [
 ];
 
 const DEFAULT_SERVICES = [
-    { value: 'backlinks', label: 'Backlinks' },
-    { value: 'viet_content', label: 'Viết content' },
-    { value: 'audit_content', label: 'Audit content' },
-    { value: 'cham_soc_website_tong_the', label: 'Chăm sóc website tổng thể' },
+    { value: 'backlinks', label: 'Liên kết trỏ về' },
+    { value: 'viet_content', label: 'Viết nội dung' },
+    { value: 'audit_content', label: 'Rà soát nội dung' },
+    { value: 'cham_soc_website_tong_the', label: 'Chăm sóc trang web tổng thể' },
 ];
 
 const LABELS = {
@@ -24,23 +25,25 @@ const LABELS = {
     cho_duyet: 'Chờ duyệt',
     hoan_thanh: 'Hoàn thành',
     tam_dung: 'Tạm dừng',
-    backlinks: 'Backlinks',
-    viet_content: 'Viết content',
-    audit_content: 'Audit content',
-    cham_soc_website_tong_the: 'Chăm sóc website tổng thể',
+    backlinks: 'Liên kết trỏ về',
+    viet_content: 'Viết nội dung',
+    audit_content: 'Rà soát nội dung',
+    cham_soc_website_tong_the: 'Chăm sóc trang web tổng thể',
 };
 
 export default function ProjectsKanban(props) {
     const toast = useToast();
     const userRole = props?.auth?.user?.role || '';
-    const canCreate = ['admin', 'nhan_su_kinh_doanh', 'truong_phong_san_xuat'].includes(userRole);
-    const canUpdate = ['admin', 'nhan_su_kinh_doanh', 'truong_phong_san_xuat'].includes(userRole);
+    const canCreate = ['admin', 'quan_ly'].includes(userRole);
+    const canUpdate = ['admin', 'quan_ly'].includes(userRole);
     const canDelete = userRole === 'admin';
 
     const [loading, setLoading] = useState(false);
     const [projects, setProjects] = useState([]);
+    const [contracts, setContracts] = useState([]);
     const [meta, setMeta] = useState({});
     const [editingId, setEditingId] = useState(null);
+    const [showForm, setShowForm] = useState(false);
     const [viewMode, setViewMode] = useState('kanban');
     const [filters, setFilters] = useState({
         search: '',
@@ -51,6 +54,7 @@ export default function ProjectsKanban(props) {
         code: '',
         name: '',
         client_id: '',
+        contract_id: '',
         service_type: DEFAULT_SERVICES[0].value,
         start_date: '',
         deadline: '',
@@ -99,9 +103,19 @@ export default function ProjectsKanban(props) {
         }
     };
 
+    const fetchContracts = async () => {
+        try {
+            const res = await axios.get('/api/v1/contracts', { params: { per_page: 200 } });
+            setContracts(res.data?.data || []);
+        } catch {
+            // ignore
+        }
+    };
+
     useEffect(() => {
         fetchMeta();
         fetchProjects();
+        fetchContracts();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -176,6 +190,7 @@ export default function ProjectsKanban(props) {
             code: '',
             name: '',
             client_id: '',
+            contract_id: '',
             service_type: serviceOptions[0]?.value || DEFAULT_SERVICES[0].value,
             start_date: '',
             deadline: '',
@@ -185,12 +200,23 @@ export default function ProjectsKanban(props) {
         });
     };
 
+    const openCreate = () => {
+        resetForm();
+        setShowForm(true);
+    };
+
+    const closeForm = () => {
+        setShowForm(false);
+        resetForm();
+    };
+
     const startEdit = (p) => {
         setEditingId(p.id);
         setForm({
             code: p.code || '',
             name: p.name || '',
             client_id: p.client_id || '',
+            contract_id: p.contract_id || '',
             service_type: p.service_type || serviceOptions[0]?.value || DEFAULT_SERVICES[0].value,
             start_date: p.start_date || '',
             deadline: p.deadline || '',
@@ -198,6 +224,7 @@ export default function ProjectsKanban(props) {
             status: p.status || statusOptions[0]?.value || DEFAULT_STATUSES[0].value,
             customer_requirement: p.customer_requirement || '',
         });
+        setShowForm(true);
     };
 
     const save = async () => {
@@ -217,6 +244,7 @@ export default function ProjectsKanban(props) {
             const payload = {
                 ...form,
                 client_id: form.client_id ? Number(form.client_id) : null,
+                contract_id: form.contract_id ? Number(form.contract_id) : null,
                 budget: form.budget === '' ? null : Number(form.budget),
                 start_date: form.start_date || null,
                 deadline: form.deadline || null,
@@ -228,7 +256,7 @@ export default function ProjectsKanban(props) {
                 await axios.post('/api/v1/projects', payload);
                 toast.success('Đã tạo dự án.');
             }
-            resetForm();
+            closeForm();
             await fetchProjects();
         } catch (e) {
             toast.error(e?.response?.data?.message || 'Lưu dự án thất bại.');
@@ -257,6 +285,7 @@ export default function ProjectsKanban(props) {
                 code: p.code,
                 name: p.name,
                 client_id: p.client_id,
+                contract_id: p.contract_id,
                 service_type: p.service_type,
                 start_date: p.start_date,
                 deadline: p.deadline,
@@ -278,63 +307,46 @@ export default function ProjectsKanban(props) {
             description="Theo dõi toàn bộ dự án theo trạng thái và phân bổ theo dịch vụ."
             stats={stats}
         >
-            <div className="grid gap-5 lg:grid-cols-3">
-                <div className="lg:col-span-1 bg-white rounded-2xl border border-slate-200/80 shadow-card p-5">
-                    <div className="flex items-center justify-between mb-4">
-                        <h3 className="font-semibold">{editingId ? `Sửa dự án #${editingId}` : 'Tạo dự án'}</h3>
-                        <button className="text-xs text-text-muted hover:text-slate-900" onClick={resetForm} type="button">Reset</button>
-                    </div>
-                    <div className="space-y-3 text-sm">
-                        <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" placeholder="Mã dự án *" value={form.code} onChange={(e) => setForm((s) => ({ ...s, code: e.target.value }))} />
-                        <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" placeholder="Tên dự án *" value={form.name} onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))} />
-                        <select className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" value={form.service_type} onChange={(e) => setForm((s) => ({ ...s, service_type: e.target.value }))}>
-                            {serviceOptions.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-                        </select>
-                        <div className="grid grid-cols-2 gap-2">
-                            <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" type="date" value={form.start_date} onChange={(e) => setForm((s) => ({ ...s, start_date: e.target.value }))} />
-                            <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" type="date" value={form.deadline} onChange={(e) => setForm((s) => ({ ...s, deadline: e.target.value }))} />
-                        </div>
-                        <select className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" value={form.status} onChange={(e) => setForm((s) => ({ ...s, status: e.target.value }))}>
+            <div className="lg:col-span-2">
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4">
+                    <div className="flex flex-wrap gap-2">
+                        {canCreate && (
+                            <button
+                                type="button"
+                                className="rounded-2xl bg-primary text-white px-4 py-2 text-sm font-semibold"
+                                onClick={openCreate}
+                            >
+                                Thêm mới
+                            </button>
+                        )}
+                        <input
+                            className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                            placeholder="Tìm theo mã/tên"
+                            value={filters.search}
+                            onChange={(e) => setFilters((s) => ({ ...s, search: e.target.value }))}
+                        />
+                        <select
+                            className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                            value={filters.status}
+                            onChange={(e) => setFilters((s) => ({ ...s, status: e.target.value }))}
+                        >
+                            <option value="">Tất cả trạng thái</option>
                             {statusOptions.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
                         </select>
-                        <textarea className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" rows={3} placeholder="Yêu cầu khách hàng" value={form.customer_requirement} onChange={(e) => setForm((s) => ({ ...s, customer_requirement: e.target.value }))} />
-                        <button className="w-full bg-primary text-white rounded-2xl py-2.5 font-semibold" onClick={save} type="button">
-                            {editingId ? 'Cập nhật dự án' : 'Tạo dự án'}
-                        </button>
+                        <select
+                            className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                            value={filters.service_type}
+                            onChange={(e) => setFilters((s) => ({ ...s, service_type: e.target.value }))}
+                        >
+                            <option value="">Tất cả dịch vụ</option>
+                            {serviceOptions.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                        </select>
                     </div>
-                </div>
-
-                <div className="lg:col-span-2">
-                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4">
-                        <div className="flex gap-2">
-                            <input
-                                className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                                placeholder="Tìm theo mã/tên"
-                                value={filters.search}
-                                onChange={(e) => setFilters((s) => ({ ...s, search: e.target.value }))}
-                            />
-                            <select
-                                className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                                value={filters.status}
-                                onChange={(e) => setFilters((s) => ({ ...s, status: e.target.value }))}
-                            >
-                                <option value="">Tất cả trạng thái</option>
-                                {statusOptions.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-                            </select>
-                            <select
-                                className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                                value={filters.service_type}
-                                onChange={(e) => setFilters((s) => ({ ...s, service_type: e.target.value }))}
-                            >
-                                <option value="">Tất cả dịch vụ</option>
-                                {serviceOptions.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-                            </select>
-                        </div>
                         <div className="flex items-center gap-2">
                             {[
-                                { key: 'kanban', label: 'Kanban' },
-                                { key: 'timeline', label: 'Timeline' },
-                                { key: 'gantt', label: 'Gantt' },
+                                { key: 'kanban', label: 'Bảng Kanban' },
+                                { key: 'timeline', label: 'Dòng thời gian' },
+                                { key: 'gantt', label: 'Biểu đồ Gantt' },
                             ].map((tab) => (
                                 <button
                                     key={tab.key}
@@ -377,7 +389,10 @@ export default function ProjectsKanban(props) {
                                                     </div>
                                                 </div>
                                                 <h3 className="mt-3 font-semibold text-slate-900">{p.name}</h3>
-                                                <p className="text-xs text-text-muted mt-1">{p.code} • {p.deadline ? `Deadline ${String(p.deadline).slice(0, 10)}` : 'Chưa có deadline'}</p>
+                                                <p className="text-xs text-text-muted mt-1">{p.code} • {p.deadline ? `Hạn chót ${String(p.deadline).slice(0, 10)}` : 'Chưa có hạn chót'}</p>
+                                                <p className={`text-xs mt-1 ${p.contract ? 'text-text-muted' : 'text-warning'}`}>
+                                                    Hợp đồng: {p.contract?.code || 'Chưa có hợp đồng'}
+                                                </p>
                                                 <div className="mt-3 flex flex-wrap gap-2">
                                                     {statusOptions.map((s) => (
                                                         <button
@@ -413,13 +428,16 @@ export default function ProjectsKanban(props) {
                                             <span className="text-xs text-text-muted">{formatDate(p.deadline)}</span>
                                         </div>
                                         <p className="text-xs text-text-muted mt-1">{p.code} • {LABELS[p.service_type] || p.service_type}</p>
+                                        <p className={`text-xs mt-1 ${p.contract ? 'text-text-muted' : 'text-warning'}`}>
+                                            Hợp đồng: {p.contract?.code || 'Chưa có hợp đồng'}
+                                        </p>
                                         <div className="mt-2 text-xs text-text-muted">Trạng thái: {LABELS[p.status] || p.status}</div>
                                     </div>
                                 </div>
                             ))}
                             {loading && <p className="text-sm text-text-muted">Đang tải...</p>}
                             {!loading && sortedByDeadline.length === 0 && (
-                                <p className="text-sm text-text-muted">Chưa có dữ liệu timeline.</p>
+                                <p className="text-sm text-text-muted">Chưa có dữ liệu dòng thời gian.</p>
                             )}
                         </div>
                     )}
@@ -427,7 +445,7 @@ export default function ProjectsKanban(props) {
                     {viewMode === 'gantt' && (
                         <div className="space-y-3">
                             {sortedByDeadline.length === 0 && (
-                                <p className="text-sm text-text-muted">Chưa có dữ liệu Gantt.</p>
+                                <p className="text-sm text-text-muted">Chưa có dữ liệu biểu đồ Gantt.</p>
                             )}
                             {sortedByDeadline.map((p) => {
                                 const start = p.start_date ? new Date(p.start_date) : (p.deadline ? new Date(p.deadline) : new Date());
@@ -435,11 +453,14 @@ export default function ProjectsKanban(props) {
                                 const totalDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / 86400000));
                                 return (
                                     <div key={p.id} className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-card">
-                                        <div className="flex items-center justify-between text-xs text-text-muted mb-2">
-                                            <span>{p.name}</span>
-                                            <span>{formatDate(p.deadline) || 'Chưa có deadline'}</span>
-                                        </div>
-                                        <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                                    <div className="flex items-center justify-between text-xs text-text-muted mb-2">
+                                        <span>{p.name}</span>
+                                        <span>{formatDate(p.deadline) || 'Chưa có hạn chót'}</span>
+                                    </div>
+                                    <div className={`text-xs mb-2 ${p.contract ? 'text-text-muted' : 'text-warning'}`}>
+                                        Hợp đồng: {p.contract?.code || 'Chưa có hợp đồng'}
+                                    </div>
+                                    <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
                                             <div className="h-2 bg-primary" style={{ width: `${Math.min(100, totalDays * 8)}%` }} />
                                         </div>
                                     </div>
@@ -447,8 +468,51 @@ export default function ProjectsKanban(props) {
                             })}
                         </div>
                     )}
-                </div>
             </div>
+
+            <Modal
+                open={showForm}
+                onClose={closeForm}
+                title={editingId ? `Sửa dự án #${editingId}` : 'Tạo dự án'}
+                description="Nhập thông tin dự án và gắn hợp đồng."
+                size="lg"
+            >
+                <div className="space-y-3 text-sm">
+                    <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" placeholder="Mã dự án *" value={form.code} onChange={(e) => setForm((s) => ({ ...s, code: e.target.value }))} />
+                    <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" placeholder="Tên dự án *" value={form.name} onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))} />
+                    <select className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" value={form.service_type} onChange={(e) => setForm((s) => ({ ...s, service_type: e.target.value }))}>
+                        {serviceOptions.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                    </select>
+                    <select
+                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                        value={form.contract_id}
+                        onChange={(e) => setForm((s) => ({ ...s, contract_id: e.target.value }))}
+                    >
+                        <option value="">Chọn hợp đồng (bắt buộc để tạo công việc)</option>
+                        {contracts.map((c) => (
+                            <option key={c.id} value={c.id}>
+                                {c.code} • {c.title}
+                            </option>
+                        ))}
+                    </select>
+                    <div className="grid grid-cols-2 gap-2">
+                        <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" type="date" value={form.start_date} onChange={(e) => setForm((s) => ({ ...s, start_date: e.target.value }))} />
+                        <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" type="date" value={form.deadline} onChange={(e) => setForm((s) => ({ ...s, deadline: e.target.value }))} />
+                    </div>
+                    <select className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" value={form.status} onChange={(e) => setForm((s) => ({ ...s, status: e.target.value }))}>
+                        {statusOptions.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                    </select>
+                    <textarea className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" rows={3} placeholder="Yêu cầu khách hàng" value={form.customer_requirement} onChange={(e) => setForm((s) => ({ ...s, customer_requirement: e.target.value }))} />
+                    <div className="flex items-center gap-3">
+                        <button className="flex-1 bg-primary text-white rounded-2xl py-2.5 font-semibold" onClick={save} type="button">
+                            {editingId ? 'Cập nhật dự án' : 'Tạo dự án'}
+                        </button>
+                        <button className="flex-1 border border-slate-200 rounded-2xl py-2.5 font-semibold" onClick={closeForm} type="button">
+                            Hủy
+                        </button>
+                    </div>
+                </div>
+            </Modal>
         </PageContainer>
     );
 }

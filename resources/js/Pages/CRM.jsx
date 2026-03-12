@@ -1,52 +1,54 @@
-import React from 'react';
-import { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import PageContainer from '@/Components/PageContainer';
+import Modal from '@/Components/Modal';
 import { useToast } from '@/Contexts/ToastContext';
 
-export default function CRM(props) {
-    const initialQuery = (() => {
-        if (typeof window === 'undefined') {
-            return {
-                c_search: '',
-                c_per_page: 10,
-                c_page: 1,
-                p_status: '',
-                p_per_page: 10,
-                p_page: 1,
-            };
-        }
-        const params = new URLSearchParams(window.location.search);
-        const cPerPage = Number(params.get('c_per_page') || 10);
-        const cPage = Number(params.get('c_page') || 1);
-        const pPerPage = Number(params.get('p_per_page') || 10);
-        const pPage = Number(params.get('p_page') || 1);
-        return {
-            c_search: params.get('c_search') || '',
-            c_per_page: Number.isNaN(cPerPage) ? 10 : cPerPage,
-            c_page: Number.isNaN(cPage) ? 1 : cPage,
-            p_status: params.get('p_status') || '',
-            p_per_page: Number.isNaN(pPerPage) ? 10 : pPerPage,
-            p_page: Number.isNaN(pPage) ? 1 : pPage,
-        };
-    })();
+const badgeStyle = (hex) => ({
+    borderColor: hex,
+    color: hex,
+    backgroundColor: `${hex}20`,
+});
 
+export default function CRM(props) {
+    const toast = useToast();
+    const userRole = props?.auth?.user?.role || '';
+    const userId = props?.auth?.user?.id;
+    const canManageClients = ['admin', 'quan_ly', 'nhan_vien'].includes(userRole);
+    const canManagePayments = ['admin', 'ke_toan'].includes(userRole);
+    const canDeleteClients = userRole === 'admin';
+    const canDeletePayments = userRole === 'admin';
+
+    const [activeTab, setActiveTab] = useState('clients');
     const [clients, setClients] = useState([]);
     const [payments, setPayments] = useState([]);
+    const [leadTypes, setLeadTypes] = useState([]);
+    const [revenueTiers, setRevenueTiers] = useState([]);
+    const [staffUsers, setStaffUsers] = useState([]);
+    const [departments, setDepartments] = useState([]);
     const [clientMeta, setClientMeta] = useState({ current_page: 1, last_page: 1, total: 0 });
     const [paymentMeta, setPaymentMeta] = useState({ current_page: 1, last_page: 1, total: 0 });
-    const [clientPage, setClientPage] = useState(initialQuery.c_page);
-    const [paymentPage, setPaymentPage] = useState(initialQuery.p_page);
-    const [clientFilters, setClientFilters] = useState({ search: initialQuery.c_search, per_page: initialQuery.c_per_page });
-    const [paymentFilters, setPaymentFilters] = useState({ status: initialQuery.p_status, per_page: initialQuery.p_per_page });
+    const [clientPage, setClientPage] = useState(1);
+    const [paymentPage, setPaymentPage] = useState(1);
+    const [clientFilters, setClientFilters] = useState({ search: '', per_page: 10, lead_type_id: '', type: '' });
+    const [paymentFilters, setPaymentFilters] = useState({ status: '', per_page: 10 });
     const [editingClientId, setEditingClientId] = useState(null);
     const [editingPaymentId, setEditingPaymentId] = useState(null);
+    const [showClientForm, setShowClientForm] = useState(false);
+    const [showPaymentForm, setShowPaymentForm] = useState(false);
     const [clientForm, setClientForm] = useState({
         name: '',
         company: '',
         email: '',
         phone: '',
         notes: '',
+        sales_owner_id: '',
+        assigned_department_id: '',
+        assigned_staff_id: '',
+        lead_type_id: '',
+        lead_source: '',
+        lead_channel: '',
+        lead_message: '',
     });
     const [paymentForm, setPaymentForm] = useState({
         client_id: '',
@@ -56,29 +58,39 @@ export default function CRM(props) {
         invoice_no: '',
         note: '',
     });
-    const toast = useToast();
 
-    const getErrorMessage = (error, fallback) => {
-        return error?.response?.data?.message || fallback;
+    const getErrorMessage = (error, fallback) => error?.response?.data?.message || fallback;
+
+    const fetchLookups = async () => {
+        try {
+            const [leadRes, tierRes] = await Promise.all([
+                axios.get('/api/v1/lead-types'),
+                axios.get('/api/v1/revenue-tiers'),
+            ]);
+            setLeadTypes(leadRes.data || []);
+            setRevenueTiers(tierRes.data || []);
+        } catch {
+            // ignore
+        }
     };
 
-    const syncUrl = ({
-        nextClientFilters = clientFilters,
-        nextClientPage = clientPage,
-        nextPaymentFilters = paymentFilters,
-        nextPaymentPage = paymentPage,
-    } = {}) => {
-        if (typeof window === 'undefined') return;
-        const params = new URLSearchParams();
-        if (nextClientFilters.search) params.set('c_search', nextClientFilters.search);
-        if (Number(nextClientFilters.per_page) !== 10) params.set('c_per_page', String(nextClientFilters.per_page));
-        if (nextClientPage > 1) params.set('c_page', String(nextClientPage));
-        if (nextPaymentFilters.status) params.set('p_status', nextPaymentFilters.status);
-        if (Number(nextPaymentFilters.per_page) !== 10) params.set('p_per_page', String(nextPaymentFilters.per_page));
-        if (nextPaymentPage > 1) params.set('p_page', String(nextPaymentPage));
-        const queryString = params.toString();
-        const newUrl = `${window.location.pathname}${queryString ? `?${queryString}` : ''}`;
-        window.history.replaceState({}, '', newUrl);
+    const fetchStaffUsers = async () => {
+        if (userRole !== 'admin') return;
+        try {
+            const res = await axios.get('/api/v1/users/accounts', { params: { per_page: 200 } });
+            setStaffUsers(res.data?.users?.data || []);
+        } catch {
+            setStaffUsers([]);
+        }
+    };
+
+    const fetchDepartments = async () => {
+        try {
+            const res = await axios.get('/api/v1/departments');
+            setDepartments(res.data || []);
+        } catch {
+            setDepartments([]);
+        }
     };
 
     const fetchClients = async (page = 1, filtersArg = clientFilters) => {
@@ -97,7 +109,6 @@ export default function CRM(props) {
                 total: clientsRes.data.total || 0,
             });
             setClientPage(resolvedPage);
-            syncUrl({ nextClientFilters: filtersArg, nextClientPage: resolvedPage });
         } catch (error) {
             toast.error(getErrorMessage(error, 'Không tải được danh sách khách hàng.'));
         }
@@ -119,36 +130,60 @@ export default function CRM(props) {
                 total: paymentsRes.data.total || 0,
             });
             setPaymentPage(resolvedPage);
-            syncUrl({ nextPaymentFilters: filtersArg, nextPaymentPage: resolvedPage });
         } catch (error) {
             toast.error(getErrorMessage(error, 'Không tải được danh sách thanh toán.'));
         }
     };
 
     useEffect(() => {
-        const initialClientFilters = {
-            search: initialQuery.c_search,
-            per_page: initialQuery.c_per_page,
-        };
-        const initialPaymentFilters = {
-            status: initialQuery.p_status,
-            per_page: initialQuery.p_per_page,
-        };
-        fetchClients(initialQuery.c_page, initialClientFilters);
-        fetchPayments(initialQuery.p_page, initialPaymentFilters);
+        fetchLookups();
+        fetchStaffUsers();
+        fetchDepartments();
+        fetchClients(1, clientFilters);
+        fetchPayments(1, paymentFilters);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    useEffect(() => {
+        if (leadTypes.length && !clientForm.lead_type_id) {
+            setClientForm((prev) => ({ ...prev, lead_type_id: leadTypes[0]?.id || '' }));
+        }
+    }, [leadTypes]);
+
     const submitClient = async (e) => {
         e.preventDefault();
+        if (!canManageClients) {
+            toast.error('Bạn không có quyền quản lý khách hàng.');
+            return;
+        }
         try {
+            const resolvedAssignedStaff = clientForm.assigned_staff_id
+                ? Number(clientForm.assigned_staff_id)
+                : null;
+            const payload = {
+                name: clientForm.name,
+                company: clientForm.company || null,
+                email: clientForm.email || null,
+                phone: clientForm.phone || null,
+                notes: clientForm.notes || null,
+                sales_owner_id: clientForm.sales_owner_id
+                    ? Number(clientForm.sales_owner_id)
+                    : resolvedAssignedStaff || userId || null,
+                assigned_department_id: clientForm.assigned_department_id
+                    ? Number(clientForm.assigned_department_id)
+                    : null,
+                assigned_staff_id: resolvedAssignedStaff,
+                lead_type_id: clientForm.lead_type_id ? Number(clientForm.lead_type_id) : null,
+                lead_source: clientForm.lead_source || null,
+                lead_channel: clientForm.lead_channel || null,
+                lead_message: clientForm.lead_message || null,
+            };
             if (editingClientId) {
-                await axios.put(`/api/v1/crm/clients/${editingClientId}`, clientForm);
+                await axios.put(`/api/v1/crm/clients/${editingClientId}`, payload);
             } else {
-                await axios.post('/api/v1/crm/clients', clientForm);
+                await axios.post('/api/v1/crm/clients', payload);
             }
-            setEditingClientId(null);
-            setClientForm({ name: '', company: '', email: '', phone: '', notes: '' });
+            closeClientForm();
             await fetchClients(clientPage);
             toast.success(editingClientId ? 'Cập nhật khách hàng thành công.' : 'Tạo khách hàng thành công.');
         } catch (error) {
@@ -164,15 +199,47 @@ export default function CRM(props) {
             email: client.email || '',
             phone: client.phone || '',
             notes: client.notes || '',
+            sales_owner_id: client.sales_owner_id || '',
+            assigned_department_id: client.assigned_department_id || '',
+            assigned_staff_id: client.assigned_staff_id || '',
+            lead_type_id: client.lead_type_id || '',
+            lead_source: client.lead_source || '',
+            lead_channel: client.lead_channel || '',
+            lead_message: client.lead_message || '',
         });
+        setShowClientForm(true);
+    };
+
+    const openClientCreate = () => {
+        setEditingClientId(null);
+        setClientForm({
+            name: '',
+            company: '',
+            email: '',
+            phone: '',
+            notes: '',
+            sales_owner_id: '',
+            assigned_department_id: '',
+            assigned_staff_id: '',
+            lead_type_id: leadTypes[0]?.id || '',
+            lead_source: '',
+            lead_channel: '',
+            lead_message: '',
+        });
+        setShowClientForm(true);
+    };
+
+    const closeClientForm = () => {
+        setShowClientForm(false);
+        setEditingClientId(null);
     };
 
     const deleteClient = async (id) => {
+        if (!canDeleteClients) return toast.error('Bạn không có quyền xóa khách hàng.');
         try {
             await axios.delete(`/api/v1/crm/clients/${id}`);
             if (editingClientId === id) {
-                setEditingClientId(null);
-                setClientForm({ name: '', company: '', email: '', phone: '', notes: '' });
+                closeClientForm();
             }
             await fetchClients(clientPage);
             toast.success('Xóa khách hàng thành công.');
@@ -183,6 +250,7 @@ export default function CRM(props) {
 
     const submitPayment = async (e) => {
         e.preventDefault();
+        if (!canManagePayments) return toast.error('Bạn không có quyền quản lý thanh toán.');
         const payload = {
             ...paymentForm,
             client_id: Number(paymentForm.client_id),
@@ -195,15 +263,7 @@ export default function CRM(props) {
             } else {
                 await axios.post('/api/v1/crm/payments', payload);
             }
-            setEditingPaymentId(null);
-            setPaymentForm({
-                client_id: '',
-                amount: '',
-                status: 'pending',
-                due_date: '',
-                invoice_no: '',
-                note: '',
-            });
+            closePaymentForm();
             await fetchPayments(paymentPage);
             toast.success(editingPaymentId ? 'Cập nhật thanh toán thành công.' : 'Tạo thanh toán thành công.');
         } catch (error) {
@@ -221,21 +281,33 @@ export default function CRM(props) {
             invoice_no: payment.invoice_no || '',
             note: payment.note || '',
         });
+        setShowPaymentForm(true);
+    };
+
+    const openPaymentCreate = () => {
+        setEditingPaymentId(null);
+        setPaymentForm({
+            client_id: '',
+            amount: '',
+            status: 'pending',
+            due_date: '',
+            invoice_no: '',
+            note: '',
+        });
+        setShowPaymentForm(true);
+    };
+
+    const closePaymentForm = () => {
+        setShowPaymentForm(false);
+        setEditingPaymentId(null);
     };
 
     const deletePayment = async (id) => {
+        if (!canDeletePayments) return toast.error('Bạn không có quyền xóa thanh toán.');
         try {
             await axios.delete(`/api/v1/crm/payments/${id}`);
             if (editingPaymentId === id) {
-                setEditingPaymentId(null);
-                setPaymentForm({
-                    client_id: '',
-                    amount: '',
-                    status: 'pending',
-                    due_date: '',
-                    invoice_no: '',
-                    note: '',
-                });
+                closePaymentForm();
             }
             await fetchPayments(paymentPage);
             toast.success('Xóa thanh toán thành công.');
@@ -244,341 +316,499 @@ export default function CRM(props) {
         }
     };
 
-    const applyClientFilter = async (e) => {
-        e.preventDefault();
-        await fetchClients(1, clientFilters);
-    };
+    const clientStats = useMemo(() => {
+        const total = clientMeta.total || clients.length;
+        const leadCount = clients.filter((c) => c.lead_type_id).length;
+        const purchased = clients.filter((c) => c.has_purchased).length;
+        return [
+            { label: 'Khách hàng', value: String(total) },
+            { label: 'Tiềm năng', value: String(leadCount) },
+            { label: 'Đã mua', value: String(purchased) },
+            { label: 'Doanh thu', value: clients.reduce((acc, c) => acc + Number(c.total_revenue || 0), 0).toLocaleString('vi-VN') + ' VNĐ' },
+        ];
+    }, [clients, clientMeta]);
 
-    const applyPaymentFilter = async (e) => {
-        e.preventDefault();
-        await fetchPayments(1, paymentFilters);
-    };
-
-    const prevClientPage = () => {
-        if (clientMeta.current_page > 1) {
-            fetchClients(clientMeta.current_page - 1);
-        }
-    };
-
-    const nextClientPage = () => {
-        if (clientMeta.current_page < clientMeta.last_page) {
-            fetchClients(clientMeta.current_page + 1);
-        }
-    };
-
-    const prevPaymentPage = () => {
-        if (paymentMeta.current_page > 1) {
-            fetchPayments(paymentMeta.current_page - 1);
-        }
-    };
-
-    const nextPaymentPage = () => {
-        if (paymentMeta.current_page < paymentMeta.last_page) {
-            fetchPayments(paymentMeta.current_page + 1);
-        }
-    };
+    const paymentStats = useMemo(() => {
+        const total = paymentMeta.total || payments.length;
+        const pending = payments.filter((p) => p.status === 'pending').length;
+        const paid = payments.filter((p) => p.status === 'paid').length;
+        return [
+            { label: 'Giao dịch', value: String(total) },
+            { label: 'Đang chờ', value: String(pending) },
+            { label: 'Đã thanh toán', value: String(paid) },
+            { label: 'Vai trò', value: userRole || '—' },
+        ];
+    }, [payments, paymentMeta, userRole]);
 
     return (
         <PageContainer
             auth={props.auth}
-            title="CRM mini"
-            description="Quản lý thông tin khách hàng, lịch sử dự án, thanh toán và sales phụ trách."
-            stats={[
-                { label: 'Tổng khách hàng', value: clientMeta.total },
-                { label: 'Phiếu thanh toán', value: paymentMeta.total },
-                { label: 'Sửa khách hàng', value: editingClientId ? 'Có' : 'Không' },
-                { label: 'Sửa thanh toán', value: editingPaymentId ? 'Có' : 'Không' },
-            ]}
+            title="Quản lý khách hàng"
+            description="Quản lý khách hàng, trạng thái tiềm năng, thanh toán và phân quyền chăm sóc."
+            stats={activeTab === 'clients' ? clientStats : paymentStats}
         >
-            <div className="grid gap-5 lg:grid-cols-2 mb-6">
-                <form onSubmit={submitClient} className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card grid gap-3">
-                    <h3 className="font-semibold">{editingClientId ? 'Sửa khách hàng' : 'Thêm khách hàng'}</h3>
-                    <input
-                        type="text"
-                        className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                        placeholder="Tên liên hệ"
-                        value={clientForm.name}
-                        onChange={(e) => setClientForm((prev) => ({ ...prev, name: e.target.value }))}
-                        required
-                    />
-                    <input
-                        type="text"
-                        className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                        placeholder="Công ty"
-                        value={clientForm.company}
-                        onChange={(e) => setClientForm((prev) => ({ ...prev, company: e.target.value }))}
-                    />
-                    <input
-                        type="email"
-                        className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                        placeholder="Email"
-                        value={clientForm.email}
-                        onChange={(e) => setClientForm((prev) => ({ ...prev, email: e.target.value }))}
-                    />
-                    <input
-                        type="text"
-                        className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                        placeholder="Số điện thoại"
-                        value={clientForm.phone}
-                        onChange={(e) => setClientForm((prev) => ({ ...prev, phone: e.target.value }))}
-                    />
-                    <textarea
-                        className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                        rows={3}
-                        placeholder="Ghi chú"
-                        value={clientForm.notes}
-                        onChange={(e) => setClientForm((prev) => ({ ...prev, notes: e.target.value }))}
-                    />
-                    <div className="flex gap-2">
-                        <button type="submit" className="rounded-2xl bg-primary text-white font-semibold text-sm px-4 py-2">
-                            {editingClientId ? 'Lưu khách hàng' : 'Tạo khách hàng'}
-                        </button>
-                        {editingClientId && (
-                            <button
-                                type="button"
-                                className="rounded-2xl border border-slate-200/80 text-sm px-4 py-2"
-                                onClick={() => {
-                                    setEditingClientId(null);
-                                    setClientForm({ name: '', company: '', email: '', phone: '', notes: '' });
-                                }}
-                            >
-                                Hủy
-                            </button>
-                        )}
-                    </div>
-                </form>
-
-                <form onSubmit={submitPayment} className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card grid gap-3">
-                    <h3 className="font-semibold">{editingPaymentId ? 'Sửa thanh toán' : 'Thêm thanh toán'}</h3>
-                    <select
-                        className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                        value={paymentForm.client_id}
-                        onChange={(e) => setPaymentForm((prev) => ({ ...prev, client_id: e.target.value }))}
-                        required
-                    >
-                        <option value="">Chọn khách hàng</option>
-                        {clients.map((client) => (
-                            <option key={client.id} value={client.id}>
-                                {client.company || client.name}
-                            </option>
-                        ))}
-                    </select>
-                    <input
-                        type="number"
-                        className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                        placeholder="Số tiền"
-                        value={paymentForm.amount}
-                        onChange={(e) => setPaymentForm((prev) => ({ ...prev, amount: e.target.value }))}
-                        required
-                    />
-                    <select
-                        className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                        value={paymentForm.status}
-                        onChange={(e) => setPaymentForm((prev) => ({ ...prev, status: e.target.value }))}
-                    >
-                        <option value="pending">pending</option>
-                        <option value="paid">paid</option>
-                        <option value="overdue">overdue</option>
-                    </select>
-                    <input
-                        type="date"
-                        className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                        value={paymentForm.due_date}
-                        onChange={(e) => setPaymentForm((prev) => ({ ...prev, due_date: e.target.value }))}
-                    />
-                    <input
-                        type="text"
-                        className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                        placeholder="Số hóa đơn"
-                        value={paymentForm.invoice_no}
-                        onChange={(e) => setPaymentForm((prev) => ({ ...prev, invoice_no: e.target.value }))}
-                    />
-                    <textarea
-                        className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                        rows={3}
-                        placeholder="Ghi chú"
-                        value={paymentForm.note}
-                        onChange={(e) => setPaymentForm((prev) => ({ ...prev, note: e.target.value }))}
-                    />
-                    <div className="flex gap-2">
-                        <button type="submit" className="rounded-2xl bg-primary text-white font-semibold text-sm px-4 py-2">
-                            {editingPaymentId ? 'Lưu thanh toán' : 'Tạo thanh toán'}
-                        </button>
-                        {editingPaymentId && (
-                            <button
-                                type="button"
-                                className="rounded-2xl border border-slate-200/80 text-sm px-4 py-2"
-                                onClick={() => {
-                                    setEditingPaymentId(null);
-                                    setPaymentForm({
-                                        client_id: '',
-                                        amount: '',
-                                        status: 'pending',
-                                        due_date: '',
-                                        invoice_no: '',
-                                        note: '',
-                                    });
-                                }}
-                            >
-                                Hủy
-                            </button>
-                        )}
-                    </div>
-                </form>
+            <div className="flex flex-wrap gap-2 mb-6">
+                <button
+                    type="button"
+                    className={`rounded-full px-4 py-2 text-sm font-semibold ${
+                        activeTab === 'clients' ? 'bg-primary text-white' : 'bg-white border border-slate-200 text-slate-600'
+                    }`}
+                    onClick={() => setActiveTab('clients')}
+                >
+                    Khách hàng
+                </button>
+                <button
+                    type="button"
+                    className={`rounded-full px-4 py-2 text-sm font-semibold ${
+                        activeTab === 'payments' ? 'bg-primary text-white' : 'bg-white border border-slate-200 text-slate-600'
+                    }`}
+                    onClick={() => setActiveTab('payments')}
+                >
+                    Thanh toán
+                </button>
             </div>
 
-            <div className="grid gap-5 lg:grid-cols-2">
-                <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
-                    <form onSubmit={applyClientFilter} className="mb-3 grid gap-2 md:grid-cols-3">
-                        <input
-                            type="text"
-                            className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                            value={clientFilters.search}
-                            onChange={(e) => setClientFilters((prev) => ({ ...prev, search: e.target.value }))}
-                            placeholder="Tìm khách hàng"
-                        />
-                        <select
-                            className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                            value={clientFilters.per_page}
-                            onChange={(e) => setClientFilters((prev) => ({ ...prev, per_page: Number(e.target.value) }))}
-                        >
-                            <option value={5}>5 / trang</option>
-                            <option value={10}>10 / trang</option>
-                            <option value={20}>20 / trang</option>
-                        </select>
-                        <button type="submit" className="rounded-2xl bg-slate-900 text-white text-sm font-semibold">
-                            Lọc
-                        </button>
-                    </form>
-                    <h3 className="font-semibold mb-3">Khách hàng nổi bật</h3>
-                    <ul className="space-y-2 text-sm">
-                        {clients.map((client) => (
-                            <li key={client.id} className="rounded-2xl border border-slate-200/80 p-4">
-                                <div className="flex justify-between gap-2">
-                                    <div>
-                                        <p className="font-semibold">{client.company || client.name}</p>
-                                        <p className="text-xs text-text-muted mt-1">{client.email || 'Chưa có email'}</p>
-                                    </div>
-                                    <span className="flex gap-2 text-xs">
-                                        <button type="button" className="text-primary" onClick={() => editClient(client)}>
-                                            Sửa
-                                        </button>
-                                        <button type="button" className="text-danger" onClick={() => deleteClient(client.id)}>
-                                            Xóa
-                                        </button>
-                                    </span>
-                                </div>
-                            </li>
-                        ))}
-                    </ul>
-                    <div className="mt-3 pt-3 border-t border-slate-200/80 flex items-center justify-between text-xs text-text-muted">
-                        <span>
-                            Trang {clientMeta.current_page}/{clientMeta.last_page}
-                        </span>
-                        <div className="flex gap-2">
-                            <button
-                                type="button"
-                                onClick={prevClientPage}
-                                disabled={clientMeta.current_page <= 1}
-                                className="rounded-full border border-slate-200/80 px-3 py-1 disabled:opacity-50"
-                            >
-                                Trước
-                            </button>
-                            <button
-                                type="button"
-                                onClick={nextClientPage}
-                                disabled={clientMeta.current_page >= clientMeta.last_page}
-                                className="rounded-full border border-slate-200/80 px-3 py-1 disabled:opacity-50"
-                            >
-                                Sau
-                            </button>
+            {activeTab === 'clients' && (
+                <>
+                    <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card p-5">
+                        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4">
+                            <h3 className="font-semibold">Danh sách khách hàng</h3>
+                            <div className="flex flex-col gap-2 md:flex-row md:items-center">
+                                {canManageClients && (
+                                    <button
+                                        type="button"
+                                        className="rounded-xl bg-primary text-white px-4 py-2 text-sm font-semibold"
+                                        onClick={openClientCreate}
+                                    >
+                                        Thêm mới
+                                    </button>
+                                )}
+                                <input
+                                    className="rounded-xl border border-slate-200/80 px-3 py-2 text-sm"
+                                    placeholder="Tìm theo tên/email..."
+                                    value={clientFilters.search}
+                                    onChange={(e) => setClientFilters((s) => ({ ...s, search: e.target.value }))}
+                                />
+                                <select
+                                    className="rounded-xl border border-slate-200/80 px-3 py-2 text-sm"
+                                    value={clientFilters.lead_type_id}
+                                    onChange={(e) => setClientFilters((s) => ({ ...s, lead_type_id: e.target.value }))}
+                                >
+                                    <option value="">Tất cả trạng thái</option>
+                                    {leadTypes.map((type) => (
+                                        <option key={type.id} value={type.id}>
+                                            {type.name}
+                                        </option>
+                                    ))}
+                                </select>
+                                <select
+                                    className="rounded-xl border border-slate-200/80 px-3 py-2 text-sm"
+                                    value={clientFilters.type}
+                                    onChange={(e) => setClientFilters((s) => ({ ...s, type: e.target.value }))}
+                                >
+                                    <option value="">Tất cả nhóm</option>
+                                    <option value="potential">Tiềm năng</option>
+                                    <option value="active">Đã mua</option>
+                                </select>
+                                <button
+                                    type="button"
+                                    className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
+                                    onClick={() => fetchClients(1, clientFilters)}
+                                >
+                                    Lọc
+                                </button>
+                            </div>
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="min-w-full text-sm">
+                                <thead>
+                                    <tr className="text-left text-xs uppercase tracking-wider text-text-subtle border-b border-slate-200">
+                                        <th className="py-2">Khách hàng</th>
+                                        <th className="py-2">Trạng thái</th>
+                                        <th className="py-2">Hạng</th>
+                                        <th className="py-2">Phòng ban</th>
+                                        <th className="py-2">Phụ trách</th>
+                                        <th className="py-2">Doanh thu</th>
+                                        <th className="py-2">Nguồn</th>
+                                        <th className="py-2"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {clients.map((client) => (
+                                        <tr key={client.id} className="border-b border-slate-100">
+                                            <td className="py-2">
+                                                <div className="font-medium text-slate-900">{client.name}</div>
+                                                <div className="text-xs text-text-muted">{client.company || '—'}</div>
+                                            </td>
+                                            <td className="py-2">
+                                                {client.lead_type ? (
+                                                    <span
+                                                        className="rounded-full border px-2 py-1 text-xs font-semibold"
+                                                        style={badgeStyle(client.lead_type.color_hex || '#94A3B8')}
+                                                    >
+                                                        {client.lead_type.name}
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-xs text-text-muted">—</span>
+                                                )}
+                                            </td>
+                                            <td className="py-2">
+                                                {client.revenue_tier ? (
+                                                    <span
+                                                        className="rounded-full border px-2 py-1 text-xs font-semibold"
+                                                        style={badgeStyle(client.revenue_tier.color_hex || '#94A3B8')}
+                                                    >
+                                                        {client.revenue_tier.label}
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-xs text-text-muted">—</span>
+                                                )}
+                                            </td>
+                                            <td className="py-2 text-xs text-text-muted">
+                                                {client.assigned_department?.name || '—'}
+                                            </td>
+                                            <td className="py-2 text-xs text-text-muted">
+                                                {client.assigned_staff?.name || client.sales_owner?.name || '—'}
+                                            </td>
+                                            <td className="py-2 text-slate-700">
+                                                {Number(client.total_revenue || 0).toLocaleString('vi-VN')}
+                                            </td>
+                                            <td className="py-2 text-xs text-text-muted">
+                                                {client.lead_source || '—'} {client.lead_channel ? `• ${client.lead_channel}` : ''}
+                                            </td>
+                                            <td className="py-2 text-right space-x-2">
+                                                {canManageClients && (
+                                                    <button
+                                                        type="button"
+                                                        className="text-xs font-semibold text-primary"
+                                                        onClick={() => editClient(client)}
+                                                    >
+                                                        Sửa
+                                                    </button>
+                                                )}
+                                                {canDeleteClients && (
+                                                    <button
+                                                        type="button"
+                                                        className="text-xs font-semibold text-rose-500"
+                                                        onClick={() => deleteClient(client.id)}
+                                                    >
+                                                        Xóa
+                                                    </button>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    {clients.length === 0 && (
+                                        <tr>
+                                            <td className="py-6 text-center text-sm text-text-muted" colSpan={8}>
+                                                Chưa có khách hàng nào.
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
-                </div>
-                <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
-                    <form onSubmit={applyPaymentFilter} className="mb-3 grid gap-2 md:grid-cols-3">
-                        <select
-                            className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                            value={paymentFilters.status}
-                            onChange={(e) => setPaymentFilters((prev) => ({ ...prev, status: e.target.value }))}
-                        >
-                            <option value="">Tất cả trạng thái</option>
-                            <option value="pending">pending</option>
-                            <option value="paid">paid</option>
-                            <option value="overdue">overdue</option>
-                        </select>
-                        <select
-                            className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                            value={paymentFilters.per_page}
-                            onChange={(e) => setPaymentFilters((prev) => ({ ...prev, per_page: Number(e.target.value) }))}
-                        >
-                            <option value={5}>5 / trang</option>
-                            <option value={10}>10 / trang</option>
-                            <option value={20}>20 / trang</option>
-                        </select>
-                        <button type="submit" className="rounded-2xl bg-slate-900 text-white text-sm font-semibold">
-                            Lọc
-                        </button>
-                    </form>
-                    <h3 className="font-semibold mb-3">Thanh toán cần theo dõi</h3>
-                    <ul className="space-y-2 text-sm">
-                        {payments.map((payment) => (
-                            <li
-                                key={payment.id}
-                                className={`rounded-2xl p-4 border ${
-                                    payment.status === 'overdue'
-                                        ? 'border-rose-200 bg-rose-50'
-                                        : payment.status === 'pending'
-                                        ? 'border-amber-200 bg-amber-50'
-                                        : 'border-slate-200/80'
-                                }`}
+
+                    <Modal
+                        open={showClientForm}
+                        onClose={closeClientForm}
+                        title={editingClientId ? `Sửa khách hàng #${editingClientId}` : 'Tạo khách hàng'}
+                        description="Cập nhật thông tin khách hàng và trạng thái khách hàng tiềm năng."
+                        size="lg"
+                    >
+                        <form className="space-y-3 text-sm" onSubmit={submitClient}>
+                            <input
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                placeholder="Tên khách hàng *"
+                                value={clientForm.name}
+                                onChange={(e) => setClientForm((s) => ({ ...s, name: e.target.value }))}
+                            />
+                            <input
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                placeholder="Công ty"
+                                value={clientForm.company}
+                                onChange={(e) => setClientForm((s) => ({ ...s, company: e.target.value }))}
+                            />
+                            <div className="grid grid-cols-2 gap-2">
+                                <input
+                                    className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                    placeholder="Email"
+                                    value={clientForm.email}
+                                    onChange={(e) => setClientForm((s) => ({ ...s, email: e.target.value }))}
+                                />
+                                <input
+                                    className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                    placeholder="Số điện thoại"
+                                    value={clientForm.phone}
+                                    onChange={(e) => setClientForm((s) => ({ ...s, phone: e.target.value }))}
+                                />
+                            </div>
+                            <select
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                value={clientForm.lead_type_id}
+                                onChange={(e) => setClientForm((s) => ({ ...s, lead_type_id: e.target.value }))}
                             >
-                                <div className="flex justify-between gap-2">
-                                    <div>
-                                        <p className="font-semibold">
-                                            {payment.client?.company || payment.client?.name || 'Khách hàng'}
-                                        </p>
-                                        <p className="text-xs text-text-muted mt-1">
-                                            {Number(payment.amount || 0).toLocaleString('vi-VN')}đ • {payment.status}
-                                        </p>
-                                    </div>
-                                    <span className="flex gap-2 text-xs">
-                                        <button type="button" className="text-primary" onClick={() => editPayment(payment)}>
-                                            Sửa
-                                        </button>
-                                        <button type="button" className="text-danger" onClick={() => deletePayment(payment.id)}>
-                                            Xóa
-                                        </button>
-                                    </span>
+                                {leadTypes.map((type) => (
+                                    <option key={type.id} value={type.id}>
+                                        {type.name}
+                                    </option>
+                                ))}
+                            </select>
+                            {userRole === 'admin' && (
+                                <div className="grid grid-cols-2 gap-2">
+                                    <select
+                                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                        value={clientForm.assigned_department_id}
+                                        onChange={(e) => setClientForm((s) => ({ ...s, assigned_department_id: e.target.value }))}
+                                    >
+                                        <option value="">Chọn phòng ban phụ trách</option>
+                                        {departments.map((dept) => (
+                                            <option key={dept.id} value={dept.id}>
+                                                {dept.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <select
+                                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                        value={clientForm.assigned_staff_id}
+                                        onChange={(e) => setClientForm((s) => ({ ...s, assigned_staff_id: e.target.value }))}
+                                    >
+                                        <option value="">Chọn nhân sự phụ trách</option>
+                                        {staffUsers.map((user) => (
+                                            <option key={user.id} value={user.id}>
+                                                {user.name} • {user.role}
+                                            </option>
+                                        ))}
+                                    </select>
                                 </div>
-                            </li>
-                        ))}
-                    </ul>
-                    <div className="mt-3 pt-3 border-t border-slate-200/80 flex items-center justify-between text-xs text-text-muted">
-                        <span>
-                            Trang {paymentMeta.current_page}/{paymentMeta.last_page}
-                        </span>
-                        <div className="flex gap-2">
-                            <button
-                                type="button"
-                                onClick={prevPaymentPage}
-                                disabled={paymentMeta.current_page <= 1}
-                                className="rounded-full border border-slate-200/80 px-3 py-1 disabled:opacity-50"
-                            >
-                                Trước
-                            </button>
-                            <button
-                                type="button"
-                                onClick={nextPaymentPage}
-                                disabled={paymentMeta.current_page >= paymentMeta.last_page}
-                                className="rounded-full border border-slate-200/80 px-3 py-1 disabled:opacity-50"
-                            >
-                                Sau
-                            </button>
+                            )}
+                            <div className="grid grid-cols-2 gap-2">
+                                <input
+                                    className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                    placeholder="Nguồn khách hàng tiềm năng"
+                                    value={clientForm.lead_source}
+                                    onChange={(e) => setClientForm((s) => ({ ...s, lead_source: e.target.value }))}
+                                />
+                                <input
+                                    className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                    placeholder="Kênh"
+                                    value={clientForm.lead_channel}
+                                    onChange={(e) => setClientForm((s) => ({ ...s, lead_channel: e.target.value }))}
+                                />
+                            </div>
+                            <textarea
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                rows={3}
+                                placeholder="Tin nhắn/ghi chú khách hàng tiềm năng"
+                                value={clientForm.lead_message}
+                                onChange={(e) => setClientForm((s) => ({ ...s, lead_message: e.target.value }))}
+                            />
+                            <textarea
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                rows={3}
+                                placeholder="Ghi chú nội bộ"
+                                value={clientForm.notes}
+                                onChange={(e) => setClientForm((s) => ({ ...s, notes: e.target.value }))}
+                            />
+                            {!canManageClients && (
+                                <p className="text-xs text-text-muted">
+                                    Chỉ Admin/Quản lý/Nhân sự được quản lý khách hàng.
+                                </p>
+                            )}
+                            <div className="flex items-center gap-3">
+                                <button
+                                    type="submit"
+                                    className="flex-1 rounded-2xl px-3 py-2.5 bg-primary text-white text-sm font-semibold"
+                                >
+                                    {editingClientId ? 'Cập nhật khách hàng' : 'Tạo khách hàng'}
+                                </button>
+                                <button
+                                    type="button"
+                                    className="flex-1 rounded-2xl px-3 py-2.5 border border-slate-200 text-sm font-semibold"
+                                    onClick={closeClientForm}
+                                >
+                                    Hủy
+                                </button>
+                            </div>
+                        </form>
+                    </Modal>
+                </>
+            )}
+
+            {activeTab === 'payments' && (
+                <>
+                    <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card p-5">
+                        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4">
+                            <h3 className="font-semibold">Danh sách thanh toán</h3>
+                            <div className="flex gap-2 flex-wrap">
+                                {canManagePayments && (
+                                    <button
+                                        type="button"
+                                        className="rounded-xl bg-primary text-white px-4 py-2 text-sm font-semibold"
+                                        onClick={openPaymentCreate}
+                                    >
+                                        Thêm mới
+                                    </button>
+                                )}
+                                <select
+                                    className="rounded-xl border border-slate-200/80 px-3 py-2 text-sm"
+                                    value={paymentFilters.status}
+                                    onChange={(e) => setPaymentFilters((s) => ({ ...s, status: e.target.value }))}
+                                >
+                                    <option value="">Tất cả trạng thái</option>
+                                    <option value="pending">Đang chờ</option>
+                                    <option value="paid">Đã thanh toán</option>
+                                    <option value="overdue">Quá hạn</option>
+                                </select>
+                                <button
+                                    type="button"
+                                    className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
+                                    onClick={() => fetchPayments(1, paymentFilters)}
+                                >
+                                    Lọc
+                                </button>
+                            </div>
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="min-w-full text-sm">
+                                <thead>
+                                    <tr className="text-left text-xs uppercase tracking-wider text-text-subtle border-b border-slate-200">
+                                        <th className="py-2">Khách hàng</th>
+                                        <th className="py-2">Số tiền</th>
+                                        <th className="py-2">Hạn</th>
+                                        <th className="py-2">Trạng thái</th>
+                                        <th className="py-2"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {payments.map((payment) => (
+                                        <tr key={payment.id} className="border-b border-slate-100">
+                                            <td className="py-2 font-medium text-slate-900">{payment.client?.name || '—'}</td>
+                                            <td className="py-2 text-slate-700">
+                                                {Number(payment.amount || 0).toLocaleString('vi-VN')}
+                                            </td>
+                                            <td className="py-2 text-xs text-text-muted">
+                                                {payment.due_date ? payment.due_date.slice(0, 10) : '—'}
+                                            </td>
+                                            <td className="py-2">
+                                                <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">
+                                                    {payment.status}
+                                                </span>
+                                            </td>
+                                            <td className="py-2 text-right space-x-2">
+                                                {canManagePayments && (
+                                                    <button
+                                                        type="button"
+                                                        className="text-xs font-semibold text-primary"
+                                                        onClick={() => editPayment(payment)}
+                                                    >
+                                                        Sửa
+                                                    </button>
+                                                )}
+                                                {canDeletePayments && (
+                                                    <button
+                                                        type="button"
+                                                        className="text-xs font-semibold text-rose-500"
+                                                        onClick={() => deletePayment(payment.id)}
+                                                    >
+                                                        Xóa
+                                                    </button>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    {payments.length === 0 && (
+                                        <tr>
+                                            <td className="py-6 text-center text-sm text-text-muted" colSpan={5}>
+                                                Chưa có thanh toán nào.
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
-                </div>
-            </div>
+
+                    <Modal
+                        open={showPaymentForm}
+                        onClose={closePaymentForm}
+                        title={editingPaymentId ? `Sửa thanh toán #${editingPaymentId}` : 'Tạo thanh toán'}
+                        description="Ghi nhận thanh toán và trạng thái công nợ."
+                        size="md"
+                    >
+                        <form className="space-y-3 text-sm" onSubmit={submitPayment}>
+                            <select
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                value={paymentForm.client_id}
+                                onChange={(e) => setPaymentForm((s) => ({ ...s, client_id: e.target.value }))}
+                            >
+                                <option value="">Chọn khách hàng *</option>
+                                {clients.map((c) => (
+                                    <option key={c.id} value={c.id}>
+                                        {c.name} {c.company ? `(${c.company})` : ''}
+                                    </option>
+                                ))}
+                            </select>
+                            <input
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                type="number"
+                                placeholder="Số tiền *"
+                                value={paymentForm.amount}
+                                onChange={(e) => setPaymentForm((s) => ({ ...s, amount: e.target.value }))}
+                            />
+                            <select
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                value={paymentForm.status}
+                                onChange={(e) => setPaymentForm((s) => ({ ...s, status: e.target.value }))}
+                            >
+                                <option value="pending">Đang chờ</option>
+                                <option value="paid">Đã thanh toán</option>
+                                <option value="overdue">Quá hạn</option>
+                            </select>
+                            <input
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                type="date"
+                                value={paymentForm.due_date}
+                                onChange={(e) => setPaymentForm((s) => ({ ...s, due_date: e.target.value }))}
+                            />
+                            <input
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                placeholder="Số hóa đơn"
+                                value={paymentForm.invoice_no}
+                                onChange={(e) => setPaymentForm((s) => ({ ...s, invoice_no: e.target.value }))}
+                            />
+                            <textarea
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                rows={3}
+                                placeholder="Ghi chú"
+                                value={paymentForm.note}
+                                onChange={(e) => setPaymentForm((s) => ({ ...s, note: e.target.value }))}
+                            />
+                            {!canManagePayments && (
+                                <p className="text-xs text-text-muted">
+                                    Chỉ Admin/Kế toán được quản lý thanh toán.
+                                </p>
+                            )}
+                            <div className="flex items-center gap-3">
+                                <button
+                                    type="submit"
+                                    className="flex-1 rounded-2xl px-3 py-2.5 bg-primary text-white text-sm font-semibold"
+                                >
+                                    {editingPaymentId ? 'Cập nhật thanh toán' : 'Tạo thanh toán'}
+                                </button>
+                                <button
+                                    type="button"
+                                    className="flex-1 rounded-2xl px-3 py-2.5 border border-slate-200 text-sm font-semibold"
+                                    onClick={closePaymentForm}
+                                >
+                                    Hủy
+                                </button>
+                            </div>
+                        </form>
+                    </Modal>
+                </>
+            )}
         </PageContainer>
     );
 }

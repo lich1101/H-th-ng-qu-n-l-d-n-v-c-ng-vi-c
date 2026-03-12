@@ -4,21 +4,21 @@ import { Link, Head } from '@inertiajs/inertia-react';
 export default function Welcome(props) {
     return (
         <>
-            <Head title="Welcome" />
+            <Head title="Trang chủ" />
             <div className="relative flex items-top justify-center min-h-screen bg-gray-100 dark:bg-gray-900 sm:items-center sm:pt-0">
                 <div className="fixed top-0 right-0 px-6 py-4 sm:block">
                     {props.auth.user ? (
                         <Link href={route('dashboard')} className="text-sm text-gray-700 underline">
-                            Dashboard
+                            Tổng quan
                         </Link>
                     ) : (
                         <>
                             <Link href={route('login')} className="text-sm text-gray-700 underline">
-                                Log in
+                                Đăng nhập
                             </Link>
 
                             <Link href={route('register')} className="ml-4 text-sm text-gray-700 underline">
-                                Register
+                                Đăng ký
                             </Link>
                         </>
                     )}
@@ -59,16 +59,16 @@ export default function Welcome(props) {
                                             href="https://laravel.com/docs"
                                             className="underline text-gray-900 dark:text-white"
                                         >
-                                            Documentation
+                                            Tài liệu
                                         </a>
                                     </div>
                                 </div>
 
                                 <div className="ml-12">
                                     <div className="mt-2 text-gray-600 dark:text-gray-400 text-sm">
-                                        Laravel has wonderful, thorough documentation covering every aspect of the
-                                        framework. Whether you are new to the framework or have previous experience with
-                                        Laravel, we recommend reading all of the documentation from beginning to end.
+                                        Laravel có bộ tài liệu chi tiết, đầy đủ cho mọi khía cạnh của framework. Dù bạn
+                                        mới bắt đầu hay đã có kinh nghiệm, việc đọc tài liệu từ đầu đến cuối sẽ giúp
+                                        nắm rõ kiến trúc và cách triển khai.
                                     </div>
                                 </div>
                             </div>
@@ -100,9 +100,8 @@ export default function Welcome(props) {
 
                                 <div className="ml-12">
                                     <div className="mt-2 text-gray-600 dark:text-gray-400 text-sm">
-                                        Laracasts offers thousands of video tutorials on Laravel, PHP, and JavaScript
-                                        development. Check them out, see for yourself, and massively level up your
-                                        development skills in the process.
+                                        Laracasts cung cấp hàng nghìn video hướng dẫn về Laravel, PHP và JavaScript.
+                                        Bạn có thể tham khảo để nâng cao kỹ năng phát triển phần mềm.
                                     </div>
                                 </div>
                             </div>
@@ -126,16 +125,15 @@ export default function Welcome(props) {
                                             href="https://laravel-news.com/"
                                             className="underline text-gray-900 dark:text-white"
                                         >
-                                            Laravel News
+                                            Tin tức Laravel
                                         </a>
                                     </div>
                                 </div>
 
                                 <div className="ml-12">
                                     <div className="mt-2 text-gray-600 dark:text-gray-400 text-sm">
-                                        Laravel News is a community driven portal and newsletter aggregating all of the
-                                        latest and most important news in the Laravel ecosystem, including new package
-                                        releases and tutorials.
+                                        Laravel News là cổng thông tin cộng đồng tổng hợp các tin tức quan trọng, gói
+                                        thư viện mới và tutorial trong hệ sinh thái Laravel.
                                     </div>
                                 </div>
                             </div>
@@ -155,13 +153,13 @@ export default function Welcome(props) {
                                     </svg>
 
                                     <div className="ml-4 text-lg leading-7 font-semibold text-gray-900 dark:text-white">
-                                        Vibrant Ecosystem
+                                        Hệ sinh thái phong phú
                                     </div>
                                 </div>
 
                                 <div className="ml-12">
                                     <div className="mt-2 text-gray-600 dark:text-gray-400 text-sm">
-                                        Laravel's robust library of first-party tools and libraries, such as{' '}
+                                        Laravel cung cấp nhiều công cụ chính thức như{' '}
                                         <a href="https://forge.laravel.com" className="underline">
                                             Forge
                                         </a>
@@ -173,12 +171,12 @@ export default function Welcome(props) {
                                         <a href="https://nova.laravel.com" className="underline">
                                             Nova
                                         </a>
-                                        , and{' '}
+                                        , và{' '}
                                         <a href="https://envoyer.io" className="underline">
                                             Envoyer
                                         </a>{' '}
-                                        help you take your projects to the next level. Pair them with powerful open
-                                        source libraries like{' '}
+                                        giúp triển khai và vận hành nhanh hơn. Bạn có thể kết hợp với các thư viện mã
+                                        nguồn mở như{' '}
                                         <a href="https://laravel.com/docs/billing" className="underline">
                                             Cashier
                                         </a>
@@ -202,7 +200,7 @@ export default function Welcome(props) {
                                         <a href="https://laravel.com/docs/telescope" className="underline">
                                             Telescope
                                         </a>
-                                        , and more.
+                                        , v.v.
                                     </div>
                                 </div>
                             </div>
@@ -225,7 +223,7 @@ export default function Welcome(props) {
                                 </svg>
 
                                 <a href="https://laravel.bigcartel.com" className="ml-1 underline">
-                                    Shop
+                                    Cửa hàng
                                 </a>
 
                                 <svg
@@ -241,7 +239,7 @@ export default function Welcome(props) {
                                 </svg>
 
                                 <a href="https://github.com/sponsors/taylorotwell" className="ml-1 underline">
-                                    Sponsor
+                                    Tài trợ
                                 </a>
                             </div>
                         </div>

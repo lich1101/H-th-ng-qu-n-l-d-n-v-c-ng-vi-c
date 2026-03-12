@@ -23,10 +23,26 @@ class User extends Authenticatable
         'password',
         'role',
         'department',
+        'department_id',
         'phone',
         'workload_capacity',
         'is_active',
     ];
+
+    public function departmentRelation()
+    {
+        return $this->belongsTo(Department::class, 'department_id');
+    }
+
+    public function managedDepartment()
+    {
+        return $this->hasOne(Department::class, 'manager_id');
+    }
+
+    public function managedDepartments()
+    {
+        return $this->hasMany(Department::class, 'manager_id');
+    }
 
     /**
      * The attributes that should be hidden for serialization.

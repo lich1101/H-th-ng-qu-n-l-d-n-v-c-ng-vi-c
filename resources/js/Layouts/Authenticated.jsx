@@ -6,55 +6,77 @@ export default function Authenticated({ auth, header, children }) {
     const [showSidebar, setShowSidebar] = useState(false);
     const currentRole = auth?.user?.role || '';
 
-    const menus = useMemo(
+    const roleLabels = {
+        admin: 'Quản trị',
+        quan_ly: 'Quản lý',
+        nhan_vien: 'Nhân sự',
+        ke_toan: 'Kế toán',
+    };
+
+    const menuGroups = useMemo(
         () => [
-            { label: 'Tổng quan', routeName: 'dashboard', href: route('dashboard') },
-            { label: 'Dự án', routeName: 'projects.kanban', href: route('projects.kanban') },
-            { label: 'Công việc', routeName: 'tasks.board', href: route('tasks.board') },
-            { label: 'Deadline', routeName: 'deadlines.index', href: route('deadlines.index') },
-            { label: 'Bàn giao', routeName: 'handover.index', href: route('handover.index') },
-            { label: 'Báo cáo KPI', routeName: 'reports.kpi', href: route('reports.kpi') },
-            { label: 'Quy trình dịch vụ', routeName: 'services.workflows', href: route('services.workflows') },
-            { label: 'Lịch họp', routeName: 'meetings.index', href: route('meetings.index') },
-            { label: 'Chat nội bộ', routeName: 'chat.internal', href: route('chat.internal') },
-            { label: 'Thông báo', routeName: 'notifications.center', href: route('notifications.center') },
-            { label: 'Nhật ký hệ thống', routeName: 'activity.logs', href: route('activity.logs') },
-            { label: 'CRM mini', routeName: 'crm.index', href: route('crm.index') },
-            { label: 'Tài khoản người dùng', routeName: 'accounts.dashboard', href: route('accounts.dashboard') },
-            { label: 'Phân quyền', routeName: 'roles.permissions', href: route('roles.permissions') },
+            {
+                label: 'Tổng quan',
+                items: [{ label: 'Tổng quan', routeName: 'dashboard', href: route('dashboard'), roles: ['admin', 'quan_ly', 'nhan_vien', 'ke_toan'] }],
+            },
+            {
+                label: 'CRM',
+                items: [
+                    { label: 'Khách hàng', routeName: 'crm.index', href: route('crm.index'), roles: ['admin', 'quan_ly', 'nhan_vien', 'ke_toan'] },
+                    { label: 'Cơ hội', routeName: 'opportunities.index', href: route('opportunities.index'), roles: ['admin', 'quan_ly', 'nhan_vien'] },
+                    { label: 'Form tư vấn', routeName: 'lead-forms.index', href: route('lead-forms.index'), roles: ['admin'] },
+                ],
+            },
+            {
+                label: 'Sales',
+                items: [
+                    { label: 'Hợp đồng', routeName: 'contracts.index', href: route('contracts.index'), roles: ['admin', 'quan_ly', 'nhan_vien', 'ke_toan'] },
+                    { label: 'Sản phẩm', routeName: 'products.index', href: route('products.index'), roles: ['admin', 'quan_ly', 'nhan_vien', 'ke_toan'] },
+                ],
+            },
+            {
+                label: 'Operations',
+                items: [
+                    { label: 'Dự án', routeName: 'projects.kanban', href: route('projects.kanban'), roles: ['admin', 'quan_ly'] },
+                    { label: 'Công việc', routeName: 'tasks.board', href: route('tasks.board'), roles: ['admin', 'quan_ly', 'nhan_vien'] },
+                    { label: 'Nhắc hạn', routeName: 'deadlines.index', href: route('deadlines.index'), roles: ['admin', 'quan_ly', 'nhan_vien'] },
+                    { label: 'Bàn giao', routeName: 'handover.index', href: route('handover.index'), roles: ['admin', 'quan_ly', 'nhan_vien'] },
+                    { label: 'Điều phối phòng ban', routeName: 'department-assignments.index', href: route('department-assignments.index'), roles: ['admin', 'quan_ly', 'nhan_vien'] },
+                    { label: 'Lịch họp', routeName: 'meetings.index', href: route('meetings.index'), roles: ['admin', 'quan_ly'] },
+                    { label: 'Chat nội bộ', routeName: 'chat.internal', href: route('chat.internal'), roles: ['admin', 'quan_ly', 'nhan_vien', 'ke_toan'] },
+                ],
+            },
+            {
+                label: 'Reports',
+                items: [
+                    { label: 'Báo cáo KPI', routeName: 'reports.kpi', href: route('reports.kpi'), roles: ['admin', 'quan_ly'] },
+                    { label: 'Doanh thu phòng ban', routeName: 'reports.revenue', href: route('reports.revenue'), roles: ['admin', 'quan_ly'] },
+                    { label: 'Doanh thu công ty', routeName: 'reports.company', href: route('reports.company'), roles: ['admin'] },
+                ],
+            },
+            {
+                label: 'System',
+                items: [
+                    { label: 'Phòng ban', routeName: 'departments.index', href: route('departments.index'), roles: ['admin', 'quan_ly'] },
+                    { label: 'Trạng thái khách hàng', routeName: 'lead-types.index', href: route('lead-types.index'), roles: ['admin'] },
+                    { label: 'Hạng doanh thu', routeName: 'revenue-tiers.index', href: route('revenue-tiers.index'), roles: ['admin'] },
+                    { label: 'Quy trình dịch vụ', routeName: 'services.workflows', href: route('services.workflows'), roles: ['admin', 'quan_ly', 'nhan_vien'] },
+                    { label: 'Thông báo', routeName: 'notifications.center', href: route('notifications.center'), roles: ['admin', 'quan_ly', 'nhan_vien', 'ke_toan'] },
+                    { label: 'Nhật ký hệ thống', routeName: 'activity.logs', href: route('activity.logs'), roles: ['admin', 'quan_ly'] },
+                    { label: 'Tài khoản người dùng', routeName: 'accounts.dashboard', href: route('accounts.dashboard'), roles: ['admin'] },
+                    { label: 'Phân quyền', routeName: 'roles.permissions', href: route('roles.permissions'), roles: ['admin'] },
+                ],
+            },
         ],
         []
     );
 
-    const allowedMenus = menus.filter((menu) => {
-        if (currentRole === 'admin' || currentRole === 'truong_phong_san_xuat') {
-            return true;
-        }
-        if (currentRole === 'nhan_su_kinh_doanh') {
-            return [
-                'dashboard',
-                'projects.kanban',
-                'deadlines.index',
-                'handover.index',
-                'meetings.index',
-                'chat.internal',
-                'notifications.center',
-                'crm.index',
-            ].includes(menu.routeName);
-        }
-        if (currentRole === 'nhan_su_san_xuat') {
-            return [
-                'dashboard',
-                'tasks.board',
-                'deadlines.index',
-                'handover.index',
-                'chat.internal',
-                'notifications.center',
-                'services.workflows',
-            ].includes(menu.routeName);
-        }
-        return menu.routeName === 'dashboard';
-    });
+    const visibleGroups = menuGroups
+        .map((group) => ({
+            ...group,
+            items: group.items.filter((item) => item.roles.includes(currentRole)),
+        }))
+        .filter((group) => group.items.length > 0);
 
     return (
         <div className="min-h-screen bg-app-bg text-slate-900">
@@ -68,27 +90,36 @@ export default function Authenticated({ auth, header, children }) {
                         <div className="px-6 py-6 border-b border-slate-200">
                             <p className="text-xs uppercase tracking-[0.2em] text-text-subtle">WinMap</p>
                             <p className="text-lg font-semibold">Quản lý nội bộ</p>
-                            <p className="text-xs text-text-muted mt-1">Sales • Sản xuất • Admin</p>
+                            <p className="text-xs text-text-muted mt-1">Khách hàng • Phòng ban • Kế toán</p>
                         </div>
 
-                        <nav className="flex-1 overflow-y-auto px-4 py-5 space-y-1">
-                            {allowedMenus.map((menu) => {
-                                const active = route().current(menu.routeName);
-                                return (
-                                    <Link
-                                        key={menu.routeName}
-                                        href={menu.href}
-                                        className={`flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition ${
-                                            active
-                                                ? 'bg-primary/10 text-primary'
-                                                : 'text-slate-600 hover:bg-slate-100'
-                                        }`}
-                                        onClick={() => setShowSidebar(false)}
-                                    >
-                                        <span>{menu.label}</span>
-                                    </Link>
-                                );
-                            })}
+                        <nav className="flex-1 overflow-y-auto px-4 py-5 space-y-4">
+                            {visibleGroups.map((group) => (
+                                <div key={group.label} className="space-y-2">
+                                    <p className="px-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-text-subtle">
+                                        {group.label}
+                                    </p>
+                                    <div className="space-y-1">
+                                        {group.items.map((menu) => {
+                                            const active = route().current(menu.routeName);
+                                            return (
+                                                <Link
+                                                    key={menu.routeName}
+                                                    href={menu.href}
+                                                    className={`flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition ${
+                                                        active
+                                                            ? 'bg-primary/10 text-primary'
+                                                            : 'text-slate-600 hover:bg-slate-100'
+                                                    }`}
+                                                    onClick={() => setShowSidebar(false)}
+                                                >
+                                                    <span>{menu.label}</span>
+                                                </Link>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            ))}
                         </nav>
 
                         <div className="px-6 py-4 border-t border-slate-200 text-xs text-text-muted">
@@ -116,7 +147,7 @@ export default function Authenticated({ auth, header, children }) {
 
                             <div className="flex items-center gap-3">
                                 <span className="hidden md:inline-flex rounded-full bg-emerald-100 text-emerald-700 px-2.5 py-1 text-xs">
-                                    {auth?.user?.role || 'user'}
+                                    {roleLabels[currentRole] || currentRole || 'user'}
                                 </span>
                                 <Dropdown>
                                     <Dropdown.Trigger>

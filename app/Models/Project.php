@@ -13,6 +13,7 @@ class Project extends Model
         'code',
         'name',
         'client_id',
+        'contract_id',
         'service_type',
         'start_date',
         'deadline',
@@ -40,6 +41,11 @@ class Project extends Model
     public function client()
     {
         return $this->belongsTo(Client::class);
+    }
+
+    public function contract()
+    {
+        return $this->belongsTo(Contract::class);
     }
 
     public function creator()

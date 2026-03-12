@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Models\Contract;
 use App\Models\Project;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -13,7 +14,7 @@ class ProjectController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = Project::query()->with(['client', 'creator']);
+        $query = Project::query()->with(['client', 'creator', 'contract']);
 
         if ($request->filled('status')) {
             $query->where('status', $request->input('status'));
@@ -44,24 +45,55 @@ class ProjectController extends Controller
         }
         $validated['created_by'] = $request->user()->id;
 
+        $contract = null;
+        if (! empty($validated['contract_id'])) {
+            $contract = Contract::find($validated['contract_id']);
+            if (! $contract) {
+                return response()->json(['message' => 'Hợp đồng không tồn tại.'], 422);
+            }
+            if (! empty($validated['client_id']) && (int) $validated['client_id'] !== (int) $contract->client_id) {
+                return response()->json(['message' => 'Khách hàng không khớp với hợp đồng.'], 422);
+            }
+            $validated['client_id'] = $contract->client_id;
+        }
+
         $project = Project::create($validated);
 
-        return response()->json($project->load(['client', 'creator']), 201);
+        if ($contract && empty($contract->project_id)) {
+            $contract->update(['project_id' => $project->id]);
+        }
+
+        return response()->json($project->load(['client', 'creator', 'contract']), 201);
     }
 
     public function show(Project $project): JsonResponse
     {
         return response()->json(
-            $project->load(['client', 'creator', 'tasks'])
+            $project->load(['client', 'creator', 'tasks', 'contract'])
         );
     }
 
     public function update(Request $request, Project $project): JsonResponse
     {
         $validated = $request->validate($this->rules($project->id));
+        $contract = null;
+        if (! empty($validated['contract_id'])) {
+            $contract = Contract::find($validated['contract_id']);
+            if (! $contract) {
+                return response()->json(['message' => 'Hợp đồng không tồn tại.'], 422);
+            }
+            if (! empty($validated['client_id']) && (int) $validated['client_id'] !== (int) $contract->client_id) {
+                return response()->json(['message' => 'Khách hàng không khớp với hợp đồng.'], 422);
+            }
+            $validated['client_id'] = $contract->client_id;
+        }
         $project->update($validated);
 
-        return response()->json($project->load(['client', 'creator']));
+        if ($contract && empty($contract->project_id)) {
+            $contract->update(['project_id' => $project->id]);
+        }
+
+        return response()->json($project->load(['client', 'creator', 'contract']));
     }
 
     public function destroy(Project $project): JsonResponse
@@ -84,6 +116,7 @@ class ProjectController extends Controller
             ],
             'name' => ['required', 'string', 'max:255'],
             'client_id' => ['nullable', 'integer', 'exists:clients,id'],
+            'contract_id' => ['nullable', 'integer', 'exists:contracts,id'],
             'service_type' => ['required', 'string', 'max:80'],
             'start_date' => ['nullable', 'date'],
             'deadline' => ['nullable', 'date'],

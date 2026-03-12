@@ -14,7 +14,7 @@ class CreateTasksTable extends Migration
             $table->string('title');
             $table->longText('description')->nullable();
             $table->string('priority', 20)->default('medium');
-            $table->string('status', 50)->default('nhan_task');
+            $table->string('status', 50)->default('todo');
             $table->dateTime('start_at')->nullable();
             $table->dateTime('deadline')->nullable();
             $table->dateTime('completed_at')->nullable();

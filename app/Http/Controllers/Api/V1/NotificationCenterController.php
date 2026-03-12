@@ -41,9 +41,19 @@ class NotificationCenterController extends Controller
                 ];
             });
 
-        $logs = ActivityLog::query()
-            ->with('user')
-            ->orderByDesc('created_at')
+        $logsQuery = ActivityLog::query()->with('user')->orderByDesc('created_at');
+        if (! in_array($user->role, ['admin', 'ke_toan'], true)) {
+            if ($user->role === 'quan_ly') {
+                $logsQuery->where(function ($builder) use ($user) {
+                    $builder->where('user_id', $user->id)
+                        ->orWhere('changes->manager_id', $user->id);
+                });
+            } else {
+                $logsQuery->where('user_id', $user->id);
+            }
+        }
+
+        $logs = $logsQuery
             ->limit((int) $request->input('log_limit', 20))
             ->get()
             ->map(function ($item) use ($reads) {

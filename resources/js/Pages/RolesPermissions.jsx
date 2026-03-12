@@ -8,10 +8,11 @@ export default function RolesPermissions(props) {
             title="Phân quyền người dùng"
             description="Quản trị vai trò hệ thống và quyền thao tác theo từng phòng ban."
             stats={[
-                { label: 'Tổng người dùng', value: '56' },
-                { label: 'Admin', value: '3' },
-                { label: 'Kinh doanh', value: '14' },
-                { label: 'Sản xuất', value: '39' },
+                { label: 'Tổng người dùng', value: '—' },
+                { label: 'Quản trị', value: '—' },
+                { label: 'Quản lý', value: '—' },
+                { label: 'Nhân sự', value: '—' },
+                { label: 'Kế toán', value: '—' },
             ]}
         >
             <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card overflow-hidden">
@@ -21,18 +22,18 @@ export default function RolesPermissions(props) {
                         <thead className="bg-slate-50">
                             <tr>
                                 <th className="text-left px-4 py-3">Vai trò</th>
-                                <th className="text-left px-4 py-3">Tạo dự án</th>
-                                <th className="text-left px-4 py-3">Sửa task SX</th>
-                                <th className="text-left px-4 py-3">Duyệt bàn giao</th>
-                                <th className="text-left px-4 py-3">Xem báo cáo tổng</th>
+                                <th className="text-left px-4 py-3">Khách hàng &amp; Hợp đồng</th>
+                                <th className="text-left px-4 py-3">Giao việc</th>
+                                <th className="text-left px-4 py-3">Bàn giao</th>
+                                <th className="text-left px-4 py-3">Báo cáo doanh thu</th>
                             </tr>
                         </thead>
                         <tbody>
                             {[
-                                ['Admin', 'Có', 'Có', 'Có', 'Có'],
-                                ['Trưởng phòng sản xuất', 'Có', 'Có', 'Có', 'Có'],
-                                ['Nhân sự sản xuất', 'Không', 'Có (task được giao)', 'Không', 'Không'],
-                                ['Nhân sự kinh doanh', 'Có', 'Không', 'Xem', 'Một phần'],
+                                ['Quản trị', 'Toàn quyền', 'Toàn quyền', 'Duyệt', 'Toàn công ty'],
+                                ['Quản lý phòng ban', 'Theo phòng ban', 'Giao & theo dõi', 'Duyệt', 'Phòng ban phụ trách'],
+                                ['Nhân sự', 'Xem theo phân công', 'Thực hiện', 'Tải lên', 'Không'],
+                                ['Kế toán', 'Tạo & duyệt hợp đồng', 'Không', 'Theo dõi', 'Doanh thu hợp đồng'],
                             ].map((row) => (
                                 <tr key={row[0]} className="border-t border-slate-100">
                                     {row.map((cell) => (

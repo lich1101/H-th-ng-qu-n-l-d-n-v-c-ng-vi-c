@@ -27,6 +27,7 @@ Du an web dung Laravel + React + MySQL cho he thong quan ly du an, task va ban g
    ```bash
    php artisan migrate
    php artisan db:seed
+   # Chi seed users: SEED_ONLY_USERS=true php artisan db:seed
    php artisan storage:link
    php artisan serve
    ```
@@ -63,12 +64,12 @@ Du an web dung Laravel + React + MySQL cho he thong quan ly du an, task va ban g
 
 - Middleware moi: `role`.
 - Quyen route chinh:
-  - `projects:create/update`: `admin`, `nhan_su_kinh_doanh`, `truong_phong_san_xuat`
+  - `projects:create/update`: `admin`, `quan_ly`
   - `projects:delete`: `admin`
-  - `tasks:create/delete`: `admin`, `truong_phong_san_xuat`
-  - `tasks:update`: `admin`, `truong_phong_san_xuat`, `nhan_su_san_xuat`
-  - `reminders:*`: `admin`, `truong_phong_san_xuat`
-  - `activity-logs:view`: `admin`, `truong_phong_san_xuat`
+  - `tasks:create/delete`: `admin`, `quan_ly`
+  - `tasks:update`: `admin`, `quan_ly`, `nhan_vien`
+  - `reminders:*`: `admin`, `quan_ly`
+  - `activity-logs:view`: `admin`, `quan_ly`
 
 ## Activity log tu dong
 
@@ -80,10 +81,10 @@ Du an web dung Laravel + React + MySQL cho he thong quan ly du an, task va ban g
 
 Mat khau chung: `password123`
 
-- `admin@noibo.local` - role `admin`
-- `sales@noibo.local` - role `nhan_su_kinh_doanh`
-- `leader@noibo.local` - role `truong_phong_san_xuat`
-- `staff@noibo.local` - role `nhan_su_san_xuat`
+- `dangvanbinh11012003@gmail.com` - role `admin` (mat khau: `khongdoipass`)
+- `manager@noibo.local` - role `quan_ly`
+- `staff@noibo.local` - role `nhan_vien`
+- `accountant@noibo.local` - role `ke_toan`
 
 ## Database schema da khoi tao
 

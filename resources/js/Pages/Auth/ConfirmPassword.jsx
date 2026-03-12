@@ -29,17 +29,17 @@ export default function ConfirmPassword() {
 
     return (
         <Guest>
-            <Head title="Confirm Password" />
+            <Head title="Xác nhận mật khẩu" />
 
             <div className="mb-4 text-sm text-gray-600">
-                This is a secure area of the application. Please confirm your password before continuing.
+                Đây là khu vực bảo mật của hệ thống. Vui lòng xác nhận mật khẩu trước khi tiếp tục.
             </div>
 
             <ValidationErrors errors={errors} />
 
             <form onSubmit={submit}>
                 <div className="mt-4">
-                    <Label forInput="password" value="Password" />
+                    <Label forInput="password" value="Mật khẩu" />
 
                     <Input
                         type="password"
@@ -53,7 +53,7 @@ export default function ConfirmPassword() {
 
                 <div className="flex items-center justify-end mt-4">
                     <Button className="ml-4" processing={processing}>
-                        Confirm
+                        Xác nhận
                     </Button>
                 </div>
             </form>

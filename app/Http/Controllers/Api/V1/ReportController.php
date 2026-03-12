@@ -9,6 +9,10 @@ use App\Models\ServiceAuditItem;
 use App\Models\ServiceContentItem;
 use App\Models\ServiceWebsiteCareItem;
 use App\Models\Task;
+use App\Models\DepartmentAssignment;
+use App\Models\Department;
+use App\Models\Contract;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 
 class ReportController extends Controller
@@ -20,10 +24,10 @@ class ReportController extends Controller
         $pendingReviewProjects = Project::where('status', 'cho_duyet')->count();
 
         $totalTasks = Task::count();
-        $completedTasks = Task::whereIn('status', ['done', 'hoan_tat_ban_giao'])->count();
+        $completedTasks = Task::whereIn('status', ['done'])->count();
         $overdueTasks = Task::whereNotNull('deadline')
             ->where('deadline', '<', now())
-            ->whereNotIn('status', ['done', 'hoan_tat_ban_giao'])
+            ->whereNotIn('status', ['done'])
             ->count();
 
         $serviceBreakdown = Project::selectRaw('service_type, COUNT(*) as total')
@@ -121,6 +125,148 @@ class ReportController extends Controller
             'website_ranking_avg' => $websiteRanking,
             'da_buckets' => $daBuckets,
             'recent_links' => $recentLinks,
+        ]);
+    }
+
+    public function revenueByDepartment(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $departmentsQuery = Department::query()->with('manager');
+
+        if ($user->role === 'quan_ly') {
+            $deptIds = $user->managedDepartments()->pluck('id');
+            $departmentsQuery->whereIn('id', $deptIds);
+        } elseif ($user->role === 'nhan_vien') {
+            $departmentsQuery->where('id', $user->department_id ?? 0);
+        }
+
+        $departments = $departmentsQuery->get();
+        $deptIds = $departments->pluck('id')->all();
+
+        $assignments = DepartmentAssignment::query()
+            ->with(['contract'])
+            ->whereIn('department_id', $deptIds)
+            ->get();
+
+        $totals = [];
+        foreach ($assignments as $assignment) {
+            $contract = $assignment->contract;
+            if ($contract && $contract->approval_status !== 'approved') {
+                continue;
+            }
+            $amount = $assignment->allocated_value;
+            if ($amount === null && $contract) {
+                $amount = $contract->value;
+            }
+            $amount = (float) ($amount ?? 0);
+            if (! isset($totals[$assignment->department_id])) {
+                $totals[$assignment->department_id] = 0;
+            }
+            $totals[$assignment->department_id] += $amount;
+        }
+
+        $rows = $departments->map(function ($dept) use ($totals) {
+            return [
+                'department_id' => $dept->id,
+                'department_name' => $dept->name,
+                'manager' => optional($dept->manager)->name,
+                'revenue' => round((float) ($totals[$dept->id] ?? 0), 2),
+            ];
+        })->values();
+
+        $totalRevenue = $rows->sum('revenue');
+
+        $staffRows = [];
+        $contractsTotal = 0;
+        if (! empty($deptIds)) {
+            $contractsTotal = Contract::query()
+                ->join('clients', 'contracts.client_id', '=', 'clients.id')
+                ->where('contracts.approval_status', 'approved')
+                ->whereIn('clients.assigned_department_id', $deptIds)
+                ->count();
+
+            $staffRevenue = Contract::query()
+                ->selectRaw('clients.assigned_staff_id as staff_id, SUM(contracts.value) as revenue, COUNT(*) as contracts')
+                ->join('clients', 'contracts.client_id', '=', 'clients.id')
+                ->where('contracts.approval_status', 'approved')
+                ->whereNotNull('clients.assigned_staff_id')
+                ->whereIn('clients.assigned_department_id', $deptIds)
+                ->groupBy('clients.assigned_staff_id')
+                ->get();
+
+            $staffMap = User::query()
+                ->whereIn('id', $staffRevenue->pluck('staff_id'))
+                ->get()
+                ->keyBy('id');
+
+            $staffRows = $staffRevenue->map(function ($item) use ($staffMap) {
+                $user = $staffMap->get($item->staff_id);
+                return [
+                    'staff_id' => (int) $item->staff_id,
+                    'staff_name' => $user ? $user->name : '—',
+                    'department_id' => $user ? $user->department_id : null,
+                    'revenue' => round((float) $item->revenue, 2),
+                    'contracts' => (int) $item->contracts,
+                ];
+            })->values();
+        }
+
+        return response()->json([
+            'total_revenue' => $totalRevenue,
+            'departments' => $rows,
+            'contracts_total' => $contractsTotal,
+            'staffs' => $staffRows,
+        ]);
+    }
+
+    public function companyRevenue(): JsonResponse
+    {
+        $approved = Contract::query()->where('approval_status', 'approved');
+
+        $totalRevenue = (float) $approved->sum('value');
+        $contractsTotal = (int) $approved->count();
+
+        $monthlyRows = Contract::query()
+            ->where('approval_status', 'approved')
+            ->selectRaw("DATE_FORMAT(COALESCE(signed_at, approved_at, created_at), '%Y-%m') as month, SUM(value) as revenue, COUNT(*) as contracts")
+            ->groupBy('month')
+            ->orderByDesc('month')
+            ->limit(6)
+            ->get()
+            ->sortBy('month')
+            ->values()
+            ->map(function ($item) {
+                return [
+                    'month' => $item->month,
+                    'revenue' => round((float) $item->revenue, 2),
+                    'contracts' => (int) $item->contracts,
+                ];
+            });
+
+        $topCustomers = Contract::query()
+            ->join('clients', 'contracts.client_id', '=', 'clients.id')
+            ->where('contracts.approval_status', 'approved')
+            ->selectRaw('clients.id as client_id, clients.name, clients.company, SUM(contracts.value) as revenue, COUNT(*) as contracts')
+            ->groupBy('clients.id', 'clients.name', 'clients.company')
+            ->orderByDesc('revenue')
+            ->limit(5)
+            ->get()
+            ->map(function ($item) {
+                return [
+                    'client_id' => (int) $item->client_id,
+                    'name' => $item->name,
+                    'company' => $item->company,
+                    'revenue' => round((float) $item->revenue, 2),
+                    'contracts' => (int) $item->contracts,
+                ];
+            })
+            ->values();
+
+        return response()->json([
+            'total_revenue' => round($totalRevenue, 2),
+            'contracts_total' => $contractsTotal,
+            'monthly' => $monthlyRows,
+            'top_customers' => $topCustomers,
         ]);
     }
 }

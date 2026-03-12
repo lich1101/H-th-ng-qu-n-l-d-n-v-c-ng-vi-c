@@ -1,23 +1,20 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import PageContainer from '@/Components/PageContainer';
+import Modal from '@/Components/Modal';
 import RoleBarChart from '@/Components/RoleBarChart';
 
 const roleLabels = {
-    admin: 'Admin',
-    truong_phong_san_xuat: 'Trưởng phòng sản xuất',
-    nhan_su_san_xuat: 'Nhân sự sản xuất',
-    nhan_su_kinh_doanh: 'Nhân sự kinh doanh',
+    admin: 'Quản trị',
+    quan_ly: 'Quản lý',
+    nhan_vien: 'Nhân sự',
+    ke_toan: 'Kế toán',
 };
 
 export default function UserAccountsDashboard(props) {
-    const [filters, setFilters] = useState({
-        search: '',
-        role: '',
-        status: '',
-        page: 1,
-    });
+    const [filters, setFilters] = useState({ search: '', role: '', status: '', page: 1 });
     const [usersData, setUsersData] = useState([]);
+    const [departments, setDepartments] = useState([]);
     const [pagination, setPagination] = useState({ current_page: 1, last_page: 1 });
     const [stats, setStats] = useState({
         total_users: 0,
@@ -30,12 +27,13 @@ export default function UserAccountsDashboard(props) {
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
     const [editingId, setEditingId] = useState(null);
+    const [showForm, setShowForm] = useState(false);
     const [form, setForm] = useState({
         name: '',
         email: '',
         password: '',
-        role: 'nhan_su_san_xuat',
-        department: 'san_xuat',
+        role: 'nhan_vien',
+        department_id: '',
         phone: '',
         workload_capacity: 100,
         is_active: true,
@@ -62,24 +60,26 @@ export default function UserAccountsDashboard(props) {
         }
     };
 
+    const fetchDepartments = async () => {
+        try {
+            const res = await axios.get('/api/v1/departments');
+            setDepartments(res.data || []);
+        } catch {
+            setDepartments([]);
+        }
+    };
+
     useEffect(() => {
         fetchAccounts(filters);
     }, [filters.page, filters.role, filters.status]);
 
     useEffect(() => {
+        fetchDepartments();
         const timer = window.setInterval(() => {
             fetchAccounts(filters);
         }, 30000);
         return () => window.clearInterval(timer);
     }, [filters]);
-
-    const statusPercent = useMemo(() => {
-        const total = stats.total_users || 1;
-        return {
-            active: Math.round((stats.active_users / total) * 100),
-            inactive: Math.round((stats.inactive_users / total) * 100),
-        };
-    }, [stats]);
 
     const submitSearch = (e) => {
         e.preventDefault();
@@ -95,12 +95,22 @@ export default function UserAccountsDashboard(props) {
             name: '',
             email: '',
             password: '',
-            role: 'nhan_su_san_xuat',
-            department: 'san_xuat',
+            role: 'nhan_vien',
+            department_id: '',
             phone: '',
             workload_capacity: 100,
             is_active: true,
         });
+    };
+
+    const openCreate = () => {
+        resetForm();
+        setShowForm(true);
+    };
+
+    const closeForm = () => {
+        setShowForm(false);
+        resetForm();
     };
 
     const submitAccount = async (e) => {
@@ -109,8 +119,15 @@ export default function UserAccountsDashboard(props) {
         setMessage('');
         setErrorMessage('');
         try {
+            const dept = departments.find((d) => String(d.id) === String(form.department_id));
             const payload = {
-                ...form,
+                name: form.name,
+                email: form.email,
+                password: form.password,
+                role: form.role,
+                department: dept?.name || null,
+                department_id: form.department_id ? Number(form.department_id) : null,
+                phone: form.phone || null,
                 workload_capacity: Number(form.workload_capacity),
                 is_active: Boolean(form.is_active),
             };
@@ -128,7 +145,7 @@ export default function UserAccountsDashboard(props) {
                 await axios.post('/api/v1/users/accounts', payload);
                 setMessage('Tạo tài khoản thành công.');
             }
-            resetForm();
+            closeForm();
             fetchAccounts(filters);
         } catch (error) {
             setErrorMessage(error?.response?.data?.message || 'Không thể lưu tài khoản.');
@@ -143,14 +160,15 @@ export default function UserAccountsDashboard(props) {
             name: user.name || '',
             email: user.email || '',
             password: '',
-            role: user.role || 'nhan_su_san_xuat',
-            department: user.department || '',
+            role: user.role || 'nhan_vien',
+            department_id: user.department_id || '',
             phone: user.phone || '',
             workload_capacity: user.workload_capacity ?? 100,
             is_active: Boolean(user.is_active),
         });
         setMessage('');
         setErrorMessage('');
+        setShowForm(true);
     };
 
     const deleteAccount = async (user) => {
@@ -168,11 +186,19 @@ export default function UserAccountsDashboard(props) {
         }
     };
 
+    const statusPercent = useMemo(() => {
+        const total = stats.total_users || 1;
+        return {
+            active: Math.round((stats.active_users / total) * 100),
+            inactive: Math.round((stats.inactive_users / total) * 100),
+        };
+    }, [stats]);
+
     return (
         <PageContainer
             auth={props.auth}
             title="Bảng điều khiển tài khoản người dùng"
-            description="Theo dõi phân bổ vai trò, trạng thái hoạt động và hiệu suất xử lý công việc của nhân sự."
+            description="Theo dõi phân bổ vai trò, trạng thái hoạt động và năng lực xử lý công việc."
             stats={[
                 { label: 'Tổng tài khoản', value: stats.total_users },
                 { label: 'Đang hoạt động', value: stats.active_users },
@@ -180,10 +206,65 @@ export default function UserAccountsDashboard(props) {
                 { label: 'Đăng nhập hôm nay', value: stats.login_today },
             ]}
         >
-            <div className="mb-4 bg-white rounded-2xl border border-slate-200/80 p-4 shadow-card">
-                <h3 className="font-semibold text-slate-900 mb-3">
-                    {editingId ? 'Sửa tài khoản' : 'Thêm tài khoản mới'}
-                </h3>
+            <div className="mb-4 flex items-center justify-between">
+                <div>
+                    <h3 className="font-semibold text-slate-900">Tài khoản người dùng</h3>
+                    <p className="text-xs text-text-muted">Thêm mới hoặc chỉnh sửa thông tin người dùng.</p>
+                </div>
+                <button
+                    type="button"
+                    className="rounded-xl bg-primary text-white px-4 py-2 text-sm font-semibold"
+                    onClick={openCreate}
+                >
+                    Thêm mới
+                </button>
+            </div>
+
+            <form onSubmit={submitSearch} className="mb-4 bg-white rounded-2xl border border-slate-200/80 p-4 shadow-card">
+                <div className="grid gap-3 md:grid-cols-4">
+                    <input
+                        type="text"
+                        value={filters.search}
+                        onChange={(e) => setFilters((prev) => ({ ...prev, search: e.target.value }))}
+                        placeholder="Tìm theo tên hoặc email"
+                        className="rounded-lg border-slate-300 text-sm"
+                    />
+                    <select
+                        value={filters.role}
+                        onChange={(e) => setFilters((prev) => ({ ...prev, page: 1, role: e.target.value }))}
+                        className="rounded-lg border-slate-300 text-sm"
+                    >
+                        <option value="">Tất cả vai trò</option>
+                        <option value="admin">Admin</option>
+                        <option value="quan_ly">Quản lý</option>
+                        <option value="nhan_vien">Nhân sự</option>
+                        <option value="ke_toan">Kế toán</option>
+                    </select>
+                    <select
+                        value={filters.status}
+                        onChange={(e) => setFilters((prev) => ({ ...prev, page: 1, status: e.target.value }))}
+                        className="rounded-lg border-slate-300 text-sm"
+                    >
+                        <option value="">Tất cả trạng thái</option>
+                        <option value="active">Đang hoạt động</option>
+                        <option value="inactive">Tạm khóa</option>
+                    </select>
+                    <button
+                        type="submit"
+                        className="rounded-lg bg-sky-600 text-white text-sm font-semibold hover:bg-sky-700 transition"
+                    >
+                        Tìm kiếm
+                    </button>
+                </div>
+            </form>
+
+            <Modal
+                open={showForm}
+                onClose={closeForm}
+                title={editingId ? 'Sửa tài khoản' : 'Thêm tài khoản mới'}
+                description="Cập nhật thông tin và phân quyền người dùng."
+                size="xl"
+            >
                 <form onSubmit={submitAccount} className="grid gap-3 md:grid-cols-4">
                     <input
                         type="text"
@@ -214,17 +295,22 @@ export default function UserAccountsDashboard(props) {
                         className="rounded-lg border-slate-300 text-sm"
                     >
                         <option value="admin">Admin</option>
-                        <option value="truong_phong_san_xuat">Trưởng phòng sản xuất</option>
-                        <option value="nhan_su_san_xuat">Nhân sự sản xuất</option>
-                        <option value="nhan_su_kinh_doanh">Nhân sự kinh doanh</option>
+                        <option value="quan_ly">Quản lý</option>
+                        <option value="nhan_vien">Nhân sự</option>
+                        <option value="ke_toan">Kế toán</option>
                     </select>
-                    <input
-                        type="text"
-                        placeholder="Phòng ban"
-                        value={form.department}
-                        onChange={(e) => setForm((prev) => ({ ...prev, department: e.target.value }))}
+                    <select
+                        value={form.department_id}
+                        onChange={(e) => setForm((prev) => ({ ...prev, department_id: e.target.value }))}
                         className="rounded-lg border-slate-300 text-sm"
-                    />
+                    >
+                        <option value="">Chọn phòng ban</option>
+                        {departments.map((dept) => (
+                            <option key={dept.id} value={dept.id}>
+                                {dept.name}
+                            </option>
+                        ))}
+                    </select>
                     <input
                         type="text"
                         placeholder="Số điện thoại"
@@ -258,58 +344,18 @@ export default function UserAccountsDashboard(props) {
                         >
                             {editingId ? 'Lưu chỉnh sửa' : 'Thêm tài khoản'}
                         </button>
-                        {editingId && (
-                            <button
-                                type="button"
-                                onClick={resetForm}
-                                className="rounded-lg border border-slate-300 text-sm px-4 py-2"
-                            >
-                                Hủy sửa
-                            </button>
-                        )}
+                        <button
+                            type="button"
+                            onClick={closeForm}
+                            className="rounded-lg border border-slate-300 text-sm px-4 py-2"
+                        >
+                            Hủy
+                        </button>
                         {message && <span className="text-sm text-emerald-700">{message}</span>}
                         {errorMessage && <span className="text-sm text-rose-700">{errorMessage}</span>}
                     </div>
                 </form>
-            </div>
-
-            <form onSubmit={submitSearch} className="mb-4 bg-white rounded-2xl border border-slate-200/80 p-4 shadow-card">
-                <div className="grid gap-3 md:grid-cols-4">
-                    <input
-                        type="text"
-                        value={filters.search}
-                        onChange={(e) => setFilters((prev) => ({ ...prev, search: e.target.value }))}
-                        placeholder="Tìm theo tên hoặc email"
-                        className="rounded-lg border-slate-300 text-sm"
-                    />
-                    <select
-                        value={filters.role}
-                        onChange={(e) => setFilters((prev) => ({ ...prev, page: 1, role: e.target.value }))}
-                        className="rounded-lg border-slate-300 text-sm"
-                    >
-                        <option value="">Tất cả vai trò</option>
-                        <option value="admin">Admin</option>
-                        <option value="truong_phong_san_xuat">Trưởng phòng sản xuất</option>
-                        <option value="nhan_su_san_xuat">Nhân sự sản xuất</option>
-                        <option value="nhan_su_kinh_doanh">Nhân sự kinh doanh</option>
-                    </select>
-                    <select
-                        value={filters.status}
-                        onChange={(e) => setFilters((prev) => ({ ...prev, page: 1, status: e.target.value }))}
-                        className="rounded-lg border-slate-300 text-sm"
-                    >
-                        <option value="">Tất cả trạng thái</option>
-                        <option value="active">Đang hoạt động</option>
-                        <option value="inactive">Tạm khóa</option>
-                    </select>
-                    <button
-                        type="submit"
-                        className="rounded-lg bg-sky-600 text-white text-sm font-semibold hover:bg-sky-700 transition"
-                    >
-                        Tìm kiếm
-                    </button>
-                </div>
-            </form>
+            </Modal>
 
             <div className="grid gap-4 xl:grid-cols-3 mb-4">
                 <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card xl:col-span-2">
@@ -318,123 +364,97 @@ export default function UserAccountsDashboard(props) {
                         <table className="min-w-full text-sm">
                             <thead className="bg-slate-50 text-slate-600">
                                 <tr>
-                                    <th className="text-left px-3 py-2">Họ tên</th>
-                                    <th className="text-left px-3 py-2">Vai trò</th>
-                                    <th className="text-left px-3 py-2">Phòng ban</th>
-                                    <th className="text-left px-3 py-2">Trạng thái</th>
-                                    <th className="text-left px-3 py-2">Hiệu suất</th>
-                                    <th className="text-left px-3 py-2">Thao tác</th>
+                                    <th className="px-3 py-2 text-left">Tên</th>
+                                    <th className="px-3 py-2 text-left">Vai trò</th>
+                                    <th className="px-3 py-2 text-left">Phòng ban</th>
+                                    <th className="px-3 py-2 text-left">Năng lực</th>
+                                    <th className="px-3 py-2 text-left">Trạng thái</th>
+                                    <th className="px-3 py-2 text-right">Thao tác</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {!loading && usersData.length === 0 && (
-                                    <tr>
-                                        <td colSpan={6} className="px-3 py-6 text-center text-slate-500">
-                                            Không có tài khoản phù hợp bộ lọc.
-                                        </td>
-                                    </tr>
-                                )}
                                 {usersData.map((user) => (
-                                    <tr key={user.id} className="border-t border-slate-100">
+                                    <tr key={user.id} className="border-b border-slate-100">
                                         <td className="px-3 py-2">
-                                            <p className="font-medium">{user.name}</p>
-                                            <p className="text-xs text-slate-500">{user.email}</p>
+                                            <div className="font-medium text-slate-900">{user.name}</div>
+                                            <div className="text-xs text-text-muted">{user.email}</div>
                                         </td>
                                         <td className="px-3 py-2">{toRoleLabel(user.role)}</td>
-                                        <td className="px-3 py-2">{user.department || '-'}</td>
                                         <td className="px-3 py-2">
-                                            {user.is_active ? (
-                                                <span className="px-2 py-1 rounded-full text-xs bg-emerald-100 text-emerald-700">Đang hoạt động</span>
-                                            ) : (
-                                                <span className="px-2 py-1 rounded-full text-xs bg-rose-100 text-rose-700">Tạm khóa</span>
-                                            )}
+                                            {departments.find((d) => d.id === user.department_id)?.name || user.department || '—'}
                                         </td>
-                                        <td className="px-3 py-2">{user.workload_capacity}%</td>
                                         <td className="px-3 py-2">
-                                            <div className="flex gap-2">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => startEdit(user)}
-                                                    className="text-xs px-2 py-1 rounded bg-amber-100 text-amber-800"
-                                                >
-                                                    Sửa
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => deleteAccount(user)}
-                                                    className="text-xs px-2 py-1 rounded bg-rose-100 text-rose-800"
-                                                >
-                                                    Xóa
-                                                </button>
-                                            </div>
+                                            {user.workload_capacity ?? 0}%
+                                        </td>
+                                        <td className="px-3 py-2">
+                                            <span
+                                                className={`rounded-full px-2 py-1 text-xs font-semibold ${
+                                                    user.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                                                }`}
+                                            >
+                                                {user.is_active ? 'Hoạt động' : 'Tạm khóa'}
+                                            </span>
+                                        </td>
+                                        <td className="px-3 py-2 text-right space-x-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => startEdit(user)}
+                                                className="text-xs font-semibold text-primary"
+                                            >
+                                                Sửa
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => deleteAccount(user)}
+                                                className="text-xs font-semibold text-rose-500"
+                                            >
+                                                Xóa
+                                            </button>
                                         </td>
                                     </tr>
                                 ))}
+                                {usersData.length === 0 && !loading && (
+                                    <tr>
+                                        <td colSpan={6} className="px-3 py-6 text-center text-sm text-text-muted">
+                                            Không có dữ liệu.
+                                        </td>
+                                    </tr>
+                                )}
                             </tbody>
                         </table>
                     </div>
-                    <div className="mt-3 flex justify-between items-center text-sm">
-                        <span className="text-slate-500">
-                            Trang {pagination.current_page}/{pagination.last_page}
+                    <div className="flex items-center justify-between text-xs text-text-muted mt-3">
+                        <span>
+                            Trang {pagination.current_page} / {pagination.last_page}
                         </span>
-                        <div className="flex gap-2">
+                        <div className="space-x-2">
                             <button
                                 type="button"
-                                onClick={() => setFilters((prev) => ({ ...prev, page: Math.max(1, prev.page - 1) }))}
                                 disabled={pagination.current_page <= 1}
-                                className="px-3 py-1 rounded border border-slate-300 disabled:opacity-50"
+                                onClick={() => setFilters((prev) => ({ ...prev, page: prev.page - 1 }))}
+                                className="rounded-lg border border-slate-200 px-2 py-1 disabled:opacity-50"
                             >
                                 Trước
                             </button>
                             <button
                                 type="button"
-                                onClick={() => setFilters((prev) => ({ ...prev, page: Math.min(pagination.last_page, prev.page + 1) }))}
                                 disabled={pagination.current_page >= pagination.last_page}
-                                className="px-3 py-1 rounded border border-slate-300 disabled:opacity-50"
+                                onClick={() => setFilters((prev) => ({ ...prev, page: prev.page + 1 }))}
+                                className="rounded-lg border border-slate-200 px-2 py-1 disabled:opacity-50"
                             >
                                 Sau
                             </button>
                         </div>
                     </div>
                 </div>
-
                 <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
-                    <h3 className="font-semibold text-slate-900 mb-3">Biểu đồ phân bổ vai trò</h3>
-                    <RoleBarChart data={(stats.role_distribution || []).map((item) => ({
-                        label: toRoleLabel(item.label),
-                        value: item.value,
-                    }))} />
-                </div>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-                <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
-                    <h3 className="font-semibold mb-3">Biểu đồ trạng thái tài khoản</h3>
-                    <div className="space-y-3 text-sm">
-                        <div>
-                            <div className="flex justify-between"><span>Hoạt động</span><span>{statusPercent.active}%</span></div>
-                            <div className="h-2 bg-slate-200 rounded-full mt-1"><div className="h-2 rounded-full bg-emerald-500" style={{ width: `${statusPercent.active}%` }} /></div>
-                        </div>
-                        <div>
-                            <div className="flex justify-between"><span>Tạm khóa</span><span>{statusPercent.inactive}%</span></div>
-                            <div className="h-2 bg-slate-200 rounded-full mt-1"><div className="h-2 rounded-full bg-rose-500" style={{ width: `${statusPercent.inactive}%` }} /></div>
-                        </div>
+                    <h3 className="font-semibold text-slate-900 mb-3">Phân bổ vai trò</h3>
+                    <RoleBarChart data={stats.role_distribution || []} />
+                    <div className="mt-4 text-xs text-text-muted space-y-1">
+                        <p>Hoạt động: {statusPercent.active}%</p>
+                        <p>Không hoạt động: {statusPercent.inactive}%</p>
+                        <p>Năng lực TB: {stats.average_capacity}%</p>
                     </div>
-                </div>
-
-                <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
-                    <h3 className="font-semibold mb-3">Cảnh báo tài khoản</h3>
-                    <ul className="space-y-2 text-sm">
-                        <li className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-                            {stats.inactive_users} tài khoản đang tạm khóa cần rà soát.
-                        </li>
-                        <li className="rounded-lg border border-sky-200 bg-sky-50 p-3">
-                            Năng lực xử lý trung bình: {stats.average_capacity}%.
-                        </li>
-                        <li className="rounded-lg border border-rose-200 bg-rose-50 p-3">
-                            Cần kiểm tra quyền nhóm có tỷ lệ tải cao hơn 85%.
-                        </li>
-                    </ul>
                 </div>
             </div>
         </PageContainer>

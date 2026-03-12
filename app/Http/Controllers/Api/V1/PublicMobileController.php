@@ -17,7 +17,7 @@ class PublicMobileController extends Controller
         $progressItems = Project::withCount([
             'tasks as total_tasks',
             'tasks as completed_tasks' => function ($query) {
-                $query->whereIn('status', ['done', 'hoan_tat_ban_giao']);
+                $query->whereIn('status', ['done']);
             },
         ])
             ->orderByDesc('updated_at')
@@ -51,7 +51,7 @@ class PublicMobileController extends Controller
 
         $workloadThreshold = (int) env('WORKLOAD_THRESHOLD', 8);
         $activeTasks = Task::query()
-            ->whereNotIn('status', ['done', 'hoan_tat_ban_giao'])
+            ->whereNotIn('status', ['done'])
             ->whereNotNull('assignee_id');
         $activeByUser = $activeTasks
             ->clone()
@@ -59,7 +59,7 @@ class PublicMobileController extends Controller
             ->groupBy('assignee_id')
             ->pluck('total', 'assignee_id');
         $overdueByUser = Task::query()
-            ->whereNotIn('status', ['done', 'hoan_tat_ban_giao'])
+            ->whereNotIn('status', ['done'])
             ->whereNotNull('deadline')
             ->where('deadline', '<', now())
             ->select('assignee_id', DB::raw('COUNT(*) as total'))
@@ -93,10 +93,11 @@ class PublicMobileController extends Controller
             'projects_in_progress' => Project::where('status', 'dang_trien_khai')->count(),
             'tasks_due_soon' => Task::whereNotNull('deadline')
                 ->whereBetween('deadline', [now(), now()->addDays(3)])
+                ->whereNotIn('status', ['done'])
                 ->count(),
             'tasks_overdue' => Task::whereNotNull('deadline')
                 ->where('deadline', '<', now())
-                ->whereNotIn('status', ['done', 'hoan_tat_ban_giao'])
+                ->whereNotIn('status', ['done'])
                 ->count(),
             'on_time_rate' => $this->onTimeRate(),
             'project_progress' => $progressItems,
@@ -136,7 +137,7 @@ class PublicMobileController extends Controller
         }
         $overdue = Task::whereNotNull('deadline')
             ->where('deadline', '<', now())
-            ->whereNotIn('status', ['done', 'hoan_tat_ban_giao'])
+            ->whereNotIn('status', ['done'])
             ->count();
 
         return round((($total - $overdue) / $total) * 100, 1);

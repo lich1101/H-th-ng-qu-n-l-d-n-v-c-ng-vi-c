@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
+use App\Http\Controllers\LeadFormPublicController;
 
 /*
 |--------------------------------------------------------------------------
@@ -27,34 +28,45 @@ Route::get('/dashboard', function () {
     return Inertia::render('Dashboard');
 })->middleware(['auth', 'verified'])->name('dashboard');
 
+Route::get('/lead-forms/{slug}', [LeadFormPublicController::class, 'show'])->name('lead-forms.public');
+Route::post('/lead-forms/{slug}/submit', [LeadFormPublicController::class, 'submit'])->name('lead-forms.submit');
+
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/du-an', function () {
         return Inertia::render('ProjectsKanban');
-    })->name('projects.kanban')->middleware('role:admin,nhan_su_kinh_doanh,truong_phong_san_xuat');
+    })->name('projects.kanban')->middleware('role:admin,quan_ly');
 
     Route::get('/cong-viec', function () {
         return Inertia::render('TasksBoard');
-    })->name('tasks.board')->middleware('role:admin,truong_phong_san_xuat,nhan_su_san_xuat');
+    })->name('tasks.board')->middleware('role:admin,quan_ly,nhan_vien');
 
     Route::get('/deadline', function () {
         return Inertia::render('DeadlineReminders');
-    })->name('deadlines.index')->middleware('role:admin,truong_phong_san_xuat,nhan_su_san_xuat,nhan_su_kinh_doanh');
+    })->name('deadlines.index')->middleware('role:admin,quan_ly,nhan_vien');
 
     Route::get('/ban-giao', function () {
         return Inertia::render('HandoverCenter');
-    })->name('handover.index')->middleware('role:admin,truong_phong_san_xuat,nhan_su_san_xuat,nhan_su_kinh_doanh');
+    })->name('handover.index')->middleware('role:admin,quan_ly,nhan_vien');
 
     Route::get('/bao-cao-kpi', function () {
         return Inertia::render('ReportsKPI');
-    })->name('reports.kpi')->middleware('role:admin,truong_phong_san_xuat');
+    })->name('reports.kpi')->middleware('role:admin,quan_ly');
+
+    Route::get('/bao-cao-doanh-thu', function () {
+        return Inertia::render('RevenueReport');
+    })->name('reports.revenue')->middleware('role:admin,quan_ly');
+
+    Route::get('/bao-cao-doanh-thu-cong-ty', function () {
+        return Inertia::render('CompanyRevenueReport');
+    })->name('reports.company')->middleware('role:admin');
 
     Route::get('/quy-trinh-dich-vu', function () {
         return Inertia::render('ServiceWorkflows');
-    })->name('services.workflows')->middleware('role:admin,truong_phong_san_xuat,nhan_su_san_xuat');
+    })->name('services.workflows')->middleware('role:admin,quan_ly,nhan_vien');
 
     Route::get('/lich-hop', function () {
         return Inertia::render('Meetings');
-    })->name('meetings.index')->middleware('role:admin,truong_phong_san_xuat,nhan_su_kinh_doanh');
+    })->name('meetings.index')->middleware('role:admin,quan_ly');
 
     Route::get('/chat-noi-bo', function () {
         return Inertia::render('InternalChat');
@@ -66,15 +78,47 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('/nhat-ky-he-thong', function () {
         return Inertia::render('ActivityLogs');
-    })->name('activity.logs')->middleware('role:admin,truong_phong_san_xuat');
+    })->name('activity.logs')->middleware('role:admin,quan_ly');
 
     Route::get('/crm-mini', function () {
         return Inertia::render('CRM');
-    })->name('crm.index')->middleware('role:admin,nhan_su_kinh_doanh');
+    })->name('crm.index')->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
+
+    Route::get('/co-hoi', function () {
+        return Inertia::render('Opportunities');
+    })->name('opportunities.index')->middleware('role:admin,quan_ly,nhan_vien');
+
+    Route::get('/hop-dong', function () {
+        return Inertia::render('Contracts');
+    })->name('contracts.index')->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
+
+    Route::get('/san-pham', function () {
+        return Inertia::render('Products');
+    })->name('products.index')->middleware('role:admin,ke_toan,quan_ly,nhan_vien');
+
+    Route::get('/form-tu-van', function () {
+        return Inertia::render('LeadForms');
+    })->name('lead-forms.index')->middleware('role:admin');
+
+    Route::get('/trang-thai-khach-hang', function () {
+        return Inertia::render('LeadTypes');
+    })->name('lead-types.index')->middleware('role:admin');
+
+    Route::get('/hang-doanh-thu', function () {
+        return Inertia::render('RevenueTiers');
+    })->name('revenue-tiers.index')->middleware('role:admin');
+
+    Route::get('/phong-ban', function () {
+        return Inertia::render('Departments');
+    })->name('departments.index')->middleware('role:admin,quan_ly');
+
+    Route::get('/dieu-phoi-phong-ban', function () {
+        return Inertia::render('DepartmentAssignments');
+    })->name('department-assignments.index')->middleware('role:admin,quan_ly,nhan_vien');
 
     Route::get('/tai-khoan', function () {
         return Inertia::render('UserAccountsDashboard');
-    })->name('accounts.dashboard')->middleware('role:admin,truong_phong_san_xuat');
+    })->name('accounts.dashboard')->middleware('role:admin');
 
     Route::get('/phan-quyen', function () {
         return Inertia::render('RolesPermissions');

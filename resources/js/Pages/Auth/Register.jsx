@@ -32,13 +32,13 @@ export default function Register() {
 
     return (
         <Guest>
-            <Head title="Register" />
+            <Head title="Đăng ký" />
 
             <ValidationErrors errors={errors} />
 
             <form onSubmit={submit}>
                 <div>
-                    <Label forInput="name" value="Name" />
+                    <Label forInput="name" value="Họ tên" />
 
                     <Input
                         type="text"
@@ -67,7 +67,7 @@ export default function Register() {
                 </div>
 
                 <div className="mt-4">
-                    <Label forInput="password" value="Password" />
+                    <Label forInput="password" value="Mật khẩu" />
 
                     <Input
                         type="password"
@@ -81,7 +81,7 @@ export default function Register() {
                 </div>
 
                 <div className="mt-4">
-                    <Label forInput="password_confirmation" value="Confirm Password" />
+                    <Label forInput="password_confirmation" value="Xác nhận mật khẩu" />
 
                     <Input
                         type="password"
@@ -95,11 +95,11 @@ export default function Register() {
 
                 <div className="flex items-center justify-end mt-4">
                     <Link href={route('login')} className="underline text-sm text-gray-600 hover:text-gray-900">
-                        Already registered?
+                        Đã có tài khoản?
                     </Link>
 
                     <Button className="ml-4" processing={processing}>
-                        Register
+                        Đăng ký
                     </Button>
                 </div>
             </form>

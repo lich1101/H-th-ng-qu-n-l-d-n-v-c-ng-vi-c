@@ -71,7 +71,7 @@ class TaskAttachmentController extends Controller
         }
 
         $user = $request->user();
-        if (! $user || ! in_array($user->role, ['admin', 'truong_phong_san_xuat'], true) && $attachment->uploaded_by !== $user->id) {
+        if (! $user || ! in_array($user->role, ['admin', 'quan_ly'], true) && $attachment->uploaded_by !== $user->id) {
             return response()->json(['message' => 'Forbidden.'], 403);
         }
 

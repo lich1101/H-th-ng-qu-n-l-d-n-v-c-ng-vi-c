@@ -12,9 +12,9 @@ class SystemMetaController extends Controller
         return response()->json([
             'roles' => [
                 'admin',
-                'truong_phong_san_xuat',
-                'nhan_su_san_xuat',
-                'nhan_su_kinh_doanh',
+                'quan_ly',
+                'nhan_vien',
+                'ke_toan',
             ],
             'project_statuses' => [
                 'moi_tao',
@@ -24,11 +24,10 @@ class SystemMetaController extends Controller
                 'tam_dung',
             ],
             'task_statuses' => [
-                'nhan_task',
-                'dang_trien_khai',
+                'todo',
+                'doing',
                 'done',
-                'hen_meet_ban_giao',
-                'hoan_tat_ban_giao',
+                'blocked',
             ],
             'service_types' => [
                 'backlinks',

@@ -22,11 +22,11 @@ export default function ForgotPassword({ status }) {
 
     return (
         <Guest>
-            <Head title="Forgot Password" />
+            <Head title="Quên mật khẩu" />
 
             <div className="mb-4 text-sm text-gray-500 leading-normal">
-                Forgot your password? No problem. Just let us know your email address and we will email you a password
-                reset link that will allow you to choose a new one.
+                Quên mật khẩu? Không sao. Hãy cho chúng tôi biết email của bạn, chúng tôi sẽ gửi liên kết đặt lại mật
+                khẩu để bạn tạo mật khẩu mới.
             </div>
 
             {status && <div className="mb-4 font-medium text-sm text-green-600">{status}</div>}
@@ -45,7 +45,7 @@ export default function ForgotPassword({ status }) {
 
                 <div className="flex items-center justify-end mt-4">
                     <Button className="ml-4" processing={processing}>
-                        Email Password Reset Link
+                        Gửi liên kết đặt lại mật khẩu
                     </Button>
                 </div>
             </form>

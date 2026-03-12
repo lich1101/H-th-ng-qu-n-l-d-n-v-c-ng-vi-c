@@ -35,19 +35,19 @@ export default function Dashboard(props) {
                 note: 'Theo dõi theo trạng thái dự án',
             },
             {
-                label: 'Task sắp đến hạn (3 ngày)',
+                label: 'Công việc sắp đến hạn (3 ngày)',
                 value: String(summary.tasks_due_soon ?? 0),
                 note: 'Ưu tiên xử lý gấp',
             },
             {
-                label: 'Task quá hạn',
+                label: 'Công việc quá hạn',
                 value: String(summary.tasks_overdue ?? 0),
                 note: 'Cần nhắc và cập nhật',
             },
             {
-                label: 'Tỷ lệ đúng deadline',
+                label: 'Tỷ lệ đúng hạn',
                 value: `${summary.on_time_rate ?? 0}%`,
-                note: 'Tính theo toàn bộ task',
+                note: 'Tính theo toàn bộ công việc',
             },
         ]
     ), [summary]);
@@ -63,7 +63,7 @@ export default function Dashboard(props) {
     return (
         <PageContainer
             auth={props.auth}
-            title="Tổng quan Dashboard"
+            title="Tổng quan hệ thống"
             description="Theo dõi nhanh tiến độ dự án, hiệu suất nhân sự và các hạng mục cần xử lý trong ngày."
             stats={stats}
         >
@@ -71,7 +71,7 @@ export default function Dashboard(props) {
                 <div className="xl:col-span-2 bg-white rounded-2xl border border-slate-200/80 p-6 shadow-card">
                     <div className="flex items-center justify-between mb-4">
                         <h3 className="font-semibold text-slate-900">Tiến độ dự án</h3>
-                        <span className="text-xs text-text-muted">Cập nhật realtime</span>
+                        <span className="text-xs text-text-muted">Cập nhật thời gian thực</span>
                     </div>
                     {loading && progressItems.length === 0 ? (
                         <p className="text-sm text-text-muted">Đang tải dữ liệu...</p>
@@ -147,11 +147,11 @@ export default function Dashboard(props) {
                                 <p className="font-semibold text-slate-900">{item.name}</p>
                                 <p className="text-xs text-text-muted mt-1">{item.role}</p>
                                 <div className="mt-3 flex items-center justify-between text-xs text-text-muted">
-                                    <span>Task đang xử lý</span>
+                                    <span>Công việc đang xử lý</span>
                                     <span className="font-semibold text-warning">{item.active_tasks}</span>
                                 </div>
                                 <div className="mt-1 flex items-center justify-between text-xs text-text-muted">
-                                    <span>Task quá hạn</span>
+                                    <span>Công việc quá hạn</span>
                                     <span className="font-semibold text-danger">{item.overdue_tasks}</span>
                                 </div>
                             </div>

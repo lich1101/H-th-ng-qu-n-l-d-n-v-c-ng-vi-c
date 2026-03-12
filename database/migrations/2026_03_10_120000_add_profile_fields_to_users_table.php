@@ -9,7 +9,7 @@ class AddProfileFieldsToUsersTable extends Migration
     public function up()
     {
         Schema::table('users', function (Blueprint $table) {
-            $table->string('role', 50)->default('nhan_su_san_xuat')->after('password');
+            $table->string('role', 50)->default('nhan_vien')->after('password');
             $table->string('department', 100)->nullable()->after('role');
             $table->string('phone', 30)->nullable()->after('department');
             $table->unsignedSmallInteger('workload_capacity')->default(100)->after('phone');

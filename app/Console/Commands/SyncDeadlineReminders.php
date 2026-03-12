@@ -18,7 +18,7 @@ class SyncDeadlineReminders extends Command
         $now = now();
         $tasks = Task::query()
             ->whereNotNull('deadline')
-            ->whereNotIn('status', ['done', 'hoan_tat_ban_giao'])
+            ->whereNotIn('status', ['done'])
             ->get();
 
         $created = 0;

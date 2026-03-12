@@ -26,9 +26,9 @@ export default function ReportsKPI(props) {
     const stats = useMemo(() => (
         [
             { label: 'Tỷ lệ đúng hạn toàn hệ thống', value: `${summary.tasks?.on_time_rate ?? 0}%` },
-            { label: 'Task hoàn thành', value: summary.tasks?.completed ?? 0 },
+            { label: 'Công việc hoàn thành', value: summary.tasks?.completed ?? 0 },
             { label: 'Dự án đang triển khai', value: summary.projects?.in_progress ?? 0 },
-            { label: 'Task quá hạn', value: summary.tasks?.overdue ?? 0 },
+            { label: 'Công việc quá hạn', value: summary.tasks?.overdue ?? 0 },
         ]
     ), [summary]);
 
@@ -53,7 +53,7 @@ export default function ReportsKPI(props) {
                     <h3 className="font-semibold mb-4">Backlinks</h3>
                     <div className="space-y-3">
                         <div className="flex items-center justify-between text-sm">
-                            <span>Link đã live</span>
+                            <span>Liên kết đã lên</span>
                             <span className="font-semibold text-primary">{summary.links_live}/{summary.links_total}</span>
                         </div>
                         <div className="flex items-center justify-between text-sm">
@@ -116,7 +116,7 @@ export default function ReportsKPI(props) {
 
             <div className="grid gap-5 xl:grid-cols-2 mt-6">
                 <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-card">
-                    <h3 className="font-semibold mb-4">Audit content</h3>
+                    <h3 className="font-semibold mb-4">Audit nội dung</h3>
                     <div className="space-y-3 text-sm">
                         <div className="flex items-center justify-between">
                             <span>Tổng URL audit</span>

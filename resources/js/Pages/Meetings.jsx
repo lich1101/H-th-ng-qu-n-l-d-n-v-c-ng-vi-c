@@ -2,6 +2,7 @@ import React from 'react';
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 import PageContainer from '@/Components/PageContainer';
+import Modal from '@/Components/Modal';
 import { useToast } from '@/Contexts/ToastContext';
 
 export default function Meetings(props) {
@@ -35,6 +36,7 @@ export default function Meetings(props) {
         per_page: initialQuery.per_page,
     });
     const [editingId, setEditingId] = useState(null);
+    const [showForm, setShowForm] = useState(false);
     const [form, setForm] = useState({
         title: '',
         scheduled_at: '',
@@ -102,6 +104,7 @@ export default function Meetings(props) {
             });
             setForm({ title: '', scheduled_at: '', meeting_link: '', description: '', minutes: '' });
             setEditingId(null);
+            setShowForm(false);
             await fetchMeetings(meetingPage);
             toast.success('Tạo lịch họp thành công.');
         } catch (error) {
@@ -118,6 +121,7 @@ export default function Meetings(props) {
             description: meeting.description || '',
             minutes: meeting.minutes || '',
         });
+        setShowForm(true);
     };
 
     const updateMeeting = async (e) => {
@@ -130,6 +134,7 @@ export default function Meetings(props) {
             });
             setForm({ title: '', scheduled_at: '', meeting_link: '', description: '', minutes: '' });
             setEditingId(null);
+            setShowForm(false);
             await fetchMeetings(meetingPage);
             toast.success('Cập nhật lịch họp thành công.');
         } catch (error) {
@@ -143,6 +148,7 @@ export default function Meetings(props) {
             if (editingId === id) {
                 setEditingId(null);
                 setForm({ title: '', scheduled_at: '', meeting_link: '', description: '', minutes: '' });
+                setShowForm(false);
             }
             await fetchMeetings(meetingPage);
             toast.success('Xóa lịch họp thành công.');
@@ -154,6 +160,18 @@ export default function Meetings(props) {
     const applyFilters = async (e) => {
         e.preventDefault();
         await fetchMeetings(1, meetingFilters);
+    };
+
+    const openCreate = () => {
+        setEditingId(null);
+        setForm({ title: '', scheduled_at: '', meeting_link: '', description: '', minutes: '' });
+        setShowForm(true);
+    };
+
+    const closeForm = () => {
+        setEditingId(null);
+        setForm({ title: '', scheduled_at: '', meeting_link: '', description: '', minutes: '' });
+        setShowForm(false);
     };
 
     const goPrevPage = () => {
@@ -172,7 +190,7 @@ export default function Meetings(props) {
         <PageContainer
             auth={props.auth}
             title="Lịch họp bàn giao"
-            description="Lên lịch meeting, gửi lời mời và lưu biên bản theo từng dự án/task."
+            description="Lên lịch họp, gửi lời mời và lưu biên bản theo từng dự án/công việc."
             stats={[
                 { label: 'Tổng lịch họp', value: meetingMeta.total },
                 { label: 'Chế độ', value: editingId ? 'Đang chỉnh sửa' : 'Tạo mới' },
@@ -180,128 +198,129 @@ export default function Meetings(props) {
                 { label: 'Hỗ trợ', value: 'CRUD đầy đủ' },
             ]}
         >
-            <div className="grid gap-5 lg:grid-cols-3">
-                <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card lg:col-span-1">
-                    <h3 className="font-semibold text-slate-900 mb-4">
-                        {editingId ? `Cập nhật lịch họp #${editingId}` : 'Tạo lịch họp mới'}
-                    </h3>
-                    <form onSubmit={editingId ? updateMeeting : createMeeting} className="space-y-3 text-sm">
-                        <input
-                            type="text"
-                            value={form.title}
-                            onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))}
-                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                            placeholder="Tiêu đề lịch họp"
-                            required
-                        />
-                        <input
-                            type="datetime-local"
-                            value={form.scheduled_at}
-                            onChange={(e) => setForm((prev) => ({ ...prev, scheduled_at: e.target.value }))}
-                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                            required
-                        />
-                        <input
-                            type="text"
-                            value={form.meeting_link}
-                            onChange={(e) => setForm((prev) => ({ ...prev, meeting_link: e.target.value }))}
-                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                            placeholder="Link meeting"
-                        />
-                        <textarea
-                            value={form.description}
-                            onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
-                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                            rows={3}
-                            placeholder="Ghi chú cuộc họp"
-                        />
-                        <textarea
-                            value={form.minutes}
-                            onChange={(e) => setForm((prev) => ({ ...prev, minutes: e.target.value }))}
-                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                            rows={3}
-                            placeholder="Biên bản"
-                        />
-                        <button type="submit" className="w-full rounded-2xl bg-primary text-white py-2.5 font-semibold">
-                            {editingId ? 'Cập nhật lịch họp' : 'Tạo lịch họp'}
+            <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4">
+                    <h3 className="font-semibold text-slate-900">Danh sách lịch họp</h3>
+                    <form onSubmit={applyFilters} className="flex flex-wrap gap-2">
+                        <button
+                            type="button"
+                            className="rounded-2xl bg-primary text-white px-3 py-2 text-sm font-semibold"
+                            onClick={openCreate}
+                        >
+                            Thêm mới
                         </button>
-                        {editingId && (
-                            <button
-                                type="button"
-                                className="w-full text-xs text-text-muted"
-                                onClick={() => {
-                                    setEditingId(null);
-                                    setForm({ title: '', scheduled_at: '', meeting_link: '', description: '', minutes: '' });
-                                }}
-                            >
-                                Hủy chỉnh sửa
-                            </button>
-                        )}
+                        <input
+                            type="text"
+                            className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                            placeholder="Tìm tiêu đề"
+                            value={meetingFilters.search}
+                            onChange={(e) => setMeetingFilters((prev) => ({ ...prev, search: e.target.value }))}
+                        />
+                        <input
+                            type="date"
+                            className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                            value={meetingFilters.date_from}
+                            onChange={(e) => setMeetingFilters((prev) => ({ ...prev, date_from: e.target.value }))}
+                        />
+                        <input
+                            type="date"
+                            className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                            value={meetingFilters.date_to}
+                            onChange={(e) => setMeetingFilters((prev) => ({ ...prev, date_to: e.target.value }))}
+                        />
+                        <button type="submit" className="text-sm text-primary font-semibold">Lọc</button>
                     </form>
                 </div>
 
-                <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card lg:col-span-2">
-                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4">
-                        <h3 className="font-semibold text-slate-900">Danh sách lịch họp</h3>
-                        <form onSubmit={applyFilters} className="flex flex-wrap gap-2">
-                            <input
-                                type="text"
-                                className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                                placeholder="Tìm tiêu đề"
-                                value={meetingFilters.search}
-                                onChange={(e) => setMeetingFilters((prev) => ({ ...prev, search: e.target.value }))}
-                            />
-                            <input
-                                type="date"
-                                className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                                value={meetingFilters.date_from}
-                                onChange={(e) => setMeetingFilters((prev) => ({ ...prev, date_from: e.target.value }))}
-                            />
-                            <input
-                                type="date"
-                                className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                                value={meetingFilters.date_to}
-                                onChange={(e) => setMeetingFilters((prev) => ({ ...prev, date_to: e.target.value }))}
-                            />
-                            <button type="submit" className="text-sm text-primary font-semibold">Lọc</button>
-                        </form>
-                    </div>
-
-                    <div className="space-y-3">
-                        {meetings.map((meeting) => (
-                            <div key={meeting.id} className="rounded-2xl border border-slate-200/80 p-4">
-                                <div className="flex items-center justify-between">
-                                    <h4 className="font-semibold text-slate-900">{meeting.title}</h4>
-                                    <div className="flex items-center gap-3 text-xs">
-                                        <button className="text-primary" onClick={() => startEdit(meeting)} type="button">Sửa</button>
-                                        <button className="text-danger" onClick={() => deleteMeeting(meeting.id)} type="button">Xóa</button>
-                                    </div>
+                <div className="space-y-3">
+                    {meetings.map((meeting) => (
+                        <div key={meeting.id} className="rounded-2xl border border-slate-200/80 p-4">
+                            <div className="flex items-center justify-between">
+                                <h4 className="font-semibold text-slate-900">{meeting.title}</h4>
+                                <div className="flex items-center gap-3 text-xs">
+                                    <button className="text-primary" onClick={() => startEdit(meeting)} type="button">Sửa</button>
+                                    <button className="text-danger" onClick={() => deleteMeeting(meeting.id)} type="button">Xóa</button>
                                 </div>
-                                <p className="text-xs text-text-muted mt-1">{meeting.scheduled_at}</p>
-                                {meeting.meeting_link && (
-                                    <a className="text-xs text-primary mt-2 inline-block" href={meeting.meeting_link} target="_blank" rel="noreferrer">
-                                        Mở link meeting
-                                    </a>
-                                )}
-                                {meeting.description && (
-                                    <p className="text-xs text-text-muted mt-2">{meeting.description}</p>
-                                )}
                             </div>
-                        ))}
-                        {!meetings.length && (
-                            <p className="text-sm text-text-muted">Chưa có lịch họp.</p>
-                        )}
-                    </div>
-
-                    <div className="mt-4 flex items-center justify-between text-xs text-text-muted">
-                        <span>Trang {meetingMeta.current_page} / {meetingMeta.last_page}</span>
-                        <div className="flex gap-2">
-                            <button type="button" className="px-3 py-1 rounded-full border border-slate-200/80" onClick={goPrevPage}>Trước</button>
-                            <button type="button" className="px-3 py-1 rounded-full border border-slate-200/80" onClick={goNextPage}>Sau</button>
+                            <p className="text-xs text-text-muted mt-1">{meeting.scheduled_at}</p>
+                            {meeting.meeting_link && (
+                                <a className="text-xs text-primary mt-2 inline-block" href={meeting.meeting_link} target="_blank" rel="noreferrer">
+                                    Mở liên kết họp
+                                </a>
+                            )}
+                            {meeting.description && (
+                                <p className="text-xs text-text-muted mt-2">{meeting.description}</p>
+                            )}
                         </div>
+                    ))}
+                    {!meetings.length && (
+                        <p className="text-sm text-text-muted">Chưa có lịch họp.</p>
+                    )}
+                </div>
+
+                <div className="mt-4 flex items-center justify-between text-xs text-text-muted">
+                    <span>Trang {meetingMeta.current_page} / {meetingMeta.last_page}</span>
+                    <div className="flex gap-2">
+                        <button type="button" className="px-3 py-1 rounded-full border border-slate-200/80" onClick={goPrevPage}>Trước</button>
+                        <button type="button" className="px-3 py-1 rounded-full border border-slate-200/80" onClick={goNextPage}>Sau</button>
                     </div>
                 </div>
             </div>
+
+            <Modal
+                open={showForm}
+                onClose={closeForm}
+                title={editingId ? `Cập nhật lịch họp #${editingId}` : 'Tạo lịch họp mới'}
+                description="Lên lịch họp, liên kết họp và biên bản."
+                size="lg"
+            >
+                <form onSubmit={editingId ? updateMeeting : createMeeting} className="space-y-3 text-sm">
+                    <input
+                        type="text"
+                        value={form.title}
+                        onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))}
+                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                        placeholder="Tiêu đề lịch họp"
+                        required
+                    />
+                    <input
+                        type="datetime-local"
+                        value={form.scheduled_at}
+                        onChange={(e) => setForm((prev) => ({ ...prev, scheduled_at: e.target.value }))}
+                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                        required
+                    />
+                    <input
+                        type="text"
+                        value={form.meeting_link}
+                        onChange={(e) => setForm((prev) => ({ ...prev, meeting_link: e.target.value }))}
+                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                        placeholder="Liên kết họp"
+                    />
+                    <textarea
+                        value={form.description}
+                        onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
+                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                        rows={3}
+                        placeholder="Ghi chú cuộc họp"
+                    />
+                    <textarea
+                        value={form.minutes}
+                        onChange={(e) => setForm((prev) => ({ ...prev, minutes: e.target.value }))}
+                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                        rows={3}
+                        placeholder="Biên bản"
+                    />
+                    <div className="flex items-center gap-3">
+                        <button type="submit" className="flex-1 rounded-2xl bg-primary text-white py-2.5 font-semibold">
+                            {editingId ? 'Cập nhật lịch họp' : 'Tạo lịch họp'}
+                        </button>
+                        <button type="button" className="flex-1 rounded-2xl border border-slate-200 py-2.5 font-semibold" onClick={closeForm}>
+                            Hủy
+                        </button>
+                    </div>
+                </form>
+            </Modal>
         </PageContainer>
     );
 }

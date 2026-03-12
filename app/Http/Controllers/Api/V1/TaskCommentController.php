@@ -111,7 +111,7 @@ class TaskCommentController extends Controller
             return true;
         }
 
-        return in_array($user->role, ['admin', 'truong_phong_san_xuat'], true);
+        return in_array($user->role, ['admin', 'quan_ly'], true);
     }
 
     private function normalizeTaggedIds(Request $request): void
