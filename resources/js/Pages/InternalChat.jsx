@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import PageContainer from '@/Components/PageContainer';
 import { useToast } from '@/Contexts/ToastContext';
@@ -15,6 +15,7 @@ export default function InternalChat(props) {
     const [content, setContent] = useState('');
     const [taggedIds, setTaggedIds] = useState('');
     const [attachment, setAttachment] = useState(null);
+    const fileInputRef = useRef(null);
 
     const canEditOrDelete = (comment) => {
         if (!user) return false;
@@ -214,11 +215,26 @@ export default function InternalChat(props) {
                                 value={taggedIds}
                                 onChange={(e) => setTaggedIds(e.target.value)}
                             />
-                            <input
-                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                                type="file"
-                                onChange={(e) => setAttachment(e.target.files?.[0] || null)}
-                            />
+                            <div className="rounded-2xl border border-dashed border-slate-200/80 p-2 bg-slate-50">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <button
+                                        type="button"
+                                        className="rounded-xl bg-white border border-slate-200/80 px-3 py-2 text-xs font-semibold text-slate-700"
+                                        onClick={() => fileInputRef.current?.click()}
+                                    >
+                                        Chọn tệp
+                                    </button>
+                                    <span className="text-xs text-text-muted">
+                                        {attachment?.name || 'Chưa chọn tệp'}
+                                    </span>
+                                </div>
+                                <input
+                                    ref={fileInputRef}
+                                    className="hidden"
+                                    type="file"
+                                    onChange={(e) => setAttachment(e.target.files?.[0] || null)}
+                                />
+                            </div>
                         </div>
                         <textarea
                             className="w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import PageContainer from '@/Components/PageContainer';
 import { useToast } from '@/Contexts/ToastContext';
@@ -13,6 +13,7 @@ export default function HandoverCenter(props) {
     const [attachments, setAttachments] = useState([]);
     const [selectedTaskId, setSelectedTaskId] = useState('');
     const [loading, setLoading] = useState(false);
+    const fileInputRef = useRef(null);
     const [form, setForm] = useState({
         type: 'link',
         title: '',
@@ -185,11 +186,29 @@ export default function HandoverCenter(props) {
                             value={form.external_url}
                             onChange={(e) => setForm((s) => ({ ...s, external_url: e.target.value }))}
                         />
-                        <input
-                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                            type="file"
-                            onChange={(e) => setForm((s) => ({ ...s, file: e.target.files?.[0] || null }))}
-                        />
+                        <div className="rounded-2xl border border-dashed border-slate-200/80 p-3 bg-slate-50">
+                            <div className="flex flex-wrap items-center gap-3">
+                                <button
+                                    type="button"
+                                    className="rounded-xl bg-white border border-slate-200/80 px-3 py-2 text-xs font-semibold text-slate-700"
+                                    onClick={() => fileInputRef.current?.click()}
+                                >
+                                    Chọn file upload
+                                </button>
+                                <span className="text-xs text-text-muted">
+                                    {form.file?.name || 'Chưa chọn file'}
+                                </span>
+                            </div>
+                            <input
+                                ref={fileInputRef}
+                                className="hidden"
+                                type="file"
+                                onChange={(e) => setForm((s) => ({ ...s, file: e.target.files?.[0] || null }))}
+                            />
+                            <p className="text-[11px] text-text-muted mt-2">
+                                Ưu tiên upload file nếu không có link công khai.
+                            </p>
+                        </div>
                         <div className="grid grid-cols-2 gap-2">
                             <input
                                 className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
