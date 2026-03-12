@@ -57,44 +57,48 @@ export default function Authenticated({ auth, header, children }) {
     });
 
     return (
-        <div className="min-h-screen bg-slate-100 text-slate-800">
+        <div className="min-h-screen bg-app-bg text-slate-900">
             <div className="flex min-h-screen">
-                <aside className={`fixed inset-y-0 left-0 z-40 w-72 bg-slate-900 text-slate-100 transform transition-transform duration-200 ${showSidebar ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 lg:static lg:inset-auto`}>
+                <aside
+                    className={`fixed inset-y-0 left-0 z-40 w-72 bg-white border-r border-slate-200/80 transform transition-transform duration-200 ${
+                        showSidebar ? 'translate-x-0' : '-translate-x-full'
+                    } lg:translate-x-0 lg:static lg:inset-auto`}
+                >
                     <div className="h-full flex flex-col">
-                        <div className="px-5 py-5 border-b border-slate-800">
-                            <p className="text-sm uppercase tracking-wide text-slate-400">WinMap</p>
+                        <div className="px-6 py-6 border-b border-slate-200">
+                            <p className="text-xs uppercase tracking-[0.2em] text-text-subtle">WinMap</p>
                             <p className="text-lg font-semibold">Quản lý nội bộ</p>
-                            <p className="text-xs text-slate-400 mt-1">Sales • Sản xuất • Admin</p>
+                            <p className="text-xs text-text-muted mt-1">Sales • Sản xuất • Admin</p>
                         </div>
 
-                        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
+                        <nav className="flex-1 overflow-y-auto px-4 py-5 space-y-1">
                             {allowedMenus.map((menu) => {
                                 const active = route().current(menu.routeName);
                                 return (
                                     <Link
                                         key={menu.routeName}
                                         href={menu.href}
-                                        className={`block px-3 py-2 rounded-lg text-sm transition ${
+                                        className={`flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition ${
                                             active
-                                                ? 'bg-sky-500/20 text-sky-300'
-                                                : 'text-slate-200 hover:bg-slate-800'
+                                                ? 'bg-primary/10 text-primary'
+                                                : 'text-slate-600 hover:bg-slate-100'
                                         }`}
                                         onClick={() => setShowSidebar(false)}
                                     >
-                                        {menu.label}
+                                        <span>{menu.label}</span>
                                     </Link>
                                 );
                             })}
                         </nav>
 
-                        <div className="p-4 border-t border-slate-800 text-xs text-slate-400">
+                        <div className="px-6 py-4 border-t border-slate-200 text-xs text-text-muted">
                             Phiên bản nội bộ v1.0
                         </div>
                     </div>
                 </aside>
 
                 <div className="flex-1 lg:ml-0">
-                    <header className="bg-white border-b border-slate-200 sticky top-0 z-30">
+                    <header className="bg-white/80 backdrop-blur border-b border-slate-200 sticky top-0 z-30">
                         <div className="px-4 md:px-8 py-3 flex items-center justify-between">
                             <div className="flex items-center gap-3">
                                 <button
@@ -105,7 +109,7 @@ export default function Authenticated({ auth, header, children }) {
                                     Menu
                                 </button>
                                 <div>
-                                    <p className="text-sm text-slate-500">Hệ thống quản lý dự án</p>
+                                    <p className="text-xs text-text-subtle">Hệ thống quản lý dự án</p>
                                     <p className="font-semibold">Bảng điều khiển</p>
                                 </div>
                             </div>
@@ -119,10 +123,15 @@ export default function Authenticated({ auth, header, children }) {
                                         <span className="inline-flex rounded-md">
                                             <button
                                                 type="button"
-                                                className="inline-flex items-center px-3 py-2 border border-slate-200 text-sm leading-4 font-medium rounded-md text-slate-600 bg-white hover:text-slate-800"
+                                                className="inline-flex items-center px-3 py-2 border border-slate-200 text-sm leading-4 font-medium rounded-md text-slate-700 bg-white hover:text-slate-900"
                                             >
                                                 {auth.user.name}
-                                                <svg className="ml-2 -mr-0.5 h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                                                <svg
+                                                    className="ml-2 -mr-0.5 h-4 w-4"
+                                                    xmlns="http://www.w3.org/2000/svg"
+                                                    viewBox="0 0 20 20"
+                                                    fill="currentColor"
+                                                >
                                                     <path
                                                         fillRule="evenodd"
                                                         d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
@@ -143,9 +152,9 @@ export default function Authenticated({ auth, header, children }) {
                         </div>
                     </header>
 
-                    {header && <div className="px-4 md:px-8 py-5">{header}</div>}
+                    {header && <div className="px-4 md:px-8 py-6">{header}</div>}
 
-                    <main className="px-4 md:px-8 pb-8">{children}</main>
+                    <main className="px-4 md:px-8 pb-10">{children}</main>
                 </div>
             </div>
         </div>

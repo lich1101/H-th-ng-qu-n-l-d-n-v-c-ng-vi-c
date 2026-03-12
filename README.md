@@ -27,6 +27,7 @@ Du an web dung Laravel + React + MySQL cho he thong quan ly du an, task va ban g
    ```bash
    php artisan migrate
    php artisan db:seed
+   php artisan storage:link
    php artisan serve
    ```
 
@@ -37,8 +38,12 @@ Du an web dung Laravel + React + MySQL cho he thong quan ly du an, task va ban g
 - `MOBILE_APP_*`: thong tin deep link va ten app Flutter.
 - `MIX_API_BASE_URL`: endpoint API cho frontend.
 - `CORS_ALLOWED_ORIGINS`: danh sach origin duoc phep goi API.
-- `DEADLINE_TELEGRAM_WEBHOOK`: webhook gui nhac han Telegram (tuy chon).
-- `DEADLINE_ZALO_WEBHOOK`: webhook gui nhac han Zalo (tuy chon).
+- `DEADLINE_CHANNELS`: danh sach kenh nhac han (vd: `in_app,email,telegram,zalo`).
+- `DEADLINE_TELEGRAM_WEBHOOK`: webhook gui nhac han Telegram (tuy chon, fallback).
+- `DEADLINE_ZALO_WEBHOOK`: webhook gui nhac han Zalo (tuy chon, fallback).
+- `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`: gui nhac han Telegram qua Bot API.
+- `ZALO_OA_ACCESS_TOKEN`, `ZALO_OA_RECIPIENT_ID`, `ZALO_OA_API_URL`: gui nhac han qua Zalo OA.
+- `WORKLOAD_THRESHOLD`: nguong task dang xu ly de canh bao qua tai (mac dinh 8).
 
 ## API khoi tao
 
@@ -163,12 +168,13 @@ Da bo sung bo giao dien day du theo module nghiep vu:
 
 ## Scheduler nhac han tu dong
 
-- Command: `php artisan reminders:send-deadline`
-- Da duoc dang ky trong scheduler: chay moi phut (`app/Console/Kernel.php`)
+- Command: `php artisan reminders:sync-deadline` (tu dong tao reminders 3 ngay/1 ngay/qua han)
+- Command: `php artisan reminders:send-deadline` (gui reminders dang pending)
+- Da duoc dang ky trong scheduler: `sync` chay moi gio, `send` chay moi phut (`app/Console/Kernel.php`)
 - Ho tro channel:
   - `in_app` (danh dau da gui trong DB)
   - `email` (gui den email nguoi phu trach task neu co)
-  - `telegram` / `zalo` (gui qua webhook neu co cau hinh)
+  - `telegram` / `zalo` (gui qua Bot/OA API, co fallback webhook neu cau hinh)
 
 ## Trung tam thong bao in-app
 

@@ -11,9 +11,9 @@ export default function RoleBarChart({ data }) {
                         <span className="text-slate-700">{item.label}</span>
                         <span className="font-semibold text-slate-900">{item.value}</span>
                     </div>
-                    <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+                    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
                         <div
-                            className="h-2 rounded-full bg-gradient-to-r from-sky-500 to-indigo-500"
+                            className="h-2 rounded-full bg-primary"
                             style={{ width: `${(item.value / max) * 100}%` }}
                         />
                     </div>

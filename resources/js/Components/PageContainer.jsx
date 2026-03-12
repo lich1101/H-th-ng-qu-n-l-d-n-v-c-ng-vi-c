@@ -13,21 +13,26 @@ export default function PageContainer({
         <Authenticated
             auth={auth}
             header={
-                <div className="rounded-2xl bg-gradient-to-r from-slate-900 via-slate-800 to-sky-900 text-white p-5 shadow-lg">
-                    <h1 className="text-2xl font-semibold">{title}</h1>
-                    <p className="text-sm text-slate-200 mt-1">{description}</p>
+                <div className="rounded-2xl bg-white border border-slate-200/80 p-6 shadow-card">
+                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                        <div>
+                            <p className="text-xs uppercase tracking-[0.2em] text-text-subtle">Dashboard</p>
+                            <h1 className="text-2xl font-semibold text-slate-900">{title}</h1>
+                            <p className="text-sm text-text-muted mt-1">{description}</p>
+                        </div>
+                    </div>
                 </div>
             }
         >
             <Head title={title} />
 
             {stats.length > 0 && (
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 mb-5">
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 mb-6">
                     {stats.map((item) => (
-                        <div key={item.label} className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-                            <p className="text-sm text-slate-500">{item.label}</p>
-                            <p className="mt-2 text-2xl font-semibold bg-gradient-to-r from-sky-700 to-indigo-700 bg-clip-text text-transparent">{item.value}</p>
-                            {item.note && <p className="mt-1 text-xs text-slate-400">{item.note}</p>}
+                        <div key={item.label} className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-card">
+                            <p className="text-xs uppercase tracking-wide text-text-subtle">{item.label}</p>
+                            <p className="mt-2 text-2xl font-semibold text-primary">{item.value}</p>
+                            {item.note && <p className="mt-1 text-xs text-text-muted">{item.note}</p>}
                         </div>
                     ))}
                 </div>

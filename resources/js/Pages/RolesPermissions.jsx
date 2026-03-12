@@ -14,8 +14,8 @@ export default function RolesPermissions(props) {
                 { label: 'Sản xuất', value: '39' },
             ]}
         >
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                <div className="px-4 py-3 border-b border-slate-200 font-semibold">Ma trận quyền chính</div>
+            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card overflow-hidden">
+                <div className="px-4 py-3 border-b border-slate-200/80 font-semibold">Ma trận quyền chính</div>
                 <div className="overflow-x-auto">
                     <table className="min-w-full text-sm">
                         <thead className="bg-slate-50">

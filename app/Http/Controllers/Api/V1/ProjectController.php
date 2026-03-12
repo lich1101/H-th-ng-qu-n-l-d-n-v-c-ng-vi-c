@@ -7,6 +7,7 @@ use App\Models\Project;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Str;
 
 class ProjectController extends Controller
 {
@@ -38,6 +39,9 @@ class ProjectController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate($this->rules());
+        if (empty($validated['code'])) {
+            $validated['code'] = $this->generateProjectCode();
+        }
         $validated['created_by'] = $request->user()->id;
 
         $project = Project::create($validated);
@@ -73,7 +77,7 @@ class ProjectController extends Controller
     {
         return [
             'code' => [
-                'required',
+                'nullable',
                 'string',
                 'max:30',
                 Rule::unique('projects', 'code')->ignore($projectId),
@@ -90,5 +94,19 @@ class ProjectController extends Controller
             'approved_by' => ['nullable', 'integer', 'exists:users,id'],
             'approved_at' => ['nullable', 'date'],
         ];
+    }
+
+    private function generateProjectCode(): string
+    {
+        $date = now()->format('Ymd');
+        for ($i = 0; $i < 5; $i++) {
+            $random = Str::upper(Str::random(4));
+            $code = "PRJ-{$date}-{$random}";
+            if (!Project::where('code', $code)->exists()) {
+                return $code;
+            }
+        }
+
+        return 'PRJ-' . $date . '-' . strtoupper(Str::random(6));
     }
 }

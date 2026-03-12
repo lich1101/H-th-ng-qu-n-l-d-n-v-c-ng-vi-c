@@ -5,15 +5,22 @@ import PageContainer from '@/Components/PageContainer';
 export default function ServiceWorkflows(props) {
     const tabs = [
         { key: 'backlinks', label: 'Backlinks' },
-        { key: 'content', label: 'Viết content' },
-        { key: 'audit', label: 'Audit content' },
-        { key: 'website-care', label: 'Chăm sóc website' },
+        { key: 'viet_content', label: 'Viết content' },
+        { key: 'audit_content', label: 'Audit content' },
+        { key: 'cham_soc_website_tong_the', label: 'Chăm sóc website' },
     ];
 
     const [activeType, setActiveType] = useState('backlinks');
     const [items, setItems] = useState([]);
     const [projectId, setProjectId] = useState('');
     const [form, setForm] = useState({});
+
+    const normalizeType = (type) => {
+        if (type === 'viet_content') return 'content';
+        if (type === 'audit_content') return 'audit';
+        if (type === 'cham_soc_website_tong_the') return 'website-care';
+        return type;
+    };
 
     const fetchItems = async (type) => {
         const response = await axios.get(`/api/v1/services/${type}/items`, { params: { per_page: 10 } });
@@ -37,7 +44,8 @@ export default function ServiceWorkflows(props) {
     };
 
     const buildPayload = (type, raw) => {
-        if (type === 'backlinks') {
+        const resolved = normalizeType(type);
+        if (resolved === 'backlinks') {
             return {
                 target_url: raw.target_url || '',
                 domain: raw.domain || '',
@@ -47,7 +55,7 @@ export default function ServiceWorkflows(props) {
                 note: raw.note || null,
             };
         }
-        if (type === 'content') {
+        if (resolved === 'content') {
             return {
                 main_keyword: raw.main_keyword || '',
                 secondary_keywords: raw.secondary_keywords || '',
@@ -59,7 +67,7 @@ export default function ServiceWorkflows(props) {
                 approval_status: raw.approval_status || 'pending',
             };
         }
-        if (type === 'audit') {
+        if (resolved === 'audit') {
             return {
                 url: raw.url || '',
                 issue_type: raw.issue_type || '',
@@ -80,7 +88,8 @@ export default function ServiceWorkflows(props) {
     };
 
     const renderTypeFields = () => {
-        if (activeType === 'backlinks') {
+        const resolved = normalizeType(activeType);
+        if (resolved === 'backlinks') {
             return (
                 <>
                     <input className="rounded-lg border-slate-300 text-sm" placeholder="Target URL" value={form.target_url || ''} onChange={(e) => setForm((p) => ({ ...p, target_url: e.target.value }))} required />
@@ -93,17 +102,29 @@ export default function ServiceWorkflows(props) {
                 </>
             );
         }
-        if (activeType === 'content') {
+        if (resolved === 'content') {
             return (
                 <>
                     <input className="rounded-lg border-slate-300 text-sm" placeholder="Keyword chính" value={form.main_keyword || ''} onChange={(e) => setForm((p) => ({ ...p, main_keyword: e.target.value }))} required />
                     <input className="rounded-lg border-slate-300 text-sm" placeholder="Keyword phụ" value={form.secondary_keywords || ''} onChange={(e) => setForm((p) => ({ ...p, secondary_keywords: e.target.value }))} />
+                    <select className="rounded-lg border-slate-300 text-sm" value={form.outline_status || 'pending'} onChange={(e) => setForm((p) => ({ ...p, outline_status: e.target.value }))}>
+                        <option value="pending">outline pending</option>
+                        <option value="approved">outline approved</option>
+                        <option value="rejected">outline rejected</option>
+                    </select>
                     <input type="number" className="rounded-lg border-slate-300 text-sm" placeholder="Số từ yêu cầu" value={form.required_words || ''} onChange={(e) => setForm((p) => ({ ...p, required_words: e.target.value }))} />
+                    <input type="number" className="rounded-lg border-slate-300 text-sm" placeholder="Số từ thực tế" value={form.actual_words || ''} onChange={(e) => setForm((p) => ({ ...p, actual_words: e.target.value }))} />
                     <input type="number" className="rounded-lg border-slate-300 text-sm" placeholder="SEO score" value={form.seo_score || ''} onChange={(e) => setForm((p) => ({ ...p, seo_score: e.target.value }))} />
+                    <input type="number" className="rounded-lg border-slate-300 text-sm" placeholder="Duplicate %" value={form.duplicate_percent || ''} onChange={(e) => setForm((p) => ({ ...p, duplicate_percent: e.target.value }))} />
+                    <select className="rounded-lg border-slate-300 text-sm" value={form.approval_status || 'pending'} onChange={(e) => setForm((p) => ({ ...p, approval_status: e.target.value }))}>
+                        <option value="pending">pending</option>
+                        <option value="approved">approved</option>
+                        <option value="rejected">rejected</option>
+                    </select>
                 </>
             );
         }
-        if (activeType === 'audit') {
+        if (resolved === 'audit') {
             return (
                 <>
                     <input className="rounded-lg border-slate-300 text-sm" placeholder="URL audit" value={form.url || ''} onChange={(e) => setForm((p) => ({ ...p, url: e.target.value }))} required />
@@ -159,7 +180,7 @@ export default function ServiceWorkflows(props) {
                 ))}
             </div>
 
-            <form onSubmit={createItem} className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm mb-4">
+            <form onSubmit={createItem} className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-card mb-4">
                 <h3 className="font-semibold mb-2">Thêm bản ghi {tabs.find((t) => t.key === activeType)?.label}</h3>
                 <p className="text-xs text-slate-500 mb-2">Nhập thông tin chi tiết theo form nghiệp vụ.</p>
                 <div className="grid gap-3 md:grid-cols-4">
@@ -179,11 +200,11 @@ export default function ServiceWorkflows(props) {
                 </button>
             </form>
 
-            <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+            <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-card">
                 <h3 className="font-semibold mb-3">Danh sách bản ghi {tabs.find((t) => t.key === activeType)?.label}</h3>
                 <div className="space-y-2 text-sm">
                     {items.map((item) => (
-                        <pre key={item.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3 overflow-x-auto">
+                        <pre key={item.id} className="rounded-lg border border-slate-200/80 bg-slate-50 p-3 overflow-x-auto">
                             {JSON.stringify(item, null, 2)}
                         </pre>
                     ))}

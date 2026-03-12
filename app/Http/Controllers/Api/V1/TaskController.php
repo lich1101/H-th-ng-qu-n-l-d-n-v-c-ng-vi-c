@@ -11,7 +11,9 @@ class TaskController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = Task::query()->with(['project', 'assignee']);
+        $query = Task::query()
+            ->with(['project', 'assignee', 'reviewer'])
+            ->withCount(['comments', 'attachments']);
 
         if ($request->filled('project_id')) {
             $query->where('project_id', (int) $request->input('project_id'));
@@ -38,12 +40,17 @@ class TaskController extends Controller
 
         $task = Task::create($validated);
 
-        return response()->json($task->load(['project', 'assignee']), 201);
+        return response()->json(
+            $task->load(['project', 'assignee', 'reviewer'])->loadCount(['comments', 'attachments']),
+            201
+        );
     }
 
     public function show(Task $task): JsonResponse
     {
-        return response()->json($task->load(['project', 'assignee']));
+        return response()->json(
+            $task->load(['project', 'assignee', 'reviewer'])->loadCount(['comments', 'attachments'])
+        );
     }
 
     public function update(Request $request, Task $task): JsonResponse
@@ -60,7 +67,9 @@ class TaskController extends Controller
 
         $task->update($validated);
 
-        return response()->json($task->load(['project', 'assignee']));
+        return response()->json(
+            $task->load(['project', 'assignee', 'reviewer'])->loadCount(['comments', 'attachments'])
+        );
     }
 
     public function destroy(Task $task): JsonResponse

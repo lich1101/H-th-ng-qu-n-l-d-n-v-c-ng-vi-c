@@ -7,6 +7,7 @@ use App\Models\Task;
 use App\Models\TaskAttachment;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class TaskAttachmentController extends Controller
 {
@@ -26,14 +27,26 @@ class TaskAttachmentController extends Controller
             'title' => ['nullable', 'string', 'max:255'],
             'file_path' => ['nullable', 'string', 'max:255'],
             'external_url' => ['nullable', 'url', 'max:500'],
+            'file' => ['nullable', 'file', 'max:10240'],
             'version' => ['nullable', 'integer', 'min:1'],
             'is_handover' => ['nullable', 'boolean'],
             'note' => ['nullable', 'string'],
         ]);
 
-        if (empty($validated['file_path']) && empty($validated['external_url'])) {
+        $storedPath = null;
+        if ($request->hasFile('file')) {
+            $storedPath = $request->file('file')->store('task_attachments', 'public');
+        }
+
+        $externalUrl = $validated['external_url'] ?? null;
+        $filePath = $validated['file_path'] ?? null;
+        if ($storedPath) {
+            $filePath = Storage::url($storedPath);
+        }
+
+        if (empty($filePath) && empty($externalUrl)) {
             return response()->json([
-                'message' => 'file_path or external_url is required.',
+                'message' => 'file_path, external_url or file is required.',
             ], 422);
         }
 
@@ -41,8 +54,8 @@ class TaskAttachmentController extends Controller
             'uploaded_by' => $request->user()->id,
             'type' => $validated['type'],
             'title' => $validated['title'] ?? null,
-            'file_path' => $validated['file_path'] ?? null,
-            'external_url' => $validated['external_url'] ?? null,
+            'file_path' => $filePath,
+            'external_url' => $externalUrl,
             'version' => $validated['version'] ?? 1,
             'is_handover' => $validated['is_handover'] ?? false,
             'note' => $validated['note'] ?? null,

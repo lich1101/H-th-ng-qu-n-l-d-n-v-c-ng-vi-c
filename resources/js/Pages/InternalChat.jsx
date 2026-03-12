@@ -13,6 +13,8 @@ export default function InternalChat(props) {
     const [loading, setLoading] = useState(false);
     const [editingId, setEditingId] = useState(null);
     const [content, setContent] = useState('');
+    const [taggedIds, setTaggedIds] = useState('');
+    const [attachment, setAttachment] = useState(null);
 
     const canEditOrDelete = (comment) => {
         if (!user) return false;
@@ -55,6 +57,8 @@ export default function InternalChat(props) {
     const resetForm = () => {
         setEditingId(null);
         setContent('');
+        setTaggedIds('');
+        setAttachment(null);
     };
 
     const startEdit = (c) => {
@@ -64,6 +68,9 @@ export default function InternalChat(props) {
         }
         setEditingId(c.id);
         setContent(c.content || '');
+        if (c.tagged_user_ids) {
+            setTaggedIds(String(c.tagged_user_ids));
+        }
     };
 
     const save = async () => {
@@ -76,14 +83,24 @@ export default function InternalChat(props) {
             return;
         }
         try {
+            const ids = taggedIds
+                .split(',')
+                .map((x) => x.trim())
+                .filter(Boolean);
+            const data = new FormData();
+            data.append('content', content);
+            ids.forEach((id) => data.append('tagged_user_ids[]', id));
+            if (attachment) data.append('attachment', attachment);
+
             if (editingId) {
-                await axios.put(`/api/v1/tasks/${selectedTaskId}/comments/${editingId}`, {
-                    content,
+                data.append('_method', 'PUT');
+                await axios.post(`/api/v1/tasks/${selectedTaskId}/comments/${editingId}`, data, {
+                    headers: { 'Content-Type': 'multipart/form-data' },
                 });
                 toast.success('Đã cập nhật comment.');
             } else {
-                await axios.post(`/api/v1/tasks/${selectedTaskId}/comments`, {
-                    content,
+                await axios.post(`/api/v1/tasks/${selectedTaskId}/comments`, data, {
+                    headers: { 'Content-Type': 'multipart/form-data' },
                 });
                 toast.success('Đã gửi comment.');
             }
@@ -111,7 +128,7 @@ export default function InternalChat(props) {
     };
 
     const stats = [
-        { label: 'Comment (trang)', value: String(comments.length) },
+        { label: 'Comment', value: String(comments.length) },
         { label: 'Task đang chọn', value: selectedTaskId || '—' },
         { label: 'User', value: user?.email || '—' },
         { label: 'Role', value: user?.role || '—' },
@@ -124,11 +141,11 @@ export default function InternalChat(props) {
             description="Trao đổi trực tiếp theo task, tag người liên quan và lưu lịch sử xử lý."
             stats={stats}
         >
-            <div className="grid gap-4 lg:grid-cols-3">
-                <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm lg:col-span-1">
-                    <h3 className="font-semibold mb-3">Kênh công việc (theo task)</h3>
+            <div className="grid gap-5 lg:grid-cols-3">
+                <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card lg:col-span-1">
+                    <h3 className="font-semibold text-slate-900 mb-4">Kênh công việc</h3>
                     <select
-                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm mb-3"
+                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
                         value={selectedTaskId}
                         onChange={(e) => {
                             const v = e.target.value;
@@ -143,83 +160,86 @@ export default function InternalChat(props) {
                             </option>
                         ))}
                     </select>
-                    <div className="space-y-2 text-xs text-slate-600">
-                        <p>• Mỗi task tương ứng một “kênh” chat.</p>
+                    <div className="mt-4 text-xs text-text-muted space-y-2">
+                        <p>• Mỗi task tương ứng một kênh chat.</p>
                         <p>• Bạn chỉ sửa/xóa comment do mình tạo hoặc là Admin/Trưởng phòng.</p>
                     </div>
                 </div>
-                <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm lg:col-span-2">
-                    <h3 className="font-semibold mb-3">Luồng hội thoại</h3>
-                    {loading && <p className="text-xs text-slate-500 mb-2">Đang tải...</p>}
-                    <div className="space-y-3 text-sm max-h-[360px] overflow-y-auto mb-4">
+
+                <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card lg:col-span-2 flex flex-col">
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="font-semibold text-slate-900">Luồng hội thoại</h3>
+                        {loading && <span className="text-xs text-text-muted">Đang tải...</span>}
+                    </div>
+                    <div className="space-y-4 text-sm max-h-[360px] overflow-y-auto pr-1">
                         {comments.map((c) => (
-                            <div
-                                key={c.id}
-                                className="rounded-lg bg-slate-50 border border-slate-200 p-3 flex justify-between gap-3"
-                            >
-                                <div>
-                                    <div className="text-xs text-slate-500 mb-1">
-                                        @{c.user?.name || c.user?.email || 'user'} • #{c.id}
-                                    </div>
-                                    <div>{c.content}</div>
+                            <div key={c.id} className="flex gap-3">
+                                <div className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center font-semibold">
+                                    {(c.user?.name || 'U').charAt(0)}
                                 </div>
-                                {canEditOrDelete(c) && (
-                                    <div className="flex flex-col gap-1">
-                                        <button
-                                            type="button"
-                                            className="text-xs px-2 py-1 rounded border border-slate-200 bg-white hover:bg-slate-100"
-                                            onClick={() => startEdit(c)}
-                                        >
-                                            Sửa
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="text-xs px-2 py-1 rounded border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
-                                            onClick={() => remove(c)}
-                                        >
-                                            Xóa
-                                        </button>
+                                <div className="flex-1">
+                                    <div className="flex items-center gap-2">
+                                        <span className="font-semibold text-slate-900">{c.user?.name || 'User'}</span>
+                                        <span className="text-xs text-text-muted">{c.created_at || ''}</span>
                                     </div>
-                                )}
+                                    <div className="mt-2 rounded-2xl border border-slate-200/80 bg-slate-50 p-3 text-slate-700">
+                                        {c.content}
+                                    </div>
+                                    {c.attachment_path && (
+                                        <a className="text-xs text-primary mt-2 inline-block" href={c.attachment_path} target="_blank" rel="noreferrer">
+                                            Tệp đính kèm
+                                        </a>
+                                    )}
+                                    {c.tagged_user_ids && (
+                                        <p className="text-xs text-text-muted mt-1">Tag: {String(c.tagged_user_ids)}</p>
+                                    )}
+                                    {canEditOrDelete(c) && (
+                                        <div className="mt-2 flex gap-3 text-xs">
+                                            <button className="text-primary" onClick={() => startEdit(c)} type="button">Sửa</button>
+                                            <button className="text-danger" onClick={() => remove(c)} type="button">Xóa</button>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         ))}
                         {!comments.length && (
-                            <p className="text-slate-500 text-sm">
-                                Chưa có hội thoại cho task này. Chọn task và gửi comment đầu tiên.
-                            </p>
+                            <p className="text-sm text-text-muted">Chưa có trao đổi nào.</p>
                         )}
                     </div>
-                    <div className="space-y-2 text-sm">
+                    <div className="mt-4 pt-4 border-t border-slate-200/80">
+                        <div className="grid gap-2 md:grid-cols-2 mb-3">
+                            <input
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                placeholder="Tag user IDs (vd: 12, 15)"
+                                value={taggedIds}
+                                onChange={(e) => setTaggedIds(e.target.value)}
+                            />
+                            <input
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                type="file"
+                                onChange={(e) => setAttachment(e.target.files?.[0] || null)}
+                            />
+                        </div>
                         <textarea
-                            className="w-full rounded-lg border border-slate-200 px-3 py-2"
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
                             rows={3}
-                            placeholder="Nhập nội dung trao đổi..."
+                            placeholder="Nhập nội dung..."
                             value={content}
                             onChange={(e) => setContent(e.target.value)}
                         />
-                        <div className="flex items-center justify-between">
-                            <span className="text-xs text-slate-500">
-                                {editingId ? `Đang sửa comment #${editingId}` : 'Tạo comment mới'}
-                            </span>
-                            <div className="flex gap-2">
-                                {editingId && (
-                                    <button
-                                        type="button"
-                                        className="text-xs px-3 py-1 rounded border border-slate-200"
-                                        onClick={resetForm}
-                                    >
-                                        Hủy sửa
-                                    </button>
-                                )}
-                                <button
-                                    type="button"
-                                    className="text-xs px-3 py-1 rounded bg-sky-600 hover:bg-sky-700 text-white font-semibold disabled:opacity-50"
-                                    onClick={save}
-                                    disabled={!selectedTaskId}
-                                >
-                                    {editingId ? 'Lưu sửa' : 'Gửi'}
+                        <div className="mt-3 flex items-center gap-3">
+                            <button
+                                type="button"
+                                className="bg-primary text-white rounded-2xl px-4 py-2 text-sm font-semibold"
+                                onClick={save}
+                            >
+                                {editingId ? 'Cập nhật' : 'Gửi'}
+                            </button>
+                            {editingId && (
+                                <button className="text-xs text-text-muted" type="button" onClick={resetForm}>
+                                    Hủy chỉnh sửa
                                 </button>
-                            </div>
+                            )}
                         </div>
                     </div>
                 </div>

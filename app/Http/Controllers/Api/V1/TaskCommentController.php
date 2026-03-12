@@ -7,6 +7,7 @@ use App\Models\Task;
 use App\Models\TaskComment;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class TaskCommentController extends Controller
 {
@@ -22,18 +23,26 @@ class TaskCommentController extends Controller
 
     public function store(Task $task, Request $request): JsonResponse
     {
+        $this->normalizeTaggedIds($request);
         $validated = $request->validate([
             'content' => ['required', 'string'],
             'tagged_user_ids' => ['nullable', 'array'],
             'tagged_user_ids.*' => ['integer', 'exists:users,id'],
             'attachment_path' => ['nullable', 'string', 'max:255'],
+            'attachment' => ['nullable', 'file', 'max:10240'],
         ]);
+
+        $attachmentPath = $validated['attachment_path'] ?? null;
+        if ($request->hasFile('attachment')) {
+            $storedPath = $request->file('attachment')->store('task_comments', 'public');
+            $attachmentPath = Storage::url($storedPath);
+        }
 
         $comment = $task->comments()->create([
             'user_id' => $request->user()->id,
             'content' => $validated['content'],
             'tagged_user_ids' => isset($validated['tagged_user_ids']) ? json_encode($validated['tagged_user_ids']) : null,
-            'attachment_path' => $validated['attachment_path'] ?? null,
+            'attachment_path' => $attachmentPath,
         ]);
 
         return response()->json($comment->load('user'), 201);
@@ -49,17 +58,27 @@ class TaskCommentController extends Controller
             return response()->json(['message' => 'Forbidden.'], 403);
         }
 
+        $this->normalizeTaggedIds($request);
         $validated = $request->validate([
             'content' => ['required', 'string'],
             'tagged_user_ids' => ['nullable', 'array'],
             'tagged_user_ids.*' => ['integer', 'exists:users,id'],
             'attachment_path' => ['nullable', 'string', 'max:255'],
+            'attachment' => ['nullable', 'file', 'max:10240'],
         ]);
+
+        $attachmentPath = $comment->attachment_path;
+        if ($request->hasFile('attachment')) {
+            $storedPath = $request->file('attachment')->store('task_comments', 'public');
+            $attachmentPath = Storage::url($storedPath);
+        } elseif (array_key_exists('attachment_path', $validated)) {
+            $attachmentPath = $validated['attachment_path'];
+        }
 
         $comment->update([
             'content' => $validated['content'],
             'tagged_user_ids' => isset($validated['tagged_user_ids']) ? json_encode($validated['tagged_user_ids']) : null,
-            'attachment_path' => $validated['attachment_path'] ?? null,
+            'attachment_path' => $attachmentPath,
         ]);
 
         return response()->json($comment->load('user'));
@@ -93,5 +112,22 @@ class TaskCommentController extends Controller
         }
 
         return in_array($user->role, ['admin', 'truong_phong_san_xuat'], true);
+    }
+
+    private function normalizeTaggedIds(Request $request): void
+    {
+        $raw = $request->input('tagged_user_ids');
+        if (is_string($raw)) {
+            $decoded = json_decode($raw, true);
+            if (is_array($decoded)) {
+                $request->merge(['tagged_user_ids' => $decoded]);
+                return;
+            }
+            if (str_contains($raw, ',')) {
+                $list = array_filter(array_map('trim', explode(',', $raw)));
+                $ids = array_values(array_filter($list, fn ($item) => is_numeric($item)));
+                $request->merge(['tagged_user_ids' => $ids]);
+            }
+        }
     }
 }

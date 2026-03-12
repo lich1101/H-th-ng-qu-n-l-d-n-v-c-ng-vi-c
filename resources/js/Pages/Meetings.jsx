@@ -180,156 +180,125 @@ export default function Meetings(props) {
                 { label: 'Hỗ trợ', value: 'CRUD đầy đủ' },
             ]}
         >
-            <form
-                onSubmit={editingId ? updateMeeting : createMeeting}
-                className="mb-4 bg-white rounded-xl border border-slate-200 p-4 shadow-sm grid gap-3 md:grid-cols-2"
-            >
-                <input
-                    type="text"
-                    value={form.title}
-                    onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))}
-                    className="rounded-lg border-slate-300 text-sm"
-                    placeholder="Tiêu đề lịch họp"
-                    required
-                />
-                <input
-                    type="datetime-local"
-                    value={form.scheduled_at}
-                    onChange={(e) => setForm((prev) => ({ ...prev, scheduled_at: e.target.value }))}
-                    className="rounded-lg border-slate-300 text-sm"
-                    required
-                />
-                <input
-                    type="url"
-                    value={form.meeting_link}
-                    onChange={(e) => setForm((prev) => ({ ...prev, meeting_link: e.target.value }))}
-                    className="rounded-lg border-slate-300 text-sm"
-                    placeholder="Link họp"
-                />
-                <input
-                    type="text"
-                    value={form.description}
-                    onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
-                    className="rounded-lg border-slate-300 text-sm"
-                    placeholder="Mô tả cuộc họp"
-                />
-                <input
-                    type="text"
-                    value={form.minutes}
-                    onChange={(e) => setForm((prev) => ({ ...prev, minutes: e.target.value }))}
-                    className="rounded-lg border-slate-300 text-sm"
-                    placeholder="Biên bản tóm tắt"
-                />
-                <div className="md:col-span-2 flex gap-2">
-                    <button type="submit" className="rounded-lg bg-sky-600 text-white font-semibold text-sm px-4 py-2">
-                        {editingId ? 'Lưu chỉnh sửa' : 'Tạo lịch họp'}
-                    </button>
-                    {editingId && (
-                        <button
-                            type="button"
-                            onClick={() => {
-                                setEditingId(null);
-                                setForm({ title: '', scheduled_at: '', meeting_link: '', description: '', minutes: '' });
-                            }}
-                            className="rounded-lg border border-slate-300 text-slate-700 font-semibold text-sm px-4 py-2"
-                        >
-                            Hủy
+            <div className="grid gap-5 lg:grid-cols-3">
+                <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card lg:col-span-1">
+                    <h3 className="font-semibold text-slate-900 mb-4">
+                        {editingId ? `Cập nhật lịch họp #${editingId}` : 'Tạo lịch họp mới'}
+                    </h3>
+                    <form onSubmit={editingId ? updateMeeting : createMeeting} className="space-y-3 text-sm">
+                        <input
+                            type="text"
+                            value={form.title}
+                            onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))}
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            placeholder="Tiêu đề lịch họp"
+                            required
+                        />
+                        <input
+                            type="datetime-local"
+                            value={form.scheduled_at}
+                            onChange={(e) => setForm((prev) => ({ ...prev, scheduled_at: e.target.value }))}
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            required
+                        />
+                        <input
+                            type="text"
+                            value={form.meeting_link}
+                            onChange={(e) => setForm((prev) => ({ ...prev, meeting_link: e.target.value }))}
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            placeholder="Link meeting"
+                        />
+                        <textarea
+                            value={form.description}
+                            onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            rows={3}
+                            placeholder="Ghi chú cuộc họp"
+                        />
+                        <textarea
+                            value={form.minutes}
+                            onChange={(e) => setForm((prev) => ({ ...prev, minutes: e.target.value }))}
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            rows={3}
+                            placeholder="Biên bản"
+                        />
+                        <button type="submit" className="w-full rounded-2xl bg-primary text-white py-2.5 font-semibold">
+                            {editingId ? 'Cập nhật lịch họp' : 'Tạo lịch họp'}
                         </button>
-                    )}
+                        {editingId && (
+                            <button
+                                type="button"
+                                className="w-full text-xs text-text-muted"
+                                onClick={() => {
+                                    setEditingId(null);
+                                    setForm({ title: '', scheduled_at: '', meeting_link: '', description: '', minutes: '' });
+                                }}
+                            >
+                                Hủy chỉnh sửa
+                            </button>
+                        )}
+                    </form>
                 </div>
-            </form>
 
-            <form
-                onSubmit={applyFilters}
-                className="mb-4 bg-white rounded-xl border border-slate-200 p-4 shadow-sm grid gap-3 md:grid-cols-5"
-            >
-                <input
-                    type="text"
-                    value={meetingFilters.search}
-                    onChange={(e) => setMeetingFilters((prev) => ({ ...prev, search: e.target.value }))}
-                    className="rounded-lg border-slate-300 text-sm"
-                    placeholder="Tìm theo tiêu đề/mô tả/link"
-                />
-                <input
-                    type="date"
-                    value={meetingFilters.date_from}
-                    onChange={(e) => setMeetingFilters((prev) => ({ ...prev, date_from: e.target.value }))}
-                    className="rounded-lg border-slate-300 text-sm"
-                />
-                <input
-                    type="date"
-                    value={meetingFilters.date_to}
-                    onChange={(e) => setMeetingFilters((prev) => ({ ...prev, date_to: e.target.value }))}
-                    className="rounded-lg border-slate-300 text-sm"
-                />
-                <select
-                    value={meetingFilters.per_page}
-                    onChange={(e) => setMeetingFilters((prev) => ({ ...prev, per_page: Number(e.target.value) }))}
-                    className="rounded-lg border-slate-300 text-sm"
-                >
-                    <option value={5}>5 / trang</option>
-                    <option value={10}>10 / trang</option>
-                    <option value={20}>20 / trang</option>
-                </select>
-                <button type="submit" className="rounded-lg bg-slate-800 text-white font-semibold text-sm px-4 py-2">
-                    Lọc dữ liệu
-                </button>
-            </form>
+                <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card lg:col-span-2">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4">
+                        <h3 className="font-semibold text-slate-900">Danh sách lịch họp</h3>
+                        <form onSubmit={applyFilters} className="flex flex-wrap gap-2">
+                            <input
+                                type="text"
+                                className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                placeholder="Tìm tiêu đề"
+                                value={meetingFilters.search}
+                                onChange={(e) => setMeetingFilters((prev) => ({ ...prev, search: e.target.value }))}
+                            />
+                            <input
+                                type="date"
+                                className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                value={meetingFilters.date_from}
+                                onChange={(e) => setMeetingFilters((prev) => ({ ...prev, date_from: e.target.value }))}
+                            />
+                            <input
+                                type="date"
+                                className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                value={meetingFilters.date_to}
+                                onChange={(e) => setMeetingFilters((prev) => ({ ...prev, date_to: e.target.value }))}
+                            />
+                            <button type="submit" className="text-sm text-primary font-semibold">Lọc</button>
+                        </form>
+                    </div>
 
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                <div className="px-4 py-3 border-b border-slate-200 font-semibold">Lịch họp sắp tới</div>
-                <div className="divide-y divide-slate-100">
-                    {meetings.map((meeting) => (
-                        <div key={meeting.id} className="px-4 py-3 flex justify-between text-sm">
-                            <div>
-                                <p className="font-medium">{meeting.title}</p>
-                                <p className="text-slate-500">{meeting.meeting_link || 'Chưa có link họp'}</p>
-                            </div>
-                            <div className="text-right">
-                                <p className="text-slate-700">
-                                    {new Date(meeting.scheduled_at).toLocaleString('vi-VN')}
-                                </p>
-                                <div className="mt-1 flex gap-2 justify-end">
-                                    <button
-                                        type="button"
-                                        className="text-xs text-sky-700"
-                                        onClick={() => startEdit(meeting)}
-                                    >
-                                        Sửa
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className="text-xs text-rose-700"
-                                        onClick={() => deleteMeeting(meeting.id)}
-                                    >
-                                        Xóa
-                                    </button>
+                    <div className="space-y-3">
+                        {meetings.map((meeting) => (
+                            <div key={meeting.id} className="rounded-2xl border border-slate-200/80 p-4">
+                                <div className="flex items-center justify-between">
+                                    <h4 className="font-semibold text-slate-900">{meeting.title}</h4>
+                                    <div className="flex items-center gap-3 text-xs">
+                                        <button className="text-primary" onClick={() => startEdit(meeting)} type="button">Sửa</button>
+                                        <button className="text-danger" onClick={() => deleteMeeting(meeting.id)} type="button">Xóa</button>
+                                    </div>
                                 </div>
+                                <p className="text-xs text-text-muted mt-1">{meeting.scheduled_at}</p>
+                                {meeting.meeting_link && (
+                                    <a className="text-xs text-primary mt-2 inline-block" href={meeting.meeting_link} target="_blank" rel="noreferrer">
+                                        Mở link meeting
+                                    </a>
+                                )}
+                                {meeting.description && (
+                                    <p className="text-xs text-text-muted mt-2">{meeting.description}</p>
+                                )}
                             </div>
+                        ))}
+                        {!meetings.length && (
+                            <p className="text-sm text-text-muted">Chưa có lịch họp.</p>
+                        )}
+                    </div>
+
+                    <div className="mt-4 flex items-center justify-between text-xs text-text-muted">
+                        <span>Trang {meetingMeta.current_page} / {meetingMeta.last_page}</span>
+                        <div className="flex gap-2">
+                            <button type="button" className="px-3 py-1 rounded-full border border-slate-200/80" onClick={goPrevPage}>Trước</button>
+                            <button type="button" className="px-3 py-1 rounded-full border border-slate-200/80" onClick={goNextPage}>Sau</button>
                         </div>
-                    ))}
-                </div>
-                <div className="px-4 py-3 border-t border-slate-200 flex items-center justify-between text-sm">
-                    <span>
-                        Trang {meetingMeta.current_page}/{meetingMeta.last_page}
-                    </span>
-                    <div className="flex gap-2">
-                        <button
-                            type="button"
-                            onClick={goPrevPage}
-                            disabled={meetingMeta.current_page <= 1}
-                            className="rounded border border-slate-300 px-3 py-1 disabled:opacity-50"
-                        >
-                            Trước
-                        </button>
-                        <button
-                            type="button"
-                            onClick={goNextPage}
-                            disabled={meetingMeta.current_page >= meetingMeta.last_page}
-                            className="rounded border border-slate-300 px-3 py-1 disabled:opacity-50"
-                        >
-                            Sau
-                        </button>
                     </div>
                 </div>
             </div>

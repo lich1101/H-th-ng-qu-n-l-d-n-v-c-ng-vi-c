@@ -45,34 +45,37 @@ export default function NotificationCenter(props) {
                 { label: 'Nguồn', value: 'API nội bộ' },
             ]}
         >
-            <div className="grid gap-4 xl:grid-cols-2">
-                <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-                    <div className="flex items-center justify-between mb-3">
-                        <h3 className="font-semibold">Nhắc deadline</h3>
+            <div className="grid gap-5 xl:grid-cols-2">
+                <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="font-semibold text-slate-900">Nhắc deadline</h3>
                         <button
                             type="button"
-                            className="text-xs px-2 py-1 rounded border border-slate-300"
+                            className="text-xs text-primary"
                             onClick={() => markAllRead('deadline_reminder')}
                         >
                             Đọc tất cả
                         </button>
                     </div>
-                    <div className="space-y-2 text-sm">
+                    <div className="space-y-3 text-sm">
                         {reminders.map((item) => (
                             <div
                                 key={item.id}
-                                className={`rounded-lg border p-3 ${
-                                    item.is_read ? 'border-slate-200 bg-white' : 'border-sky-200 bg-sky-50'
+                                className={`rounded-2xl border p-4 ${
+                                    item.is_read ? 'border-slate-200/80 bg-white' : 'border-primary/30 bg-primary/5'
                                 }`}
                             >
-                                <p className="font-medium">{item.task_title || 'Task'}</p>
-                                <p className="text-slate-500">
-                                    {item.trigger_type} • {item.channel} • {item.status}
+                                <div className="flex items-center justify-between">
+                                    <p className="font-semibold">{item.task_title || 'Task'}</p>
+                                    <span className="text-xs text-text-muted">{item.channel}</span>
+                                </div>
+                                <p className="text-xs text-text-muted mt-2">
+                                    {item.trigger_type} • {item.status}
                                 </p>
                                 {!item.is_read && (
                                     <button
                                         type="button"
-                                        className="mt-2 text-xs text-sky-700"
+                                        className="mt-3 text-xs text-primary"
                                         onClick={() => markRead('deadline_reminder', item.id)}
                                     >
                                         Đánh dấu đã đọc
@@ -80,37 +83,42 @@ export default function NotificationCenter(props) {
                                 )}
                             </div>
                         ))}
-                        {reminders.length === 0 && <p className="text-slate-500">Chưa có thông báo nhắc deadline.</p>}
+                        {reminders.length === 0 && (
+                            <p className="text-text-muted">Chưa có thông báo nhắc deadline.</p>
+                        )}
                     </div>
                 </div>
 
-                <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-                    <div className="flex items-center justify-between mb-3">
-                        <h3 className="font-semibold">Hoạt động hệ thống</h3>
+                <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="font-semibold text-slate-900">Hoạt động hệ thống</h3>
                         <button
                             type="button"
-                            className="text-xs px-2 py-1 rounded border border-slate-300"
+                            className="text-xs text-primary"
                             onClick={() => markAllRead('activity_log')}
                         >
                             Đọc tất cả
                         </button>
                     </div>
-                    <div className="space-y-2 text-sm">
+                    <div className="space-y-3 text-sm">
                         {logs.map((item) => (
                             <div
                                 key={item.id}
-                                className={`rounded-lg border p-3 ${
-                                    item.is_read ? 'border-slate-200 bg-white' : 'border-sky-200 bg-sky-50'
+                                className={`rounded-2xl border p-4 ${
+                                    item.is_read ? 'border-slate-200/80 bg-white' : 'border-primary/30 bg-primary/5'
                                 }`}
                             >
-                                <p className="font-medium">{item.action}</p>
-                                <p className="text-slate-500">
-                                    {item.subject_type} #{item.subject_id} • {item.actor || 'system'}
+                                <div className="flex items-center justify-between">
+                                    <p className="font-semibold">{item.action}</p>
+                                    <span className="text-xs text-text-muted">{item.actor || 'system'}</span>
+                                </div>
+                                <p className="text-xs text-text-muted mt-2">
+                                    {item.subject_type} #{item.subject_id}
                                 </p>
                                 {!item.is_read && (
                                     <button
                                         type="button"
-                                        className="mt-2 text-xs text-sky-700"
+                                        className="mt-3 text-xs text-primary"
                                         onClick={() => markRead('activity_log', item.id)}
                                     >
                                         Đánh dấu đã đọc
@@ -118,7 +126,9 @@ export default function NotificationCenter(props) {
                                 )}
                             </div>
                         ))}
-                        {logs.length === 0 && <p className="text-slate-500">Chưa có activity mới.</p>}
+                        {logs.length === 0 && (
+                            <p className="text-text-muted">Chưa có activity mới.</p>
+                        )}
                     </div>
                 </div>
             </div>

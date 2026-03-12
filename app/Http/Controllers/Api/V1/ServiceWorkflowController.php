@@ -14,7 +14,8 @@ class ServiceWorkflowController extends Controller
 {
     public function index(string $type, Request $request): JsonResponse
     {
-        $model = $this->resolveModel($type);
+        $normalized = $this->normalizeType($type);
+        $model = $normalized ? $this->resolveModel($normalized) : null;
         if (!$model) {
             return response()->json(['message' => 'Loai dich vu khong hop le.'], 422);
         }
@@ -31,12 +32,13 @@ class ServiceWorkflowController extends Controller
 
     public function store(string $type, Request $request): JsonResponse
     {
-        $model = $this->resolveModel($type);
+        $normalized = $this->normalizeType($type);
+        $model = $normalized ? $this->resolveModel($normalized) : null;
         if (!$model) {
             return response()->json(['message' => 'Loai dich vu khong hop le.'], 422);
         }
 
-        $validated = $request->validate($this->rules($type));
+        $validated = $request->validate($this->rules($normalized));
         $item = $model::create($validated);
 
         return response()->json($item, 201);
@@ -44,12 +46,13 @@ class ServiceWorkflowController extends Controller
 
     public function update(string $type, int $id, Request $request): JsonResponse
     {
-        $model = $this->resolveModel($type);
+        $normalized = $this->normalizeType($type);
+        $model = $normalized ? $this->resolveModel($normalized) : null;
         if (!$model) {
             return response()->json(['message' => 'Loai dich vu khong hop le.'], 422);
         }
 
-        $validated = $request->validate($this->rules($type));
+        $validated = $request->validate($this->rules($normalized));
         $item = $model::findOrFail($id);
         $item->update($validated);
 
@@ -58,7 +61,8 @@ class ServiceWorkflowController extends Controller
 
     public function destroy(string $type, int $id): JsonResponse
     {
-        $model = $this->resolveModel($type);
+        $normalized = $this->normalizeType($type);
+        $model = $normalized ? $this->resolveModel($normalized) : null;
         if (!$model) {
             return response()->json(['message' => 'Loai dich vu khong hop le.'], 422);
         }
@@ -67,6 +71,19 @@ class ServiceWorkflowController extends Controller
         $item->delete();
 
         return response()->json(['message' => 'Xoa ban ghi dich vu thanh cong.']);
+    }
+
+    private function normalizeType(string $type): ?string
+    {
+        return [
+            'backlinks' => 'backlinks',
+            'viet_content' => 'content',
+            'content' => 'content',
+            'audit_content' => 'audit',
+            'audit' => 'audit',
+            'cham_soc_website_tong_the' => 'website-care',
+            'website-care' => 'website-care',
+        ][$type] ?? null;
     }
 
     private function resolveModel(string $type): ?string

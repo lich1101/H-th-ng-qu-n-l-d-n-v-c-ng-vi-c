@@ -3,7 +3,7 @@ import axios from 'axios';
 import PageContainer from '@/Components/PageContainer';
 import { useToast } from '@/Contexts/ToastContext';
 
-const PROJECT_STATUSES = [
+const DEFAULT_STATUSES = [
     { value: 'moi_tao', label: 'Mới tạo' },
     { value: 'dang_trien_khai', label: 'Đang triển khai' },
     { value: 'cho_duyet', label: 'Chờ duyệt' },
@@ -11,12 +11,24 @@ const PROJECT_STATUSES = [
     { value: 'tam_dung', label: 'Tạm dừng' },
 ];
 
-const SERVICE_TYPES = [
+const DEFAULT_SERVICES = [
     { value: 'backlinks', label: 'Backlinks' },
     { value: 'viet_content', label: 'Viết content' },
     { value: 'audit_content', label: 'Audit content' },
     { value: 'cham_soc_website_tong_the', label: 'Chăm sóc website tổng thể' },
 ];
+
+const LABELS = {
+    moi_tao: 'Mới tạo',
+    dang_trien_khai: 'Đang triển khai',
+    cho_duyet: 'Chờ duyệt',
+    hoan_thanh: 'Hoàn thành',
+    tam_dung: 'Tạm dừng',
+    backlinks: 'Backlinks',
+    viet_content: 'Viết content',
+    audit_content: 'Audit content',
+    cham_soc_website_tong_the: 'Chăm sóc website tổng thể',
+};
 
 export default function ProjectsKanban(props) {
     const toast = useToast();
@@ -27,7 +39,9 @@ export default function ProjectsKanban(props) {
 
     const [loading, setLoading] = useState(false);
     const [projects, setProjects] = useState([]);
+    const [meta, setMeta] = useState({});
     const [editingId, setEditingId] = useState(null);
+    const [viewMode, setViewMode] = useState('kanban');
     const [filters, setFilters] = useState({
         search: '',
         status: '',
@@ -37,13 +51,34 @@ export default function ProjectsKanban(props) {
         code: '',
         name: '',
         client_id: '',
-        service_type: SERVICE_TYPES[0].value,
+        service_type: DEFAULT_SERVICES[0].value,
         start_date: '',
         deadline: '',
         budget: '',
-        status: PROJECT_STATUSES[0].value,
+        status: DEFAULT_STATUSES[0].value,
         customer_requirement: '',
     });
+
+    const statusOptions = useMemo(() => {
+        const values = meta.project_statuses || [];
+        if (!values.length) return DEFAULT_STATUSES;
+        return values.map((value) => ({ value, label: LABELS[value] || value }));
+    }, [meta]);
+
+    const serviceOptions = useMemo(() => {
+        const values = meta.service_types || [];
+        if (!values.length) return DEFAULT_SERVICES;
+        return values.map((value) => ({ value, label: LABELS[value] || value }));
+    }, [meta]);
+
+    const fetchMeta = async () => {
+        try {
+            const res = await axios.get('/api/v1/meta');
+            setMeta(res.data || {});
+        } catch {
+            // ignore
+        }
+    };
 
     const fetchProjects = async () => {
         setLoading(true);
@@ -65,24 +100,53 @@ export default function ProjectsKanban(props) {
     };
 
     useEffect(() => {
+        fetchMeta();
         fetchProjects();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    useEffect(() => {
+        if (serviceOptions.length && !form.service_type) {
+            setForm((s) => ({ ...s, service_type: serviceOptions[0].value }));
+        }
+        if (statusOptions.length && !form.status) {
+            setForm((s) => ({ ...s, status: statusOptions[0].value }));
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [serviceOptions.length, statusOptions.length]);
+
     const columns = useMemo(() => {
         const buckets = {};
-        for (const s of PROJECT_STATUSES) buckets[s.value] = [];
+        for (const s of statusOptions) buckets[s.value] = [];
         for (const p of projects) {
-            const key = p.status || 'moi_tao';
+            const key = p.status || statusOptions[0]?.value || 'moi_tao';
             if (!buckets[key]) buckets[key] = [];
             buckets[key].push(p);
         }
-        return PROJECT_STATUSES.map((s) => ({
+        return statusOptions.map((s) => ({
             key: s.value,
             title: s.label,
             items: buckets[s.value] || [],
         }));
-    }, [projects]);
+    }, [projects, statusOptions]);
+
+    const formatDate = (raw) => {
+        if (!raw) return '';
+        try {
+            const d = new Date(raw);
+            return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+        } catch {
+            return String(raw).slice(0, 10);
+        }
+    };
+
+    const sortedByDeadline = useMemo(() => (
+        [...projects].sort((a, b) => {
+            const da = a.deadline ? new Date(a.deadline).getTime() : 0;
+            const db = b.deadline ? new Date(b.deadline).getTime() : 0;
+            return da - db;
+        })
+    ), [projects]);
 
     const stats = useMemo(() => {
         const total = projects.length;
@@ -112,11 +176,11 @@ export default function ProjectsKanban(props) {
             code: '',
             name: '',
             client_id: '',
-            service_type: SERVICE_TYPES[0].value,
+            service_type: serviceOptions[0]?.value || DEFAULT_SERVICES[0].value,
             start_date: '',
             deadline: '',
             budget: '',
-            status: PROJECT_STATUSES[0].value,
+            status: statusOptions[0]?.value || DEFAULT_STATUSES[0].value,
             customer_requirement: '',
         });
     };
@@ -127,11 +191,11 @@ export default function ProjectsKanban(props) {
             code: p.code || '',
             name: p.name || '',
             client_id: p.client_id || '',
-            service_type: p.service_type || SERVICE_TYPES[0].value,
+            service_type: p.service_type || serviceOptions[0]?.value || DEFAULT_SERVICES[0].value,
             start_date: p.start_date || '',
             deadline: p.deadline || '',
             budget: p.budget ?? '',
-            status: p.status || PROJECT_STATUSES[0].value,
+            status: p.status || statusOptions[0]?.value || DEFAULT_STATUSES[0].value,
             customer_requirement: p.customer_requirement || '',
         });
     };
@@ -198,10 +262,7 @@ export default function ProjectsKanban(props) {
                 deadline: p.deadline,
                 budget: p.budget,
                 status: nextStatus,
-                handover_status: p.handover_status,
                 customer_requirement: p.customer_requirement,
-                approved_by: p.approved_by,
-                approved_at: p.approved_at,
             });
             toast.success('Đã cập nhật trạng thái.');
             await fetchProjects();
@@ -214,119 +275,178 @@ export default function ProjectsKanban(props) {
         <PageContainer
             auth={props.auth}
             title="Quản lý dự án"
-            description="Theo dõi pipeline dự án theo trạng thái, loại dịch vụ và deadline tổng. (Admin có đầy đủ CRUD)"
+            description="Theo dõi toàn bộ dự án theo trạng thái và phân bổ theo dịch vụ."
             stats={stats}
         >
-            <div className="grid gap-4 lg:grid-cols-3">
-                <div className="lg:col-span-1 bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-                    <div className="flex items-center justify-between mb-3">
+            <div className="grid gap-5 lg:grid-cols-3">
+                <div className="lg:col-span-1 bg-white rounded-2xl border border-slate-200/80 shadow-card p-5">
+                    <div className="flex items-center justify-between mb-4">
                         <h3 className="font-semibold">{editingId ? `Sửa dự án #${editingId}` : 'Tạo dự án'}</h3>
-                        <button
-                            className="text-xs text-slate-600 hover:text-slate-900"
-                            onClick={resetForm}
-                            type="button"
-                        >
-                            Reset
-                        </button>
+                        <button className="text-xs text-text-muted hover:text-slate-900" onClick={resetForm} type="button">Reset</button>
                     </div>
-                    <div className="space-y-2 text-sm">
-                        <input className="w-full rounded-lg border border-slate-200 px-3 py-2" placeholder="Mã dự án (code)*" value={form.code} onChange={(e) => setForm((s) => ({ ...s, code: e.target.value }))} />
-                        <input className="w-full rounded-lg border border-slate-200 px-3 py-2" placeholder="Tên dự án*" value={form.name} onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))} />
-                        <select className="w-full rounded-lg border border-slate-200 px-3 py-2" value={form.service_type} onChange={(e) => setForm((s) => ({ ...s, service_type: e.target.value }))}>
-                            {SERVICE_TYPES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-                        </select>
-                        <select className="w-full rounded-lg border border-slate-200 px-3 py-2" value={form.status} onChange={(e) => setForm((s) => ({ ...s, status: e.target.value }))}>
-                            {PROJECT_STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                    <div className="space-y-3 text-sm">
+                        <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" placeholder="Mã dự án *" value={form.code} onChange={(e) => setForm((s) => ({ ...s, code: e.target.value }))} />
+                        <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" placeholder="Tên dự án *" value={form.name} onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))} />
+                        <select className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" value={form.service_type} onChange={(e) => setForm((s) => ({ ...s, service_type: e.target.value }))}>
+                            {serviceOptions.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
                         </select>
                         <div className="grid grid-cols-2 gap-2">
-                            <input className="w-full rounded-lg border border-slate-200 px-3 py-2" type="date" value={form.start_date} onChange={(e) => setForm((s) => ({ ...s, start_date: e.target.value }))} />
-                            <input className="w-full rounded-lg border border-slate-200 px-3 py-2" type="date" value={form.deadline} onChange={(e) => setForm((s) => ({ ...s, deadline: e.target.value }))} />
+                            <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" type="date" value={form.start_date} onChange={(e) => setForm((s) => ({ ...s, start_date: e.target.value }))} />
+                            <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" type="date" value={form.deadline} onChange={(e) => setForm((s) => ({ ...s, deadline: e.target.value }))} />
                         </div>
-                        <input className="w-full rounded-lg border border-slate-200 px-3 py-2" placeholder="Ngân sách" value={form.budget} onChange={(e) => setForm((s) => ({ ...s, budget: e.target.value }))} />
-                        <textarea className="w-full rounded-lg border border-slate-200 px-3 py-2" rows={3} placeholder="Yêu cầu khách hàng" value={form.customer_requirement} onChange={(e) => setForm((s) => ({ ...s, customer_requirement: e.target.value }))} />
-                        <button
-                            className={`w-full rounded-lg px-3 py-2 font-semibold text-white ${editingId ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-sky-600 hover:bg-sky-700'} disabled:opacity-50`}
-                            onClick={save}
-                            type="button"
-                            disabled={loading}
-                        >
-                            {editingId ? 'Cập nhật' : 'Tạo dự án'}
+                        <select className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" value={form.status} onChange={(e) => setForm((s) => ({ ...s, status: e.target.value }))}>
+                            {statusOptions.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                        </select>
+                        <textarea className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" rows={3} placeholder="Yêu cầu khách hàng" value={form.customer_requirement} onChange={(e) => setForm((s) => ({ ...s, customer_requirement: e.target.value }))} />
+                        <button className="w-full bg-primary text-white rounded-2xl py-2.5 font-semibold" onClick={save} type="button">
+                            {editingId ? 'Cập nhật dự án' : 'Tạo dự án'}
                         </button>
-                    </div>
-                    <div className="mt-4 pt-4 border-t border-slate-200">
-                        <div className="flex gap-2">
-                            <input className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="Tìm theo tên/mã..." value={filters.search} onChange={(e) => setFilters((s) => ({ ...s, search: e.target.value }))} />
-                            <button className="rounded-lg border border-slate-200 px-3 py-2 text-sm" type="button" onClick={fetchProjects}>Lọc</button>
-                        </div>
-                        <div className="grid grid-cols-2 gap-2 mt-2">
-                            <select className="rounded-lg border border-slate-200 px-3 py-2 text-sm" value={filters.status} onChange={(e) => setFilters((s) => ({ ...s, status: e.target.value }))}>
-                                <option value="">-- Trạng thái --</option>
-                                {PROJECT_STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-                            </select>
-                            <select className="rounded-lg border border-slate-200 px-3 py-2 text-sm" value={filters.service_type} onChange={(e) => setFilters((s) => ({ ...s, service_type: e.target.value }))}>
-                                <option value="">-- Dịch vụ --</option>
-                                {SERVICE_TYPES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-                            </select>
-                        </div>
                     </div>
                 </div>
 
                 <div className="lg:col-span-2">
-                    {loading && <div className="text-sm text-slate-500 mb-2">Đang tải...</div>}
-                    <div className="grid gap-4 xl:grid-cols-2">
-                        {columns.map((col) => (
-                            <div key={col.key} className="bg-white rounded-xl border border-slate-200 shadow-sm">
-                                <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
-                                    <h3 className="font-semibold text-slate-900">{col.title}</h3>
-                                    <span className="text-xs text-slate-500">{col.items.length}</span>
-                                </div>
-                                <div className="p-3 space-y-3">
-                                    {col.items.map((p) => (
-                                        <div key={p.id} className="rounded-lg border border-slate-200 p-3 bg-slate-50">
-                                            <div className="flex items-start justify-between gap-3">
-                                                <div>
-                                                    <p className="text-sm font-semibold">{p.name}</p>
-                                                    <p className="text-xs text-slate-600 mt-1">Mã: {p.code} • Dịch vụ: {p.service_type}</p>
-                                                    <p className="text-xs text-slate-500 mt-1">Deadline: {p.deadline || '—'}</p>
+                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4">
+                        <div className="flex gap-2">
+                            <input
+                                className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                placeholder="Tìm theo mã/tên"
+                                value={filters.search}
+                                onChange={(e) => setFilters((s) => ({ ...s, search: e.target.value }))}
+                            />
+                            <select
+                                className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                value={filters.status}
+                                onChange={(e) => setFilters((s) => ({ ...s, status: e.target.value }))}
+                            >
+                                <option value="">Tất cả trạng thái</option>
+                                {statusOptions.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                            </select>
+                            <select
+                                className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                value={filters.service_type}
+                                onChange={(e) => setFilters((s) => ({ ...s, service_type: e.target.value }))}
+                            >
+                                <option value="">Tất cả dịch vụ</option>
+                                {serviceOptions.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                            </select>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            {[
+                                { key: 'kanban', label: 'Kanban' },
+                                { key: 'timeline', label: 'Timeline' },
+                                { key: 'gantt', label: 'Gantt' },
+                            ].map((tab) => (
+                                <button
+                                    key={tab.key}
+                                    type="button"
+                                    onClick={() => setViewMode(tab.key)}
+                                    className={`px-3 py-2 rounded-2xl text-xs font-semibold ${
+                                        viewMode === tab.key
+                                            ? 'bg-primary text-white'
+                                            : 'bg-white border border-slate-200/80 text-slate-600'
+                                    }`}
+                                >
+                                    {tab.label}
+                                </button>
+                            ))}
+                            <button className="text-sm text-primary font-semibold" onClick={fetchProjects} type="button">
+                                Tải lại
+                            </button>
+                        </div>
+                    </div>
+
+                    {viewMode === 'kanban' && (
+                        <div className="flex gap-4 overflow-x-auto pb-2">
+                            {columns.map((col) => (
+                                <div key={col.key} className="min-w-[280px] flex-1">
+                                    <div className="flex items-center justify-between mb-3">
+                                        <h4 className="text-xs uppercase tracking-widest text-text-subtle font-semibold">{col.title} ({col.items.length})</h4>
+                                    </div>
+                                    <div className="space-y-3">
+                                        {col.items.map((p) => (
+                                            <div key={p.id} className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-card">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                                                        {LABELS[p.service_type] || p.service_type}
+                                                    </span>
+                                                    <div className="flex items-center gap-2 text-xs text-text-muted">
+                                                        <button className="hover:text-slate-900" onClick={() => startEdit(p)} type="button">Sửa</button>
+                                                        {canDelete && (
+                                                            <button className="hover:text-danger" onClick={() => remove(p.id)} type="button">Xoá</button>
+                                                        )}
+                                                    </div>
                                                 </div>
-                                                <div className="flex gap-1">
-                                                    {canUpdate && (
-                                                        <button className="text-xs px-2 py-1 rounded border border-slate-200 bg-white hover:bg-slate-100" type="button" onClick={() => startEdit(p)}>
-                                                            Sửa
-                                                        </button>
-                                                    )}
-                                                    {canDelete && (
-                                                        <button className="text-xs px-2 py-1 rounded border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100" type="button" onClick={() => remove(p.id)}>
-                                                            Xóa
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            </div>
-                                            {canUpdate && (
-                                                <div className="mt-2 flex flex-wrap gap-2">
-                                                    {PROJECT_STATUSES.filter((s) => s.value !== p.status).slice(0, 3).map((s) => (
+                                                <h3 className="mt-3 font-semibold text-slate-900">{p.name}</h3>
+                                                <p className="text-xs text-text-muted mt-1">{p.code} • {p.deadline ? `Deadline ${String(p.deadline).slice(0, 10)}` : 'Chưa có deadline'}</p>
+                                                <div className="mt-3 flex flex-wrap gap-2">
+                                                    {statusOptions.map((s) => (
                                                         <button
                                                             key={s.value}
-                                                            className="text-xs px-2 py-1 rounded border border-slate-200 bg-white hover:bg-slate-100"
-                                                            type="button"
+                                                            className={`text-xs px-2 py-1 rounded-full border ${p.status === s.value ? 'border-primary text-primary' : 'border-slate-200/80 text-text-muted'}`}
                                                             onClick={() => quickMove(p, s.value)}
+                                                            type="button"
                                                         >
-                                                            → {s.label}
+                                                            {s.label}
                                                         </button>
                                                     ))}
                                                 </div>
-                                            )}
-                                        </div>
-                                    ))}
-                                    {!col.items.length && (
-                                        <div className="text-xs text-slate-500 p-3 border border-dashed border-slate-200 rounded-lg">
-                                            Chưa có dự án.
-                                        </div>
-                                    )}
+                                            </div>
+                                        ))}
+                                        {loading && <p className="text-sm text-text-muted">Đang tải...</p>}
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
-                    </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {viewMode === 'timeline' && (
+                        <div className="space-y-4">
+                            {sortedByDeadline.map((p) => (
+                                <div key={p.id} className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-card flex gap-4">
+                                    <div className="flex flex-col items-center">
+                                        <span className="h-3 w-3 rounded-full bg-primary" />
+                                        <span className="flex-1 w-px bg-slate-200 mt-2" />
+                                    </div>
+                                    <div className="flex-1">
+                                        <div className="flex items-center justify-between">
+                                            <h3 className="font-semibold text-slate-900">{p.name}</h3>
+                                            <span className="text-xs text-text-muted">{formatDate(p.deadline)}</span>
+                                        </div>
+                                        <p className="text-xs text-text-muted mt-1">{p.code} • {LABELS[p.service_type] || p.service_type}</p>
+                                        <div className="mt-2 text-xs text-text-muted">Trạng thái: {LABELS[p.status] || p.status}</div>
+                                    </div>
+                                </div>
+                            ))}
+                            {loading && <p className="text-sm text-text-muted">Đang tải...</p>}
+                            {!loading && sortedByDeadline.length === 0 && (
+                                <p className="text-sm text-text-muted">Chưa có dữ liệu timeline.</p>
+                            )}
+                        </div>
+                    )}
+
+                    {viewMode === 'gantt' && (
+                        <div className="space-y-3">
+                            {sortedByDeadline.length === 0 && (
+                                <p className="text-sm text-text-muted">Chưa có dữ liệu Gantt.</p>
+                            )}
+                            {sortedByDeadline.map((p) => {
+                                const start = p.start_date ? new Date(p.start_date) : (p.deadline ? new Date(p.deadline) : new Date());
+                                const end = p.deadline ? new Date(p.deadline) : new Date(start.getTime() + 5 * 86400000);
+                                const totalDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / 86400000));
+                                return (
+                                    <div key={p.id} className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-card">
+                                        <div className="flex items-center justify-between text-xs text-text-muted mb-2">
+                                            <span>{p.name}</span>
+                                            <span>{formatDate(p.deadline) || 'Chưa có deadline'}</span>
+                                        </div>
+                                        <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                                            <div className="h-2 bg-primary" style={{ width: `${Math.min(100, totalDays * 8)}%` }} />
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
                 </div>
             </div>
         </PageContainer>

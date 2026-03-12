@@ -14,8 +14,8 @@ export default function ActivityLogs(props) {
                 { label: 'Upload bàn giao', value: '56' },
             ]}
         >
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                <div className="px-4 py-3 border-b border-slate-200 text-sm text-slate-500">
+            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card overflow-hidden">
+                <div className="px-4 py-3 border-b border-slate-200/80 text-sm text-slate-500">
                     Bộ lọc: người dùng • loại thao tác • khoảng thời gian
                 </div>
                 <div className="divide-y divide-slate-100 text-sm">

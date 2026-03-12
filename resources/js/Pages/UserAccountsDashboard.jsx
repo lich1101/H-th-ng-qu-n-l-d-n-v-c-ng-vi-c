@@ -180,7 +180,7 @@ export default function UserAccountsDashboard(props) {
                 { label: 'Đăng nhập hôm nay', value: stats.login_today },
             ]}
         >
-            <div className="mb-4 bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+            <div className="mb-4 bg-white rounded-2xl border border-slate-200/80 p-4 shadow-card">
                 <h3 className="font-semibold text-slate-900 mb-3">
                     {editingId ? 'Sửa tài khoản' : 'Thêm tài khoản mới'}
                 </h3>
@@ -273,7 +273,7 @@ export default function UserAccountsDashboard(props) {
                 </form>
             </div>
 
-            <form onSubmit={submitSearch} className="mb-4 bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+            <form onSubmit={submitSearch} className="mb-4 bg-white rounded-2xl border border-slate-200/80 p-4 shadow-card">
                 <div className="grid gap-3 md:grid-cols-4">
                     <input
                         type="text"
@@ -312,7 +312,7 @@ export default function UserAccountsDashboard(props) {
             </form>
 
             <div className="grid gap-4 xl:grid-cols-3 mb-4">
-                <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm xl:col-span-2">
+                <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card xl:col-span-2">
                     <h3 className="font-semibold text-slate-900 mb-3">Danh sách tài khoản</h3>
                     <div className="overflow-x-auto">
                         <table className="min-w-full text-sm">
@@ -398,7 +398,7 @@ export default function UserAccountsDashboard(props) {
                     </div>
                 </div>
 
-                <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+                <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
                     <h3 className="font-semibold text-slate-900 mb-3">Biểu đồ phân bổ vai trò</h3>
                     <RoleBarChart data={(stats.role_distribution || []).map((item) => ({
                         label: toRoleLabel(item.label),
@@ -408,7 +408,7 @@ export default function UserAccountsDashboard(props) {
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
-                <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+                <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
                     <h3 className="font-semibold mb-3">Biểu đồ trạng thái tài khoản</h3>
                     <div className="space-y-3 text-sm">
                         <div>
@@ -422,7 +422,7 @@ export default function UserAccountsDashboard(props) {
                     </div>
                 </div>
 
-                <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+                <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
                     <h3 className="font-semibold mb-3">Cảnh báo tài khoản</h3>
                     <ul className="space-y-2 text-sm">
                         <li className="rounded-lg border border-amber-200 bg-amber-50 p-3">

@@ -119,173 +119,129 @@ export default function DeadlineReminders(props) {
         if (!confirm('Xóa lịch nhắc này?')) return;
         try {
             await axios.delete(`/api/v1/tasks/${selectedTaskId}/reminders/${r.id}`);
-            toast.success('Đã xóa lịch nhắc.');
+            toast.success('Đã xóa nhắc deadline.');
             await fetchReminders(selectedTaskId);
         } catch (e) {
-            toast.error(e?.response?.data?.message || 'Xóa lịch nhắc thất bại.');
+            toast.error(e?.response?.data?.message || 'Xóa nhắc deadline thất bại.');
         }
     };
 
     const startEdit = (r) => {
-        if (!canManage) return;
         setEditingId(r.id);
         setForm({
             channel: r.channel || 'in_app',
             trigger_type: r.trigger_type || 'days_3',
-            scheduled_at: (r.scheduled_at || '').slice(0, 16).replace(' ', 'T'),
+            scheduled_at: r.scheduled_at ? r.scheduled_at.slice(0, 16) : '',
             status: r.status || 'pending',
         });
     };
 
     const stats = [
-        { label: 'Nhắc deadline (trang)', value: String(reminders.length) },
+        { label: 'Tổng nhắc deadline', value: reminders.length },
         { label: 'Task đang chọn', value: selectedTaskId || '—' },
-        { label: 'Role', value: userRole || '—' },
-        { label: 'Quyền quản lý', value: canManage ? 'Admin/Trưởng phòng' : 'Xem' },
+        { label: 'Vai trò', value: userRole || '—' },
+        { label: 'Quyền quản lý', value: canManage ? 'Có' : 'Không' },
     ];
 
     return (
         <PageContainer
             auth={props.auth}
             title="Nhắc nhở deadline"
-            description="Tự động cảnh báo khi còn 3 ngày, 1 ngày hoặc đã quá hạn. Admin/Trưởng phòng có quyền cấu hình."
+            description="Thiết lập lịch nhắc theo từng task, kênh gửi và trigger ưu tiên."
             stats={stats}
         >
-            <div className="grid gap-4 lg:grid-cols-3">
-                <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm lg:col-span-1">
-                    <h3 className="font-semibold mb-3">Chọn task</h3>
-                    <select
-                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm mb-3"
-                        value={selectedTaskId}
-                        onChange={(e) => {
-                            const v = e.target.value;
-                            setSelectedTaskId(v);
-                            fetchReminders(v);
-                        }}
-                    >
-                        <option value="">-- Chọn task --</option>
-                        {tasks.map((t) => (
-                            <option key={t.id} value={t.id}>
-                                #{t.id} • {t.title}
-                            </option>
-                        ))}
-                    </select>
-                    <div className="space-y-2 text-xs text-slate-600">
-                        <p>• Chỉ Admin/Trưởng phòng mới tạo/sửa/xóa lịch nhắc.</p>
-                        <p>• Các kênh nhắc sẽ dùng cron + Notification Center để bắn thông báo.</p>
-                    </div>
-                </div>
-                <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm lg:col-span-2">
-                    <h3 className="font-semibold mb-3">Quản lý lịch nhắc</h3>
-                    {loading && <p className="text-xs text-slate-500 mb-2">Đang tải...</p>}
-                    <div className="grid gap-4 lg:grid-cols-2">
-                        <div className="space-y-2 text-sm">
-                            <h4 className="font-semibold text-slate-800">Form lịch nhắc</h4>
-                            <select
-                                className="w-full rounded-lg border border-slate-200 px-3 py-2"
-                                value={form.channel}
-                                onChange={(e) => setForm((s) => ({ ...s, channel: e.target.value }))}
-                                disabled={!canManage}
-                            >
-                                {CHANNELS.map((c) => (
-                                    <option key={c.value} value={c.value}>
-                                        {c.label}
-                                    </option>
-                                ))}
-                            </select>
-                            <select
-                                className="w-full rounded-lg border border-slate-200 px-3 py-2"
-                                value={form.trigger_type}
-                                onChange={(e) =>
-                                    setForm((s) => ({ ...s, trigger_type: e.target.value }))
-                                }
-                                disabled={!canManage}
-                            >
-                                {TRIGGERS.map((t) => (
-                                    <option key={t.value} value={t.value}>
-                                        {t.label}
-                                    </option>
-                                ))}
-                            </select>
-                            <input
-                                className="w-full rounded-lg border border-slate-200 px-3 py-2"
-                                type="datetime-local"
-                                value={form.scheduled_at}
-                                onChange={(e) =>
-                                    setForm((s) => ({ ...s, scheduled_at: e.target.value }))
-                                }
-                                disabled={!canManage}
-                            />
-                            <select
-                                className="w-full rounded-lg border border-slate-200 px-3 py-2"
-                                value={form.status}
-                                onChange={(e) => setForm((s) => ({ ...s, status: e.target.value }))}
-                                disabled={!canManage}
-                            >
-                                <option value="pending">pending</option>
-                                <option value="sent">sent</option>
-                                <option value="cancelled">cancelled</option>
-                            </select>
+            <div className="grid gap-5 lg:grid-cols-3">
+                <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card p-5 lg:col-span-1">
+                    <h3 className="font-semibold text-slate-900 mb-4">Thiết lập nhắc deadline</h3>
+                    <div className="space-y-3 text-sm">
+                        <select
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            value={selectedTaskId}
+                            onChange={(e) => {
+                                const value = e.target.value;
+                                setSelectedTaskId(value);
+                                fetchReminders(value);
+                            }}
+                        >
+                            <option value="">-- Chọn task --</option>
+                            {tasks.map((t) => (
+                                <option key={t.id} value={t.id}>
+                                    #{t.id} • {t.title}
+                                </option>
+                            ))}
+                        </select>
+                        <select
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            value={form.channel}
+                            onChange={(e) => setForm((s) => ({ ...s, channel: e.target.value }))}
+                        >
+                            {CHANNELS.map((c) => (
+                                <option key={c.value} value={c.value}>{c.label}</option>
+                            ))}
+                        </select>
+                        <select
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            value={form.trigger_type}
+                            onChange={(e) => setForm((s) => ({ ...s, trigger_type: e.target.value }))}
+                        >
+                            {TRIGGERS.map((t) => (
+                                <option key={t.value} value={t.value}>{t.label}</option>
+                            ))}
+                        </select>
+                        <input
+                            type="datetime-local"
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            value={form.scheduled_at}
+                            onChange={(e) => setForm((s) => ({ ...s, scheduled_at: e.target.value }))}
+                        />
+                        <button
+                            type="button"
+                            className="w-full bg-primary text-white rounded-2xl py-2.5 font-semibold"
+                            onClick={save}
+                        >
+                            {editingId ? 'Cập nhật nhắc deadline' : 'Tạo nhắc deadline'}
+                        </button>
+                        {editingId && (
                             <button
                                 type="button"
-                                className="w-full rounded-lg px-3 py-2 bg-sky-600 hover:bg-sky-700 text-white text-sm font-semibold disabled:opacity-50"
-                                onClick={save}
-                                disabled={!canManage || !selectedTaskId}
+                                className="w-full text-xs text-text-muted"
+                                onClick={resetForm}
                             >
-                                {editingId ? 'Cập nhật lịch nhắc' : 'Tạo lịch nhắc'}
+                                Hủy chỉnh sửa
                             </button>
-                            {editingId && (
-                                <button
-                                    type="button"
-                                    className="w-full rounded-lg px-3 py-2 border border-slate-200 text-sm mt-1"
-                                    onClick={resetForm}
-                                >
-                                    Hủy sửa
-                                </button>
-                            )}
-                        </div>
-                        <div className="space-y-2 text-sm">
-                            <h4 className="font-semibold text-slate-800">Danh sách lịch nhắc</h4>
-                            {reminders.map((r) => (
-                                <div
-                                    key={r.id}
-                                    className="rounded-lg border border-slate-200 p-3 flex justify-between items-center"
-                                >
-                                    <div>
-                                        <p className="font-medium">
-                                            {r.trigger_type} • {r.channel}
-                                        </p>
-                                        <p className="text-xs text-slate-500 mt-1">
-                                            Lịch gửi: {r.scheduled_at} • Trạng thái:{' '}
-                                            {r.status || 'pending'}
-                                        </p>
-                                    </div>
+                        )}
+                    </div>
+                </div>
+
+                <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card p-5 lg:col-span-2">
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="font-semibold text-slate-900">Danh sách nhắc deadline</h3>
+                        {loading && <span className="text-xs text-text-muted">Đang tải...</span>}
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2">
+                        {reminders.map((r) => (
+                            <div key={r.id} className="rounded-2xl border border-slate-200/80 p-4">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                                        {r.channel}
+                                    </span>
+                                    <span className="text-xs text-text-muted">{r.trigger_type}</span>
+                                </div>
+                                <p className="mt-3 text-sm font-semibold">{r.scheduled_at}</p>
+                                <p className="text-xs text-text-muted mt-1">Trạng thái: {r.status}</p>
+                                <div className="mt-3 flex gap-2">
                                     {canManage && (
-                                        <div className="flex flex-col gap-1">
-                                            <button
-                                                type="button"
-                                                className="text-xs px-2 py-1 rounded border border-slate-200 bg-white hover:bg-slate-100"
-                                                onClick={() => startEdit(r)}
-                                            >
-                                                Sửa
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className="text-xs px-2 py-1 rounded border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
-                                                onClick={() => remove(r)}
-                                            >
-                                                Xóa
-                                            </button>
-                                        </div>
+                                        <button className="text-xs text-primary" onClick={() => startEdit(r)} type="button">Sửa</button>
+                                    )}
+                                    {canManage && (
+                                        <button className="text-xs text-danger" onClick={() => remove(r)} type="button">Xóa</button>
                                     )}
                                 </div>
-                            ))}
-                            {!reminders.length && (
-                                <p className="text-slate-500 text-sm">
-                                    Chưa có lịch nhắc cho task này. Chọn task và tạo mới bên trái.
-                                </p>
-                            )}
-                        </div>
+                            </div>
+                        ))}
+                        {!reminders.length && (
+                            <p className="text-sm text-text-muted">Chưa có nhắc deadline cho task này.</p>
+                        )}
                     </div>
                 </div>
             </div>

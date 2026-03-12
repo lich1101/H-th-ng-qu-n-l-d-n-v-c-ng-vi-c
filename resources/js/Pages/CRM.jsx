@@ -290,12 +290,12 @@ export default function CRM(props) {
                 { label: 'Sửa thanh toán', value: editingPaymentId ? 'Có' : 'Không' },
             ]}
         >
-            <div className="grid gap-4 lg:grid-cols-2 mb-4">
-                <form onSubmit={submitClient} className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm grid gap-3">
+            <div className="grid gap-5 lg:grid-cols-2 mb-6">
+                <form onSubmit={submitClient} className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card grid gap-3">
                     <h3 className="font-semibold">{editingClientId ? 'Sửa khách hàng' : 'Thêm khách hàng'}</h3>
                     <input
                         type="text"
-                        className="rounded-lg border-slate-300 text-sm"
+                        className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
                         placeholder="Tên liên hệ"
                         value={clientForm.name}
                         onChange={(e) => setClientForm((prev) => ({ ...prev, name: e.target.value }))}
@@ -303,26 +303,40 @@ export default function CRM(props) {
                     />
                     <input
                         type="text"
-                        className="rounded-lg border-slate-300 text-sm"
+                        className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
                         placeholder="Công ty"
                         value={clientForm.company}
                         onChange={(e) => setClientForm((prev) => ({ ...prev, company: e.target.value }))}
                     />
                     <input
                         type="email"
-                        className="rounded-lg border-slate-300 text-sm"
+                        className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
                         placeholder="Email"
                         value={clientForm.email}
                         onChange={(e) => setClientForm((prev) => ({ ...prev, email: e.target.value }))}
                     />
+                    <input
+                        type="text"
+                        className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                        placeholder="Số điện thoại"
+                        value={clientForm.phone}
+                        onChange={(e) => setClientForm((prev) => ({ ...prev, phone: e.target.value }))}
+                    />
+                    <textarea
+                        className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                        rows={3}
+                        placeholder="Ghi chú"
+                        value={clientForm.notes}
+                        onChange={(e) => setClientForm((prev) => ({ ...prev, notes: e.target.value }))}
+                    />
                     <div className="flex gap-2">
-                        <button type="submit" className="rounded-lg bg-sky-600 text-white font-semibold text-sm px-4 py-2">
+                        <button type="submit" className="rounded-2xl bg-primary text-white font-semibold text-sm px-4 py-2">
                             {editingClientId ? 'Lưu khách hàng' : 'Tạo khách hàng'}
                         </button>
                         {editingClientId && (
                             <button
                                 type="button"
-                                className="rounded-lg border border-slate-300 text-sm px-4 py-2"
+                                className="rounded-2xl border border-slate-200/80 text-sm px-4 py-2"
                                 onClick={() => {
                                     setEditingClientId(null);
                                     setClientForm({ name: '', company: '', email: '', phone: '', notes: '' });
@@ -334,10 +348,10 @@ export default function CRM(props) {
                     </div>
                 </form>
 
-                <form onSubmit={submitPayment} className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm grid gap-3">
+                <form onSubmit={submitPayment} className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card grid gap-3">
                     <h3 className="font-semibold">{editingPaymentId ? 'Sửa thanh toán' : 'Thêm thanh toán'}</h3>
                     <select
-                        className="rounded-lg border-slate-300 text-sm"
+                        className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
                         value={paymentForm.client_id}
                         onChange={(e) => setPaymentForm((prev) => ({ ...prev, client_id: e.target.value }))}
                         required
@@ -351,14 +365,14 @@ export default function CRM(props) {
                     </select>
                     <input
                         type="number"
-                        className="rounded-lg border-slate-300 text-sm"
+                        className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
                         placeholder="Số tiền"
                         value={paymentForm.amount}
                         onChange={(e) => setPaymentForm((prev) => ({ ...prev, amount: e.target.value }))}
                         required
                     />
                     <select
-                        className="rounded-lg border-slate-300 text-sm"
+                        className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
                         value={paymentForm.status}
                         onChange={(e) => setPaymentForm((prev) => ({ ...prev, status: e.target.value }))}
                     >
@@ -366,14 +380,34 @@ export default function CRM(props) {
                         <option value="paid">paid</option>
                         <option value="overdue">overdue</option>
                     </select>
+                    <input
+                        type="date"
+                        className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                        value={paymentForm.due_date}
+                        onChange={(e) => setPaymentForm((prev) => ({ ...prev, due_date: e.target.value }))}
+                    />
+                    <input
+                        type="text"
+                        className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                        placeholder="Số hóa đơn"
+                        value={paymentForm.invoice_no}
+                        onChange={(e) => setPaymentForm((prev) => ({ ...prev, invoice_no: e.target.value }))}
+                    />
+                    <textarea
+                        className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                        rows={3}
+                        placeholder="Ghi chú"
+                        value={paymentForm.note}
+                        onChange={(e) => setPaymentForm((prev) => ({ ...prev, note: e.target.value }))}
+                    />
                     <div className="flex gap-2">
-                        <button type="submit" className="rounded-lg bg-sky-600 text-white font-semibold text-sm px-4 py-2">
+                        <button type="submit" className="rounded-2xl bg-primary text-white font-semibold text-sm px-4 py-2">
                             {editingPaymentId ? 'Lưu thanh toán' : 'Tạo thanh toán'}
                         </button>
                         {editingPaymentId && (
                             <button
                                 type="button"
-                                className="rounded-lg border border-slate-300 text-sm px-4 py-2"
+                                className="rounded-2xl border border-slate-200/80 text-sm px-4 py-2"
                                 onClick={() => {
                                     setEditingPaymentId(null);
                                     setPaymentForm({
@@ -393,18 +427,18 @@ export default function CRM(props) {
                 </form>
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-2">
-                <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+            <div className="grid gap-5 lg:grid-cols-2">
+                <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
                     <form onSubmit={applyClientFilter} className="mb-3 grid gap-2 md:grid-cols-3">
                         <input
                             type="text"
-                            className="rounded-lg border-slate-300 text-sm"
+                            className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
                             value={clientFilters.search}
                             onChange={(e) => setClientFilters((prev) => ({ ...prev, search: e.target.value }))}
                             placeholder="Tìm khách hàng"
                         />
                         <select
-                            className="rounded-lg border-slate-300 text-sm"
+                            className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
                             value={clientFilters.per_page}
                             onChange={(e) => setClientFilters((prev) => ({ ...prev, per_page: Number(e.target.value) }))}
                         >
@@ -412,21 +446,24 @@ export default function CRM(props) {
                             <option value={10}>10 / trang</option>
                             <option value={20}>20 / trang</option>
                         </select>
-                        <button type="submit" className="rounded-lg bg-slate-800 text-white text-sm font-semibold">
+                        <button type="submit" className="rounded-2xl bg-slate-900 text-white text-sm font-semibold">
                             Lọc
                         </button>
                     </form>
                     <h3 className="font-semibold mb-3">Khách hàng nổi bật</h3>
                     <ul className="space-y-2 text-sm">
                         {clients.map((client) => (
-                            <li key={client.id} className="rounded-lg border border-slate-200 p-3">
+                            <li key={client.id} className="rounded-2xl border border-slate-200/80 p-4">
                                 <div className="flex justify-between gap-2">
-                                    <span>{client.company || client.name} • {client.email || 'Chưa có email'}</span>
-                                    <span className="flex gap-2">
-                                        <button type="button" className="text-xs text-sky-700" onClick={() => editClient(client)}>
+                                    <div>
+                                        <p className="font-semibold">{client.company || client.name}</p>
+                                        <p className="text-xs text-text-muted mt-1">{client.email || 'Chưa có email'}</p>
+                                    </div>
+                                    <span className="flex gap-2 text-xs">
+                                        <button type="button" className="text-primary" onClick={() => editClient(client)}>
                                             Sửa
                                         </button>
-                                        <button type="button" className="text-xs text-rose-700" onClick={() => deleteClient(client.id)}>
+                                        <button type="button" className="text-danger" onClick={() => deleteClient(client.id)}>
                                             Xóa
                                         </button>
                                     </span>
@@ -434,7 +471,7 @@ export default function CRM(props) {
                             </li>
                         ))}
                     </ul>
-                    <div className="mt-3 pt-3 border-t border-slate-200 flex items-center justify-between text-sm">
+                    <div className="mt-3 pt-3 border-t border-slate-200/80 flex items-center justify-between text-xs text-text-muted">
                         <span>
                             Trang {clientMeta.current_page}/{clientMeta.last_page}
                         </span>
@@ -443,7 +480,7 @@ export default function CRM(props) {
                                 type="button"
                                 onClick={prevClientPage}
                                 disabled={clientMeta.current_page <= 1}
-                                className="rounded border border-slate-300 px-3 py-1 disabled:opacity-50"
+                                className="rounded-full border border-slate-200/80 px-3 py-1 disabled:opacity-50"
                             >
                                 Trước
                             </button>
@@ -451,17 +488,17 @@ export default function CRM(props) {
                                 type="button"
                                 onClick={nextClientPage}
                                 disabled={clientMeta.current_page >= clientMeta.last_page}
-                                className="rounded border border-slate-300 px-3 py-1 disabled:opacity-50"
+                                className="rounded-full border border-slate-200/80 px-3 py-1 disabled:opacity-50"
                             >
                                 Sau
                             </button>
                         </div>
                     </div>
                 </div>
-                <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+                <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
                     <form onSubmit={applyPaymentFilter} className="mb-3 grid gap-2 md:grid-cols-3">
                         <select
-                            className="rounded-lg border-slate-300 text-sm"
+                            className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
                             value={paymentFilters.status}
                             onChange={(e) => setPaymentFilters((prev) => ({ ...prev, status: e.target.value }))}
                         >
@@ -471,7 +508,7 @@ export default function CRM(props) {
                             <option value="overdue">overdue</option>
                         </select>
                         <select
-                            className="rounded-lg border-slate-300 text-sm"
+                            className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
                             value={paymentFilters.per_page}
                             onChange={(e) => setPaymentFilters((prev) => ({ ...prev, per_page: Number(e.target.value) }))}
                         >
@@ -479,7 +516,7 @@ export default function CRM(props) {
                             <option value={10}>10 / trang</option>
                             <option value={20}>20 / trang</option>
                         </select>
-                        <button type="submit" className="rounded-lg bg-slate-800 text-white text-sm font-semibold">
+                        <button type="submit" className="rounded-2xl bg-slate-900 text-white text-sm font-semibold">
                             Lọc
                         </button>
                     </form>
@@ -488,24 +525,28 @@ export default function CRM(props) {
                         {payments.map((payment) => (
                             <li
                                 key={payment.id}
-                                className={`rounded-lg p-3 border ${
+                                className={`rounded-2xl p-4 border ${
                                     payment.status === 'overdue'
                                         ? 'border-rose-200 bg-rose-50'
                                         : payment.status === 'pending'
                                         ? 'border-amber-200 bg-amber-50'
-                                        : 'border-slate-200'
+                                        : 'border-slate-200/80'
                                 }`}
                             >
                                 <div className="flex justify-between gap-2">
-                                    <span>
-                                        {payment.client?.company || payment.client?.name || 'Khách hàng'} -{' '}
-                                        {Number(payment.amount || 0).toLocaleString('vi-VN')}đ - {payment.status}
-                                    </span>
-                                    <span className="flex gap-2">
-                                        <button type="button" className="text-xs text-sky-700" onClick={() => editPayment(payment)}>
+                                    <div>
+                                        <p className="font-semibold">
+                                            {payment.client?.company || payment.client?.name || 'Khách hàng'}
+                                        </p>
+                                        <p className="text-xs text-text-muted mt-1">
+                                            {Number(payment.amount || 0).toLocaleString('vi-VN')}đ • {payment.status}
+                                        </p>
+                                    </div>
+                                    <span className="flex gap-2 text-xs">
+                                        <button type="button" className="text-primary" onClick={() => editPayment(payment)}>
                                             Sửa
                                         </button>
-                                        <button type="button" className="text-xs text-rose-700" onClick={() => deletePayment(payment.id)}>
+                                        <button type="button" className="text-danger" onClick={() => deletePayment(payment.id)}>
                                             Xóa
                                         </button>
                                     </span>
@@ -513,7 +554,7 @@ export default function CRM(props) {
                             </li>
                         ))}
                     </ul>
-                    <div className="mt-3 pt-3 border-t border-slate-200 flex items-center justify-between text-sm">
+                    <div className="mt-3 pt-3 border-t border-slate-200/80 flex items-center justify-between text-xs text-text-muted">
                         <span>
                             Trang {paymentMeta.current_page}/{paymentMeta.last_page}
                         </span>
@@ -522,7 +563,7 @@ export default function CRM(props) {
                                 type="button"
                                 onClick={prevPaymentPage}
                                 disabled={paymentMeta.current_page <= 1}
-                                className="rounded border border-slate-300 px-3 py-1 disabled:opacity-50"
+                                className="rounded-full border border-slate-200/80 px-3 py-1 disabled:opacity-50"
                             >
                                 Trước
                             </button>
@@ -530,7 +571,7 @@ export default function CRM(props) {
                                 type="button"
                                 onClick={nextPaymentPage}
                                 disabled={paymentMeta.current_page >= paymentMeta.last_page}
-                                className="rounded border border-slate-300 px-3 py-1 disabled:opacity-50"
+                                className="rounded-full border border-slate-200/80 px-3 py-1 disabled:opacity-50"
                             >
                                 Sau
                             </button>
