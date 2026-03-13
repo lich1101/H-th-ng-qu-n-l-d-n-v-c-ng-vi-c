@@ -33,6 +33,9 @@ Route::get('/dashboard', function () {
 
 Route::get('/lead-forms/{slug}', [LeadFormPublicController::class, 'show'])->name('lead-forms.public');
 Route::post('/lead-forms/{slug}/submit', [LeadFormPublicController::class, 'submit'])->name('lead-forms.submit');
+Route::get('/chinh-sach-quyen-rieng-tu', function () {
+    return Inertia::render('PrivacyPolicy');
+})->name('privacy.policy');
 
 Route::get('/webhook/facebook', [FacebookWebhookController::class, 'verify'])->name('facebook.webhook.verify');
 Route::post('/webhook/facebook', [FacebookWebhookController::class, 'handle'])->name('facebook.webhook.handle');

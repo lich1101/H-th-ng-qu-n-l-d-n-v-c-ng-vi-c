@@ -100,4 +100,30 @@ class FacebookPageController extends Controller
             'page' => $page,
         ]);
     }
+
+    public function unsubscribe(Request $request, FacebookPage $page): JsonResponse
+    {
+        if ((int) $page->user_id !== (int) $request->user()->id) {
+            return response()->json(['message' => 'Không có quyền thao tác Page này.'], 403);
+        }
+
+        $version = env('FACEBOOK_GRAPH_VERSION', 'v18.0');
+        $response = Http::asForm()->delete("https://graph.facebook.com/{$version}/{$page->page_id}/subscribed_apps", [
+            'access_token' => $page->getRawOriginal('access_token'),
+        ]);
+
+        if (! $response->ok()) {
+            return response()->json([
+                'message' => 'Không thể hủy kích hoạt webhook cho Page.',
+                'error' => $response->json(),
+            ], 422);
+        }
+
+        $page->update(['is_subscribed' => false]);
+
+        return response()->json([
+            'message' => 'Đã hủy kích hoạt webhook cho Page.',
+            'page' => $page,
+        ]);
+    }
 }

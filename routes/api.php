@@ -199,6 +199,8 @@ Route::prefix('v1')->group(function () {
             ->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
         Route::post('/facebook/pages/{page}/subscribe', [FacebookPageController::class, 'subscribe'])
             ->middleware('role:admin,quan_ly');
+        Route::post('/facebook/pages/{page}/unsubscribe', [FacebookPageController::class, 'unsubscribe'])
+            ->middleware('role:admin,quan_ly');
 
         Route::get('/departments', [DepartmentController::class, 'index'])
             ->middleware('role:admin,quan_ly');

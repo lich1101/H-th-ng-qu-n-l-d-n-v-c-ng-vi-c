@@ -56,6 +56,20 @@ export default function FacebookPages(props) {
         }
     };
 
+    const unsubscribePage = async (pageId) => {
+        if (!window.confirm('Bạn có chắc muốn hủy kích hoạt Page này?')) {
+            return;
+        }
+        setMessage('');
+        try {
+            const res = await axios.post(`/api/v1/facebook/pages/${pageId}/unsubscribe`);
+            setMessage(res.data?.message || 'Đã hủy kích hoạt webhook.');
+            fetchPages();
+        } catch (e) {
+            setMessage(e?.response?.data?.message || 'Hủy kích hoạt thất bại.');
+        }
+    };
+
     const stats = useMemo(() => {
         const total = pages.length;
         const subscribed = pages.filter((p) => p.is_subscribed).length;
@@ -189,6 +203,15 @@ export default function FacebookPages(props) {
                                                 className="rounded-xl bg-primary px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-600 transition"
                                             >
                                                 Kích hoạt
+                                            </button>
+                                        )}
+                                        {page.is_subscribed && (
+                                            <button
+                                                type="button"
+                                                onClick={() => unsubscribePage(page.id)}
+                                                className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
+                                            >
+                                                Hủy kích hoạt
                                             </button>
                                         )}
                                     </div>
