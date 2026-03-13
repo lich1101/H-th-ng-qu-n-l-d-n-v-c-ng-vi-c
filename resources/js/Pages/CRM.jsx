@@ -424,6 +424,7 @@ export default function CRM(props) {
                                 <thead>
                                     <tr className="text-left text-xs uppercase tracking-wider text-text-subtle border-b border-slate-200">
                                         <th className="py-2">Khách hàng</th>
+                                        <th className="py-2">SĐT</th>
                                         <th className="py-2">Trạng thái</th>
                                         <th className="py-2">Hạng</th>
                                         <th className="py-2">Phòng ban</th>
@@ -440,6 +441,7 @@ export default function CRM(props) {
                                                 <div className="font-medium text-slate-900">{client.name}</div>
                                                 <div className="text-xs text-text-muted">{client.company || '—'}</div>
                                             </td>
+                                            <td className="py-2 text-xs text-text-muted">{client.phone || '—'}</td>
                                             <td className="py-2">
                                                 {client.lead_type ? (
                                                     <span
@@ -500,7 +502,7 @@ export default function CRM(props) {
                                     ))}
                                     {clients.length === 0 && (
                                         <tr>
-                                            <td className="py-6 text-center text-sm text-text-muted" colSpan={8}>
+                                            <td className="py-6 text-center text-sm text-text-muted" colSpan={9}>
                                                 Chưa có khách hàng nào.
                                             </td>
                                         </tr>

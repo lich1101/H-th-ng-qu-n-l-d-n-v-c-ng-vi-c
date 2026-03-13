@@ -165,6 +165,12 @@ class FacebookWebhookController extends Controller
         }
 
         $data = $response->json();
+        if (is_array($data) && array_key_exists(0, $data) && is_array($data[0])) {
+            $data = $data[0];
+        }
+        if (is_array($data) && array_key_exists('data', $data) && is_array($data['data']) && isset($data['data'][0])) {
+            $data = $data['data'][0];
+        }
         if (empty($data['name'])) {
             $first = trim((string) ($data['first_name'] ?? ''));
             $last = trim((string) ($data['last_name'] ?? ''));
