@@ -3,7 +3,9 @@
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
+use Illuminate\Support\Carbon;
 use App\Http\Controllers\LeadFormPublicController;
+use App\Http\Controllers\FacebookAuthController;
 use App\Http\Controllers\Webhooks\FacebookWebhookController;
 
 /*
@@ -104,8 +106,26 @@ Route::middleware(['auth', 'verified'])->group(function () {
         return Inertia::render('LeadForms');
     })->name('lead-forms.index')->middleware('role:admin');
 
+    Route::get('/facebook/login', [FacebookAuthController::class, 'redirect'])
+        ->name('facebook.login')
+        ->middleware('role:admin,quan_ly');
+    Route::get('/facebook/callback', [FacebookAuthController::class, 'callback'])
+        ->name('facebook.callback')
+        ->middleware('role:admin,quan_ly');
+    Route::post('/facebook/disconnect', [FacebookAuthController::class, 'disconnect'])
+        ->name('facebook.disconnect')
+        ->middleware('role:admin,quan_ly');
+
     Route::get('/facebook-pages', function () {
-        return Inertia::render('FacebookPages');
+        $user = request()->user();
+        $expiresAt = $user->facebook_user_token_expires_at;
+        $connected = ! empty($user->facebook_user_access_token)
+            && (! $expiresAt || Carbon::parse($expiresAt)->isFuture());
+
+        return Inertia::render('FacebookPages', [
+            'facebookConnected' => $connected,
+            'facebookTokenExpiresAt' => optional($expiresAt)->toIso8601String(),
+        ]);
     })->name('facebook.pages')->middleware('role:admin,quan_ly');
 
     Route::get('/trang-thai-khach-hang', function () {

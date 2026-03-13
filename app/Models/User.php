@@ -27,6 +27,8 @@ class User extends Authenticatable
         'phone',
         'workload_capacity',
         'is_active',
+        'facebook_user_access_token',
+        'facebook_user_token_expires_at',
     ];
 
     public function departmentRelation()
@@ -52,6 +54,7 @@ class User extends Authenticatable
     protected $hidden = [
         'password',
         'remember_token',
+        'facebook_user_access_token',
     ];
 
     /**
@@ -62,5 +65,6 @@ class User extends Authenticatable
     protected $casts = [
         'email_verified_at' => 'datetime',
         'is_active' => 'boolean',
+        'facebook_user_token_expires_at' => 'datetime',
     ];
 }

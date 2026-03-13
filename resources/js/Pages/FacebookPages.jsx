@@ -3,11 +3,14 @@ import axios from 'axios';
 import PageContainer from '@/Components/PageContainer';
 
 export default function FacebookPages(props) {
+    const connected = Boolean(props.facebookConnected);
+    const expiresAt = props.facebookTokenExpiresAt;
     const [pages, setPages] = useState([]);
     const [token, setToken] = useState('');
     const [message, setMessage] = useState('');
     const [loading, setLoading] = useState(false);
     const [syncing, setSyncing] = useState(false);
+    const [showManual, setShowManual] = useState(false);
 
     const fetchPages = async () => {
         setLoading(true);
@@ -26,16 +29,13 @@ export default function FacebookPages(props) {
     }, []);
 
     const syncPages = async () => {
-        if (!token.trim()) {
-            setMessage('Vui lòng nhập User Access Token.');
-            return;
-        }
         setSyncing(true);
         setMessage('');
         try {
-            const res = await axios.post('/api/v1/facebook/pages/sync', {
-                user_access_token: token.trim(),
-            });
+            const payload = token.trim()
+                ? { user_access_token: token.trim() }
+                : {};
+            const res = await axios.post('/api/v1/facebook/pages/sync', payload);
             setPages(res.data?.pages || []);
             setMessage(res.data?.message || 'Đã đồng bộ danh sách Page.');
         } catch (e) {
@@ -65,6 +65,21 @@ export default function FacebookPages(props) {
         ];
     }, [pages]);
 
+    const handleConnect = () => {
+        window.location.href = route('facebook.login');
+    };
+
+    const handleDisconnect = async () => {
+        setMessage('');
+        try {
+            await axios.post(route('facebook.disconnect'));
+            setMessage('Đã ngắt kết nối Facebook.');
+            fetchPages();
+        } catch (e) {
+            setMessage(e?.response?.data?.message || 'Không thể ngắt kết nối.');
+        }
+    };
+
     return (
         <PageContainer
             auth={props.auth}
@@ -76,23 +91,61 @@ export default function FacebookPages(props) {
                 <div className="lg:col-span-1 bg-white rounded-2xl border border-slate-200/80 p-6 shadow-card">
                     <h3 className="font-semibold text-slate-900">Kết nối Page</h3>
                     <p className="text-sm text-text-muted mt-1">
-                        Dùng User Access Token từ Facebook App để lấy danh sách Page.
+                        Đăng nhập Facebook để lấy danh sách Page quản lý.
                     </p>
                     <div className="mt-4 space-y-3">
-                        <input
-                            className="w-full rounded-xl border border-slate-200/80 px-3 py-2 text-sm"
-                            placeholder="User Access Token"
-                            value={token}
-                            onChange={(e) => setToken(e.target.value)}
-                        />
+                        <div className="rounded-2xl border border-slate-200/80 p-4">
+                            <p className="text-xs text-text-muted">Trạng thái</p>
+                            <p className="mt-1 text-sm font-semibold text-slate-900">
+                                {connected ? 'Đã kết nối Facebook Login' : 'Chưa kết nối'}
+                            </p>
+                            {connected && expiresAt && (
+                                <p className="text-xs text-text-muted mt-1">
+                                    Hết hạn: {new Date(expiresAt).toLocaleString()}
+                                </p>
+                            )}
+                        </div>
+                        <button
+                            type="button"
+                            onClick={handleConnect}
+                            className="w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-600 transition"
+                        >
+                            Đăng nhập Facebook
+                        </button>
                         <button
                             type="button"
                             onClick={syncPages}
                             disabled={syncing}
-                            className="w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-600 transition disabled:opacity-60"
+                            className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition disabled:opacity-60"
                         >
-                            {syncing ? 'Đang đồng bộ...' : 'Lấy danh sách Page'}
+                            {syncing ? 'Đang đồng bộ...' : 'Đồng bộ danh sách Page'}
                         </button>
+                        {connected && (
+                            <button
+                                type="button"
+                                onClick={handleDisconnect}
+                                className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition"
+                            >
+                                Ngắt kết nối
+                            </button>
+                        )}
+                        <button
+                            type="button"
+                            onClick={() => setShowManual((prev) => !prev)}
+                            className="text-xs text-slate-500 underline"
+                        >
+                            {showManual ? 'Ẩn nhập token thủ công' : 'Nhập token thủ công (tuỳ chọn)'}
+                        </button>
+                        {showManual && (
+                            <div className="space-y-2">
+                                <input
+                                    className="w-full rounded-xl border border-slate-200/80 px-3 py-2 text-sm"
+                                    placeholder="User Access Token"
+                                    value={token}
+                                    onChange={(e) => setToken(e.target.value)}
+                                />
+                            </div>
+                        )}
                         {message && (
                             <p className="text-sm text-emerald-600">{message}</p>
                         )}

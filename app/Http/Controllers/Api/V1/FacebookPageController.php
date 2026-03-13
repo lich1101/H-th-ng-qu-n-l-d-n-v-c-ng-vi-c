@@ -24,13 +24,23 @@ class FacebookPageController extends Controller
     public function sync(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'user_access_token' => ['required', 'string'],
+            'user_access_token' => ['nullable', 'string'],
         ]);
+
+        $token = $validated['user_access_token']
+            ?? $request->user()->facebook_user_access_token
+            ?? $request->session()->get('facebook_user_access_token');
+
+        if (! $token) {
+            return response()->json([
+                'message' => 'Bạn cần đăng nhập Facebook trước khi đồng bộ Page.',
+            ], 422);
+        }
 
         $version = env('FACEBOOK_GRAPH_VERSION', 'v18.0');
         $response = Http::get("https://graph.facebook.com/{$version}/me/accounts", [
             'fields' => 'id,name,access_token,category',
-            'access_token' => $validated['user_access_token'],
+            'access_token' => $token,
         ]);
 
         if (! $response->ok()) {
