@@ -25,6 +25,8 @@ class Client extends Model
         'lead_source',
         'lead_channel',
         'lead_message',
+        'facebook_psid',
+        'facebook_page_id',
     ];
 
     protected $casts = [
@@ -70,5 +72,10 @@ class Client extends Model
     public function departmentAssignments()
     {
         return $this->hasMany(DepartmentAssignment::class);
+    }
+
+    public function facebookMessages()
+    {
+        return $this->hasMany(FacebookMessage::class);
     }
 }

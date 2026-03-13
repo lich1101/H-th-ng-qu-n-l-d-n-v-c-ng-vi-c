@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use App\Http\Controllers\LeadFormPublicController;
+use App\Http\Controllers\Webhooks\FacebookWebhookController;
 
 /*
 |--------------------------------------------------------------------------
@@ -30,6 +31,9 @@ Route::get('/dashboard', function () {
 
 Route::get('/lead-forms/{slug}', [LeadFormPublicController::class, 'show'])->name('lead-forms.public');
 Route::post('/lead-forms/{slug}/submit', [LeadFormPublicController::class, 'submit'])->name('lead-forms.submit');
+
+Route::get('/webhook/facebook', [FacebookWebhookController::class, 'verify'])->name('facebook.webhook.verify');
+Route::post('/webhook/facebook', [FacebookWebhookController::class, 'handle'])->name('facebook.webhook.handle');
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/du-an', function () {
@@ -99,6 +103,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/form-tu-van', function () {
         return Inertia::render('LeadForms');
     })->name('lead-forms.index')->middleware('role:admin');
+
+    Route::get('/facebook-pages', function () {
+        return Inertia::render('FacebookPages');
+    })->name('facebook.pages')->middleware('role:admin,quan_ly');
 
     Route::get('/trang-thai-khach-hang', function () {
         return Inertia::render('LeadTypes');

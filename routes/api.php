@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\V1\DepartmentController;
 use App\Http\Controllers\Api\V1\LeadCaptureController;
 use App\Http\Controllers\Api\V1\LeadFormController;
 use App\Http\Controllers\Api\V1\LeadTypeController;
+use App\Http\Controllers\Api\V1\FacebookPageController;
 use App\Http\Controllers\Api\V1\OpportunityController;
 use App\Http\Controllers\Api\V1\ProductController;
 use App\Http\Controllers\Api\V1\RevenueTierController;
@@ -191,6 +192,13 @@ Route::prefix('v1')->group(function () {
             ->middleware('role:admin');
         Route::delete('/lead-forms/{leadForm}', [LeadFormController::class, 'destroy'])
             ->middleware('role:admin');
+
+        Route::get('/facebook/pages', [FacebookPageController::class, 'index'])
+            ->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
+        Route::post('/facebook/pages/sync', [FacebookPageController::class, 'sync'])
+            ->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
+        Route::post('/facebook/pages/{page}/subscribe', [FacebookPageController::class, 'subscribe'])
+            ->middleware('role:admin,quan_ly');
 
         Route::get('/departments', [DepartmentController::class, 'index'])
             ->middleware('role:admin,quan_ly');

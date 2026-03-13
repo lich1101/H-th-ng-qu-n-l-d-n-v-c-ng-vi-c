@@ -26,6 +26,7 @@ export default function Authenticated({ auth, header, children }) {
                     { label: 'Khách hàng', routeName: 'crm.index', href: route('crm.index'), roles: ['admin', 'quan_ly', 'nhan_vien', 'ke_toan'] },
                     { label: 'Cơ hội', routeName: 'opportunities.index', href: route('opportunities.index'), roles: ['admin', 'quan_ly', 'nhan_vien'] },
                     { label: 'Form tư vấn', routeName: 'lead-forms.index', href: route('lead-forms.index'), roles: ['admin'] },
+                    { label: 'Facebook Pages', routeName: 'facebook.pages', href: route('facebook.pages'), roles: ['admin', 'quan_ly'] },
                 ],
             },
             {
