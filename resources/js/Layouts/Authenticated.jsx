@@ -4,6 +4,7 @@ import { Link } from '@inertiajs/inertia-react';
 
 export default function Authenticated({ auth, header, children }) {
     const [showSidebar, setShowSidebar] = useState(false);
+    const [collapsedGroups, setCollapsedGroups] = useState({});
     const currentRole = auth?.user?.role || '';
 
     const roleLabels = {
@@ -78,6 +79,10 @@ export default function Authenticated({ auth, header, children }) {
         }))
         .filter((group) => group.items.length > 0);
 
+    const toggleGroup = (label) => {
+        setCollapsedGroups((prev) => ({ ...prev, [label]: !prev[label] }));
+    };
+
     return (
         <div className="min-h-screen bg-app-bg text-slate-900">
             <div className="flex min-h-screen">
@@ -96,10 +101,38 @@ export default function Authenticated({ auth, header, children }) {
                         <nav className="flex-1 overflow-y-auto px-4 py-5 space-y-4">
                             {visibleGroups.map((group) => (
                                 <div key={group.label} className="space-y-2">
-                                    <p className="px-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-text-subtle">
-                                        {group.label}
-                                    </p>
-                                    <div className="space-y-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => toggleGroup(group.label)}
+                                        className="w-full flex items-center justify-between px-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-text-subtle"
+                                    >
+                                        <span>{group.label}</span>
+                                        <span
+                                            className={`inline-flex h-5 w-5 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition-transform ${
+                                                collapsedGroups[group.label] ? 'rotate-180' : ''
+                                            }`}
+                                        >
+                                            <svg
+                                                xmlns="http://www.w3.org/2000/svg"
+                                                viewBox="0 0 20 20"
+                                                fill="currentColor"
+                                                className="h-3 w-3"
+                                            >
+                                                <path
+                                                    fillRule="evenodd"
+                                                    d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+                                                    clipRule="evenodd"
+                                                />
+                                            </svg>
+                                        </span>
+                                    </button>
+                                    <div
+                                        className={`space-y-1 overflow-hidden transition-all duration-200 ${
+                                            collapsedGroups[group.label]
+                                                ? 'max-h-0 opacity-0'
+                                                : 'max-h-[480px] opacity-100'
+                                        }`}
+                                    >
                                         {group.items.map((menu) => {
                                             const active = route().current(menu.routeName);
                                             return (

@@ -53,7 +53,7 @@ export default function ReportsKPI(props) {
                     <h3 className="font-semibold mb-4">Backlinks</h3>
                     <div className="space-y-3">
                         <div className="flex items-center justify-between text-sm">
-                            <span>Liên kết đã lên</span>
+                            <span>Backlinks đã lên</span>
                             <span className="font-semibold text-primary">{summary.links_live}/{summary.links_total}</span>
                         </div>
                         <div className="flex items-center justify-between text-sm">
@@ -84,7 +84,7 @@ export default function ReportsKPI(props) {
                                     <div className="w-full bg-slate-100 rounded-t-xl relative" style={{ height: `${Math.max(20, value)}%` }}>
                                         <div
                                             className="absolute inset-x-0 bottom-0 rounded-t-xl"
-                                            style={{ height: `${Math.max(20, value)}%`, background: idx === 2 ? '#135BEC' : '#BFDBFE' }}
+                                            style={{ height: `${Math.max(20, value)}%`, background: idx === 2 ? '#04BC5C' : '#CFF7E2' }}
                                         />
                                     </div>
                                     <span className="text-xs text-text-subtle font-semibold">DA {(idx + 1) * 20}+</span>
@@ -94,7 +94,7 @@ export default function ReportsKPI(props) {
                     </div>
                 </div>
                 <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-card">
-                    <h3 className="font-semibold mb-4">Thống kê nội dung</h3>
+                    <h3 className="font-semibold mb-4">Thống kê Content</h3>
                     <div className="space-y-4">
                         <div className="flex items-center justify-between">
                             <div>
@@ -116,10 +116,10 @@ export default function ReportsKPI(props) {
 
             <div className="grid gap-5 xl:grid-cols-2 mt-6">
                 <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-card">
-                    <h3 className="font-semibold mb-4">Audit nội dung</h3>
+                    <h3 className="font-semibold mb-4">Audit Content</h3>
                     <div className="space-y-3 text-sm">
                         <div className="flex items-center justify-between">
-                            <span>Tổng URL audit</span>
+                            <span>Tổng URL Audit</span>
                             <span className="font-semibold text-primary">{summary.audit_total || 0}</span>
                         </div>
                         <div className="flex items-center justify-between">
@@ -133,7 +133,7 @@ export default function ReportsKPI(props) {
                     </div>
                 </div>
                 <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-card">
-                    <h3 className="font-semibold mb-4">Chăm sóc website</h3>
+                    <h3 className="font-semibold mb-4">Website Care</h3>
                     <div className="space-y-3 text-sm">
                         <div className="flex items-center justify-between">
                             <span>Tổng checklist</span>
@@ -157,7 +157,7 @@ export default function ReportsKPI(props) {
 
             <div className="mt-6 bg-white rounded-2xl border border-slate-200/80 p-6 shadow-card">
                 <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-semibold">Vị trí đặt link gần đây</h3>
+                    <h3 className="font-semibold">Vị trí đặt Backlinks gần đây</h3>
                     <span className="text-xs text-text-muted">Cập nhật mới nhất</span>
                 </div>
                 {(summary.recent_links || []).length === 0 ? (

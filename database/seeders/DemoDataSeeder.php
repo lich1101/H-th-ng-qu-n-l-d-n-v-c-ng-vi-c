@@ -84,7 +84,7 @@ class DemoDataSeeder extends Seeder
 
         $leadPotential = LeadType::updateOrCreate(
             ['name' => 'Khách hàng tiềm năng'],
-            ['color_hex' => '#2563EB', 'sort_order' => 1]
+            ['color_hex' => '#04BC5C', 'sort_order' => 1]
         );
         $leadCaring = LeadType::updateOrCreate(
             ['name' => 'Đang chăm sóc'],
@@ -132,7 +132,7 @@ class DemoDataSeeder extends Seeder
                 'name' => 'Gói Content SEO',
                 'unit' => 'bài',
                 'unit_price' => 1200000,
-                'description' => 'Viết nội dung chuẩn SEO theo outline.',
+                'description' => 'Content chuẩn SEO theo outline.',
                 'is_active' => true,
             ]
         );
@@ -142,14 +142,14 @@ class DemoDataSeeder extends Seeder
                 'name' => 'Gói Audit Content',
                 'unit' => 'dự án',
                 'unit_price' => 30000000,
-                'description' => 'Audit nội dung và đề xuất tối ưu.',
+                'description' => 'Audit Content và đề xuất tối ưu.',
                 'is_active' => true,
             ]
         );
         $productWebsiteCare = Product::updateOrCreate(
             ['code' => 'SP-WC-001'],
             [
-                'name' => 'Chăm sóc website tổng thể',
+                'name' => 'Website Care tổng thể',
                 'unit' => 'tháng',
                 'unit_price' => 80000000,
                 'description' => 'Theo dõi, tối ưu kỹ thuật và báo cáo định kỳ.',
@@ -415,7 +415,7 @@ class DemoDataSeeder extends Seeder
                 'signed_at' => now()->subDays(2)->toDateString(),
                 'start_date' => now()->subDays(2)->toDateString(),
                 'end_date' => now()->addDays(15)->toDateString(),
-                'notes' => 'Nội dung blog + landing page.',
+                'notes' => 'Content blog + landing page.',
                 'created_by' => $manager->id,
             ]
         );
@@ -423,7 +423,7 @@ class DemoDataSeeder extends Seeder
         $projectContent->update(['contract_id' => $contractContent->id]);
 
         $taskContent = Task::updateOrCreate(
-            ['project_id' => $projectContent->id, 'title' => 'Viết 5 bài landing page'],
+            ['project_id' => $projectContent->id, 'title' => 'Content 5 bài landing page'],
             [
                 'description' => 'Triển khai bài viết chuẩn SEO theo outline đã duyệt.',
                 'priority' => 'medium',
@@ -478,7 +478,7 @@ class DemoDataSeeder extends Seeder
         $taskAuditDetail = Task::updateOrCreate(
             ['project_id' => $projectAudit->id, 'title' => 'Audit nhóm bài top traffic'],
             [
-                'description' => 'Rà soát vấn đề SEO và đề xuất cải thiện.',
+                'description' => 'Audit vấn đề SEO và đề xuất cải thiện.',
                 'priority' => 'high',
                 'status' => 'doing',
                 'deadline' => now()->addDays(8),

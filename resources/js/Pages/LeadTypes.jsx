@@ -9,7 +9,7 @@ export default function LeadTypes(props) {
     const [types, setTypes] = useState([]);
     const [editingId, setEditingId] = useState(null);
     const [showForm, setShowForm] = useState(false);
-    const [form, setForm] = useState({ name: '', color_hex: '#2563EB', sort_order: 1 });
+    const [form, setForm] = useState({ name: '', color_hex: '#04BC5C', sort_order: 1 });
 
     const fetchTypes = async () => {
         try {
@@ -36,14 +36,14 @@ export default function LeadTypes(props) {
 
     const resetForm = () => {
         setEditingId(null);
-        setForm({ name: '', color_hex: '#2563EB', sort_order: 1 });
+        setForm({ name: '', color_hex: '#04BC5C', sort_order: 1 });
     };
 
     const startEdit = (type) => {
         setEditingId(type.id);
         setForm({
             name: type.name || '',
-            color_hex: type.color_hex || '#2563EB',
+            color_hex: type.color_hex || '#04BC5C',
             sort_order: type.sort_order ?? 1,
         });
         setShowForm(true);

@@ -7,7 +7,7 @@
     <style>
         :root {
             color-scheme: light;
-            --primary: #135bec;
+            --primary: #04BC5C;
             --bg: #f8fafc;
             --text: #0f172a;
             --muted: #64748b;

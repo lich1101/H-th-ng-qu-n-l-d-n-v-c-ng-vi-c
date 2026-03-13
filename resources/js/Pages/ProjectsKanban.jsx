@@ -13,10 +13,10 @@ const DEFAULT_STATUSES = [
 ];
 
 const DEFAULT_SERVICES = [
-    { value: 'backlinks', label: 'Liên kết trỏ về' },
-    { value: 'viet_content', label: 'Viết nội dung' },
-    { value: 'audit_content', label: 'Rà soát nội dung' },
-    { value: 'cham_soc_website_tong_the', label: 'Chăm sóc trang web tổng thể' },
+    { value: 'backlinks', label: 'Backlinks' },
+    { value: 'viet_content', label: 'Content' },
+    { value: 'audit_content', label: 'Audit Content' },
+    { value: 'cham_soc_website_tong_the', label: 'Website Care' },
 ];
 
 const LABELS = {
@@ -25,10 +25,10 @@ const LABELS = {
     cho_duyet: 'Chờ duyệt',
     hoan_thanh: 'Hoàn thành',
     tam_dung: 'Tạm dừng',
-    backlinks: 'Liên kết trỏ về',
-    viet_content: 'Viết nội dung',
-    audit_content: 'Rà soát nội dung',
-    cham_soc_website_tong_the: 'Chăm sóc trang web tổng thể',
+    backlinks: 'Backlinks',
+    viet_content: 'Content',
+    audit_content: 'Audit Content',
+    cham_soc_website_tong_the: 'Website Care',
 };
 
 const STATUS_STYLES = {

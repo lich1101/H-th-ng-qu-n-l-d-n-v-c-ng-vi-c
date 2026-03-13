@@ -38,15 +38,20 @@ export default function Login({ status, canResetPassword }) {
 
             <ValidationErrors errors={errors} />
 
+            <div className="mb-6 text-center">
+                <h1 className="text-2xl font-bold text-slate-900">Đăng nhập</h1>
+                <p className="text-sm text-text-muted mt-1">Truy cập hệ thống quản lý nội bộ</p>
+            </div>
+
             <form onSubmit={submit}>
                 <div>
-                    <Label forInput="email" value="Email" />
+                    <Label forInput="email" value="Email" className="text-slate-700" />
 
                     <Input
                         type="text"
                         name="email"
                         value={data.email}
-                        className="mt-1 block w-full"
+                        className="mt-2 block w-full rounded-xl border-slate-200 focus:border-primary focus:ring-primary/30"
                         autoComplete="username"
                         isFocused={true}
                         handleChange={onHandleChange}
@@ -54,13 +59,13 @@ export default function Login({ status, canResetPassword }) {
                 </div>
 
                 <div className="mt-4">
-                    <Label forInput="password" value="Mật khẩu" />
+                    <Label forInput="password" value="Mật khẩu" className="text-slate-700" />
 
                     <Input
                         type="password"
                         name="password"
                         value={data.password}
-                        className="mt-1 block w-full"
+                        className="mt-2 block w-full rounded-xl border-slate-200 focus:border-primary focus:ring-primary/30"
                         autoComplete="current-password"
                         handleChange={onHandleChange}
                     />
@@ -70,21 +75,24 @@ export default function Login({ status, canResetPassword }) {
                     <label className="flex items-center">
                         <Checkbox name="remember" value={data.remember} handleChange={onHandleChange} />
 
-                        <span className="ml-2 text-sm text-gray-600">Ghi nhớ đăng nhập</span>
+                        <span className="ml-2 text-sm text-slate-600">Ghi nhớ đăng nhập</span>
                     </label>
                 </div>
 
-                <div className="flex items-center justify-end mt-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mt-6">
                     {canResetPassword && (
                         <Link
                             href={route('password.request')}
-                            className="underline text-sm text-gray-600 hover:text-gray-900"
+                            className="text-sm text-emerald-600 hover:text-emerald-700 font-medium"
                         >
                             Quên mật khẩu?
                         </Link>
                     )}
 
-                    <Button className="ml-4" processing={processing}>
+                    <Button
+                        className="w-full sm:w-auto justify-center rounded-xl bg-primary hover:bg-emerald-600 px-6 py-3 text-sm font-semibold normal-case tracking-normal"
+                        processing={processing}
+                    >
                         Đăng nhập
                     </Button>
                 </div>
