@@ -13,6 +13,9 @@ class TaskAttachmentController extends Controller
 {
     public function index(Task $task, Request $request): JsonResponse
     {
+        if (! $this->canAccessTask($request->user(), $task)) {
+            return response()->json(['message' => 'Không có quyền xem tài liệu.'], 403);
+        }
         return response()->json(
             $task->attachments()
                 ->latest()
@@ -22,6 +25,9 @@ class TaskAttachmentController extends Controller
 
     public function store(Task $task, Request $request): JsonResponse
     {
+        if (! $this->canAccessTask($request->user(), $task)) {
+            return response()->json(['message' => 'Không có quyền tải tài liệu.'], 403);
+        }
         $validated = $request->validate([
             'type' => ['required', 'string', 'max:30'],
             'title' => ['nullable', 'string', 'max:255'],
@@ -66,6 +72,9 @@ class TaskAttachmentController extends Controller
 
     public function destroy(Task $task, TaskAttachment $attachment, Request $request): JsonResponse
     {
+        if (! $this->canAccessTask($request->user(), $task)) {
+            return response()->json(['message' => 'Không có quyền xóa tài liệu.'], 403);
+        }
         if ($attachment->task_id !== $task->id) {
             return response()->json(['message' => 'Attachment does not belong to task.'], 422);
         }
@@ -78,5 +87,31 @@ class TaskAttachmentController extends Controller
         $attachment->delete();
 
         return response()->json(['message' => 'Attachment deleted.']);
+    }
+
+    private function canAccessTask($user, Task $task): bool
+    {
+        if (! $user) {
+            return false;
+        }
+        if ($user->role === 'admin') {
+            return true;
+        }
+        if ($user->role === 'ke_toan') {
+            return false;
+        }
+        if ($user->role === 'quan_ly') {
+            $deptIds = $user->managedDepartments()->pluck('id');
+            if ($task->department_id && $deptIds->contains($task->department_id)) {
+                return true;
+            }
+            if ($task->assignee && $deptIds->contains($task->assignee->department_id)) {
+                return true;
+            }
+            return (int) $task->created_by === (int) $user->id
+                || (int) $task->assigned_by === (int) $user->id;
+        }
+        return $task->items()->where('assignee_id', $user->id)->exists()
+            || (int) $task->assignee_id === (int) $user->id;
     }
 }

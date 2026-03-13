@@ -34,6 +34,7 @@ class SystemMetaController extends Controller
                 'cham_soc_website_tong_the',
                 'viet_content',
                 'audit_content',
+                'khac',
             ],
         ]);
     }

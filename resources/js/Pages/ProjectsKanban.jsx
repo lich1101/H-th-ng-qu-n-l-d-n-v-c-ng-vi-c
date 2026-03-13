@@ -17,6 +17,7 @@ const DEFAULT_SERVICES = [
     { value: 'viet_content', label: 'Content' },
     { value: 'audit_content', label: 'Audit Content' },
     { value: 'cham_soc_website_tong_the', label: 'Website Care' },
+    { value: 'khac', label: 'Khác' },
 ];
 
 const LABELS = {
@@ -29,6 +30,7 @@ const LABELS = {
     viet_content: 'Content',
     audit_content: 'Audit Content',
     cham_soc_website_tong_the: 'Website Care',
+    khac: 'Khác',
 };
 
 const STATUS_STYLES = {
@@ -71,6 +73,7 @@ export default function ProjectsKanban(props) {
         client_id: '',
         contract_id: '',
         service_type: DEFAULT_SERVICES[0].value,
+        service_type_other: '',
         start_date: '',
         deadline: '',
         budget: '',
@@ -169,6 +172,14 @@ export default function ProjectsKanban(props) {
         }
     };
 
+    const serviceLabel = (project) => {
+        if (!project) return '';
+        if (project.service_type === 'khac') {
+            return project.service_type_other || 'Khác';
+        }
+        return LABELS[project.service_type] || project.service_type || '';
+    };
+
     const sortedByDeadline = useMemo(() => (
         [...projects].sort((a, b) => {
             const da = a.deadline ? new Date(a.deadline).getTime() : 0;
@@ -207,6 +218,7 @@ export default function ProjectsKanban(props) {
             client_id: '',
             contract_id: '',
             service_type: serviceOptions[0]?.value || DEFAULT_SERVICES[0].value,
+            service_type_other: '',
             start_date: '',
             deadline: '',
             budget: '',
@@ -233,6 +245,7 @@ export default function ProjectsKanban(props) {
             client_id: p.client_id || '',
             contract_id: p.contract_id || '',
             service_type: p.service_type || serviceOptions[0]?.value || DEFAULT_SERVICES[0].value,
+            service_type_other: p.service_type_other || '',
             start_date: p.start_date || '',
             deadline: p.deadline || '',
             budget: p.budget ?? '',
@@ -263,6 +276,7 @@ export default function ProjectsKanban(props) {
                 budget: form.budget === '' ? null : Number(form.budget),
                 start_date: form.start_date || null,
                 deadline: form.deadline || null,
+                service_type_other: form.service_type === 'khac' ? form.service_type_other : null,
             };
             if (editingId) {
                 await axios.put(`/api/v1/projects/${editingId}`, payload);
@@ -302,6 +316,7 @@ export default function ProjectsKanban(props) {
                 client_id: p.client_id,
                 contract_id: p.contract_id,
                 service_type: p.service_type,
+                service_type_other: p.service_type_other || null,
                 start_date: p.start_date,
                 deadline: p.deadline,
                 budget: p.budget,
@@ -411,7 +426,7 @@ export default function ProjectsKanban(props) {
                                                             SERVICE_STYLES[p.service_type] || 'bg-slate-100 text-slate-700 border-slate-200'
                                                         }`}
                                                     >
-                                                        {LABELS[p.service_type] || p.service_type}
+                                                        {serviceLabel(p)}
                                                     </span>
                                                 </td>
                                                 <td className="py-3">
@@ -478,7 +493,7 @@ export default function ProjectsKanban(props) {
                                             <div key={p.id} className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-card">
                                                 <div className="flex items-center justify-between">
                                                     <span className="text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
-                                                        {LABELS[p.service_type] || p.service_type}
+                                                        {serviceLabel(p)}
                                                     </span>
                                                     <div className="flex items-center gap-2 text-xs text-text-muted">
                                                         <button className="hover:text-slate-900" onClick={() => startEdit(p)} type="button">Sửa</button>
@@ -526,7 +541,7 @@ export default function ProjectsKanban(props) {
                                             <h3 className="font-semibold text-slate-900">{p.name}</h3>
                                             <span className="text-xs text-text-muted">{formatDate(p.deadline)}</span>
                                         </div>
-                                        <p className="text-xs text-text-muted mt-1">{p.code} • {LABELS[p.service_type] || p.service_type}</p>
+                                        <p className="text-xs text-text-muted mt-1">{p.code} • {serviceLabel(p)}</p>
                                         <p className={`text-xs mt-1 ${p.contract ? 'text-text-muted' : 'text-warning'}`}>
                                             Hợp đồng: {p.contract?.code || 'Chưa có hợp đồng'}
                                         </p>
@@ -582,6 +597,14 @@ export default function ProjectsKanban(props) {
                     <select className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" value={form.service_type} onChange={(e) => setForm((s) => ({ ...s, service_type: e.target.value }))}>
                         {serviceOptions.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
                     </select>
+                    {form.service_type === 'khac' && (
+                        <input
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            placeholder="Nhập loại dịch vụ khác"
+                            value={form.service_type_other}
+                            onChange={(e) => setForm((s) => ({ ...s, service_type_other: e.target.value }))}
+                        />
+                    )}
                     <select
                         className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
                         value={form.contract_id}

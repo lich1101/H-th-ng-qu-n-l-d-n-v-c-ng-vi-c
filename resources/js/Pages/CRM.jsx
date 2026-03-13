@@ -36,6 +36,9 @@ export default function CRM(props) {
     const [editingPaymentId, setEditingPaymentId] = useState(null);
     const [showClientForm, setShowClientForm] = useState(false);
     const [showPaymentForm, setShowPaymentForm] = useState(false);
+    const [showClientImport, setShowClientImport] = useState(false);
+    const [clientImportFile, setClientImportFile] = useState(null);
+    const [importingClients, setImportingClients] = useState(false);
     const [clientForm, setClientForm] = useState({
         name: '',
         company: '',
@@ -132,6 +135,29 @@ export default function CRM(props) {
             setPaymentPage(resolvedPage);
         } catch (error) {
             toast.error(getErrorMessage(error, 'Không tải được danh sách thanh toán.'));
+        }
+    };
+
+    const submitClientImport = async (e) => {
+        e.preventDefault();
+        if (!clientImportFile) {
+            toast.error('Vui lòng chọn file Excel.');
+            return;
+        }
+        setImportingClients(true);
+        try {
+            const formData = new FormData();
+            formData.append('file', clientImportFile);
+            const res = await axios.post('/api/v1/imports/clients', formData);
+            const report = res.data || {};
+            toast.success(`Import hoàn tất: ${report.created || 0} tạo mới, ${report.updated || 0} cập nhật.`);
+            setShowClientImport(false);
+            setClientImportFile(null);
+            await fetchClients(1, clientFilters);
+        } catch (error) {
+            toast.error(getErrorMessage(error, 'Import thất bại.'));
+        } finally {
+            setImportingClients(false);
         }
     };
 
@@ -381,6 +407,15 @@ export default function CRM(props) {
                                         onClick={openClientCreate}
                                     >
                                         Thêm mới
+                                    </button>
+                                )}
+                                {canManageClients && (
+                                    <button
+                                        type="button"
+                                        className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
+                                        onClick={() => setShowClientImport(true)}
+                                    >
+                                        Import Excel
                                     </button>
                                 )}
                                 <input
@@ -816,6 +851,52 @@ export default function CRM(props) {
                     </Modal>
                 </>
             )}
+
+            <Modal
+                open={showClientImport}
+                onClose={() => setShowClientImport(false)}
+                title="Import khách hàng"
+                description="Tải file Excel (.xls/.xlsx/.csv) để nhập khách hàng."
+                size="md"
+            >
+                <form className="space-y-3 text-sm" onSubmit={submitClientImport}>
+                    <div className="rounded-2xl border border-dashed border-slate-200/80 p-4 text-center">
+                        <p className="text-xs text-text-muted mb-2">Chọn file khách hàng</p>
+                        <input
+                            id="import-client-file"
+                            type="file"
+                            accept=".xls,.xlsx,.csv"
+                            onChange={(e) => setClientImportFile(e.target.files?.[0] || null)}
+                            className="hidden"
+                        />
+                        <label
+                            htmlFor="import-client-file"
+                            className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+                        >
+                            Chọn file
+                        </label>
+                        <p className="text-xs text-text-muted mt-2">
+                            {clientImportFile ? clientImportFile.name : 'Chưa chọn file'}
+                        </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="submit"
+                            className="flex-1 rounded-2xl px-3 py-2.5 bg-primary text-white text-sm font-semibold"
+                            disabled={importingClients}
+                        >
+                            {importingClients ? 'Đang import...' : 'Import'}
+                        </button>
+                        <button
+                            type="button"
+                            className="flex-1 rounded-2xl px-3 py-2.5 border border-slate-200 text-sm font-semibold"
+                            onClick={() => setShowClientImport(false)}
+                        >
+                            Hủy
+                        </button>
+                    </div>
+                </form>
+            </Modal>
         </PageContainer>
     );
 }

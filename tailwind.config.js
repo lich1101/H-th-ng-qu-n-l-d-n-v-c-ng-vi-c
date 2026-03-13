@@ -16,7 +16,7 @@ module.exports = {
                 display: ['Inter', ...defaultTheme.fontFamily.sans],
             },
             colors: {
-                primary: '#04BC5C',
+                primary: 'rgb(var(--color-primary) / <alpha-value>)',
                 'app-bg': '#F8FAFC',
                 surface: '#FFFFFF',
                 'surface-alt': '#F1F5F9',

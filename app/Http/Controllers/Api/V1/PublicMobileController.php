@@ -27,10 +27,13 @@ class PublicMobileController extends Controller
                 $total = (int) $project->total_tasks;
                 $completed = (int) $project->completed_tasks;
                 $progress = $total > 0 ? round(($completed / $total) * 100) : 0;
+                $teamLabel = $project->service_type === 'khac'
+                    ? ($project->service_type_other ?: 'Khác')
+                    : ($project->service_type ?: 'Team nội bộ');
 
                 return [
                     'name' => $project->name,
-                    'team' => $project->service_type ?: 'Team nội bộ',
+                    'team' => $teamLabel,
                     'progress' => $progress,
                 ];
             })

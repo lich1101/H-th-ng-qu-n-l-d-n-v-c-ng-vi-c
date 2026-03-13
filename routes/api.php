@@ -3,8 +3,11 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\V1\ActivityLogController;
+use App\Http\Controllers\Api\V1\AppSettingController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\ContractController;
+use App\Http\Controllers\Api\V1\ContractCostController;
+use App\Http\Controllers\Api\V1\ContractPaymentController;
 use App\Http\Controllers\Api\V1\CRMController;
 use App\Http\Controllers\Api\V1\DepartmentAssignmentController;
 use App\Http\Controllers\Api\V1\DepartmentController;
@@ -19,6 +22,7 @@ use App\Http\Controllers\Api\V1\DeadlineReminderController;
 use App\Http\Controllers\Api\V1\MeetingController;
 use App\Http\Controllers\Api\V1\NotificationCenterController;
 use App\Http\Controllers\Api\V1\ProjectController;
+use App\Http\Controllers\Api\V1\ImportController;
 use App\Http\Controllers\Api\V1\PublicMobileController;
 use App\Http\Controllers\Api\V1\ReportController;
 use App\Http\Controllers\Api\V1\ServiceWorkflowController;
@@ -26,6 +30,9 @@ use App\Http\Controllers\Api\V1\SystemMetaController;
 use App\Http\Controllers\Api\V1\TaskAttachmentController;
 use App\Http\Controllers\Api\V1\TaskCommentController;
 use App\Http\Controllers\Api\V1\TaskController;
+use App\Http\Controllers\Api\V1\TaskItemController;
+use App\Http\Controllers\Api\V1\TaskItemUpdateController;
+use App\Http\Controllers\Api\V1\TaskUpdateController;
 use App\Http\Controllers\Api\V1\UserAccountController;
 
 /*
@@ -52,6 +59,7 @@ Route::prefix('v1')->group(function () {
     });
 
     Route::get('/meta', [SystemMetaController::class, 'index']);
+    Route::get('/settings', [AppSettingController::class, 'show']);
     Route::get('/public/summary', [PublicMobileController::class, 'summary']);
     Route::get('/public/accounts-summary', [PublicMobileController::class, 'accountsSummary']);
 
@@ -61,6 +69,8 @@ Route::prefix('v1')->group(function () {
     Route::middleware('auth:sanctum')->group(function () {
         Route::get('/me', [AuthController::class, 'me']);
         Route::post('/logout', [AuthController::class, 'logout']);
+        Route::post('/settings', [AppSettingController::class, 'update'])
+            ->middleware('role:admin');
 
         Route::get('/projects', [ProjectController::class, 'index']);
         Route::get('/projects/{project}', [ProjectController::class, 'show']);
@@ -93,6 +103,34 @@ Route::prefix('v1')->group(function () {
             ->middleware('role:admin,quan_ly,nhan_vien');
         Route::delete('/tasks/{task}/attachments/{attachment}', [TaskAttachmentController::class, 'destroy'])
             ->middleware('role:admin,quan_ly,nhan_vien');
+
+        Route::get('/tasks/{task}/updates', [TaskUpdateController::class, 'index']);
+        Route::post('/tasks/{task}/updates', [TaskUpdateController::class, 'store'])
+            ->middleware('role:admin,quan_ly,nhan_vien');
+        Route::put('/tasks/{task}/updates/{update}', [TaskUpdateController::class, 'update'])
+            ->middleware('role:admin,quan_ly');
+        Route::post('/tasks/{task}/updates/{update}/approve', [TaskUpdateController::class, 'approve'])
+            ->middleware('role:admin,quan_ly');
+        Route::post('/tasks/{task}/updates/{update}/reject', [TaskUpdateController::class, 'reject'])
+            ->middleware('role:admin,quan_ly');
+
+        Route::get('/tasks/{task}/items', [TaskItemController::class, 'index']);
+        Route::post('/tasks/{task}/items', [TaskItemController::class, 'store'])
+            ->middleware('role:admin,quan_ly');
+        Route::put('/tasks/{task}/items/{item}', [TaskItemController::class, 'update'])
+            ->middleware('role:admin,quan_ly');
+        Route::delete('/tasks/{task}/items/{item}', [TaskItemController::class, 'destroy'])
+            ->middleware('role:admin,quan_ly');
+
+        Route::get('/tasks/{task}/items/{item}/updates', [TaskItemUpdateController::class, 'index']);
+        Route::post('/tasks/{task}/items/{item}/updates', [TaskItemUpdateController::class, 'store'])
+            ->middleware('role:admin,quan_ly,nhan_vien');
+        Route::put('/tasks/{task}/items/{item}/updates/{update}', [TaskItemUpdateController::class, 'update'])
+            ->middleware('role:admin,quan_ly');
+        Route::post('/tasks/{task}/items/{item}/updates/{update}/approve', [TaskItemUpdateController::class, 'approve'])
+            ->middleware('role:admin,quan_ly');
+        Route::post('/tasks/{task}/items/{item}/updates/{update}/reject', [TaskItemUpdateController::class, 'reject'])
+            ->middleware('role:admin,quan_ly');
 
         Route::get('/tasks/{task}/reminders', [DeadlineReminderController::class, 'index']);
         Route::post('/tasks/{task}/reminders', [DeadlineReminderController::class, 'store'])
@@ -152,6 +190,23 @@ Route::prefix('v1')->group(function () {
             ->middleware('role:admin');
         Route::post('/contracts/{contract}/approve', [ContractController::class, 'approve'])
             ->middleware('role:admin,ke_toan');
+        Route::get('/contracts/{contract}/payments', [ContractPaymentController::class, 'index'])
+            ->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
+        Route::post('/contracts/{contract}/payments', [ContractPaymentController::class, 'store'])
+            ->middleware('role:admin,ke_toan');
+        Route::put('/contracts/{contract}/payments/{payment}', [ContractPaymentController::class, 'update'])
+            ->middleware('role:admin,ke_toan');
+        Route::delete('/contracts/{contract}/payments/{payment}', [ContractPaymentController::class, 'destroy'])
+            ->middleware('role:admin,ke_toan');
+
+        Route::get('/contracts/{contract}/costs', [ContractCostController::class, 'index'])
+            ->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
+        Route::post('/contracts/{contract}/costs', [ContractCostController::class, 'store'])
+            ->middleware('role:admin,ke_toan');
+        Route::put('/contracts/{contract}/costs/{cost}', [ContractCostController::class, 'update'])
+            ->middleware('role:admin,ke_toan');
+        Route::delete('/contracts/{contract}/costs/{cost}', [ContractCostController::class, 'destroy'])
+            ->middleware('role:admin,ke_toan');
 
         Route::get('/opportunities', [OpportunityController::class, 'index'])
             ->middleware('role:admin,quan_ly,nhan_vien');
@@ -192,6 +247,13 @@ Route::prefix('v1')->group(function () {
             ->middleware('role:admin');
         Route::delete('/lead-forms/{leadForm}', [LeadFormController::class, 'destroy'])
             ->middleware('role:admin');
+
+        Route::post('/imports/clients', [ImportController::class, 'importClients'])
+            ->middleware('role:admin,quan_ly,nhan_vien');
+        Route::post('/imports/contracts', [ImportController::class, 'importContracts'])
+            ->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
+        Route::post('/imports/tasks', [ImportController::class, 'importTasks'])
+            ->middleware('role:admin,quan_ly');
 
         Route::get('/facebook/pages', [FacebookPageController::class, 'index'])
             ->middleware('role:admin,quan_ly,nhan_vien,ke_toan');

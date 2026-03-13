@@ -1,11 +1,26 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Dropdown from '@/Components/Dropdown';
-import { Link } from '@inertiajs/inertia-react';
+import { Link, usePage } from '@inertiajs/inertia-react';
 
 export default function Authenticated({ auth, header, children }) {
+    const { settings } = usePage().props;
     const [showSidebar, setShowSidebar] = useState(false);
     const [collapsedGroups, setCollapsedGroups] = useState({});
     const currentRole = auth?.user?.role || '';
+    const brandName = settings?.brand_name || 'Quản lý nội bộ';
+    const brandSubtitle = settings?.brand_subtitle || 'Khách hàng • Phòng ban • Kế toán';
+    const logoUrl = settings?.logo_url;
+
+    useEffect(() => {
+        if (!settings?.primary_color) return;
+        const hex = settings.primary_color.replace('#', '').trim();
+        if (hex.length !== 6) return;
+        const r = parseInt(hex.substring(0, 2), 16);
+        const g = parseInt(hex.substring(2, 4), 16);
+        const b = parseInt(hex.substring(4, 6), 16);
+        if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return;
+        document.documentElement.style.setProperty('--color-primary', `${r} ${g} ${b}`);
+    }, [settings?.primary_color]);
 
     const roleLabels = {
         admin: 'Quản trị',
@@ -67,6 +82,7 @@ export default function Authenticated({ auth, header, children }) {
                     { label: 'Nhật ký hệ thống', routeName: 'activity.logs', href: route('activity.logs'), roles: ['admin', 'quan_ly'] },
                     { label: 'Tài khoản người dùng', routeName: 'accounts.dashboard', href: route('accounts.dashboard'), roles: ['admin'] },
                     { label: 'Phân quyền', routeName: 'roles.permissions', href: route('roles.permissions'), roles: ['admin'] },
+                    { label: 'Cài đặt hệ thống', routeName: 'settings.system', href: route('settings.system'), roles: ['admin'] },
                 ],
             },
         ],
@@ -94,9 +110,20 @@ export default function Authenticated({ auth, header, children }) {
                 >
                     <div className="h-full flex flex-col">
                         <div className="px-6 py-6 border-b border-slate-200">
-                            <p className="text-xs uppercase tracking-[0.2em] text-text-subtle">WinMap</p>
-                            <p className="text-lg font-semibold">Quản lý nội bộ</p>
-                            <p className="text-xs text-text-muted mt-1">Khách hàng • Phòng ban • Kế toán</p>
+                            <div className="flex items-center gap-3">
+                                {logoUrl ? (
+                                    <img src={logoUrl} alt={brandName} className="h-9 w-9 rounded-xl object-contain" />
+                                ) : (
+                                    <div className="h-9 w-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-semibold">
+                                        {brandName.slice(0, 1).toUpperCase()}
+                                    </div>
+                                )}
+                                <div>
+                                    <p className="text-xs uppercase tracking-[0.2em] text-text-subtle">{brandName}</p>
+                                    <p className="text-lg font-semibold">Quản lý nội bộ</p>
+                                    <p className="text-xs text-text-muted mt-1">{brandSubtitle}</p>
+                                </div>
+                            </div>
                         </div>
 
                         <nav className="flex-1 overflow-y-auto px-4 py-5 space-y-4">

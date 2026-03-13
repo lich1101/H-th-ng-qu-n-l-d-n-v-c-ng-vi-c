@@ -32,13 +32,17 @@ export default function CompanyRevenueReport(props) {
 
     const stats = useMemo(() => {
         const total = Number(report.total_revenue || 0);
+        const paid = Number(report.total_paid || 0);
+        const debt = Number(report.total_debt || 0);
+        const costs = Number(report.total_costs || 0);
         const contracts = Number(report.contracts_total || 0);
         const months = report.monthly || [];
         return [
             { label: 'Tổng doanh thu', value: total.toLocaleString('vi-VN') + ' VNĐ' },
+            { label: 'Nợ đã thu hồi', value: paid.toLocaleString('vi-VN') + ' VNĐ' },
+            { label: 'Công nợ (Nợ tồn)', value: debt.toLocaleString('vi-VN') + ' VNĐ' },
+            { label: 'Chi phí', value: costs.toLocaleString('vi-VN') + ' VNĐ' },
             { label: 'Hợp đồng', value: contracts.toString() },
-            { label: 'Tháng có dữ liệu', value: String(months.length) },
-            { label: 'Cập nhật', value: loading ? '...' : 'OK' },
         ];
     }, [report, loading]);
 

@@ -43,12 +43,13 @@ export default function TasksBoard(props) {
     const toast = useToast();
     const userRole = props?.auth?.user?.role || '';
     const canCreate = ['admin', 'quan_ly'].includes(userRole);
-    const canUpdate = ['admin', 'quan_ly', 'nhan_vien'].includes(userRole);
+    const canEdit = ['admin', 'quan_ly'].includes(userRole);
     const canDelete = ['admin', 'quan_ly'].includes(userRole);
 
     const [loading, setLoading] = useState(false);
     const [tasks, setTasks] = useState([]);
     const [projects, setProjects] = useState([]);
+    const [departments, setDepartments] = useState([]);
     const [meta, setMeta] = useState({});
     const [viewMode, setViewMode] = useState('list');
     const [filters, setFilters] = useState({
@@ -61,8 +62,12 @@ export default function TasksBoard(props) {
 
     const [editingId, setEditingId] = useState(null);
     const [showForm, setShowForm] = useState(false);
+    const [showImport, setShowImport] = useState(false);
+    const [importFile, setImportFile] = useState(null);
+    const [importing, setImporting] = useState(false);
     const [form, setForm] = useState({
         project_id: '',
+        department_id: '',
         title: '',
         description: '',
         priority: 'medium',
@@ -71,6 +76,54 @@ export default function TasksBoard(props) {
         progress_percent: 0,
         assignee_id: '',
     });
+
+    const [showReport, setShowReport] = useState(false);
+    const [reportTask, setReportTask] = useState(null);
+    const [reportForm, setReportForm] = useState({
+        status: '',
+        progress_percent: '',
+        note: '',
+        attachment: null,
+    });
+    const [reporting, setReporting] = useState(false);
+
+    const [showReview, setShowReview] = useState(false);
+    const [reviewTask, setReviewTask] = useState(null);
+    const [pendingUpdates, setPendingUpdates] = useState([]);
+    const [reviewingUpdate, setReviewingUpdate] = useState(null);
+    const [reviewForm, setReviewForm] = useState({
+        status: '',
+        progress_percent: '',
+        note: '',
+        review_note: '',
+    });
+    const [reviewing, setReviewing] = useState(false);
+
+    const [showItems, setShowItems] = useState(false);
+    const [itemsTask, setItemsTask] = useState(null);
+    const [taskItems, setTaskItems] = useState([]);
+    const [itemsLoading, setItemsLoading] = useState(false);
+    const [itemForm, setItemForm] = useState({
+        title: '',
+        description: '',
+        priority: 'medium',
+        status: 'todo',
+        progress_percent: '',
+        deadline: '',
+        assignee_id: '',
+    });
+    const [editingItemId, setEditingItemId] = useState(null);
+    const [showItemReport, setShowItemReport] = useState(false);
+    const [reportItem, setReportItem] = useState(null);
+    const [itemReportForm, setItemReportForm] = useState({
+        status: '',
+        progress_percent: '',
+        note: '',
+        attachment: null,
+    });
+    const [showItemReview, setShowItemReview] = useState(false);
+    const [reviewItem, setReviewItem] = useState(null);
+    const [itemUpdates, setItemUpdates] = useState([]);
 
     const statusOptions = useMemo(() => {
         const values = meta.task_statuses || [];
@@ -93,6 +146,21 @@ export default function TasksBoard(props) {
         try {
             const res = await axios.get('/api/v1/projects', { params: { per_page: 200 } });
             setProjects(res.data?.data || []);
+        } catch {
+            // ignore
+        }
+    };
+
+    const fetchDepartments = async () => {
+        try {
+            const res = await axios.get('/api/v1/departments');
+            const rows = res.data || [];
+            if (userRole === 'quan_ly') {
+                const managerId = props?.auth?.user?.id;
+                setDepartments(rows.filter((d) => String(d.manager_id) === String(managerId)));
+            } else {
+                setDepartments(rows);
+            }
         } catch {
             // ignore
         }
@@ -123,9 +191,212 @@ export default function TasksBoard(props) {
         }
     };
 
+    const fetchTaskItems = async (taskId) => {
+        if (!taskId) return;
+        setItemsLoading(true);
+        try {
+            const res = await axios.get(`/api/v1/tasks/${taskId}/items`, {
+                params: { per_page: 50 },
+            });
+            setTaskItems(res.data?.data || []);
+        } catch (e) {
+            toast.error(e?.response?.data?.message || 'Không tải được đầu việc.');
+        } finally {
+            setItemsLoading(false);
+        }
+    };
+
+    const resetItemForm = () => {
+        setEditingItemId(null);
+        setItemForm({
+            title: '',
+            description: '',
+            priority: 'medium',
+            status: statusOptions[0] || 'todo',
+            progress_percent: '',
+            deadline: '',
+            assignee_id: '',
+        });
+    };
+
+    const openItemsModal = (task) => {
+        setItemsTask(task);
+        setShowItems(true);
+        resetItemForm();
+        fetchTaskItems(task.id);
+    };
+
+    const startEditItem = (item) => {
+        setEditingItemId(item.id);
+        setItemForm({
+            title: item.title || '',
+            description: item.description || '',
+            priority: item.priority || 'medium',
+            status: item.status || statusOptions[0] || 'todo',
+            progress_percent: item.progress_percent ?? '',
+            deadline: item.deadline ? String(item.deadline).slice(0, 10) : '',
+            assignee_id: item.assignee_id || '',
+        });
+    };
+
+    const saveItem = async () => {
+        if (!itemsTask) return;
+        if (!itemForm.title.trim()) {
+            toast.error('Vui lòng nhập tiêu đề đầu việc.');
+            return;
+        }
+        if (!itemForm.assignee_id) {
+            toast.error('Vui lòng chọn nhân sự phụ trách.');
+            return;
+        }
+        try {
+            if (editingItemId) {
+                await axios.put(`/api/v1/tasks/${itemsTask.id}/items/${editingItemId}`, {
+                    title: itemForm.title,
+                    description: itemForm.description,
+                    priority: itemForm.priority,
+                    status: itemForm.status,
+                    progress_percent: itemForm.progress_percent === '' ? null : Number(itemForm.progress_percent),
+                    deadline: itemForm.deadline || null,
+                    assignee_id: itemForm.assignee_id ? Number(itemForm.assignee_id) : null,
+                });
+                toast.success('Đã cập nhật đầu việc.');
+            } else {
+                await axios.post(`/api/v1/tasks/${itemsTask.id}/items`, {
+                    title: itemForm.title,
+                    description: itemForm.description,
+                    priority: itemForm.priority,
+                    status: itemForm.status,
+                    progress_percent: itemForm.progress_percent === '' ? null : Number(itemForm.progress_percent),
+                    deadline: itemForm.deadline || null,
+                    assignee_id: itemForm.assignee_id ? Number(itemForm.assignee_id) : null,
+                });
+                toast.success('Đã tạo đầu việc.');
+            }
+            resetItemForm();
+            await fetchTaskItems(itemsTask.id);
+            await fetchTasks(filters.page, filters);
+        } catch (e) {
+            toast.error(e?.response?.data?.message || 'Lưu đầu việc thất bại.');
+        }
+    };
+
+    const removeItem = async (itemId) => {
+        if (!itemsTask) return;
+        if (!confirm('Xóa đầu việc này?')) return;
+        try {
+            await axios.delete(`/api/v1/tasks/${itemsTask.id}/items/${itemId}`);
+            toast.success('Đã xóa đầu việc.');
+            await fetchTaskItems(itemsTask.id);
+            await fetchTasks(filters.page, filters);
+        } catch (e) {
+            toast.error(e?.response?.data?.message || 'Xóa đầu việc thất bại.');
+        }
+    };
+
+    const openItemReportModal = (item) => {
+        setReportItem(item);
+        setItemReportForm({ status: '', progress_percent: '', note: '', attachment: null });
+        setShowItemReport(true);
+    };
+
+    const submitItemReport = async () => {
+        if (!reportItem || !itemsTask) return;
+        const formData = new FormData();
+        if (itemReportForm.status) formData.append('status', itemReportForm.status);
+        if (itemReportForm.progress_percent !== '') formData.append('progress_percent', itemReportForm.progress_percent);
+        if (itemReportForm.note) formData.append('note', itemReportForm.note);
+        if (itemReportForm.attachment) formData.append('attachment', itemReportForm.attachment);
+        try {
+            await axios.post(
+                `/api/v1/tasks/${itemsTask.id}/items/${reportItem.id}/updates`,
+                formData,
+                { headers: { 'Content-Type': 'multipart/form-data' } },
+            );
+            toast.success('Đã gửi báo cáo đầu việc.');
+            setShowItemReport(false);
+        } catch (e) {
+            toast.error(e?.response?.data?.message || 'Gửi báo cáo thất bại.');
+        }
+    };
+
+    const openItemReviewModal = async (item) => {
+        if (!itemsTask) return;
+        setReviewItem(item);
+        setShowItemReview(true);
+        setReviewingUpdate(null);
+        setReviewForm({ status: '', progress_percent: '', note: '', review_note: '' });
+        try {
+            const res = await axios.get(`/api/v1/tasks/${itemsTask.id}/items/${item.id}/updates`, { params: { per_page: 30 } });
+            setItemUpdates(res.data?.data || []);
+        } catch (e) {
+            toast.error(e?.response?.data?.message || 'Không tải được báo cáo.');
+            setItemUpdates([]);
+        }
+    };
+
+    const approveItemUpdate = async (update, payload = {}) => {
+        if (!itemsTask || !reviewItem) return;
+        try {
+            await axios.post(`/api/v1/tasks/${itemsTask.id}/items/${reviewItem.id}/updates/${update.id}/approve`, payload);
+            toast.success('Đã duyệt báo cáo.');
+            await openItemReviewModal(reviewItem);
+            await fetchTasks(filters.page, filters);
+        } catch (e) {
+            toast.error(e?.response?.data?.message || 'Duyệt báo cáo thất bại.');
+        }
+    };
+
+    const rejectItemUpdate = async (update, reviewNote) => {
+        if (!itemsTask || !reviewItem) return;
+        try {
+            await axios.post(`/api/v1/tasks/${itemsTask.id}/items/${reviewItem.id}/updates/${update.id}/reject`, {
+                review_note: reviewNote,
+            });
+            toast.success('Đã từ chối báo cáo.');
+            await openItemReviewModal(reviewItem);
+        } catch (e) {
+            toast.error(e?.response?.data?.message || 'Từ chối báo cáo thất bại.');
+        }
+    };
+
+    const selectItemUpdate = (update) => {
+        setReviewingUpdate(update);
+        setReviewForm({
+            status: update?.status || '',
+            progress_percent: update?.progress_percent ?? '',
+            note: update?.note || '',
+            review_note: '',
+        });
+    };
+
+    const submitImport = async (e) => {
+        e.preventDefault();
+        if (!importFile) {
+            toast.error('Vui lòng chọn file Excel.');
+            return;
+        }
+        setImporting(true);
+        try {
+            const formData = new FormData();
+            formData.append('file', importFile);
+            const res = await axios.post('/api/v1/imports/tasks', formData);
+            const report = res.data || {};
+            toast.success(`Import hoàn tất: ${report.created || 0} tạo mới, ${report.updated || 0} cập nhật.`);
+            setShowImport(false);
+            setImportFile(null);
+            await fetchTasks(1, { ...filters, page: 1 });
+        } catch (e) {
+            toast.error(e?.response?.data?.message || 'Import thất bại.');
+        } finally {
+            setImporting(false);
+        }
+    };
+
     useEffect(() => {
         fetchMeta();
         fetchProjects();
+        fetchDepartments();
         fetchTasks(1, { ...filters, page: 1 });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -149,6 +420,7 @@ export default function TasksBoard(props) {
         setEditingId(null);
         setForm({
             project_id: '',
+            department_id: '',
             title: '',
             description: '',
             priority: 'medium',
@@ -175,10 +447,47 @@ export default function TasksBoard(props) {
     );
     const projectHasContract = !!selectedProject?.contract_id;
 
+    const selectedDepartment = useMemo(
+        () => departments.find((d) => String(d.id) === String(form.department_id)),
+        [departments, form.department_id]
+    );
+
+    const staffOptions = useMemo(() => {
+        if (selectedDepartment?.staff?.length) {
+            return selectedDepartment.staff;
+        }
+        if (userRole === 'admin' && departments.length) {
+            const all = departments.flatMap((d) => d.staff || []);
+            const map = new Map();
+            all.forEach((u) => {
+                if (u?.id) map.set(u.id, u);
+            });
+            return Array.from(map.values());
+        }
+        return [];
+    }, [selectedDepartment, departments, userRole]);
+
+    const itemStaffOptions = useMemo(() => {
+        if (!itemsTask) return [];
+        const deptId = itemsTask.department_id || itemsTask.department?.id;
+        const dept = departments.find((d) => String(d.id) === String(deptId));
+        if (dept?.staff?.length) return dept.staff;
+        if (userRole === 'admin') {
+            const all = departments.flatMap((d) => d.staff || []);
+            const map = new Map();
+            all.forEach((u) => {
+                if (u?.id) map.set(u.id, u);
+            });
+            return Array.from(map.values());
+        }
+        return [];
+    }, [itemsTask, departments, userRole]);
+
     const startEdit = (t) => {
         setEditingId(t.id);
         setForm({
             project_id: t.project_id || '',
+            department_id: t.department_id || t.assignee?.department_id || '',
             title: t.title || '',
             description: t.description || '',
             priority: t.priority || 'medium',
@@ -192,12 +501,13 @@ export default function TasksBoard(props) {
 
     const save = async () => {
         if (!canCreate && editingId == null) return toast.error('Bạn không có quyền tạo công việc.');
-        if (!canUpdate && editingId != null) return toast.error('Bạn không có quyền cập nhật công việc.');
+        if (!canEdit && editingId != null) return toast.error('Bạn không có quyền cập nhật công việc.');
         if (!form.project_id || !form.title?.trim()) return toast.error('Vui lòng chọn dự án và nhập tiêu đề.');
         if (!projectHasContract) return toast.error('Dự án chưa có hợp đồng, không thể tạo công việc.');
         try {
             const payload = {
                 project_id: Number(form.project_id),
+                department_id: form.department_id ? Number(form.department_id) : null,
                 title: form.title,
                 description: form.description || null,
                 priority: form.priority,
@@ -276,7 +586,9 @@ export default function TasksBoard(props) {
     };
 
     const acknowledgeTask = async (t) => {
-        if (!canUpdate) return toast.error('Bạn không có quyền xác nhận.');
+        if (!['admin', 'quan_ly', 'nhan_vien'].includes(userRole)) {
+            return toast.error('Bạn không có quyền xác nhận.');
+        }
         try {
             await axios.put(`/api/v1/tasks/${t.id}`, {
                 project_id: t.project_id,
@@ -301,6 +613,105 @@ export default function TasksBoard(props) {
         }
     };
 
+    const openReportModal = (task) => {
+        setReportTask(task);
+        setReportForm({
+            status: '',
+            progress_percent: '',
+            note: '',
+            attachment: null,
+        });
+        setShowReport(true);
+    };
+
+    const submitReport = async () => {
+        if (!reportTask) return;
+        setReporting(true);
+        try {
+            const formData = new FormData();
+            if (reportForm.status) formData.append('status', reportForm.status);
+            if (reportForm.progress_percent !== '') formData.append('progress_percent', reportForm.progress_percent);
+            if (reportForm.note) formData.append('note', reportForm.note);
+            if (reportForm.attachment) formData.append('attachment', reportForm.attachment);
+            await axios.post(`/api/v1/tasks/${reportTask.id}/updates`, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+            });
+            toast.success('Đã gửi báo cáo tiến độ.');
+            setShowReport(false);
+            setReportTask(null);
+            await fetchTasks(filters.page, filters);
+        } catch (e) {
+            toast.error(e?.response?.data?.message || 'Gửi báo cáo thất bại.');
+        } finally {
+            setReporting(false);
+        }
+    };
+
+    const openReviewModal = async (task) => {
+        setReviewTask(task);
+        setShowReview(true);
+        setReviewingUpdate(null);
+        setReviewForm({ status: '', progress_percent: '', note: '', review_note: '' });
+        try {
+            const res = await axios.get(`/api/v1/tasks/${task.id}/updates`, { params: { per_page: 20 } });
+            const rows = res.data?.data || [];
+            const pending = rows.filter((u) => u.review_status === 'pending');
+            setPendingUpdates(pending);
+        } catch (e) {
+            toast.error(e?.response?.data?.message || 'Không tải được báo cáo.');
+        }
+    };
+
+    const selectUpdate = (update) => {
+        setReviewingUpdate(update);
+        setReviewForm({
+            status: update.status || '',
+            progress_percent: update.progress_percent ?? '',
+            note: update.note || '',
+            review_note: '',
+        });
+    };
+
+    const approveUpdate = async () => {
+        if (!reviewTask || !reviewingUpdate) return;
+        setReviewing(true);
+        try {
+            await axios.post(`/api/v1/tasks/${reviewTask.id}/updates/${reviewingUpdate.id}/approve`, {
+                status: reviewForm.status || null,
+                progress_percent: reviewForm.progress_percent === '' ? null : Number(reviewForm.progress_percent),
+                note: reviewForm.note || null,
+            });
+            toast.success('Đã duyệt báo cáo.');
+            await openReviewModal(reviewTask);
+            await fetchTasks(filters.page, filters);
+        } catch (e) {
+            toast.error(e?.response?.data?.message || 'Duyệt thất bại.');
+        } finally {
+            setReviewing(false);
+        }
+    };
+
+    const rejectUpdate = async () => {
+        if (!reviewTask || !reviewingUpdate) return;
+        if (!reviewForm.review_note.trim()) {
+            toast.error('Vui lòng nhập lý do từ chối.');
+            return;
+        }
+        setReviewing(true);
+        try {
+            await axios.post(`/api/v1/tasks/${reviewTask.id}/updates/${reviewingUpdate.id}/reject`, {
+                review_note: reviewForm.review_note,
+            });
+            toast.success('Đã từ chối báo cáo.');
+            await openReviewModal(reviewTask);
+            await fetchTasks(filters.page, filters);
+        } catch (e) {
+            toast.error(e?.response?.data?.message || 'Từ chối thất bại.');
+        } finally {
+            setReviewing(false);
+        }
+    };
+
     return (
         <PageContainer
             auth={props.auth}
@@ -318,6 +729,15 @@ export default function TasksBoard(props) {
                                 onClick={openCreate}
                             >
                                 Thêm mới
+                            </button>
+                        )}
+                        {canCreate && (
+                            <button
+                                type="button"
+                                className="rounded-2xl border border-slate-200/80 px-4 py-2 text-sm font-semibold text-slate-700"
+                                onClick={() => setShowImport(true)}
+                            >
+                                Import Excel
                             </button>
                         )}
                         <select
@@ -375,6 +795,7 @@ export default function TasksBoard(props) {
                                             <th className="py-2">Ưu tiên</th>
                                             <th className="py-2">Hạn chót</th>
                                             <th className="py-2">Tiến độ</th>
+                                            <th className="py-2">Phòng ban</th>
                                             <th className="py-2">Phụ trách</th>
                                             <th className="py-2"></th>
                                         </tr>
@@ -423,10 +844,13 @@ export default function TasksBoard(props) {
                                                     </td>
                                                     <td className="py-3 text-xs text-text-muted">{t.progress_percent ?? 0}%</td>
                                                     <td className="py-3 text-xs text-text-muted">
+                                                        {t.department?.name || '—'}
+                                                    </td>
+                                                    <td className="py-3 text-xs text-text-muted">
                                                         {t.assignee?.name || '—'}
                                                     </td>
                                                     <td className="py-3 text-right space-x-2">
-                                                        {canUpdate && (
+                                                        {canEdit && (
                                                             <button className="text-xs font-semibold text-primary" onClick={() => startEdit(t)} type="button">
                                                                 Sửa
                                                             </button>
@@ -436,6 +860,9 @@ export default function TasksBoard(props) {
                                                                 Xóa
                                                             </button>
                                                         )}
+                                                        <button className="text-xs font-semibold text-sky-600" onClick={() => openItemsModal(t)} type="button">
+                                                            Đầu việc
+                                                        </button>
                                                         {canAck && (
                                                             <button className="text-xs font-semibold text-amber-600" onClick={() => acknowledgeTask(t)} type="button">
                                                                 Xác nhận
@@ -447,14 +874,14 @@ export default function TasksBoard(props) {
                                         })}
                                         {loading && (
                                             <tr>
-                                                <td className="py-6 text-center text-sm text-text-muted" colSpan={8}>
+                                                <td className="py-6 text-center text-sm text-text-muted" colSpan={9}>
                                                     Đang tải...
                                                 </td>
                                             </tr>
                                         )}
                                         {!loading && tasks.length === 0 && (
                                             <tr>
-                                                <td className="py-6 text-center text-sm text-text-muted" colSpan={8}>
+                                                <td className="py-6 text-center text-sm text-text-muted" colSpan={9}>
                                                     Chưa có công việc theo bộ lọc.
                                                 </td>
                                             </tr>
@@ -484,10 +911,13 @@ export default function TasksBoard(props) {
                                                             {PRIORITY_LABELS[t.priority] || t.priority || 'Trung bình'}
                                                         </span>
                                                         <div className="flex items-center gap-2 text-xs text-text-muted">
-                                                            <button className="hover:text-slate-900" onClick={() => startEdit(t)} type="button">Sửa</button>
+                                                            {canEdit && (
+                                                                <button className="hover:text-slate-900" onClick={() => startEdit(t)} type="button">Sửa</button>
+                                                            )}
                                                             {canDelete && (
                                                                 <button className="hover:text-danger" onClick={() => remove(t.id)} type="button">Xoá</button>
                                                             )}
+                                                            <button className="hover:text-sky-600" onClick={() => openItemsModal(t)} type="button">Đầu việc</button>
                                                         </div>
                                                     </div>
                                                     <h3 className="mt-3 font-semibold text-slate-900">{t.title}</h3>
@@ -581,6 +1011,24 @@ export default function TasksBoard(props) {
                     {form.project_id && !projectHasContract && (
                         <p className="text-xs text-warning">Dự án chưa có hợp đồng, cần tạo hợp đồng trước khi tạo công việc.</p>
                     )}
+                    <select
+                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                        value={form.department_id}
+                        onChange={(e) => setForm((s) => ({ ...s, department_id: e.target.value, assignee_id: '' }))}
+                    >
+                        <option value="">-- Chọn phòng ban --</option>
+                        {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                    </select>
+                    <select
+                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                        value={form.assignee_id}
+                        onChange={(e) => setForm((s) => ({ ...s, assignee_id: e.target.value }))}
+                    >
+                        <option value="">-- Chọn nhân sự phụ trách --</option>
+                        {staffOptions.map((u) => (
+                            <option key={u.id} value={u.id}>{u.name} • {u.email}</option>
+                        ))}
+                    </select>
                     <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" placeholder="Tiêu đề *" value={form.title} onChange={(e) => setForm((s) => ({ ...s, title: e.target.value }))} />
                     <textarea className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" rows={3} placeholder="Mô tả" value={form.description} onChange={(e) => setForm((s) => ({ ...s, description: e.target.value }))} />
                     <div className="grid grid-cols-2 gap-2">
@@ -603,6 +1051,374 @@ export default function TasksBoard(props) {
                             Hủy
                         </button>
                     </div>
+                </div>
+            </Modal>
+
+            <Modal
+                open={showImport}
+                onClose={() => setShowImport(false)}
+                title="Import công việc"
+                description="Tải file Excel (.xls/.xlsx/.csv) để nhập công việc."
+                size="md"
+            >
+                <form className="space-y-3 text-sm" onSubmit={submitImport}>
+                    <div className="rounded-2xl border border-dashed border-slate-200/80 p-4 text-center">
+                        <p className="text-xs text-text-muted mb-2">Chọn file công việc</p>
+                        <input
+                            id="import-task-file"
+                            type="file"
+                            accept=".xls,.xlsx,.csv"
+                            onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                            className="hidden"
+                        />
+                        <label
+                            htmlFor="import-task-file"
+                            className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+                        >
+                            Chọn file
+                        </label>
+                        <p className="text-xs text-text-muted mt-2">
+                            {importFile ? importFile.name : 'Chưa chọn file'}
+                        </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="submit"
+                            className="flex-1 rounded-2xl px-3 py-2.5 bg-primary text-white text-sm font-semibold"
+                            disabled={importing}
+                        >
+                            {importing ? 'Đang import...' : 'Import'}
+                        </button>
+                        <button
+                            type="button"
+                            className="flex-1 rounded-2xl px-3 py-2.5 border border-slate-200 text-sm font-semibold"
+                            onClick={() => setShowImport(false)}
+                        >
+                            Hủy
+                        </button>
+                    </div>
+                </form>
+            </Modal>
+
+            <Modal
+                open={showItems}
+                onClose={() => setShowItems(false)}
+                title={`Đầu việc${itemsTask ? ` • ${itemsTask.title}` : ''}`}
+                description="Trưởng phòng chia đầu việc cho nhân sự và theo dõi báo cáo tiến độ."
+                size="xl"
+            >
+                <div className="grid gap-4 lg:grid-cols-3">
+                    <div className="lg:col-span-2 space-y-3">
+                        {itemsLoading && <p className="text-sm text-text-muted">Đang tải đầu việc...</p>}
+                        {!itemsLoading && taskItems.length === 0 && (
+                            <p className="text-sm text-text-muted">Chưa có đầu việc nào.</p>
+                        )}
+                        {taskItems.map((item) => (
+                            <div key={item.id} className="rounded-2xl border border-slate-200/80 p-4 bg-white">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="font-semibold text-slate-900">{item.title}</p>
+                                        <p className="text-xs text-text-muted">
+                                            Phụ trách: {item.assignee?.name || item.assignee?.email || '—'}
+                                        </p>
+                                    </div>
+                                    <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${
+                                        PRIORITY_STYLES[item.priority] || 'bg-slate-100 text-slate-700 border-slate-200'
+                                    }`}>
+                                        {PRIORITY_LABELS[item.priority] || item.priority || 'Trung bình'}
+                                    </span>
+                                </div>
+                                <div className="mt-2 flex flex-wrap gap-2 text-xs text-text-muted">
+                                    <span>Trạng thái: {LABELS[item.status] || item.status}</span>
+                                    <span>Tiến độ: {item.progress_percent ?? 0}%</span>
+                                    <span>Hạn: {item.deadline ? String(item.deadline).slice(0, 10) : '—'}</span>
+                                </div>
+                                <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                                    {item.assignee_id === props?.auth?.user?.id && (
+                                        <button className="rounded-xl bg-primary text-white px-3 py-2 font-semibold" onClick={() => openItemReportModal(item)} type="button">
+                                            Báo cáo
+                                        </button>
+                                    )}
+                                    {['admin', 'quan_ly'].includes(userRole) && (
+                                        <button className="rounded-xl border border-slate-200 px-3 py-2 font-semibold text-slate-700" onClick={() => openItemReviewModal(item)} type="button">
+                                            Duyệt báo cáo
+                                        </button>
+                                    )}
+                                    {['admin', 'quan_ly'].includes(userRole) && (
+                                        <button className="text-primary font-semibold" onClick={() => startEditItem(item)} type="button">
+                                            Sửa
+                                        </button>
+                                    )}
+                                    {['admin', 'quan_ly'].includes(userRole) && (
+                                        <button className="text-rose-600 font-semibold" onClick={() => removeItem(item.id)} type="button">
+                                            Xóa
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="space-y-3">
+                        {['admin', 'quan_ly'].includes(userRole) ? (
+                            <div className="rounded-2xl border border-slate-200/80 p-4 bg-white">
+                                <h4 className="font-semibold text-slate-900 mb-3">
+                                    {editingItemId ? `Sửa đầu việc #${editingItemId}` : 'Tạo đầu việc'}
+                                </h4>
+                                <div className="space-y-2 text-sm">
+                                    <select
+                                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                        value={itemForm.assignee_id}
+                                        onChange={(e) => setItemForm((s) => ({ ...s, assignee_id: e.target.value }))}
+                                    >
+                                        <option value="">-- Chọn nhân sự --</option>
+                                        {itemStaffOptions.map((u) => (
+                                            <option key={u.id} value={u.id}>{u.name} • {u.email}</option>
+                                        ))}
+                                    </select>
+                                    <input
+                                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                        placeholder="Tiêu đề đầu việc"
+                                        value={itemForm.title}
+                                        onChange={(e) => setItemForm((s) => ({ ...s, title: e.target.value }))}
+                                    />
+                                    <textarea
+                                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                        rows={3}
+                                        placeholder="Mô tả"
+                                        value={itemForm.description}
+                                        onChange={(e) => setItemForm((s) => ({ ...s, description: e.target.value }))}
+                                    />
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <select
+                                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                            value={itemForm.priority}
+                                            onChange={(e) => setItemForm((s) => ({ ...s, priority: e.target.value }))}
+                                        >
+                                            {DEFAULT_PRIORITIES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+                                        </select>
+                                        <select
+                                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                            value={itemForm.status}
+                                            onChange={(e) => setItemForm((s) => ({ ...s, status: e.target.value }))}
+                                        >
+                                            {statusOptions.map((s) => <option key={s} value={s}>{LABELS[s] || s}</option>)}
+                                        </select>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <input
+                                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                            type="date"
+                                            value={itemForm.deadline}
+                                            onChange={(e) => setItemForm((s) => ({ ...s, deadline: e.target.value }))}
+                                        />
+                                        <input
+                                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                            type="number"
+                                            min="0"
+                                            max="100"
+                                            value={itemForm.progress_percent}
+                                            onChange={(e) => setItemForm((s) => ({ ...s, progress_percent: e.target.value }))}
+                                        />
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            className="flex-1 rounded-2xl px-3 py-2.5 bg-primary text-white text-sm font-semibold"
+                                            onClick={saveItem}
+                                        >
+                                            {editingItemId ? 'Cập nhật' : 'Tạo mới'}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="flex-1 rounded-2xl px-3 py-2.5 border border-slate-200 text-sm font-semibold"
+                                            onClick={resetItemForm}
+                                        >
+                                            Làm mới
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <p className="text-sm text-text-muted">Chỉ trưởng phòng hoặc admin được tạo đầu việc.</p>
+                        )}
+                    </div>
+                </div>
+            </Modal>
+
+            <Modal
+                open={showItemReport}
+                onClose={() => setShowItemReport(false)}
+                title={`Báo cáo đầu việc${reportItem ? ` • ${reportItem.title}` : ''}`}
+                description="Gửi cập nhật tiến độ đầu việc cho trưởng phòng."
+                size="md"
+            >
+                <div className="space-y-3 text-sm">
+                    <select
+                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                        value={itemReportForm.status}
+                        onChange={(e) => setItemReportForm((s) => ({ ...s, status: e.target.value }))}
+                    >
+                        <option value="">-- Trạng thái (tuỳ chọn) --</option>
+                        {statusOptions.map((s) => (
+                            <option key={s} value={s}>{LABELS[s] || s}</option>
+                        ))}
+                    </select>
+                    <input
+                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                        type="number"
+                        min="0"
+                        max="100"
+                        placeholder="Tiến độ (%)"
+                        value={itemReportForm.progress_percent}
+                        onChange={(e) => setItemReportForm((s) => ({ ...s, progress_percent: e.target.value }))}
+                    />
+                    <textarea
+                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                        rows={3}
+                        placeholder="Nội dung báo cáo"
+                        value={itemReportForm.note}
+                        onChange={(e) => setItemReportForm((s) => ({ ...s, note: e.target.value }))}
+                    />
+                    <div className="rounded-2xl border border-dashed border-slate-200/80 p-4 text-center">
+                        <input
+                            id="task-item-report-file"
+                            type="file"
+                            onChange={(e) => setItemReportForm((s) => ({ ...s, attachment: e.target.files?.[0] || null }))}
+                            className="hidden"
+                        />
+                        <label
+                            htmlFor="task-item-report-file"
+                            className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+                        >
+                            Chọn file
+                        </label>
+                        <p className="text-xs text-text-muted mt-2">
+                            {itemReportForm.attachment ? itemReportForm.attachment.name : 'Chưa chọn file'}
+                        </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            className="flex-1 rounded-2xl px-3 py-2.5 bg-primary text-white text-sm font-semibold"
+                            onClick={submitItemReport}
+                        >
+                            Gửi báo cáo
+                        </button>
+                        <button
+                            type="button"
+                            className="flex-1 rounded-2xl px-3 py-2.5 border border-slate-200 text-sm font-semibold"
+                            onClick={() => setShowItemReport(false)}
+                        >
+                            Hủy
+                        </button>
+                    </div>
+                </div>
+            </Modal>
+
+            <Modal
+                open={showItemReview}
+                onClose={() => setShowItemReview(false)}
+                title={`Duyệt báo cáo đầu việc${reviewItem ? ` • ${reviewItem.title}` : ''}`}
+                description="Chọn báo cáo để duyệt, chỉnh sửa hoặc từ chối."
+                size="lg"
+            >
+                <div className="space-y-4 text-sm">
+                    {itemUpdates.length === 0 && (
+                        <p className="text-text-muted">Chưa có báo cáo chờ duyệt.</p>
+                    )}
+                    {itemUpdates.map((u) => (
+                        <div key={u.id} className="rounded-2xl border border-slate-200/80 p-4 bg-white">
+                            <div className="flex items-center justify-between gap-2">
+                                <div>
+                                    <p className="text-xs text-text-muted">#{u.id} • {u.submitter?.name || 'Nhân sự'}</p>
+                                    <p className="font-semibold text-slate-900">{u.note || 'Không có ghi chú'}</p>
+                                </div>
+                                <button
+                                    type="button"
+                                    className="text-xs font-semibold text-primary"
+                                    onClick={() => selectItemUpdate(u)}
+                                >
+                                    Xem & duyệt
+                                </button>
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-2 text-xs text-text-muted">
+                                <span>Trạng thái: {u.status ? (LABELS[u.status] || u.status) : '—'}</span>
+                                <span>Tiến độ: {u.progress_percent ?? '—'}%</span>
+                            </div>
+                            {u.attachment_path && (
+                                <a className="text-xs text-primary mt-2 inline-block" href={u.attachment_path} target="_blank" rel="noreferrer">
+                                    Xem file đính kèm
+                                </a>
+                            )}
+                        </div>
+                    ))}
+
+                    {reviewingUpdate && (
+                        <div className="rounded-2xl border border-slate-200/80 p-4 bg-slate-50">
+                            <h4 className="font-semibold text-slate-900 mb-3">Duyệt báo cáo #{reviewingUpdate.id}</h4>
+                            <div className="grid grid-cols-2 gap-3">
+                                <select
+                                    className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                    value={reviewForm.status}
+                                    onChange={(e) => setReviewForm((s) => ({ ...s, status: e.target.value }))}
+                                >
+                                    <option value="">-- Trạng thái --</option>
+                                    {statusOptions.map((s) => (
+                                        <option key={s} value={s}>{LABELS[s] || s}</option>
+                                    ))}
+                                </select>
+                                <input
+                                    className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                    type="number"
+                                    min="0"
+                                    max="100"
+                                    placeholder="Tiến độ (%)"
+                                    value={reviewForm.progress_percent}
+                                    onChange={(e) => setReviewForm((s) => ({ ...s, progress_percent: e.target.value }))}
+                                />
+                            </div>
+                            <textarea
+                                className="mt-3 w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                rows={3}
+                                placeholder="Ghi chú sau chỉnh sửa (tuỳ chọn)"
+                                value={reviewForm.note}
+                                onChange={(e) => setReviewForm((s) => ({ ...s, note: e.target.value }))}
+                            />
+                            <textarea
+                                className="mt-3 w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                rows={2}
+                                placeholder="Lý do từ chối (nếu không duyệt)"
+                                value={reviewForm.review_note}
+                                onChange={(e) => setReviewForm((s) => ({ ...s, review_note: e.target.value }))}
+                            />
+                            <div className="mt-3 flex flex-wrap gap-2">
+                                <button
+                                    type="button"
+                                    className="rounded-2xl bg-primary text-white px-4 py-2 text-sm font-semibold"
+                                    onClick={() => approveItemUpdate(reviewingUpdate, {
+                                        status: reviewForm.status || undefined,
+                                        progress_percent: reviewForm.progress_percent === '' ? undefined : Number(reviewForm.progress_percent),
+                                        note: reviewForm.note || undefined,
+                                    })}
+                                >
+                                    Duyệt
+                                </button>
+                                <button
+                                    type="button"
+                                    className="rounded-2xl border border-rose-200 text-rose-600 px-4 py-2 text-sm font-semibold"
+                                    onClick={() => {
+                                        if (!reviewForm.review_note) {
+                                            toast.error('Vui lòng nhập lý do từ chối.');
+                                            return;
+                                        }
+                                        rejectItemUpdate(reviewingUpdate, reviewForm.review_note);
+                                    }}
+                                >
+                                    Từ chối
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </Modal>
         </PageContainer>

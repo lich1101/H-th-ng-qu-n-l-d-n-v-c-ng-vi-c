@@ -12,6 +12,8 @@ use App\Models\Task;
 use App\Models\DepartmentAssignment;
 use App\Models\Department;
 use App\Models\Contract;
+use App\Models\ContractPayment;
+use App\Models\ContractCost;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 
@@ -176,6 +178,25 @@ class ReportController extends Controller
 
         $totalRevenue = $rows->sum('revenue');
 
+        $approvedContractIds = Contract::query()
+            ->join('clients', 'contracts.client_id', '=', 'clients.id')
+            ->where('contracts.approval_status', 'approved')
+            ->whereIn('clients.assigned_department_id', $deptIds)
+            ->pluck('contracts.id');
+
+        $totalPaid = 0;
+        $totalCosts = 0;
+        if ($approvedContractIds->isNotEmpty()) {
+            $totalPaid = (float) ContractPayment::query()
+                ->whereIn('contract_id', $approvedContractIds)
+                ->sum('amount');
+            $totalCosts = (float) ContractCost::query()
+                ->whereIn('contract_id', $approvedContractIds)
+                ->sum('amount');
+        }
+        $totalDebt = max(0, (float) $totalRevenue - (float) $totalPaid);
+        $netRevenue = (float) $totalRevenue - (float) $totalCosts;
+
         $staffRows = [];
         $contractsTotal = 0;
         if (! empty($deptIds)) {
@@ -213,6 +234,10 @@ class ReportController extends Controller
 
         return response()->json([
             'total_revenue' => $totalRevenue,
+            'total_paid' => round($totalPaid, 2),
+            'total_debt' => round($totalDebt, 2),
+            'total_costs' => round($totalCosts, 2),
+            'net_revenue' => round($netRevenue, 2),
             'departments' => $rows,
             'contracts_total' => $contractsTotal,
             'staffs' => $staffRows,
@@ -225,6 +250,19 @@ class ReportController extends Controller
 
         $totalRevenue = (float) $approved->sum('value');
         $contractsTotal = (int) $approved->count();
+        $approvedIds = $approved->pluck('id');
+        $totalPaid = 0;
+        $totalCosts = 0;
+        if ($approvedIds->isNotEmpty()) {
+            $totalPaid = (float) ContractPayment::query()
+                ->whereIn('contract_id', $approvedIds)
+                ->sum('amount');
+            $totalCosts = (float) ContractCost::query()
+                ->whereIn('contract_id', $approvedIds)
+                ->sum('amount');
+        }
+        $totalDebt = max(0, $totalRevenue - $totalPaid);
+        $netRevenue = $totalRevenue - $totalCosts;
 
         $monthlyRows = Contract::query()
             ->where('approval_status', 'approved')
@@ -264,6 +302,10 @@ class ReportController extends Controller
 
         return response()->json([
             'total_revenue' => round($totalRevenue, 2),
+            'total_paid' => round($totalPaid, 2),
+            'total_debt' => round($totalDebt, 2),
+            'total_costs' => round($totalCosts, 2),
+            'net_revenue' => round($netRevenue, 2),
             'contracts_total' => $contractsTotal,
             'monthly' => $monthlyRows,
             'top_customers' => $topCustomers,

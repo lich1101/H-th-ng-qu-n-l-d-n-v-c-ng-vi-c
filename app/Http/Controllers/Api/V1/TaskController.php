@@ -15,8 +15,13 @@ class TaskController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = Task::query()
-            ->with(['project', 'assignee', 'reviewer'])
-            ->withCount(['comments', 'attachments']);
+            ->with(['project', 'assignee', 'reviewer', 'department'])
+            ->withCount(['comments', 'attachments', 'items'])
+            ->withCount([
+                'updates as pending_updates_count' => function ($builder) {
+                    $builder->where('review_status', 'pending');
+                },
+            ]);
 
         $this->applyScope($query, $request->user());
 
@@ -42,20 +47,21 @@ class TaskController extends Controller
         if (! in_array($request->user()->role, ['admin', 'quan_ly'], true)) {
             return response()->json(['message' => 'Không có quyền tạo công việc.'], 403);
         }
-        $validated = $request->validate($this->rules());
+        $validated = $request->validate($this->rules(false));
         $project = Project::find($validated['project_id']);
         if (! $project || empty($project->contract_id)) {
             return response()->json([
                 'message' => 'Dự án chưa có hợp đồng, không thể tạo công việc.',
             ], 422);
         }
+        $this->applyDepartmentRules($request, $validated);
         $validated['created_by'] = $request->user()->id;
         $validated['assigned_by'] = $validated['assigned_by'] ?? $request->user()->id;
 
         $task = Task::create($validated);
 
         return response()->json(
-            $task->load(['project', 'assignee', 'reviewer'])->loadCount(['comments', 'attachments']),
+            $task->load(['project', 'assignee', 'reviewer', 'department'])->loadCount(['comments', 'attachments']),
             201
         );
     }
@@ -66,7 +72,7 @@ class TaskController extends Controller
             return response()->json(['message' => 'Không có quyền xem công việc.'], 403);
         }
         return response()->json(
-            $task->load(['project', 'assignee', 'reviewer'])->loadCount(['comments', 'attachments'])
+            $task->load(['project', 'assignee', 'reviewer', 'department'])->loadCount(['comments', 'attachments'])
         );
     }
 
@@ -75,13 +81,14 @@ class TaskController extends Controller
         if (! $this->canAccess($request->user(), $task)) {
             return response()->json(['message' => 'Không có quyền cập nhật công việc.'], 403);
         }
-        $validated = $request->validate($this->rules());
+        $validated = $request->validate($this->rules(true));
         if ($request->user()->role === 'nhan_vien') {
             $validated = array_intersect_key($validated, array_flip([
-                'status',
-                'progress_percent',
                 'acknowledged_at',
             ]));
+        }
+        if (! empty($validated)) {
+            $this->applyDepartmentRules($request, $validated, $task);
         }
         if (isset($validated['project_id'])) {
             $project = Project::find($validated['project_id']);
@@ -103,7 +110,7 @@ class TaskController extends Controller
         $task->update($validated);
 
         return response()->json(
-            $task->load(['project', 'assignee', 'reviewer'])->loadCount(['comments', 'attachments'])
+            $task->load(['project', 'assignee', 'reviewer', 'department'])->loadCount(['comments', 'attachments'])
         );
     }
 
@@ -122,14 +129,15 @@ class TaskController extends Controller
         ]);
     }
 
-    private function rules(): array
+    private function rules(bool $isUpdate = false): array
     {
         return [
-            'project_id' => ['required', 'integer', 'exists:projects,id'],
-            'title' => ['required', 'string', 'max:255'],
+            'project_id' => [$isUpdate ? 'sometimes' : 'required', 'integer', 'exists:projects,id'],
+            'department_id' => ['nullable', 'integer', 'exists:departments,id'],
+            'title' => [$isUpdate ? 'sometimes' : 'required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
-            'priority' => ['required', 'string', 'max:20'],
-            'status' => ['required', 'string', 'in:todo,doing,done,blocked'],
+            'priority' => [$isUpdate ? 'sometimes' : 'required', 'string', 'max:20'],
+            'status' => [$isUpdate ? 'sometimes' : 'required', 'string', 'in:todo,doing,done,blocked'],
             'start_at' => ['nullable', 'date'],
             'deadline' => ['nullable', 'date'],
             'completed_at' => ['nullable', 'date'],
@@ -156,13 +164,19 @@ class TaskController extends Controller
             $query->where(function ($builder) use ($deptIds, $user) {
                 $builder->whereHas('assignee', function ($assigneeQuery) use ($deptIds) {
                     $assigneeQuery->whereIn('department_id', $deptIds);
-                })->orWhere('assigned_by', $user->id)
+                })->orWhereIn('department_id', $deptIds)
+                    ->orWhere('assigned_by', $user->id)
                     ->orWhere('created_by', $user->id);
             });
             return;
         }
 
-        $query->where('assignee_id', $user->id);
+        $query->where(function ($builder) use ($user) {
+            $builder->where('assignee_id', $user->id)
+                ->orWhereHas('items', function ($itemQuery) use ($user) {
+                    $itemQuery->where('assignee_id', $user->id);
+                });
+        });
     }
 
     private function canAccess(User $user, Task $task): bool
@@ -175,6 +189,9 @@ class TaskController extends Controller
         }
         if ($user->role === 'quan_ly') {
             $deptIds = $user->managedDepartments()->pluck('id');
+            if ($task->department_id && $deptIds->contains($task->department_id)) {
+                return true;
+            }
             if ($task->assignee && $deptIds->contains($task->assignee->department_id)) {
                 return true;
             }
@@ -182,6 +199,43 @@ class TaskController extends Controller
                 || (int) $task->assigned_by === (int) $user->id;
         }
 
-        return (int) $task->assignee_id === (int) $user->id;
+        return $task->items()->where('assignee_id', $user->id)->exists()
+            || (int) $task->assignee_id === (int) $user->id;
+    }
+
+    private function applyDepartmentRules(Request $request, array &$validated, ?Task $task = null): void
+    {
+        $user = $request->user();
+        if (! $user) {
+            return;
+        }
+
+        if (isset($validated['assignee_id'])) {
+            $assignee = User::find($validated['assignee_id']);
+            if ($assignee && empty($validated['department_id'])) {
+                $validated['department_id'] = $assignee->department_id;
+            }
+        }
+
+        if ($user->role !== 'quan_ly') {
+            return;
+        }
+
+        $deptIds = $user->managedDepartments()->pluck('id');
+        $departmentId = $validated['department_id'] ?? $task?->department_id;
+        if ($departmentId && ! $deptIds->contains($departmentId)) {
+            abort(response()->json(['message' => 'Bạn không có quyền giao việc cho phòng ban này.'], 403));
+        }
+
+        if (isset($validated['assignee_id'])) {
+            $assignee = User::find($validated['assignee_id']);
+            if ($assignee && $assignee->department_id && ! $deptIds->contains($assignee->department_id)) {
+                abort(response()->json(['message' => 'Nhân sự không thuộc phòng ban bạn quản lý.'], 403));
+            }
+        }
+
+        if (empty($validated['reviewer_id'])) {
+            $validated['reviewer_id'] = $user->id;
+        }
     }
 }

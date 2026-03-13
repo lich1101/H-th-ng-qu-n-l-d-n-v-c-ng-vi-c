@@ -154,6 +154,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/phan-quyen', function () {
         return Inertia::render('RolesPermissions');
     })->name('roles.permissions')->middleware('role:admin');
+
+    Route::get('/cai-dat-he-thong', function () {
+        return Inertia::render('SystemSettings');
+    })->name('settings.system')->middleware('role:admin');
 });
 
 require __DIR__.'/auth.php';

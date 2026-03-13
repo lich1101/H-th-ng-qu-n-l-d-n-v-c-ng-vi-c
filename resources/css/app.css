@@ -5,6 +5,10 @@
 @tailwind utilities;
 
 @layer base {
+    :root {
+        --color-primary: 4 188 92;
+    }
+
     body {
         @apply bg-app-bg text-slate-900 font-display;
     }

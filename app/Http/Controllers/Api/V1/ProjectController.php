@@ -40,6 +40,14 @@ class ProjectController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate($this->rules());
+        if (($validated['service_type'] ?? '') === 'khac') {
+            $validated['service_type_other'] = trim((string) ($validated['service_type_other'] ?? ''));
+            if ($validated['service_type_other'] === '') {
+                return response()->json(['message' => 'Vui lòng nhập loại dịch vụ khác.'], 422);
+            }
+        } else {
+            $validated['service_type_other'] = null;
+        }
         if (empty($validated['code'])) {
             $validated['code'] = $this->generateProjectCode();
         }
@@ -76,6 +84,14 @@ class ProjectController extends Controller
     public function update(Request $request, Project $project): JsonResponse
     {
         $validated = $request->validate($this->rules($project->id));
+        if (($validated['service_type'] ?? $project->service_type) === 'khac') {
+            $validated['service_type_other'] = trim((string) ($validated['service_type_other'] ?? $project->service_type_other ?? ''));
+            if ($validated['service_type_other'] === '') {
+                return response()->json(['message' => 'Vui lòng nhập loại dịch vụ khác.'], 422);
+            }
+        } else {
+            $validated['service_type_other'] = null;
+        }
         $contract = null;
         if (! empty($validated['contract_id'])) {
             $contract = Contract::find($validated['contract_id']);
@@ -118,6 +134,7 @@ class ProjectController extends Controller
             'client_id' => ['nullable', 'integer', 'exists:clients,id'],
             'contract_id' => ['nullable', 'integer', 'exists:contracts,id'],
             'service_type' => ['required', 'string', 'max:80'],
+            'service_type_other' => ['nullable', 'string', 'max:120'],
             'start_date' => ['nullable', 'date'],
             'deadline' => ['nullable', 'date'],
             'budget' => ['nullable', 'numeric', 'min:0'],

@@ -15,6 +15,7 @@ class Project extends Model
         'client_id',
         'contract_id',
         'service_type',
+        'service_type_other',
         'start_date',
         'deadline',
         'budget',

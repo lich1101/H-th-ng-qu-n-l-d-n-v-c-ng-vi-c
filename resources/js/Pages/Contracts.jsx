@@ -27,6 +27,7 @@ export default function Contracts(props) {
     const canManage = ['admin', 'quan_ly', 'nhan_vien', 'ke_toan'].includes(userRole);
     const canDelete = userRole === 'admin';
     const canApprove = ['admin', 'ke_toan'].includes(userRole);
+    const canFinance = ['admin', 'ke_toan'].includes(userRole);
 
     const [contracts, setContracts] = useState([]);
     const [clients, setClients] = useState([]);
@@ -42,6 +43,7 @@ export default function Contracts(props) {
         client_id: '',
         project_id: '',
         value: '',
+        payment_times: '1',
         status: 'draft',
         signed_at: '',
         start_date: '',
@@ -49,6 +51,27 @@ export default function Contracts(props) {
         notes: '',
     });
     const [items, setItems] = useState([]);
+    const [payments, setPayments] = useState([]);
+    const [costs, setCosts] = useState([]);
+    const [showPaymentForm, setShowPaymentForm] = useState(false);
+    const [editingPaymentId, setEditingPaymentId] = useState(null);
+    const [paymentForm, setPaymentForm] = useState({
+        amount: '',
+        paid_at: '',
+        method: '',
+        note: '',
+    });
+    const [showCostForm, setShowCostForm] = useState(false);
+    const [editingCostId, setEditingCostId] = useState(null);
+    const [costForm, setCostForm] = useState({
+        amount: '',
+        cost_date: '',
+        cost_type: '',
+        note: '',
+    });
+    const [showImport, setShowImport] = useState(false);
+    const [importFile, setImportFile] = useState(null);
+    const [importing, setImporting] = useState(false);
 
     const fetchClients = async () => {
         try {
@@ -127,6 +150,7 @@ export default function Contracts(props) {
             client_id: '',
             project_id: '',
             value: '',
+            payment_times: '1',
             status: 'draft',
             signed_at: '',
             start_date: '',
@@ -134,33 +158,44 @@ export default function Contracts(props) {
             notes: '',
         });
         setItems([]);
+        setPayments([]);
+        setCosts([]);
     };
 
-    const startEdit = (c) => {
+    const startEdit = async (c) => {
         setEditingId(c.id);
-        setForm({
-            code: c.code || '',
-            title: c.title || '',
-            client_id: c.client_id || '',
-            project_id: c.project_id || '',
-            value: c.value ?? '',
-            status: c.status || 'draft',
-            signed_at: c.signed_at ? String(c.signed_at).slice(0, 10) : '',
-            start_date: c.start_date ? String(c.start_date).slice(0, 10) : '',
-            end_date: c.end_date ? String(c.end_date).slice(0, 10) : '',
-            notes: c.notes || '',
-        });
-        setItems(
-            (c.items || []).map((item) => ({
-                product_id: item.product_id || '',
-                product_name: item.product_name || '',
-                unit: item.unit || '',
-                unit_price: item.unit_price ?? '',
-                quantity: item.quantity ?? 1,
-                note: item.note || '',
-            }))
-        );
-        setShowForm(true);
+        try {
+            const res = await axios.get(`/api/v1/contracts/${c.id}`);
+            const detail = res.data || c;
+            setForm({
+                code: detail.code || '',
+                title: detail.title || '',
+                client_id: detail.client_id || '',
+                project_id: detail.project_id || '',
+                value: detail.value ?? '',
+                payment_times: String(detail.payment_times ?? 1),
+                status: detail.status || 'draft',
+                signed_at: detail.signed_at ? String(detail.signed_at).slice(0, 10) : '',
+                start_date: detail.start_date ? String(detail.start_date).slice(0, 10) : '',
+                end_date: detail.end_date ? String(detail.end_date).slice(0, 10) : '',
+                notes: detail.notes || '',
+            });
+            setItems(
+                (detail.items || []).map((item) => ({
+                    product_id: item.product_id || '',
+                    product_name: item.product_name || '',
+                    unit: item.unit || '',
+                    unit_price: item.unit_price ?? '',
+                    quantity: item.quantity ?? 1,
+                    note: item.note || '',
+                }))
+            );
+            setPayments(detail.payments || []);
+            setCosts(detail.costs || []);
+            setShowForm(true);
+        } catch (e) {
+            toast.error(e?.response?.data?.message || 'Không tải được chi tiết hợp đồng.');
+        }
     };
 
     const openCreate = () => {
@@ -201,6 +236,169 @@ export default function Contracts(props) {
         }, 0);
     }, [items]);
 
+    const refreshContractExtras = async () => {
+        if (!editingId) return;
+        try {
+            const res = await axios.get(`/api/v1/contracts/${editingId}`);
+            const detail = res.data || {};
+            setPayments(detail.payments || []);
+            setCosts(detail.costs || []);
+        } catch {
+            // ignore
+        }
+    };
+
+    const openPaymentCreate = () => {
+        if (!canFinance) {
+            toast.error('Chỉ Admin/Kế toán được quản lý thanh toán.');
+            return;
+        }
+        if (!editingId) {
+            toast.error('Vui lòng lưu hợp đồng trước khi thêm thanh toán.');
+            return;
+        }
+        setEditingPaymentId(null);
+        setPaymentForm({ amount: '', paid_at: '', method: '', note: '' });
+        setShowPaymentForm(true);
+    };
+
+    const editPayment = (payment) => {
+        setEditingPaymentId(payment.id);
+        setPaymentForm({
+            amount: payment.amount ?? '',
+            paid_at: payment.paid_at ? String(payment.paid_at).slice(0, 10) : '',
+            method: payment.method || '',
+            note: payment.note || '',
+        });
+        setShowPaymentForm(true);
+    };
+
+    const submitPayment = async (e) => {
+        e.preventDefault();
+        if (!editingId) return;
+        try {
+            const payload = {
+                amount: Number(paymentForm.amount || 0),
+                paid_at: paymentForm.paid_at || null,
+                method: paymentForm.method || null,
+                note: paymentForm.note || null,
+            };
+            if (editingPaymentId) {
+                await axios.put(`/api/v1/contracts/${editingId}/payments/${editingPaymentId}`, payload);
+                toast.success('Đã cập nhật thanh toán.');
+            } else {
+                await axios.post(`/api/v1/contracts/${editingId}/payments`, payload);
+                toast.success('Đã thêm thanh toán.');
+            }
+            setShowPaymentForm(false);
+            setEditingPaymentId(null);
+            await refreshContractExtras();
+            await fetchContracts(filters);
+        } catch (e) {
+            toast.error(e?.response?.data?.message || 'Lưu thanh toán thất bại.');
+        }
+    };
+
+    const removePayment = async (id) => {
+        if (!editingId) return;
+        if (!confirm('Xóa thanh toán này?')) return;
+        try {
+            await axios.delete(`/api/v1/contracts/${editingId}/payments/${id}`);
+            toast.success('Đã xóa thanh toán.');
+            await refreshContractExtras();
+            await fetchContracts(filters);
+        } catch (e) {
+            toast.error(e?.response?.data?.message || 'Xóa thanh toán thất bại.');
+        }
+    };
+
+    const openCostCreate = () => {
+        if (!canFinance) {
+            toast.error('Chỉ Admin/Kế toán được quản lý chi phí.');
+            return;
+        }
+        if (!editingId) {
+            toast.error('Vui lòng lưu hợp đồng trước khi thêm chi phí.');
+            return;
+        }
+        setEditingCostId(null);
+        setCostForm({ amount: '', cost_date: '', cost_type: '', note: '' });
+        setShowCostForm(true);
+    };
+
+    const editCost = (cost) => {
+        setEditingCostId(cost.id);
+        setCostForm({
+            amount: cost.amount ?? '',
+            cost_date: cost.cost_date ? String(cost.cost_date).slice(0, 10) : '',
+            cost_type: cost.cost_type || '',
+            note: cost.note || '',
+        });
+        setShowCostForm(true);
+    };
+
+    const submitCost = async (e) => {
+        e.preventDefault();
+        if (!editingId) return;
+        try {
+            const payload = {
+                amount: Number(costForm.amount || 0),
+                cost_date: costForm.cost_date || null,
+                cost_type: costForm.cost_type || null,
+                note: costForm.note || null,
+            };
+            if (editingCostId) {
+                await axios.put(`/api/v1/contracts/${editingId}/costs/${editingCostId}`, payload);
+                toast.success('Đã cập nhật chi phí.');
+            } else {
+                await axios.post(`/api/v1/contracts/${editingId}/costs`, payload);
+                toast.success('Đã thêm chi phí.');
+            }
+            setShowCostForm(false);
+            setEditingCostId(null);
+            await refreshContractExtras();
+            await fetchContracts(filters);
+        } catch (e) {
+            toast.error(e?.response?.data?.message || 'Lưu chi phí thất bại.');
+        }
+    };
+
+    const removeCost = async (id) => {
+        if (!editingId) return;
+        if (!confirm('Xóa chi phí này?')) return;
+        try {
+            await axios.delete(`/api/v1/contracts/${editingId}/costs/${id}`);
+            toast.success('Đã xóa chi phí.');
+            await refreshContractExtras();
+            await fetchContracts(filters);
+        } catch (e) {
+            toast.error(e?.response?.data?.message || 'Xóa chi phí thất bại.');
+        }
+    };
+
+    const submitImport = async (e) => {
+        e.preventDefault();
+        if (!importFile) {
+            toast.error('Vui lòng chọn file Excel.');
+            return;
+        }
+        setImporting(true);
+        try {
+            const formData = new FormData();
+            formData.append('file', importFile);
+            const res = await axios.post('/api/v1/imports/contracts', formData);
+            const report = res.data || {};
+            toast.success(`Import hoàn tất: ${report.created || 0} tạo mới, ${report.updated || 0} cập nhật.`);
+            setShowImport(false);
+            setImportFile(null);
+            await fetchContracts();
+        } catch (e) {
+            toast.error(e?.response?.data?.message || 'Import thất bại.');
+        } finally {
+            setImporting(false);
+        }
+    };
+
     const save = async () => {
         if (!canManage) return toast.error('Bạn không có quyền quản lý hợp đồng.');
         if (!form.title?.trim() || !form.client_id) {
@@ -212,6 +410,7 @@ export default function Contracts(props) {
             client_id: Number(form.client_id),
             project_id: form.project_id ? Number(form.project_id) : null,
             value: items.length ? itemsTotal : form.value === '' ? null : Number(form.value),
+            payment_times: form.payment_times === '' ? 1 : Number(form.payment_times),
             status: form.status,
             signed_at: form.signed_at || null,
             start_date: form.start_date || null,
@@ -286,6 +485,15 @@ export default function Contracts(props) {
                                 Thêm mới
                             </button>
                         )}
+                        {canManage && (
+                            <button
+                                type="button"
+                                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
+                                onClick={() => setShowImport(true)}
+                            >
+                                Import Excel
+                            </button>
+                        )}
                         <input className="rounded-xl border border-slate-200/80 px-3 py-2 text-sm" placeholder="Tìm theo mã/tiêu đề" value={filters.search} onChange={(e) => setFilters((s) => ({ ...s, search: e.target.value }))} />
                         <select className="rounded-xl border border-slate-200/80 px-3 py-2 text-sm" value={filters.status} onChange={(e) => setFilters((s) => ({ ...s, status: e.target.value }))}>
                             <option value="">Tất cả trạng thái</option>
@@ -309,6 +517,10 @@ export default function Contracts(props) {
                                     <th className="py-2">Hợp đồng</th>
                                     <th className="py-2">Khách hàng</th>
                                     <th className="py-2">Giá trị</th>
+                                    <th className="py-2">Đã thu</th>
+                                    <th className="py-2">Công nợ</th>
+                                    <th className="py-2">Chi phí</th>
+                                    <th className="py-2">TT</th>
                                     <th className="py-2">Trạng thái</th>
                                     <th className="py-2">Duyệt</th>
                                     <th className="py-2"></th>
@@ -323,6 +535,12 @@ export default function Contracts(props) {
                                         </td>
                                         <td className="py-2 text-slate-700">{c.client?.name || '—'}</td>
                                         <td className="py-2 text-slate-700">{Number(c.value || 0).toLocaleString('vi-VN')}</td>
+                                        <td className="py-2 text-slate-700">{Number(c.payments_total || 0).toLocaleString('vi-VN')}</td>
+                                        <td className="py-2 text-slate-700">{Number(c.debt_outstanding || 0).toLocaleString('vi-VN')}</td>
+                                        <td className="py-2 text-slate-700">{Number(c.costs_total || 0).toLocaleString('vi-VN')}</td>
+                                        <td className="py-2 text-slate-700">
+                                            {(c.payments_count ?? 0)}/{c.payment_times ?? 1}
+                                        </td>
                                         <td className="py-2">
                                             <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">
                                                 {STATUS_OPTIONS.find((s) => s.value === c.status)?.label || c.status}
@@ -348,7 +566,7 @@ export default function Contracts(props) {
                                 ))}
                                 {contracts.length === 0 && (
                                     <tr>
-                                        <td className="py-6 text-center text-sm text-text-muted" colSpan={6}>
+                                        <td className="py-6 text-center text-sm text-text-muted" colSpan={10}>
                                             Chưa có hợp đồng nào.
                                         </td>
                                     </tr>
@@ -376,8 +594,9 @@ export default function Contracts(props) {
                         <option value="">Liên kết dự án (tuỳ chọn)</option>
                         {projects.map((p) => <option key={p.id} value={p.id}>{p.code} - {p.name}</option>)}
                     </select>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-3 gap-2">
                         <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" type="number" placeholder="Giá trị (VNĐ)" value={items.length ? itemsTotal : form.value} onChange={(e) => setForm((s) => ({ ...s, value: e.target.value }))} disabled={items.length > 0} />
+                        <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" type="number" placeholder="Số lần thanh toán" value={form.payment_times} onChange={(e) => setForm((s) => ({ ...s, payment_times: e.target.value }))} />
                         <select className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" value={form.status} onChange={(e) => setForm((s) => ({ ...s, status: e.target.value }))}>
                             {STATUS_OPTIONS.map((opt) => (
                                 <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -461,6 +680,114 @@ export default function Contracts(props) {
                         </div>
                     </div>
 
+                    <div className="rounded-2xl border border-slate-200/80 bg-white p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <h4 className="text-sm font-semibold text-slate-900">Thanh toán hợp đồng</h4>
+                                <p className="text-xs text-text-muted">Số lần thanh toán: {form.payment_times || 1}</p>
+                            </div>
+                            {canFinance && (
+                                <button type="button" className="text-xs font-semibold text-primary" onClick={openPaymentCreate}>
+                                    + Thêm thanh toán
+                                </button>
+                            )}
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="min-w-full text-xs">
+                                <thead>
+                                    <tr className="text-left text-[11px] uppercase tracking-wider text-text-subtle border-b border-slate-200">
+                                        <th className="py-2">Ngày thu</th>
+                                        <th className="py-2">Số tiền</th>
+                                        <th className="py-2">Phương thức</th>
+                                        <th className="py-2">Ghi chú</th>
+                                        <th className="py-2 text-right">Thao tác</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {payments.map((p) => (
+                                        <tr key={p.id} className="border-b border-slate-100">
+                                            <td className="py-2">{p.paid_at ? String(p.paid_at).slice(0, 10) : '—'}</td>
+                                            <td className="py-2">{Number(p.amount || 0).toLocaleString('vi-VN')}</td>
+                                            <td className="py-2">{p.method || '—'}</td>
+                                            <td className="py-2">{p.note || '—'}</td>
+                                            <td className="py-2 text-right space-x-2">
+                                                {canFinance ? (
+                                                    <>
+                                                        <button type="button" className="text-xs text-primary" onClick={() => editPayment(p)}>Sửa</button>
+                                                        <button type="button" className="text-xs text-rose-500" onClick={() => removePayment(p.id)}>Xóa</button>
+                                                    </>
+                                                ) : (
+                                                    <span className="text-xs text-text-muted">—</span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    {payments.length === 0 && (
+                                        <tr>
+                                            <td className="py-3 text-center text-xs text-text-muted" colSpan={5}>
+                                                Chưa có thanh toán nào.
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-200/80 bg-white p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <h4 className="text-sm font-semibold text-slate-900">Chi phí hợp đồng</h4>
+                                <p className="text-xs text-text-muted">Tổng chi phí: {Number(costs.reduce((sum, c) => sum + Number(c.amount || 0), 0)).toLocaleString('vi-VN')} VNĐ</p>
+                            </div>
+                            {canFinance && (
+                                <button type="button" className="text-xs font-semibold text-primary" onClick={openCostCreate}>
+                                    + Thêm chi phí
+                                </button>
+                            )}
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="min-w-full text-xs">
+                                <thead>
+                                    <tr className="text-left text-[11px] uppercase tracking-wider text-text-subtle border-b border-slate-200">
+                                        <th className="py-2">Ngày chi</th>
+                                        <th className="py-2">Loại chi phí</th>
+                                        <th className="py-2">Số tiền</th>
+                                        <th className="py-2">Ghi chú</th>
+                                        <th className="py-2 text-right">Thao tác</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {costs.map((c) => (
+                                        <tr key={c.id} className="border-b border-slate-100">
+                                            <td className="py-2">{c.cost_date ? String(c.cost_date).slice(0, 10) : '—'}</td>
+                                            <td className="py-2">{c.cost_type || '—'}</td>
+                                            <td className="py-2">{Number(c.amount || 0).toLocaleString('vi-VN')}</td>
+                                            <td className="py-2">{c.note || '—'}</td>
+                                            <td className="py-2 text-right space-x-2">
+                                                {canFinance ? (
+                                                    <>
+                                                        <button type="button" className="text-xs text-primary" onClick={() => editCost(c)}>Sửa</button>
+                                                        <button type="button" className="text-xs text-rose-500" onClick={() => removeCost(c.id)}>Xóa</button>
+                                                    </>
+                                                ) : (
+                                                    <span className="text-xs text-text-muted">—</span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    {costs.length === 0 && (
+                                        <tr>
+                                            <td className="py-3 text-center text-xs text-text-muted" colSpan={5}>
+                                                Chưa có chi phí nào.
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
                     <div className="flex items-center gap-3">
                         <button type="button" className="flex-1 rounded-2xl px-3 py-2.5 bg-primary text-white text-sm font-semibold" onClick={save}>
                             {editingId ? 'Cập nhật hợp đồng' : 'Tạo hợp đồng'}
@@ -470,6 +797,136 @@ export default function Contracts(props) {
                         </button>
                     </div>
                 </div>
+            </Modal>
+
+            <Modal
+                open={showPaymentForm}
+                onClose={() => setShowPaymentForm(false)}
+                title={editingPaymentId ? 'Sửa thanh toán' : 'Thêm thanh toán'}
+                size="md"
+            >
+                <form className="space-y-3 text-sm" onSubmit={submitPayment}>
+                    <input
+                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                        placeholder="Số tiền (VNĐ)"
+                        type="number"
+                        value={paymentForm.amount}
+                        onChange={(e) => setPaymentForm((s) => ({ ...s, amount: e.target.value }))}
+                    />
+                    <input
+                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                        type="date"
+                        value={paymentForm.paid_at}
+                        onChange={(e) => setPaymentForm((s) => ({ ...s, paid_at: e.target.value }))}
+                    />
+                    <input
+                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                        placeholder="Phương thức thanh toán"
+                        value={paymentForm.method}
+                        onChange={(e) => setPaymentForm((s) => ({ ...s, method: e.target.value }))}
+                    />
+                    <textarea
+                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                        rows={3}
+                        placeholder="Ghi chú"
+                        value={paymentForm.note}
+                        onChange={(e) => setPaymentForm((s) => ({ ...s, note: e.target.value }))}
+                    />
+                    <div className="flex items-center gap-2">
+                        <button type="submit" className="flex-1 rounded-2xl px-3 py-2.5 bg-primary text-white text-sm font-semibold">
+                            Lưu
+                        </button>
+                        <button type="button" className="flex-1 rounded-2xl px-3 py-2.5 border border-slate-200 text-sm font-semibold" onClick={() => setShowPaymentForm(false)}>
+                            Hủy
+                        </button>
+                    </div>
+                </form>
+            </Modal>
+
+            <Modal
+                open={showCostForm}
+                onClose={() => setShowCostForm(false)}
+                title={editingCostId ? 'Sửa chi phí' : 'Thêm chi phí'}
+                size="md"
+            >
+                <form className="space-y-3 text-sm" onSubmit={submitCost}>
+                    <input
+                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                        placeholder="Số tiền (VNĐ)"
+                        type="number"
+                        value={costForm.amount}
+                        onChange={(e) => setCostForm((s) => ({ ...s, amount: e.target.value }))}
+                    />
+                    <input
+                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                        type="date"
+                        value={costForm.cost_date}
+                        onChange={(e) => setCostForm((s) => ({ ...s, cost_date: e.target.value }))}
+                    />
+                    <input
+                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                        placeholder="Loại chi phí"
+                        value={costForm.cost_type}
+                        onChange={(e) => setCostForm((s) => ({ ...s, cost_type: e.target.value }))}
+                    />
+                    <textarea
+                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                        rows={3}
+                        placeholder="Ghi chú"
+                        value={costForm.note}
+                        onChange={(e) => setCostForm((s) => ({ ...s, note: e.target.value }))}
+                    />
+                    <div className="flex items-center gap-2">
+                        <button type="submit" className="flex-1 rounded-2xl px-3 py-2.5 bg-primary text-white text-sm font-semibold">
+                            Lưu
+                        </button>
+                        <button type="button" className="flex-1 rounded-2xl px-3 py-2.5 border border-slate-200 text-sm font-semibold" onClick={() => setShowCostForm(false)}>
+                            Hủy
+                        </button>
+                    </div>
+                </form>
+            </Modal>
+
+            <Modal
+                open={showImport}
+                onClose={() => setShowImport(false)}
+                title="Import hợp đồng"
+                description="Tải file Excel (.xls/.xlsx/.csv) để nhập hợp đồng và tự nối khách hàng trùng tên."
+                size="md"
+            >
+                <form className="space-y-3 text-sm" onSubmit={submitImport}>
+                    <div className="rounded-2xl border border-dashed border-slate-200/80 p-4 text-center">
+                        <p className="text-xs text-text-muted mb-2">Chọn file hợp đồng</p>
+                        <input
+                            id="import-contract-file"
+                            type="file"
+                            accept=".xls,.xlsx,.csv"
+                            onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                            className="hidden"
+                        />
+                        <label
+                            htmlFor="import-contract-file"
+                            className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+                        >
+                            Chọn file
+                        </label>
+                        <p className="text-xs text-text-muted mt-2">
+                            {importFile ? importFile.name : 'Chưa chọn file'}
+                        </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="submit"
+                            className="flex-1 rounded-2xl px-3 py-2.5 bg-primary text-white text-sm font-semibold"
+                            disabled={importing}
+                        >
+                            {importing ? 'Đang import...' : 'Import'}
+                        </button>
+                        <button type="button" className="flex-1 rounded-2xl px-3 py-2.5 border border-slate-200 text-sm font-semibold" onClick={() => setShowImport(false)}>
+                            Hủy
+                        </button>
+                    </div>
+                </form>
             </Modal>
         </PageContainer>
     );

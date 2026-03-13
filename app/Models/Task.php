@@ -11,6 +11,7 @@ class Task extends Model
 
     protected $fillable = [
         'project_id',
+        'department_id',
         'title',
         'description',
         'priority',
@@ -40,6 +41,11 @@ class Task extends Model
         return $this->belongsTo(Project::class);
     }
 
+    public function department()
+    {
+        return $this->belongsTo(Department::class, 'department_id');
+    }
+
     public function assignee()
     {
         return $this->belongsTo(User::class, 'assignee_id');
@@ -63,5 +69,15 @@ class Task extends Model
     public function reminders()
     {
         return $this->hasMany(DeadlineReminder::class);
+    }
+
+    public function updates()
+    {
+        return $this->hasMany(TaskUpdate::class);
+    }
+
+    public function items()
+    {
+        return $this->hasMany(TaskItem::class);
     }
 }

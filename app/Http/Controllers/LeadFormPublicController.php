@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Client;
+use App\Models\AppSetting;
 use App\Models\LeadForm;
 use App\Models\LeadType;
 use Illuminate\Http\Request;
@@ -16,7 +17,13 @@ class LeadFormPublicController extends Controller
             ->where('is_active', true)
             ->firstOrFail();
 
-        return view('lead-form', ['form' => $form]);
+        $setting = AppSetting::query()->first();
+        $primaryColor = $setting?->primary_color ?: '#04BC5C';
+
+        return view('lead-form', [
+            'form' => $form,
+            'primaryColor' => $primaryColor,
+        ]);
     }
 
     public function submit(string $slug, Request $request)

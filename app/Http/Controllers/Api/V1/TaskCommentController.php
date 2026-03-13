@@ -13,6 +13,9 @@ class TaskCommentController extends Controller
 {
     public function index(Task $task, Request $request): JsonResponse
     {
+        if (! $this->canAccessTask($request->user(), $task)) {
+            return response()->json(['message' => 'Không có quyền xem trao đổi.'], 403);
+        }
         return response()->json(
             $task->comments()
                 ->with('user')
@@ -23,6 +26,9 @@ class TaskCommentController extends Controller
 
     public function store(Task $task, Request $request): JsonResponse
     {
+        if (! $this->canAccessTask($request->user(), $task)) {
+            return response()->json(['message' => 'Không có quyền gửi trao đổi.'], 403);
+        }
         $this->normalizeTaggedIds($request);
         $validated = $request->validate([
             'content' => ['required', 'string'],
@@ -50,6 +56,9 @@ class TaskCommentController extends Controller
 
     public function update(Task $task, TaskComment $comment, Request $request): JsonResponse
     {
+        if (! $this->canAccessTask($request->user(), $task)) {
+            return response()->json(['message' => 'Không có quyền cập nhật trao đổi.'], 403);
+        }
         if ($comment->task_id !== $task->id) {
             return response()->json(['message' => 'Comment does not belong to task.'], 422);
         }
@@ -86,6 +95,9 @@ class TaskCommentController extends Controller
 
     public function destroy(Task $task, TaskComment $comment, Request $request): JsonResponse
     {
+        if (! $this->canAccessTask($request->user(), $task)) {
+            return response()->json(['message' => 'Không có quyền xóa trao đổi.'], 403);
+        }
         if ($comment->task_id !== $task->id) {
             return response()->json(['message' => 'Comment does not belong to task.'], 422);
         }
@@ -129,5 +141,31 @@ class TaskCommentController extends Controller
                 $request->merge(['tagged_user_ids' => $ids]);
             }
         }
+    }
+
+    private function canAccessTask($user, Task $task): bool
+    {
+        if (! $user) {
+            return false;
+        }
+        if ($user->role === 'admin') {
+            return true;
+        }
+        if ($user->role === 'ke_toan') {
+            return false;
+        }
+        if ($user->role === 'quan_ly') {
+            $deptIds = $user->managedDepartments()->pluck('id');
+            if ($task->department_id && $deptIds->contains($task->department_id)) {
+                return true;
+            }
+            if ($task->assignee && $deptIds->contains($task->assignee->department_id)) {
+                return true;
+            }
+            return (int) $task->created_by === (int) $user->id
+                || (int) $task->assigned_by === (int) $user->id;
+        }
+        return $task->items()->where('assignee_id', $user->id)->exists()
+            || (int) $task->assignee_id === (int) $user->id;
     }
 }

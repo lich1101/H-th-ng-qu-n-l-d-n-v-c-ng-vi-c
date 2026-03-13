@@ -20,7 +20,11 @@ class ContractController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = Contract::query()->with(['client', 'project', 'opportunity', 'creator', 'approver']);
+        $query = Contract::query()
+            ->with(['client', 'project', 'opportunity', 'creator', 'approver'])
+            ->withCount('payments')
+            ->withSum('payments as payments_total', 'amount')
+            ->withSum('costs as costs_total', 'amount');
         if ($request->boolean('with_items')) {
             $query->with('items');
         }
@@ -59,7 +63,9 @@ class ContractController extends Controller
         if (! $this->canAccessContract(request()->user(), $contract)) {
             return response()->json(['message' => 'Không có quyền xem hợp đồng.'], 403);
         }
-        return response()->json($contract->load(['client', 'project', 'opportunity', 'creator', 'approver', 'items']));
+        return response()->json(
+            $contract->load(['client', 'project', 'opportunity', 'creator', 'approver', 'items', 'payments', 'costs'])
+        );
     }
 
     public function store(Request $request): JsonResponse
@@ -100,6 +106,8 @@ class ContractController extends Controller
         if (! empty($items)) {
             $this->syncItems($contract, $items);
         }
+
+        $contract->refreshFinancials();
 
         if ($contract->approval_status === 'approved') {
             $this->syncClientRevenue($contract->client);
@@ -160,6 +168,8 @@ class ContractController extends Controller
         if (! empty($items)) {
             $this->syncItems($contract, $items);
         }
+
+        $contract->refreshFinancials();
 
         $contract->refresh();
         if ($contract->client) {
@@ -228,6 +238,7 @@ class ContractController extends Controller
             'opportunity_id' => ['nullable', 'integer', 'exists:opportunities,id'],
             'project_id' => ['nullable', 'integer', 'exists:projects,id'],
             'value' => ['nullable', 'numeric', 'min:0'],
+            'payment_times' => ['nullable', 'integer', 'min:1', 'max:120'],
             'revenue' => ['nullable', 'numeric', 'min:0'],
             'debt' => ['nullable', 'numeric', 'min:0'],
             'cash_flow' => ['nullable', 'numeric'],
