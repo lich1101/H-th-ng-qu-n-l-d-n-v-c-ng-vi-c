@@ -13,6 +13,7 @@ class FacebookMessage extends Model
         'facebook_page_id',
         'client_id',
         'sender_id',
+        'recipient_id',
         'message_text',
         'payload',
         'received_at',

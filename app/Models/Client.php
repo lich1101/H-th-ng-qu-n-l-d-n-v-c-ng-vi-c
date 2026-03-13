@@ -78,4 +78,9 @@ class Client extends Model
     {
         return $this->hasMany(FacebookMessage::class);
     }
+
+    public function facebookPage()
+    {
+        return $this->belongsTo(FacebookPage::class, 'facebook_page_id', 'page_id');
+    }
 }

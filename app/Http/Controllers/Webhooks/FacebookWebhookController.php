@@ -60,6 +60,7 @@ class FacebookWebhookController extends Controller
                 if ($senderId === '') {
                     continue;
                 }
+                $recipientId = (string) ($event['recipient']['id'] ?? '');
 
                 $text = $message['text'] ?? null;
                 $client = Client::query()
@@ -107,6 +108,7 @@ class FacebookWebhookController extends Controller
                     'facebook_page_id' => $page->id,
                     'client_id' => $client->id ?? null,
                     'sender_id' => $senderId,
+                    'recipient_id' => $recipientId,
                     'message_text' => $text,
                     'payload' => $event,
                     'received_at' => now(),
@@ -154,7 +156,7 @@ class FacebookWebhookController extends Controller
             return [];
         }
 
-        $version = env('FACEBOOK_GRAPH_VERSION', 'v18.0');
+        $version = env('FACEBOOK_GRAPH_VERSION', 'v23.0');
         $response = Http::get("https://graph.facebook.com/{$version}/{$psid}", [
             'fields' => 'first_name,last_name,name,profile_pic',
             'access_token' => $pageToken,

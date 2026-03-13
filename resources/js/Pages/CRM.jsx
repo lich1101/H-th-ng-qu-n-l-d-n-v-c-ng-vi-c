@@ -476,7 +476,12 @@ export default function CRM(props) {
                                                 {Number(client.total_revenue || 0).toLocaleString('vi-VN')}
                                             </td>
                                             <td className="py-2 text-xs text-text-muted">
-                                                {client.lead_source || '—'} {client.lead_channel ? `• ${client.lead_channel}` : ''}
+                                                <div>
+                                                    {client.lead_source || '—'} {client.lead_channel ? `• ${client.lead_channel}` : ''}
+                                                </div>
+                                                {client.facebook_page?.name && (
+                                                    <div className="text-[11px] text-text-subtle">Page: {client.facebook_page.name}</div>
+                                                )}
                                             </td>
                                             <td className="py-2 text-right space-x-2">
                                                 {canManageClients && (
