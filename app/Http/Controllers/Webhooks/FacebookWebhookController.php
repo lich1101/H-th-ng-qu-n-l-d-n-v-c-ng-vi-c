@@ -70,9 +70,9 @@ class FacebookWebhookController extends Controller
                 $phones = $this->extractPhones($text ?? '');
                 $primaryPhone = $phones[0] ?? null;
                 if ($primaryPhone) {
+                    $profile = $this->fetchProfile($senderId, $page->getRawOriginal('access_token'));
                     $existingByPhone = $this->findClientByPhone($primaryPhone);
                     if (! $existingByPhone) {
-                        $profile = $this->fetchProfile($senderId, $page->getRawOriginal('access_token'));
                         $client = Client::create([
                             'name' => $profile['name'] ?? "Facebook User {$senderId}",
                             'phone' => $primaryPhone,
@@ -86,6 +86,20 @@ class FacebookWebhookController extends Controller
                         ]);
                     } else {
                         $client = $existingByPhone;
+                        $shouldUpdateName = empty($client->name)
+                            || str_starts_with((string) $client->name, 'Facebook User ');
+                        if ($shouldUpdateName && ! empty($profile['name'])) {
+                            $client->name = $profile['name'];
+                        }
+                        if (empty($client->facebook_psid)) {
+                            $client->facebook_psid = $senderId;
+                        }
+                        if (empty($client->facebook_page_id)) {
+                            $client->facebook_page_id = $pageId;
+                        }
+                        if ($client->isDirty()) {
+                            $client->save();
+                        }
                     }
                 }
 
@@ -142,7 +156,7 @@ class FacebookWebhookController extends Controller
 
         $version = env('FACEBOOK_GRAPH_VERSION', 'v18.0');
         $response = Http::get("https://graph.facebook.com/{$version}/{$psid}", [
-            'fields' => 'name,profile_pic',
+            'fields' => 'first_name,last_name,name,profile_pic',
             'access_token' => $pageToken,
         ]);
 
@@ -150,7 +164,17 @@ class FacebookWebhookController extends Controller
             return [];
         }
 
-        return $response->json();
+        $data = $response->json();
+        if (empty($data['name'])) {
+            $first = trim((string) ($data['first_name'] ?? ''));
+            $last = trim((string) ($data['last_name'] ?? ''));
+            $full = trim($first . ' ' . $last);
+            if ($full !== '') {
+                $data['name'] = $full;
+            }
+        }
+
+        return $data;
     }
 
     private function extractPhones(string $text): array
