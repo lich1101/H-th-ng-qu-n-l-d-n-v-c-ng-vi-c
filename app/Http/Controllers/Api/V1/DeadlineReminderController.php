@@ -54,7 +54,7 @@ class DeadlineReminderController extends Controller
     private function rules(): array
     {
         return [
-            'channel' => ['required', 'in:in_app,email,telegram,zalo'],
+            'channel' => ['required', 'in:in_app,email,telegram,zalo,push'],
             'trigger_type' => ['required', 'in:days_3,day_1,overdue,custom'],
             'scheduled_at' => ['required', 'date'],
             'sent_at' => ['nullable', 'date'],

@@ -17,6 +17,10 @@ class TaskComment extends Model
         'attachment_path',
     ];
 
+    protected $casts = [
+        'tagged_user_ids' => 'array',
+    ];
+
     public function task()
     {
         return $this->belongsTo(Task::class);

@@ -7,6 +7,8 @@ use App\Models\Client;
 use App\Models\FacebookMessage;
 use App\Models\FacebookPage;
 use App\Models\LeadType;
+use App\Models\User;
+use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
@@ -85,6 +87,23 @@ class FacebookWebhookController extends Controller
                             'facebook_page_id' => $pageId,
                             'notes' => $text,
                         ]);
+
+                        $adminIds = User::query()
+                            ->where('role', 'admin')
+                            ->pluck('id')
+                            ->all();
+                        if (! empty($adminIds)) {
+                            app(NotificationService::class)->notifyUsers(
+                                $adminIds,
+                                'Khách hàng mới từ Facebook',
+                                'Page: '.$page->name,
+                                [
+                                    'type' => 'facebook_lead',
+                                    'client_id' => $client->id,
+                                    'facebook_page_id' => $page->id,
+                                ]
+                            );
+                        }
                     } else {
                         $client = $existingByPhone;
                         $shouldUpdateName = empty($client->name)

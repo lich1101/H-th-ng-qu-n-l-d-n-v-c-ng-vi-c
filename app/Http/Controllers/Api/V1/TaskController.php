@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Project;
 use App\Models\Task;
 use App\Models\User;
+use App\Models\Department;
+use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Database\Eloquent\Builder;
@@ -59,6 +61,23 @@ class TaskController extends Controller
         $validated['assigned_by'] = $validated['assigned_by'] ?? $request->user()->id;
 
         $task = Task::create($validated);
+
+        if ($request->user()->role === 'admin' && ! empty($task->department_id)) {
+            $managerId = Department::query()
+                ->where('id', $task->department_id)
+                ->value('manager_id');
+            if ($managerId) {
+                app(NotificationService::class)->notifyUsers(
+                    [$managerId],
+                    'Có công việc mới được phân công',
+                    'Công việc: '.$task->title,
+                    [
+                        'type' => 'task_assigned',
+                        'task_id' => $task->id,
+                    ]
+                );
+            }
+        }
 
         return response()->json(
             $task->load(['project', 'assignee', 'reviewer', 'department'])->loadCount(['comments', 'attachments']),

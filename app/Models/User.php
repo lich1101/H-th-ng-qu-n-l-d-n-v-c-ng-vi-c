@@ -46,6 +46,11 @@ class User extends Authenticatable
         return $this->hasMany(Department::class, 'manager_id');
     }
 
+    public function deviceTokens()
+    {
+        return $this->hasMany(UserDeviceToken::class);
+    }
+
     /**
      * The attributes that should be hidden for serialization.
      *

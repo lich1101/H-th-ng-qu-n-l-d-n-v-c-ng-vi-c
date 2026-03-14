@@ -11,6 +11,7 @@ class DeadlineReminder extends Model
 
     protected $fillable = [
         'task_id',
+        'task_item_id',
         'channel',
         'trigger_type',
         'scheduled_at',
@@ -27,5 +28,10 @@ class DeadlineReminder extends Model
     public function task()
     {
         return $this->belongsTo(Task::class);
+    }
+
+    public function taskItem()
+    {
+        return $this->belongsTo(TaskItem::class, 'task_item_id');
     }
 }

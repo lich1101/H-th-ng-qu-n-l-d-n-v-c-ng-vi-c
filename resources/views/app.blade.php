@@ -12,6 +12,9 @@
         <!-- Scripts -->
         @routes
         <link rel="stylesheet" href="{{ mix('/css/app.css') }}">
+        <script>
+            window.__FIREBASE__ = @json(config('firebase.web'));
+        </script>
         <script src="{{ mix('/js/app.js') }}" defer></script>
         @inertiaHead
     </head>

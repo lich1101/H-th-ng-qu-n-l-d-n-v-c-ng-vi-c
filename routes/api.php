@@ -15,10 +15,12 @@ use App\Http\Controllers\Api\V1\LeadCaptureController;
 use App\Http\Controllers\Api\V1\LeadFormController;
 use App\Http\Controllers\Api\V1\LeadTypeController;
 use App\Http\Controllers\Api\V1\FacebookPageController;
+use App\Http\Controllers\Api\V1\FirebaseTokenController;
 use App\Http\Controllers\Api\V1\OpportunityController;
 use App\Http\Controllers\Api\V1\ProductController;
 use App\Http\Controllers\Api\V1\RevenueTierController;
 use App\Http\Controllers\Api\V1\DeadlineReminderController;
+use App\Http\Controllers\Api\V1\DeviceTokenController;
 use App\Http\Controllers\Api\V1\MeetingController;
 use App\Http\Controllers\Api\V1\NotificationCenterController;
 use App\Http\Controllers\Api\V1\ProjectController;
@@ -69,6 +71,8 @@ Route::prefix('v1')->group(function () {
     Route::middleware('auth:sanctum')->group(function () {
         Route::get('/me', [AuthController::class, 'me']);
         Route::post('/logout', [AuthController::class, 'logout']);
+        Route::post('/device-tokens', [DeviceTokenController::class, 'store']);
+        Route::get('/firebase/token', [FirebaseTokenController::class, 'show']);
         Route::post('/settings', [AppSettingController::class, 'update'])
             ->middleware('role:admin');
 
@@ -91,6 +95,7 @@ Route::prefix('v1')->group(function () {
             ->middleware('role:admin,quan_ly');
 
         Route::get('/tasks/{task}/comments', [TaskCommentController::class, 'index']);
+        Route::get('/tasks/{task}/chat-participants', [TaskCommentController::class, 'participants']);
         Route::post('/tasks/{task}/comments', [TaskCommentController::class, 'store'])
             ->middleware('role:admin,quan_ly,nhan_vien');
         Route::put('/tasks/{task}/comments/{comment}', [TaskCommentController::class, 'update'])

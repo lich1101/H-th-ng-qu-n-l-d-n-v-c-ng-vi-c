@@ -3,8 +3,12 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Models\Department;
 use App\Models\Task;
 use App\Models\TaskComment;
+use App\Models\User;
+use App\Services\FirebaseService;
+use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -16,12 +20,14 @@ class TaskCommentController extends Controller
         if (! $this->canAccessTask($request->user(), $task)) {
             return response()->json(['message' => 'Không có quyền xem trao đổi.'], 403);
         }
-        return response()->json(
-            $task->comments()
-                ->with('user')
-                ->latest()
-                ->paginate((int) $request->input('per_page', 20))
-        );
+        $comments = $task->comments()
+            ->with('user')
+            ->latest()
+            ->paginate((int) $request->input('per_page', 20));
+
+        $this->attachTaggedUsers($comments->getCollection());
+
+        return response()->json($comments);
     }
 
     public function store(Task $task, Request $request): JsonResponse
@@ -51,7 +57,12 @@ class TaskCommentController extends Controller
             'attachment_path' => $attachmentPath,
         ]);
 
-        return response()->json($comment->load('user'), 201);
+        $comment->load('user');
+        $taggedUsers = $this->attachTaggedUsers(collect([$comment]));
+        $this->syncFirebase($task, $comment, $taggedUsers);
+        $this->notifyTaggedUsers($request->user()->id, $taggedUsers, $task, $comment);
+
+        return response()->json($comment, 201);
     }
 
     public function update(Task $task, TaskComment $comment, Request $request): JsonResponse
@@ -90,7 +101,12 @@ class TaskCommentController extends Controller
             'attachment_path' => $attachmentPath,
         ]);
 
-        return response()->json($comment->load('user'));
+        $comment->load('user');
+        $taggedUsers = $this->attachTaggedUsers(collect([$comment]));
+        $this->syncFirebase($task, $comment, $taggedUsers);
+        $this->notifyTaggedUsers($request->user()->id, $taggedUsers, $task, $comment);
+
+        return response()->json($comment);
     }
 
     public function destroy(Task $task, TaskComment $comment, Request $request): JsonResponse
@@ -108,7 +124,29 @@ class TaskCommentController extends Controller
 
         $comment->delete();
 
+        $firebase = app(FirebaseService::class);
+        $firebase->deleteTaskMessage($task->id, $comment->id);
+
         return response()->json(['message' => 'Comment deleted.']);
+    }
+
+    public function participants(Task $task, Request $request): JsonResponse
+    {
+        if (! $this->canAccessTask($request->user(), $task)) {
+            return response()->json(['message' => 'Không có quyền xem danh sách chat.'], 403);
+        }
+
+        $participants = $this->resolveChatParticipants($task)
+            ->map(function ($user) {
+                return [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'role' => $user->role,
+                    'email' => $user->email,
+                ];
+            });
+
+        return response()->json(['data' => $participants]);
     }
 
     private function canMutate(Request $request, TaskComment $comment): bool
@@ -154,18 +192,125 @@ class TaskCommentController extends Controller
         if ($user->role === 'ke_toan') {
             return false;
         }
-        if ($user->role === 'quan_ly') {
-            $deptIds = $user->managedDepartments()->pluck('id');
-            if ($task->department_id && $deptIds->contains($task->department_id)) {
-                return true;
+
+        $participants = $this->resolveChatParticipantIds($task);
+        return $participants->contains($user->id);
+    }
+
+    private function resolveChatParticipants(Task $task)
+    {
+        $ids = $this->resolveChatParticipantIds($task);
+        return User::query()
+            ->whereIn('id', $ids)
+            ->get(['id', 'name', 'role', 'email']);
+    }
+
+    private function resolveChatParticipantIds(Task $task)
+    {
+        $ids = collect();
+        $adminIds = User::query()->where('role', 'admin')->pluck('id');
+        $ids = $ids->merge($adminIds);
+
+        if ($task->department_id) {
+            $managerId = Department::query()
+                ->where('id', $task->department_id)
+                ->value('manager_id');
+            if ($managerId) {
+                $ids->push($managerId);
             }
-            if ($task->assignee && $deptIds->contains($task->assignee->department_id)) {
-                return true;
-            }
-            return (int) $task->created_by === (int) $user->id
-                || (int) $task->assigned_by === (int) $user->id;
         }
-        return $task->items()->where('assignee_id', $user->id)->exists()
-            || (int) $task->assignee_id === (int) $user->id;
+
+        $itemAssignees = $task->items()
+            ->whereNotNull('assignee_id')
+            ->pluck('assignee_id');
+        $ids = $ids->merge($itemAssignees);
+
+        if ($task->assignee_id) {
+            $ids->push($task->assignee_id);
+        }
+
+        return $ids->filter()->unique()->values();
+    }
+
+    private function attachTaggedUsers($comments)
+    {
+        $comments = collect($comments);
+        if ($comments->isEmpty()) {
+            return collect();
+        }
+
+        $tagIds = $comments
+            ->flatMap(fn ($comment) => $comment->tagged_user_ids ?? [])
+            ->filter()
+            ->unique()
+            ->values();
+
+        $users = $tagIds->isEmpty()
+            ? collect()
+            : User::query()->whereIn('id', $tagIds)->get(['id', 'name', 'role'])->keyBy('id');
+
+        $comments->each(function ($comment) use ($users) {
+            $tagged = collect($comment->tagged_user_ids ?? [])
+                ->map(fn ($id) => $users->get($id))
+                ->filter()
+                ->values();
+            $comment->setAttribute('tagged_users', $tagged);
+        });
+
+        return $users->values();
+    }
+
+    private function syncFirebase(Task $task, TaskComment $comment, $taggedUsers): void
+    {
+        $firebase = app(FirebaseService::class);
+        $user = $comment->user;
+        $payload = [
+            'task_id' => $task->id,
+            'content' => $comment->content,
+            'created_at' => optional($comment->created_at)->toIso8601String(),
+            'updated_at' => optional($comment->updated_at)->toIso8601String(),
+            'user_id' => $comment->user_id,
+            'user' => [
+                'id' => $comment->user_id,
+                'name' => $user ? $user->name : null,
+                'role' => $user ? $user->role : null,
+            ],
+            'tagged_user_ids' => $comment->tagged_user_ids ?? [],
+            'tagged_users' => collect($taggedUsers)
+                ->map(function ($u) {
+                    return [
+                        'id' => $u->id,
+                        'name' => $u->name,
+                        'role' => $u->role,
+                    ];
+                })
+                ->values()
+                ->all(),
+            'attachment_path' => $comment->attachment_path,
+        ];
+
+        $firebase->pushTaskMessage($task->id, $comment->id, $payload);
+    }
+
+    private function notifyTaggedUsers(int $senderId, $taggedUsers, Task $task, TaskComment $comment): void
+    {
+        $users = collect($taggedUsers)->filter();
+        if ($users->isEmpty()) {
+            return;
+        }
+        $ids = $users->pluck('id')->filter()->unique()->values()->all();
+        $ids = array_values(array_filter($ids, fn ($id) => (int) $id !== (int) $senderId));
+        if (empty($ids)) {
+            return;
+        }
+
+        $notifier = app(NotificationService::class);
+        $title = 'Bạn được nhắc đến trong trao đổi';
+        $body = 'Công việc: '.$task->title;
+        $notifier->notifyUsers($ids, $title, $body, [
+            'type' => 'task_comment_tag',
+            'task_id' => $task->id,
+            'comment_id' => $comment->id,
+        ]);
     }
 }

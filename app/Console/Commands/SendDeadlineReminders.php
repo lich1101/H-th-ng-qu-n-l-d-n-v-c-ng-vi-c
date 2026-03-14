@@ -6,6 +6,7 @@ use App\Models\DeadlineReminder;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
+use App\Services\NotificationService;
 
 class SendDeadlineReminders extends Command
 {
@@ -17,14 +18,15 @@ class SendDeadlineReminders extends Command
         $reminders = DeadlineReminder::query()
             ->where('status', 'pending')
             ->where('scheduled_at', '<=', now())
-            ->with('task.assignee')
+            ->with(['task.assignee', 'taskItem.assignee'])
             ->limit(100)
             ->get();
 
         foreach ($reminders as $reminder) {
             try {
                 $task = $reminder->task;
-                $title = $task ? $task->title : 'Task';
+                $item = $reminder->taskItem;
+                $title = $item ? $item->title : ($task ? $task->title : 'Task');
                 $message = sprintf(
                     '[%s] Nhắc deadline cho task: %s',
                     strtoupper($reminder->trigger_type),
@@ -73,9 +75,19 @@ class SendDeadlineReminders extends Command
             return ['status' => 'sent', 'note' => 'in_app'];
         }
 
+        if ($channel === 'push') {
+            return $this->sendPush($reminder, $message);
+        }
+
         if ($channel === 'email') {
             $task = $reminder->task;
-            $email = $task && $task->assignee ? $task->assignee->email : null;
+            $item = $reminder->taskItem;
+            $email = null;
+            if ($item && $item->assignee) {
+                $email = $item->assignee->email;
+            } elseif ($task && $task->assignee) {
+                $email = $task->assignee->email;
+            }
             if (! $email) {
                 return ['status' => 'cancelled', 'note' => 'missing_email'];
             }
@@ -95,6 +107,40 @@ class SendDeadlineReminders extends Command
         }
 
         return ['status' => 'cancelled', 'note' => 'unknown_channel'];
+    }
+
+    private function sendPush(DeadlineReminder $reminder, string $message): array
+    {
+        $task = $reminder->task;
+        $item = $reminder->taskItem;
+        $user = null;
+        if ($item && $item->assignee) {
+            $user = $item->assignee;
+        } elseif ($task && $task->assignee) {
+            $user = $task->assignee;
+        }
+
+        if (! $user) {
+            return ['status' => 'cancelled', 'note' => 'missing_user'];
+        }
+
+        $title = 'Nhắc deadline';
+        $result = app(NotificationService::class)->notifyUserWithResult(
+            $user,
+            $title,
+            $message,
+            [
+                'type' => 'deadline_reminder',
+                'task_id' => $task ? $task->id : null,
+                'task_item_id' => $item ? $item->id : null,
+            ]
+        );
+
+        if ($result['push_sent'] || $result['email_sent']) {
+            return ['status' => 'sent', 'note' => $result['push_sent'] ? 'push' : 'email_fallback'];
+        }
+
+        return ['status' => 'pending', 'note' => 'push_failed'];
     }
 
     private function sendTelegram(string $message): array

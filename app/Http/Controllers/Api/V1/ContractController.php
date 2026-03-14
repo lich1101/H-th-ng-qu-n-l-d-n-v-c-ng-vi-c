@@ -11,6 +11,7 @@ use App\Models\Product;
 use App\Models\Project;
 use App\Models\RevenueTier;
 use App\Models\User;
+use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -96,6 +97,24 @@ class ContractController extends Controller
         $validated = array_merge($validated, $this->resolveApproval($request->user()));
 
         $contract = Contract::create($validated);
+
+        if (($contract->approval_status ?? '') === 'pending') {
+            $accountantIds = User::query()
+                ->where('role', 'ke_toan')
+                ->pluck('id')
+                ->all();
+            if (! empty($accountantIds)) {
+                app(NotificationService::class)->notifyUsers(
+                    $accountantIds,
+                    'Hợp đồng mới cần duyệt',
+                    'Hợp đồng: '.$contract->title,
+                    [
+                        'type' => 'contract_approval',
+                        'contract_id' => $contract->id,
+                    ]
+                );
+            }
+        }
 
         if (! empty($validated['project_id'])) {
             Project::where('id', $validated['project_id'])->update([

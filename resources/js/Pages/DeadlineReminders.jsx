@@ -6,6 +6,7 @@ import { useToast } from '@/Contexts/ToastContext';
 
 const CHANNELS = [
     { value: 'in_app', label: 'Trong ứng dụng' },
+    { value: 'push', label: 'Thông báo đẩy' },
     { value: 'email', label: 'Email' },
     { value: 'telegram', label: 'Telegram' },
     { value: 'zalo', label: 'Zalo' },

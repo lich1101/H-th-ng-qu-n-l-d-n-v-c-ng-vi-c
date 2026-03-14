@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Task;
 use App\Models\TaskItem;
 use App\Models\User;
+use App\Services\NotificationService;
 use App\Services\TaskProgressService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -62,6 +63,19 @@ class TaskItemController extends Controller
         ]);
 
         TaskProgressService::recalc($task);
+
+        if (! empty($item->assignee_id)) {
+            app(NotificationService::class)->notifyUsers(
+                [$item->assignee_id],
+                'Bạn có đầu việc mới',
+                'Đầu việc: '.$item->title,
+                [
+                    'type' => 'task_item_assigned',
+                    'task_id' => $task->id,
+                    'task_item_id' => $item->id,
+                ]
+            );
+        }
 
         return response()->json($item->load(['assignee', 'reviewer']), 201);
     }
