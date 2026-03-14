@@ -26,7 +26,7 @@ export default function Modal({
             aria-modal="true"
         >
             <div
-                className={`w-full ${sizeClass} rounded-2xl bg-white border border-slate-200/80 shadow-card`}
+                className={`w-full ${sizeClass} max-h-[90vh] rounded-2xl bg-white border border-slate-200/80 shadow-card flex flex-col overflow-hidden`}
                 onClick={(event) => event.stopPropagation()}
             >
                 <div className="flex items-start justify-between px-5 py-4 border-b border-slate-200/80">
@@ -45,7 +45,7 @@ export default function Modal({
                         </button>
                     )}
                 </div>
-                <div className="p-5">{children}</div>
+                <div className="flex-1 p-5 overflow-y-auto">{children}</div>
             </div>
         </div>
     );
