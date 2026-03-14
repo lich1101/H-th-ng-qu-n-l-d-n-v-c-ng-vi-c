@@ -101,12 +101,12 @@ export default function Authenticated({ auth, header, children }) {
     };
 
     return (
-        <div className="min-h-screen bg-app-bg text-slate-900">
+            <div className="min-h-screen bg-app-bg text-slate-900">
             <div className="flex min-h-screen">
                 <aside
-                    className={`fixed inset-y-0 left-0 z-40 w-72 bg-white border-r border-slate-200/80 transform transition-transform duration-200 ${
+                    className={`fixed inset-y-0 left-0 z-40 w-72 bg-white border-r border-slate-200/80 transform transition-transform duration-200 group ${
                         showSidebar ? 'translate-x-0' : '-translate-x-full'
-                    } lg:translate-x-0 lg:static lg:inset-auto`}
+                    } lg:translate-x-0`}
                 >
                     <div className="h-full flex flex-col">
                         <div className="px-6 py-6 border-b border-slate-200">
@@ -126,7 +126,7 @@ export default function Authenticated({ auth, header, children }) {
                             </div>
                         </div>
 
-                        <nav className="flex-1 overflow-y-auto px-4 py-5 space-y-4">
+                        <nav className="flex-1 overflow-y-hidden group-hover:overflow-y-auto px-4 py-5 space-y-4">
                             {visibleGroups.map((group) => (
                                 <div key={group.label} className="space-y-2">
                                     <button
@@ -189,7 +189,7 @@ export default function Authenticated({ auth, header, children }) {
                     </div>
                 </aside>
 
-                <div className="flex-1 lg:ml-0">
+                <div className="flex-1 lg:ml-72">
                     <header className="bg-white/80 backdrop-blur border-b border-slate-200 sticky top-0 z-30">
                         <div className="px-4 md:px-8 py-3 flex items-center justify-between">
                             <div className="flex items-center gap-3">

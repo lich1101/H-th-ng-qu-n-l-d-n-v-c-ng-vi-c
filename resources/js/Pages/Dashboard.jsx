@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import PageContainer from '@/Components/PageContainer';
 import RoleBarChart from '@/Components/RoleBarChart';
+import DonutChart from '@/Components/DonutChart';
 
 export default function Dashboard(props) {
     const [summary, setSummary] = useState({});
@@ -59,6 +60,15 @@ export default function Dashboard(props) {
         label: item.label,
         value: item.value,
     }));
+    const projectsTotal = Number(report.projects_total || 0);
+    const projectsInProgress = Number(report.projects_in_progress || 0);
+    const projectsPending = Number(report.projects_pending_review || 0);
+    const projectsOther = Math.max(0, projectsTotal - projectsInProgress - projectsPending);
+    const projectStatusData = [
+        { label: 'Đang triển khai', value: projectsInProgress, color: '#10B981' },
+        { label: 'Chờ duyệt', value: projectsPending, color: '#F59E0B' },
+        { label: 'Khác', value: projectsOther, color: '#94A3B8' },
+    ];
 
     return (
         <PageContainer
@@ -104,33 +114,46 @@ export default function Dashboard(props) {
                     {serviceBreakdown.length === 0 ? (
                         <p className="text-sm text-text-muted">Chưa có dữ liệu dịch vụ.</p>
                     ) : (
-                        <RoleBarChart data={serviceBreakdown} />
+                        <div className="space-y-4">
+                            <DonutChart data={serviceBreakdown} centerLabel="Dịch vụ" />
+                            <RoleBarChart data={serviceBreakdown} />
+                        </div>
                     )}
                 </div>
             </div>
 
-            <div className="mt-6 bg-white rounded-2xl border border-slate-200/80 p-6 shadow-card">
-                <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-semibold text-slate-900">Hoạt động gần đây</h3>
-                    <span className="text-xs text-text-muted">Log hệ thống</span>
-                </div>
-                {activities.length === 0 ? (
-                    <p className="text-sm text-text-muted">Chưa có hoạt động mới.</p>
-                ) : (
-                    <div className="space-y-4">
-                        {activities.map((item, idx) => (
-                            <div key={`${item.time}-${idx}`} className="flex items-start gap-3">
-                                <div className="mt-1 h-2 w-2 rounded-full bg-slate-300" />
-                                <div>
-                                    <p className="text-sm text-slate-800">
-                                        <span className="font-semibold">{item.user}</span> {item.content}
-                                    </p>
-                                    <p className="text-xs text-text-muted mt-1">{item.time}</p>
-                                </div>
-                            </div>
-                        ))}
+            <div className="mt-6 grid gap-5 lg:grid-cols-3">
+                <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200/80 p-6 shadow-card">
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="font-semibold text-slate-900">Hoạt động gần đây</h3>
+                        <span className="text-xs text-text-muted">Log hệ thống</span>
                     </div>
-                )}
+                    {activities.length === 0 ? (
+                        <p className="text-sm text-text-muted">Chưa có hoạt động mới.</p>
+                    ) : (
+                        <div className="space-y-4">
+                            {activities.map((item, idx) => (
+                                <div key={`${item.time}-${idx}`} className="flex items-start gap-3">
+                                    <div className="mt-1 h-2 w-2 rounded-full bg-slate-300" />
+                                    <div>
+                                        <p className="text-sm text-slate-800">
+                                            <span className="font-semibold">{item.user}</span> {item.content}
+                                        </p>
+                                        <p className="text-xs text-text-muted mt-1">{item.time}</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-card">
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="font-semibold text-slate-900">Tình trạng dự án</h3>
+                        <span className="text-xs text-text-muted">Tổng hợp</span>
+                    </div>
+                    <DonutChart data={projectStatusData} centerLabel="Dự án" />
+                </div>
             </div>
 
             <div className="mt-6 bg-white rounded-2xl border border-slate-200/80 p-6 shadow-card">
