@@ -18,7 +18,7 @@ class AppSettingController extends Controller
         }
 
         return response()->json([
-            'brand_name' => $setting->brand_name ?: config('app.name', 'Quản lý nội bộ'),
+            'brand_name' => $setting->brand_name ?: config('app.name', 'ClickOn'),
             'primary_color' => $setting->primary_color ?: '#04BC5C',
             'logo_url' => $setting->logo_url,
             'support_email' => $setting->support_email,

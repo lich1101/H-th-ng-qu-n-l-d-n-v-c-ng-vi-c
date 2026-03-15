@@ -7,7 +7,7 @@ export default function Authenticated({ auth, header, children }) {
     const [showSidebar, setShowSidebar] = useState(false);
     const [collapsedGroups, setCollapsedGroups] = useState({});
     const currentRole = auth?.user?.role || '';
-    const brandName = settings?.brand_name || 'Quản lý nội bộ';
+    const brandName = settings?.brand_name || 'ClickOn';
     const brandSubtitle = settings?.brand_subtitle || 'Khách hàng • Phòng ban • Kế toán';
     const logoUrl = settings?.logo_url;
 

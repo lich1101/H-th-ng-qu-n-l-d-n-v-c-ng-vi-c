@@ -19,7 +19,7 @@ class AppSetting extends Model
     public static function defaults(): array
     {
         return [
-            'brand_name' => config('app.name', 'Quản lý nội bộ'),
+            'brand_name' => config('app.name', 'ClickOn'),
             'primary_color' => '#04BC5C',
             'logo_url' => null,
             'support_email' => null,

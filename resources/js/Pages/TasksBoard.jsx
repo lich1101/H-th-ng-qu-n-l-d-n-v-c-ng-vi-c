@@ -65,6 +65,7 @@ export default function TasksBoard(props) {
     const [showImport, setShowImport] = useState(false);
     const [importFile, setImportFile] = useState(null);
     const [importing, setImporting] = useState(false);
+    const [savingTask, setSavingTask] = useState(false);
     const [form, setForm] = useState({
         project_id: '',
         department_id: '',
@@ -112,6 +113,7 @@ export default function TasksBoard(props) {
         deadline: '',
         assignee_id: '',
     });
+    const [savingItem, setSavingItem] = useState(false);
     const [editingItemId, setEditingItemId] = useState(null);
     const [showItemReport, setShowItemReport] = useState(false);
     const [reportItem, setReportItem] = useState(null);
@@ -241,6 +243,7 @@ export default function TasksBoard(props) {
 
     const saveItem = async () => {
         if (!itemsTask) return;
+        if (savingItem) return;
         if (!itemForm.title.trim()) {
             toast.error('Vui lòng nhập tiêu đề đầu việc.');
             return;
@@ -249,6 +252,7 @@ export default function TasksBoard(props) {
             toast.error('Vui lòng chọn nhân sự phụ trách.');
             return;
         }
+        setSavingItem(true);
         try {
             if (editingItemId) {
                 await axios.put(`/api/v1/tasks/${itemsTask.id}/items/${editingItemId}`, {
@@ -278,6 +282,8 @@ export default function TasksBoard(props) {
             await fetchTasks(filters.page, filters);
         } catch (e) {
             toast.error(e?.response?.data?.message || 'Lưu đầu việc thất bại.');
+        } finally {
+            setSavingItem(false);
         }
     };
 
@@ -500,10 +506,12 @@ export default function TasksBoard(props) {
     };
 
     const save = async () => {
+        if (savingTask) return;
         if (!canCreate && editingId == null) return toast.error('Bạn không có quyền tạo công việc.');
         if (!canEdit && editingId != null) return toast.error('Bạn không có quyền cập nhật công việc.');
         if (!form.project_id || !form.title?.trim()) return toast.error('Vui lòng chọn dự án và nhập tiêu đề.');
         if (!projectHasContract) return toast.error('Dự án chưa có hợp đồng, không thể tạo công việc.');
+        setSavingTask(true);
         try {
             const payload = {
                 project_id: Number(form.project_id),
@@ -527,6 +535,8 @@ export default function TasksBoard(props) {
             await fetchTasks(filters.page, filters);
         } catch (e) {
             toast.error(e?.response?.data?.message || 'Lưu công việc thất bại.');
+        } finally {
+            setSavingTask(false);
         }
     };
 
@@ -1044,8 +1054,17 @@ export default function TasksBoard(props) {
                         <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" type="number" min="0" max="100" value={form.progress_percent} onChange={(e) => setForm((s) => ({ ...s, progress_percent: e.target.value }))} />
                     </div>
                     <div className="flex items-center gap-3">
-                        <button className="flex-1 bg-primary text-white rounded-2xl py-2.5 font-semibold" onClick={save} type="button">
-                            {editingId ? 'Cập nhật công việc' : 'Tạo công việc'}
+                        <button
+                            className="flex-1 bg-primary text-white rounded-2xl py-2.5 font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+                            onClick={save}
+                            type="button"
+                            disabled={savingTask}
+                        >
+                            {savingTask
+                                ? 'Đang lưu...'
+                                : editingId
+                                    ? 'Cập nhật công việc'
+                                    : 'Tạo công việc'}
                         </button>
                         <button className="flex-1 border border-slate-200 rounded-2xl py-2.5 font-semibold" onClick={closeForm} type="button">
                             Hủy
@@ -1223,10 +1242,11 @@ export default function TasksBoard(props) {
                                     <div className="flex items-center gap-2">
                                         <button
                                             type="button"
-                                            className="flex-1 rounded-2xl px-3 py-2.5 bg-primary text-white text-sm font-semibold"
+                                            className="flex-1 rounded-2xl px-3 py-2.5 bg-primary text-white text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
                                             onClick={saveItem}
+                                            disabled={savingItem}
                                         >
-                                            {editingItemId ? 'Cập nhật' : 'Tạo mới'}
+                                            {savingItem ? 'Đang lưu...' : editingItemId ? 'Cập nhật' : 'Tạo mới'}
                                         </button>
                                         <button
                                             type="button"
