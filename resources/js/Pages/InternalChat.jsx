@@ -400,7 +400,7 @@ export default function InternalChat(props) {
                                             {author} • {c.created_at || ''}
                                         </div>
                                         <div
-                                            className={`chat-fade rounded-2xl border px-4 py-3 text-sm ${
+                                            className={`chat-fade rounded-2xl border px-4 py-3 text-sm break-words whitespace-pre-wrap ${
                                                 isMine
                                                     ? 'bg-primary/10 border-primary/20 text-slate-900'
                                                     : 'bg-slate-50 border-slate-200/80 text-slate-700'
