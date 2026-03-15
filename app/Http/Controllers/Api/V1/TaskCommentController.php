@@ -43,6 +43,8 @@ class TaskCommentController extends Controller
             'content' => ['required', 'string'],
             'tagged_user_ids' => ['nullable', 'array'],
             'tagged_user_ids.*' => ['integer', 'exists:users,id'],
+            'tagged_user_emails' => ['nullable', 'array'],
+            'tagged_user_emails.*' => ['email'],
             'attachment_path' => ['nullable', 'string', 'max:255'],
             'attachment' => ['nullable', 'file', 'max:10240'],
         ]);
@@ -89,6 +91,8 @@ class TaskCommentController extends Controller
             'content' => ['required', 'string'],
             'tagged_user_ids' => ['nullable', 'array'],
             'tagged_user_ids.*' => ['integer', 'exists:users,id'],
+            'tagged_user_emails' => ['nullable', 'array'],
+            'tagged_user_emails.*' => ['email'],
             'attachment_path' => ['nullable', 'string', 'max:255'],
             'attachment' => ['nullable', 'file', 'max:10240'],
         ]);
@@ -172,18 +176,42 @@ class TaskCommentController extends Controller
 
     private function normalizeTaggedIds(Request $request): void
     {
-        $raw = $request->input('tagged_user_ids');
-        if (is_string($raw)) {
-            $decoded = json_decode($raw, true);
+        $ids = $request->input('tagged_user_ids');
+        if (is_string($ids)) {
+            $decoded = json_decode($ids, true);
             if (is_array($decoded)) {
-                $request->merge(['tagged_user_ids' => $decoded]);
-                return;
-            }
-            if (str_contains($raw, ',')) {
-                $list = array_filter(array_map('trim', explode(',', $raw)));
+                $ids = $decoded;
+            } elseif (str_contains($ids, ',')) {
+                $list = array_filter(array_map('trim', explode(',', $ids)));
                 $ids = array_values(array_filter($list, fn ($item) => is_numeric($item)));
-                $request->merge(['tagged_user_ids' => $ids]);
             }
+        }
+
+        $emails = $request->input('tagged_user_emails');
+        if (is_string($emails)) {
+            $decodedEmails = json_decode($emails, true);
+            if (is_array($decodedEmails)) {
+                $emails = $decodedEmails;
+            } elseif (str_contains($emails, ',')) {
+                $emails = array_filter(array_map('trim', explode(',', $emails)));
+            }
+        }
+
+        $ids = is_array($ids) ? $ids : [];
+        $emails = is_array($emails) ? $emails : [];
+
+        $emails = array_values(array_filter(array_map('strtolower', $emails)));
+        if (! empty($emails)) {
+            $emailIds = User::query()
+                ->whereIn('email', $emails)
+                ->pluck('id')
+                ->all();
+            $ids = array_merge($ids, $emailIds);
+        }
+
+        $ids = array_values(array_unique(array_filter($ids)));
+        if (! empty($ids) || $request->has('tagged_user_ids') || $request->has('tagged_user_emails')) {
+            $request->merge(['tagged_user_ids' => $ids]);
         }
     }
 
@@ -253,7 +281,10 @@ class TaskCommentController extends Controller
 
         $users = $tagIds->isEmpty()
             ? collect()
-            : User::query()->whereIn('id', $tagIds)->get(['id', 'name', 'role'])->keyBy('id');
+            : User::query()
+                ->whereIn('id', $tagIds)
+                ->get(['id', 'name', 'role', 'email'])
+                ->keyBy('id');
 
         $comments->each(function ($comment) use ($users) {
             $tagged = collect($comment->tagged_user_ids ?? [])
@@ -288,6 +319,7 @@ class TaskCommentController extends Controller
                         'id' => $u->id,
                         'name' => $u->name,
                         'role' => $u->role,
+                        'email' => $u->email,
                     ];
                 })
                 ->values()

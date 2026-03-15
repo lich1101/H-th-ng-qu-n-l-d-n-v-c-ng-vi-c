@@ -58,6 +58,25 @@ export default function InternalChat(props) {
         return msg;
     };
 
+    const renderMessageContent = (text) => {
+        const value = text || '';
+        if (!value) return null;
+        const parts = value.split(/(@[^\s@]+)/g).filter((p) => p !== '');
+        return parts.map((part, idx) => {
+            if (part.startsWith('@')) {
+                return (
+                    <span
+                        key={`${part}-${idx}`}
+                        className="text-primary font-semibold bg-primary/10 px-1 rounded"
+                    >
+                        {part}
+                    </span>
+                );
+            }
+            return <span key={`${part}-${idx}`}>{part}</span>;
+        });
+    };
+
     const fetchTasks = async () => {
         try {
             const res = await axios.get('/api/v1/tasks', { params: { per_page: 200 } });
@@ -217,7 +236,11 @@ export default function InternalChat(props) {
         setContent(c.content || '');
         if (Array.isArray(c.tagged_users) && c.tagged_users.length) {
             setTaggedUsers(
-                c.tagged_users.map((u) => ({ id: u.id, name: u.name || 'Người dùng' }))
+                c.tagged_users.map((u) => ({
+                    id: u.id,
+                    name: u.name || 'Người dùng',
+                    email: u.email || '',
+                }))
             );
         } else if (Array.isArray(c.tagged_user_ids)) {
             setTaggedUsers(
@@ -242,9 +265,11 @@ export default function InternalChat(props) {
         }
         try {
             const ids = resolveTagIds(content);
+            const emails = resolveTagEmails(content);
             const data = new FormData();
             data.append('content', content);
             ids.forEach((id) => data.append('tagged_user_ids[]', id));
+            emails.forEach((email) => data.append('tagged_user_emails[]', email));
             if (attachment) data.append('attachment', attachment);
 
             if (editingId) {
@@ -293,7 +318,7 @@ export default function InternalChat(props) {
         setMentionAnchor(-1);
         setTaggedUsers((prev) => {
             if (prev.some((u) => u.id === user.id)) return prev;
-            return [...prev, { id: user.id, name: user.name }];
+            return [...prev, { id: user.id, name: user.name, email: user.email }];
         });
     };
 
@@ -321,6 +346,36 @@ export default function InternalChat(props) {
             });
         });
         return Array.from(ids);
+    };
+
+    const resolveTagEmails = (text) => {
+        const emails = new Set(
+            taggedUsers
+                .map((u) => (u.email || '').toLowerCase())
+                .filter((email) => email)
+        );
+        const matches = [...text.matchAll(/@([^\s@]+)/g)].map((m) => m[1]?.toLowerCase() || '');
+        if (!matches.length || !participants.length) {
+            return Array.from(emails);
+        }
+        participants.forEach((p) => {
+            const name = (p.name || '').toLowerCase();
+            const nameCompact = name.replace(/\s+/g, '');
+            const email = (p.email || '').toLowerCase();
+            const emailUser = email.includes('@') ? email.split('@')[0] : '';
+            matches.forEach((token) => {
+                if (!token) return;
+                const tokenCompact = token.replace(/\s+/g, '');
+                if (
+                    token === name ||
+                    tokenCompact === nameCompact ||
+                    (emailUser && token === emailUser)
+                ) {
+                    if (email) emails.add(email);
+                }
+            });
+        });
+        return Array.from(emails);
     };
 
     const remove = async (c) => {
@@ -432,7 +487,7 @@ export default function InternalChat(props) {
                                                     : 'bg-slate-50 border-slate-200/80 text-slate-700'
                                             }`}
                                         >
-                                            {c.content}
+                                            {renderMessageContent(c.content)}
                                         </div>
                                         {c.attachment_path && (
                                             <a
@@ -500,9 +555,12 @@ export default function InternalChat(props) {
                         {mentionOpen && (
                             <div className="mt-2 rounded-2xl border border-slate-200/80 bg-white shadow-card max-h-44 overflow-y-auto">
                                 {(participants || [])
-                                    .filter((u) =>
-                                        u.name?.toLowerCase().includes(mentionQuery.toLowerCase())
-                                    )
+                                    .filter((u) => {
+                                        const query = mentionQuery.toLowerCase();
+                                        const name = (u.name || '').toLowerCase();
+                                        const email = (u.email || '').toLowerCase();
+                                        return name.includes(query) || email.includes(query);
+                                    })
                                     .slice(0, 8)
                                     .map((u) => (
                                         <button
@@ -512,7 +570,10 @@ export default function InternalChat(props) {
                                             onClick={() => handlePickMention(u)}
                                         >
                                             @{u.name}{' '}
-                                            <span className="text-xs text-text-muted">({u.role})</span>
+                                            <span className="text-xs text-text-muted">
+                                                ({u.role}
+                                                {u.email ? ` • ${u.email}` : ''})
+                                            </span>
                                         </button>
                                     ))}
                                 {!participants.length && (

@@ -36,20 +36,20 @@ class TaskItemController extends Controller
             return response()->json(['message' => 'Không có quyền tạo đầu việc.'], 403);
         }
 
+        $validated = $request->validate([
+            'title' => ['required', 'string', 'max:255'],
+            'description' => ['nullable', 'string'],
+            'priority' => ['nullable', 'string', 'max:20'],
+            'status' => ['nullable', 'string', 'in:todo,doing,done,blocked'],
+            'progress_percent' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'deadline' => ['nullable', 'date'],
+            'assignee_id' => ['nullable', 'integer', 'exists:users,id'],
+            'reviewer_id' => ['nullable', 'integer', 'exists:users,id'],
+        ]);
+
+        $this->assertAssigneeInDepartment($request->user(), $task, $validated['assignee_id'] ?? null);
+
         try {
-            $validated = $request->validate([
-                'title' => ['required', 'string', 'max:255'],
-                'description' => ['nullable', 'string'],
-                'priority' => ['nullable', 'string', 'max:20'],
-                'status' => ['nullable', 'string', 'in:todo,doing,done,blocked'],
-                'progress_percent' => ['nullable', 'integer', 'min:0', 'max:100'],
-                'deadline' => ['nullable', 'date'],
-                'assignee_id' => ['nullable', 'integer', 'exists:users,id'],
-                'reviewer_id' => ['nullable', 'integer', 'exists:users,id'],
-            ]);
-
-            $this->assertAssigneeInDepartment($request->user(), $task, $validated['assignee_id'] ?? null);
-
             $item = $task->items()->create([
                 'title' => $validated['title'],
                 'description' => $validated['description'] ?? null,
@@ -62,39 +62,37 @@ class TaskItemController extends Controller
                 'assigned_by' => $request->user()->id,
                 'reviewer_id' => $validated['reviewer_id'] ?? $request->user()->id,
             ]);
-
-            try {
-                TaskProgressService::recalc($task);
-            } catch (\Throwable $e) {
-                report($e);
-            }
-
-            if (! empty($item->assignee_id)) {
-                try {
-                    app(NotificationService::class)->notifyUsers(
-                        [$item->assignee_id],
-                        'Bạn có đầu việc mới',
-                        'Đầu việc: '.$item->title,
-                        [
-                            'type' => 'task_item_assigned',
-                            'task_id' => $task->id,
-                            'task_item_id' => $item->id,
-                        ]
-                    );
-                } catch (\Throwable $e) {
-                    report($e);
-                }
-            }
-
-            return response()->json($item->load(['assignee', 'reviewer']), 201);
-        } catch (\Illuminate\Validation\ValidationException|\Symfony\Component\HttpKernel\Exception\HttpResponseException $e) {
-            throw $e;
         } catch (\Throwable $e) {
             report($e);
             return response()->json([
                 'message' => 'Không tạo được đầu việc. Vui lòng kiểm tra cấu hình hệ thống.',
             ], 500);
         }
+
+        try {
+            TaskProgressService::recalc($task);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        if (! empty($item->assignee_id)) {
+            try {
+                app(NotificationService::class)->notifyUsers(
+                    [$item->assignee_id],
+                    'Bạn có đầu việc mới',
+                    'Đầu việc: '.$item->title,
+                    [
+                        'type' => 'task_item_assigned',
+                        'task_id' => $task->id,
+                        'task_item_id' => $item->id,
+                    ]
+                );
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
+        return response()->json($item->load(['assignee', 'reviewer']), 201);
     }
 
     public function update(Task $task, TaskItem $item, Request $request): JsonResponse
