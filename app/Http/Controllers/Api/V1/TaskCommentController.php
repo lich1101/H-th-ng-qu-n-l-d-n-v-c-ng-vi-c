@@ -35,6 +35,9 @@ class TaskCommentController extends Controller
         if (! $this->canAccessTask($request->user(), $task)) {
             return response()->json(['message' => 'Không có quyền gửi trao đổi.'], 403);
         }
+        if ($task->status === 'done') {
+            return response()->json(['message' => 'Công việc đã hoàn thành, không thể gửi trao đổi.'], 422);
+        }
         $this->normalizeTaggedIds($request);
         $validated = $request->validate([
             'content' => ['required', 'string'],
@@ -69,6 +72,9 @@ class TaskCommentController extends Controller
     {
         if (! $this->canAccessTask($request->user(), $task)) {
             return response()->json(['message' => 'Không có quyền cập nhật trao đổi.'], 403);
+        }
+        if ($task->status === 'done') {
+            return response()->json(['message' => 'Công việc đã hoàn thành, không thể cập nhật trao đổi.'], 422);
         }
         if ($comment->task_id !== $task->id) {
             return response()->json(['message' => 'Comment does not belong to task.'], 422);

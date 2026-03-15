@@ -13,3 +13,18 @@
         @apply bg-app-bg text-slate-900 font-display;
     }
 }
+
+@keyframes chatFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.chat-fade {
+    animation: chatFadeIn 180ms ease;
+}
