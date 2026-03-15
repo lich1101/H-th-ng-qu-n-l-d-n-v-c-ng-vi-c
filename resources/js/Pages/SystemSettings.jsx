@@ -11,6 +11,9 @@ export default function SystemSettings(props) {
         brand_name: props.settings?.brand_name || '',
         primary_color: props.settings?.primary_color || '#04BC5C',
         logo_url: props.settings?.logo_url || '',
+        support_email: props.settings?.support_email || '',
+        support_phone: props.settings?.support_phone || '',
+        support_address: props.settings?.support_address || '',
     });
     const [logoFile, setLogoFile] = useState(null);
     const [preview, setPreview] = useState(props.settings?.logo_url || '');
@@ -43,6 +46,15 @@ export default function SystemSettings(props) {
             if (form.logo_url) {
                 formData.append('logo_url', form.logo_url);
             }
+            if (form.support_email) {
+                formData.append('support_email', form.support_email);
+            }
+            if (form.support_phone) {
+                formData.append('support_phone', form.support_phone);
+            }
+            if (form.support_address) {
+                formData.append('support_address', form.support_address);
+            }
             if (logoFile) {
                 formData.append('logo', logoFile);
             }
@@ -58,6 +70,9 @@ export default function SystemSettings(props) {
                 brand_name: data.brand_name || prev.brand_name,
                 primary_color: data.primary_color || prev.primary_color,
                 logo_url: data.logo_url || prev.logo_url,
+                support_email: data.support_email || prev.support_email,
+                support_phone: data.support_phone || prev.support_phone,
+                support_address: data.support_address || prev.support_address,
             }));
             setLogoFile(null);
             if (data.logo_url) setPreview(data.logo_url);
@@ -160,10 +175,50 @@ export default function SystemSettings(props) {
                                 brand_name: props.settings?.brand_name || '',
                                 primary_color: props.settings?.primary_color || '#04BC5C',
                                 logo_url: props.settings?.logo_url || '',
+                                support_email: props.settings?.support_email || '',
+                                support_phone: props.settings?.support_phone || '',
+                                support_address: props.settings?.support_address || '',
                             })}
                         >
                             Hoàn tác
                         </button>
+                    </div>
+                </div>
+
+                <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
+                    <h3 className="text-sm font-semibold text-slate-900">Thông tin liên hệ & pháp lý</h3>
+                    <p className="text-xs text-text-muted mt-1">
+                        Dùng cho chính sách bảo mật và review App Store.
+                    </p>
+
+                    <div className="mt-4 grid gap-4 md:grid-cols-2">
+                        <div>
+                            <label className="text-xs text-text-muted">Email hỗ trợ</label>
+                            <input
+                                className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                value={form.support_email}
+                                onChange={(e) => setForm((s) => ({ ...s, support_email: e.target.value }))}
+                                placeholder="support@yourdomain.com"
+                            />
+                        </div>
+                        <div>
+                            <label className="text-xs text-text-muted">Số điện thoại</label>
+                            <input
+                                className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                value={form.support_phone}
+                                onChange={(e) => setForm((s) => ({ ...s, support_phone: e.target.value }))}
+                                placeholder="+84 9xx xxx xxx"
+                            />
+                        </div>
+                    </div>
+                    <div className="mt-4">
+                        <label className="text-xs text-text-muted">Địa chỉ liên hệ</label>
+                        <textarea
+                            className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm min-h-[90px]"
+                            value={form.support_address}
+                            onChange={(e) => setForm((s) => ({ ...s, support_address: e.target.value }))}
+                            placeholder="Địa chỉ doanh nghiệp"
+                        />
                     </div>
                 </div>
             </div>

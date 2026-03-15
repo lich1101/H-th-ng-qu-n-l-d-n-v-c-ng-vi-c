@@ -7,6 +7,7 @@ use Illuminate\Support\Carbon;
 use App\Http\Controllers\LeadFormPublicController;
 use App\Http\Controllers\FacebookAuthController;
 use App\Http\Controllers\Webhooks\FacebookWebhookController;
+use App\Models\Client;
 
 /*
 |--------------------------------------------------------------------------
@@ -92,6 +93,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/crm-mini', function () {
         return Inertia::render('CRM');
     })->name('crm.index')->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
+
+    Route::get('/khach-hang/{client}/luong', function (Client $client) {
+        return Inertia::render('ClientFlow', [
+            'clientId' => $client->id,
+        ]);
+    })->name('crm.flow')->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
 
     Route::get('/co-hoi', function () {
         return Inertia::render('Opportunities');

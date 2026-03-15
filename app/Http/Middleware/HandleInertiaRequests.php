@@ -41,6 +41,9 @@ class HandleInertiaRequests extends Middleware
                 'brand_name' => $setting->brand_name ?: config('app.name', 'Quản lý nội bộ'),
                 'primary_color' => $setting->primary_color ?: '#04BC5C',
                 'logo_url' => $setting->logo_url,
+                'support_email' => $setting->support_email,
+                'support_phone' => $setting->support_phone,
+                'support_address' => $setting->support_address,
             ]
             : AppSetting::defaults();
 

@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\User;
 use App\Models\UserDeviceToken;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Log;
 
 class NotificationService
 {
@@ -78,11 +79,18 @@ class NotificationService
         if (! $user->email) {
             return false;
         }
-
-        Mail::raw($body, function ($mail) use ($user, $title) {
-            $mail->to($user->email)->subject($title);
-        });
-
-        return true;
+        try {
+            Mail::raw($body, function ($mail) use ($user, $title) {
+                $mail->to($user->email)->subject($title);
+            });
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning('Email fallback failed', [
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'error' => $e->getMessage(),
+            ]);
+            return false;
+        }
     }
 }

@@ -21,6 +21,9 @@ class AppSettingController extends Controller
             'brand_name' => $setting->brand_name ?: config('app.name', 'Quản lý nội bộ'),
             'primary_color' => $setting->primary_color ?: '#04BC5C',
             'logo_url' => $setting->logo_url,
+            'support_email' => $setting->support_email,
+            'support_phone' => $setting->support_phone,
+            'support_address' => $setting->support_address,
         ]);
     }
 
@@ -34,6 +37,9 @@ class AppSettingController extends Controller
             'brand_name' => ['nullable', 'string', 'max:120'],
             'primary_color' => ['nullable', 'regex:/^#([0-9A-Fa-f]{6})$/'],
             'logo_url' => ['nullable', 'string', 'max:255'],
+            'support_email' => ['nullable', 'email', 'max:120'],
+            'support_phone' => ['nullable', 'string', 'max:40'],
+            'support_address' => ['nullable', 'string', 'max:255'],
             'logo' => ['nullable', 'file', 'max:5120'],
         ]);
 
@@ -52,6 +58,9 @@ class AppSettingController extends Controller
             'brand_name' => $validated['brand_name'] ?? $setting->brand_name,
             'primary_color' => $validated['primary_color'] ?? $setting->primary_color,
             'logo_url' => $logoUrl,
+            'support_email' => $validated['support_email'] ?? $setting->support_email,
+            'support_phone' => $validated['support_phone'] ?? $setting->support_phone,
+            'support_address' => $validated['support_address'] ?? $setting->support_address,
             'updated_by' => $request->user()->id,
         ]);
 
@@ -59,6 +68,9 @@ class AppSettingController extends Controller
             'brand_name' => $setting->brand_name,
             'primary_color' => $setting->primary_color,
             'logo_url' => $setting->logo_url,
+            'support_email' => $setting->support_email,
+            'support_phone' => $setting->support_phone,
+            'support_address' => $setting->support_address,
         ]);
     }
 }

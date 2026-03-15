@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
+import { Link } from '@inertiajs/inertia-react';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import { useToast } from '@/Contexts/ToastContext';
@@ -519,6 +520,16 @@ export default function CRM(props) {
                                                 )}
                                             </td>
                                             <td className="py-2 text-right space-x-2">
+                                                {client.has_purchased || Number(client.total_revenue || 0) > 0 ? (
+                                                    <Link
+                                                        href={route('crm.flow', client.id)}
+                                                        className="text-xs font-semibold text-emerald-600"
+                                                    >
+                                                        Luồng
+                                                    </Link>
+                                                ) : (
+                                                    <span className="text-xs text-text-subtle">Chưa kích hoạt</span>
+                                                )}
                                                 {canManageClients && (
                                                     <button
                                                         type="button"
