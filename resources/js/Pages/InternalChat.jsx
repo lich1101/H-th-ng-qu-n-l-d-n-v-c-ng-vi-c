@@ -241,7 +241,7 @@ export default function InternalChat(props) {
             return;
         }
         try {
-            const ids = taggedUsers.map((u) => u.id).filter(Boolean);
+            const ids = resolveTagIds(content);
             const data = new FormData();
             data.append('content', content);
             ids.forEach((id) => data.append('tagged_user_ids[]', id));
@@ -295,6 +295,32 @@ export default function InternalChat(props) {
             if (prev.some((u) => u.id === user.id)) return prev;
             return [...prev, { id: user.id, name: user.name }];
         });
+    };
+
+    const resolveTagIds = (text) => {
+        const ids = new Set(taggedUsers.map((u) => u.id).filter(Boolean));
+        const matches = [...text.matchAll(/@([^\s@]+)/g)].map((m) => m[1]?.toLowerCase() || '');
+        if (!matches.length || !participants.length) {
+            return Array.from(ids);
+        }
+        participants.forEach((p) => {
+            const name = (p.name || '').toLowerCase();
+            const nameCompact = name.replace(/\s+/g, '');
+            const email = (p.email || '').toLowerCase();
+            const emailUser = email.includes('@') ? email.split('@')[0] : '';
+            matches.forEach((token) => {
+                if (!token) return;
+                const tokenCompact = token.replace(/\s+/g, '');
+                if (
+                    token === name ||
+                    tokenCompact === nameCompact ||
+                    (emailUser && token === emailUser)
+                ) {
+                    ids.add(p.id);
+                }
+            });
+        });
+        return Array.from(ids);
     };
 
     const remove = async (c) => {
