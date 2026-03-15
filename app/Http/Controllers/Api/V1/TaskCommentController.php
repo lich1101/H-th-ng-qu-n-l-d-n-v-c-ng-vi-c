@@ -313,10 +313,14 @@ class TaskCommentController extends Controller
         $notifier = app(NotificationService::class);
         $title = 'Bạn được nhắc đến trong trao đổi';
         $body = 'Công việc: '.$task->title;
-        $notifier->notifyUsers($ids, $title, $body, [
-            'type' => 'task_comment_tag',
-            'task_id' => $task->id,
-            'comment_id' => $comment->id,
-        ]);
+        try {
+            $notifier->notifyUsers($ids, $title, $body, [
+                'type' => 'task_comment_tag',
+                'task_id' => $task->id,
+                'comment_id' => $comment->id,
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 }

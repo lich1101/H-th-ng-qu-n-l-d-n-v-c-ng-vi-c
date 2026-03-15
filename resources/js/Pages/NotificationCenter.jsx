@@ -3,11 +3,13 @@ import axios from 'axios';
 import PageContainer from '@/Components/PageContainer';
 
 export default function NotificationCenter(props) {
+    const [notifications, setNotifications] = useState([]);
     const [reminders, setReminders] = useState([]);
     const [logs, setLogs] = useState([]);
 
     const fetchData = async () => {
         const response = await axios.get('/api/v1/notifications/in-app');
+        setNotifications(response.data.notifications || []);
         setReminders(response.data.reminders || []);
         setLogs(response.data.logs || []);
     };
@@ -39,6 +41,7 @@ export default function NotificationCenter(props) {
             title="Trung tâm thông báo"
             description="Theo dõi nhắc hạn chót và hoạt động hệ thống theo thời gian thực."
             stats={[
+                { label: 'Thông báo', value: notifications.length },
                 { label: 'Nhắc hạn', value: reminders.length },
                 { label: 'Hoạt động mới', value: logs.length },
                 { label: 'Cập nhật tự động', value: '30s/lần' },
@@ -46,6 +49,51 @@ export default function NotificationCenter(props) {
             ]}
         >
             <div className="grid gap-5 xl:grid-cols-2">
+                <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="font-semibold text-slate-900">Thông báo của bạn</h3>
+                        <button
+                            type="button"
+                            className="text-xs text-primary"
+                            onClick={() => markAllRead('in_app')}
+                        >
+                            Đọc tất cả
+                        </button>
+                    </div>
+                    <div className="space-y-3 text-sm">
+                        {notifications.map((item) => (
+                            <div
+                                key={item.id}
+                                className={`rounded-2xl border p-4 ${
+                                    item.is_read ? 'border-slate-200/80 bg-white' : 'border-primary/30 bg-primary/5'
+                                }`}
+                            >
+                                <div className="flex items-center justify-between">
+                                    <p className="font-semibold">{item.title || 'Thông báo'}</p>
+                                    <span className="text-xs text-text-muted">{item.type}</span>
+                                </div>
+                                {item.body && (
+                                    <p className="text-xs text-text-muted mt-2 line-clamp-2">
+                                        {item.body}
+                                    </p>
+                                )}
+                                {!item.is_read && (
+                                    <button
+                                        type="button"
+                                        className="mt-3 text-xs text-primary"
+                                        onClick={() => markRead('in_app', item.id)}
+                                    >
+                                        Đánh dấu đã đọc
+                                    </button>
+                                )}
+                            </div>
+                        ))}
+                        {notifications.length === 0 && (
+                            <p className="text-text-muted">Chưa có thông báo mới.</p>
+                        )}
+                    </div>
+                </div>
+
                 <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
                     <div className="flex items-center justify-between mb-4">
                         <h3 className="font-semibold text-slate-900">Nhắc hạn</h3>

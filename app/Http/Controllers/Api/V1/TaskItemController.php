@@ -29,14 +29,14 @@ class TaskItemController extends Controller
 
     public function store(Task $task, Request $request): JsonResponse
     {
-        try {
-            if (! in_array($request->user()->role, ['admin', 'quan_ly'], true)) {
-                return response()->json(['message' => 'Không có quyền tạo đầu việc.'], 403);
-            }
-            if (! $this->canAccessTask($request->user(), $task)) {
-                return response()->json(['message' => 'Không có quyền tạo đầu việc.'], 403);
-            }
+        if (! in_array($request->user()->role, ['admin', 'quan_ly'], true)) {
+            return response()->json(['message' => 'Không có quyền tạo đầu việc.'], 403);
+        }
+        if (! $this->canAccessTask($request->user(), $task)) {
+            return response()->json(['message' => 'Không có quyền tạo đầu việc.'], 403);
+        }
 
+        try {
             $validated = $request->validate([
                 'title' => ['required', 'string', 'max:255'],
                 'description' => ['nullable', 'string'],
@@ -87,6 +87,8 @@ class TaskItemController extends Controller
             }
 
             return response()->json($item->load(['assignee', 'reviewer']), 201);
+        } catch (\Illuminate\Validation\ValidationException|\Symfony\Component\HttpKernel\Exception\HttpResponseException $e) {
+            throw $e;
         } catch (\Throwable $e) {
             report($e);
             return response()->json([
