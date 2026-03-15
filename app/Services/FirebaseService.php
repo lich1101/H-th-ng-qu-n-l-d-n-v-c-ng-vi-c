@@ -22,6 +22,11 @@ class FirebaseService
         return $this->enabled() && (string) config('firebase.database_url') !== '';
     }
 
+    public function accessTokenAvailable(): bool
+    {
+        return (bool) $this->getAccessToken();
+    }
+
     public function pushTaskMessage(int $taskId, int $messageId, array $payload): bool
     {
         if (! $this->databaseEnabled()) {

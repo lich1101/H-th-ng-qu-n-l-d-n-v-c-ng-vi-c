@@ -1,5 +1,5 @@
 import { initializeApp, getApps } from 'firebase/app';
-import { getDatabase } from 'firebase/database';
+import { getDatabase, onValue, ref } from 'firebase/database';
 import { getAuth, signInWithCustomToken } from 'firebase/auth';
 
 const config = window?.__FIREBASE__ || {};
@@ -52,4 +52,16 @@ export const ensureFirebaseAuth = async (customToken) => {
     } catch (e) {
         return false;
     }
+};
+
+export const onFirebaseConnectionChange = (callback) => {
+    const db = getFirebaseDb();
+    if (!db) {
+        callback(false);
+        return () => {};
+    }
+    const connectionRef = ref(db, '.info/connected');
+    return onValue(connectionRef, (snapshot) => {
+        callback(Boolean(snapshot.val()));
+    });
 };

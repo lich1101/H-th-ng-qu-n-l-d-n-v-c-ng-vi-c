@@ -29,6 +29,7 @@ use App\Http\Controllers\Api\V1\PublicMobileController;
 use App\Http\Controllers\Api\V1\ReportController;
 use App\Http\Controllers\Api\V1\ServiceWorkflowController;
 use App\Http\Controllers\Api\V1\SystemMetaController;
+use App\Http\Controllers\Api\V1\SystemStatusController;
 use App\Http\Controllers\Api\V1\TaskAttachmentController;
 use App\Http\Controllers\Api\V1\TaskCommentController;
 use App\Http\Controllers\Api\V1\TaskController;
@@ -73,6 +74,8 @@ Route::prefix('v1')->group(function () {
         Route::post('/logout', [AuthController::class, 'logout']);
         Route::post('/device-tokens', [DeviceTokenController::class, 'store']);
         Route::get('/firebase/token', [FirebaseTokenController::class, 'show']);
+        Route::get('/system/status', [SystemStatusController::class, 'show'])
+            ->middleware('role:admin');
         Route::post('/settings', [AppSettingController::class, 'update'])
             ->middleware('role:admin');
 
