@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\V1\FacebookPageController;
 use App\Http\Controllers\Api\V1\FirebaseTokenController;
 use App\Http\Controllers\Api\V1\OpportunityController;
 use App\Http\Controllers\Api\V1\ProductController;
+use App\Http\Controllers\Api\V1\PushTestController;
 use App\Http\Controllers\Api\V1\RevenueTierController;
 use App\Http\Controllers\Api\V1\DeadlineReminderController;
 use App\Http\Controllers\Api\V1\DeviceTokenController;
@@ -74,6 +75,8 @@ Route::prefix('v1')->group(function () {
         Route::post('/logout', [AuthController::class, 'logout']);
         Route::post('/device-tokens', [DeviceTokenController::class, 'store']);
         Route::get('/firebase/token', [FirebaseTokenController::class, 'show']);
+        Route::post('/push/test', [PushTestController::class, 'store'])
+            ->middleware('role:admin');
         Route::get('/system/status', [SystemStatusController::class, 'show'])
             ->middleware('role:admin');
         Route::post('/settings', [AppSettingController::class, 'update'])
