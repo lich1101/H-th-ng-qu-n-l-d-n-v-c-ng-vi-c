@@ -7,7 +7,7 @@ export default function Authenticated({ auth, header, children }) {
     const { settings } = usePage().props;
     const [showSidebar, setShowSidebar] = useState(false);
     const currentRole = auth?.user?.role || '';
-    const brandName = settings?.brand_name || 'ClickOn';
+    const brandName = settings?.brand_name || 'job clickon';
     const brandSubtitle = settings?.brand_subtitle || 'Khách hàng • Phòng ban • Kế toán';
     const logoUrl = settings?.logo_url;
     const [avatarUrl, setAvatarUrl] = useState(auth?.user?.avatar_url || '');
@@ -97,7 +97,6 @@ export default function Authenticated({ auth, header, children }) {
                     { label: 'Bàn giao', icon: 'handover', routeName: 'handover.index', href: route('handover.index'), roles: ['admin', 'quan_ly', 'nhan_vien'] },
                     { label: 'Điều phối phòng ban', icon: 'route', routeName: 'department-assignments.index', href: route('department-assignments.index'), roles: ['admin', 'quan_ly', 'nhan_vien'] },
                     { label: 'Lịch họp', icon: 'calendar', routeName: 'meetings.index', href: route('meetings.index'), roles: ['admin', 'quan_ly'] },
-                    { label: 'Chat nội bộ', icon: 'chat', routeName: 'chat.internal', href: route('chat.internal'), roles: ['admin', 'quan_ly', 'nhan_vien', 'ke_toan'] },
                 ],
             },
             {

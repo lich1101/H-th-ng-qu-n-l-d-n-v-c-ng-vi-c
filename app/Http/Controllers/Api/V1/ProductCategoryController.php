@@ -3,42 +3,37 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
-use App\Models\Product;
+use App\Models\ProductCategory;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
-class ProductController extends Controller
+class ProductCategoryController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = Product::query()->with('category');
+        $query = ProductCategory::query();
         if ($request->filled('search')) {
-            $search = $request->input('search');
+            $search = (string) $request->input('search');
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
                     ->orWhere('code', 'like', "%{$search}%");
             });
         }
-        if ($request->filled('category_id')) {
-            $query->where('category_id', (int) $request->input('category_id'));
-        }
         if ($request->filled('is_active')) {
             $query->where('is_active', (bool) $request->input('is_active'));
         }
+
         return response()->json(
-            $query->orderBy('name')->paginate((int) $request->input('per_page', 20))
+            $query->orderBy('name')->paginate((int) $request->input('per_page', 50))
         );
     }
 
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'code' => ['nullable', 'string', 'max:40', 'unique:products,code'],
+            'code' => ['nullable', 'string', 'max:40', 'unique:product_categories,code'],
             'name' => ['required', 'string', 'max:255'],
-            'category_id' => ['nullable', 'integer', 'exists:product_categories,id'],
-            'unit' => ['nullable', 'string', 'max:20'],
-            'unit_price' => ['nullable', 'numeric', 'min:0'],
             'description' => ['nullable', 'string'],
             'is_active' => ['nullable', 'boolean'],
         ]);
@@ -47,42 +42,37 @@ class ProductController extends Controller
         }
         $validated['is_active'] = $validated['is_active'] ?? true;
 
-        $product = Product::create($validated);
-        return response()->json($product, 201);
+        $category = ProductCategory::create($validated);
+
+        return response()->json($category, 201);
     }
 
-    public function show(Product $product): JsonResponse
-    {
-        return response()->json($product);
-    }
-
-    public function update(Request $request, Product $product): JsonResponse
+    public function update(Request $request, ProductCategory $productCategory): JsonResponse
     {
         $validated = $request->validate([
-            'code' => ['sometimes', 'string', 'max:40', 'unique:products,code,' . $product->id],
+            'code' => ['sometimes', 'string', 'max:40', 'unique:product_categories,code,' . $productCategory->id],
             'name' => ['sometimes', 'required', 'string', 'max:255'],
-            'category_id' => ['nullable', 'integer', 'exists:product_categories,id'],
-            'unit' => ['nullable', 'string', 'max:20'],
-            'unit_price' => ['nullable', 'numeric', 'min:0'],
             'description' => ['nullable', 'string'],
             'is_active' => ['nullable', 'boolean'],
         ]);
-        $product->update($validated);
-        return response()->json($product);
+        $productCategory->update($validated);
+
+        return response()->json($productCategory);
     }
 
-    public function destroy(Product $product): JsonResponse
+    public function destroy(ProductCategory $productCategory): JsonResponse
     {
-        $product->delete();
-        return response()->json(['message' => 'Đã xóa sản phẩm.']);
+        $productCategory->delete();
+
+        return response()->json(['message' => 'Đã xóa danh mục sản phẩm.']);
     }
 
     private function generateCode(): string
     {
-        $prefix = 'SP-' . now()->format('Ymd');
+        $prefix = 'DM-' . now()->format('Ymd');
         for ($i = 1; $i <= 9999; $i++) {
             $code = $prefix . '-' . str_pad((string) $i, 4, '0', STR_PAD_LEFT);
-            if (! Product::where('code', $code)->exists()) {
+            if (! ProductCategory::where('code', $code)->exists()) {
                 return $code;
             }
         }

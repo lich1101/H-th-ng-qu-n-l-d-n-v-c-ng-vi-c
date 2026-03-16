@@ -14,4 +14,14 @@ class MeetingAttendee extends Model
         'user_id',
         'attendance_status',
     ];
+
+    public function meeting()
+    {
+        return $this->belongsTo(ProjectMeeting::class, 'meeting_id');
+    }
+
+    public function user()
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
 }

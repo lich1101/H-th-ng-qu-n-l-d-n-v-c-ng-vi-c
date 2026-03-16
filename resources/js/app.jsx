@@ -7,7 +7,7 @@ import { createInertiaApp } from '@inertiajs/inertia-react';
 import { InertiaProgress } from '@inertiajs/progress';
 import { ToastProvider } from '@/Contexts/ToastContext';
 
-const appName = window.document.getElementsByTagName('title')[0]?.innerText || 'Laravel';
+const appName = window.document.getElementsByTagName('title')[0]?.innerText || 'job clickon';
 const pages = require.context('./Pages', true, /\.jsx$/);
 
 createInertiaApp({

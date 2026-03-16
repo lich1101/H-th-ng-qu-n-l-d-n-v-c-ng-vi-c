@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
 use App\Models\MeetingAttendee;
 use App\Models\ProjectMeeting;
+use App\Services\NotificationService;
+use Illuminate\Support\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -13,7 +15,9 @@ class MeetingController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = ProjectMeeting::query()->with(['attendees']);
+        $query = ProjectMeeting::query()->with([
+            'attendees.user:id,name,email,avatar_url',
+        ]);
 
         if ($request->filled('search')) {
             $search = (string) $request->input('search');
@@ -28,6 +32,12 @@ class MeetingController extends Controller
         }
         if ($request->filled('task_id')) {
             $query->where('task_id', (int) $request->input('task_id'));
+        }
+        if ($request->filled('attendee_id')) {
+            $attendeeId = (int) $request->input('attendee_id');
+            $query->whereHas('attendees', function ($builder) use ($attendeeId) {
+                $builder->where('user_id', $attendeeId);
+            });
         }
         if ($request->filled('date_from')) {
             $query->whereDate('scheduled_at', '>=', (string) $request->input('date_from'));
@@ -66,21 +76,18 @@ class MeetingController extends Controller
             'created_by' => $request->user()->id,
         ]);
 
-        if (!empty($validated['attendee_ids'])) {
-            foreach ($validated['attendee_ids'] as $attendeeId) {
-                MeetingAttendee::create([
-                    'meeting_id' => $meeting->id,
-                    'user_id' => $attendeeId,
-                    'attendance_status' => 'invited',
-                ]);
-            }
-        }
+        $attendeeIds = $this->normalizeAttendeeIds($validated['attendee_ids'] ?? []);
+        $this->syncAttendees($meeting, $attendeeIds);
+        $this->notifyMeetingCreated($meeting, $attendeeIds);
 
         $this->log($request, 'meeting_created', 'meeting', $meeting->id, [
             'title' => ['old' => null, 'new' => $meeting->title],
         ]);
 
-        return response()->json($meeting->load('attendees'), 201);
+        return response()->json(
+            $meeting->load(['attendees.user:id,name,email,avatar_url']),
+            201
+        );
     }
 
     public function update(Request $request, ProjectMeeting $meeting): JsonResponse
@@ -109,14 +116,8 @@ class MeetingController extends Controller
         ]);
 
         if (array_key_exists('attendee_ids', $validated)) {
-            $meeting->attendees()->delete();
-            foreach ($validated['attendee_ids'] as $attendeeId) {
-                MeetingAttendee::create([
-                    'meeting_id' => $meeting->id,
-                    'user_id' => $attendeeId,
-                    'attendance_status' => 'invited',
-                ]);
-            }
+            $attendeeIds = $this->normalizeAttendeeIds($validated['attendee_ids']);
+            $this->syncAttendees($meeting, $attendeeIds);
         }
 
         $this->log($request, 'meeting_updated', 'meeting', $meeting->id, [
@@ -124,7 +125,9 @@ class MeetingController extends Controller
             'scheduled_at' => ['old' => $before['scheduled_at'], 'new' => (string) $meeting->scheduled_at],
         ]);
 
-        return response()->json($meeting->load('attendees'));
+        return response()->json(
+            $meeting->load(['attendees.user:id,name,email,avatar_url'])
+        );
     }
 
     public function destroy(Request $request, ProjectMeeting $meeting): JsonResponse
@@ -149,5 +152,72 @@ class MeetingController extends Controller
             'user_agent' => $request->userAgent(),
             'created_at' => now(),
         ]);
+    }
+
+    private function normalizeAttendeeIds(array $attendeeIds): array
+    {
+        return collect($attendeeIds)
+            ->map(function ($id) {
+                return (int) $id;
+            })
+            ->filter(function ($id) {
+                return $id > 0;
+            })
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    private function syncAttendees(ProjectMeeting $meeting, array $attendeeIds): void
+    {
+        $existingIds = $meeting->attendees()
+            ->pluck('user_id')
+            ->map(function ($id) {
+                return (int) $id;
+            })
+            ->all();
+        $removeIds = array_values(array_diff($existingIds, $attendeeIds));
+        $addIds = array_values(array_diff($attendeeIds, $existingIds));
+
+        if (! empty($removeIds)) {
+            $meeting->attendees()->whereIn('user_id', $removeIds)->delete();
+        }
+        if (! empty($addIds)) {
+            foreach ($addIds as $attendeeId) {
+                MeetingAttendee::create([
+                    'meeting_id' => $meeting->id,
+                    'user_id' => $attendeeId,
+                    'attendance_status' => 'invited',
+                ]);
+            }
+        }
+    }
+
+    private function notifyMeetingCreated(ProjectMeeting $meeting, array $attendeeIds): void
+    {
+        if (empty($attendeeIds)) {
+            return;
+        }
+        $notifier = app(NotificationService::class);
+        $scheduledAt = $meeting->scheduled_at
+            ? Carbon::parse($meeting->scheduled_at)->timezone(config('app.timezone'))->format('d/m/Y H:i')
+            : '';
+
+        try {
+            $notifier->notifyUsers(
+                $attendeeIds,
+                'Lịch họp mới',
+                $scheduledAt === ''
+                    ? $meeting->title
+                    : "{$meeting->title} lúc {$scheduledAt}",
+                [
+                    'type' => 'meeting_created',
+                    'meeting_id' => $meeting->id,
+                    'scheduled_at' => optional($meeting->scheduled_at)->toIso8601String(),
+                ]
+            );
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 }

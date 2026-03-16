@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ $form->name }}</title>
+    <link rel="icon" type="image/png" href="/brand/favicon-32x32.png">
+    <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
+    <title>{{ $form->name }} - {{ config('app.name', 'job clickon') }}</title>
     <style>
         :root {
             color-scheme: light;

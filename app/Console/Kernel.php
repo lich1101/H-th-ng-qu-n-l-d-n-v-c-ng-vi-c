@@ -23,6 +23,9 @@ class Kernel extends ConsoleKernel
         $schedule->command('task-items:remind-progress')
             ->dailyAt('09:00')
             ->timezone('Asia/Ho_Chi_Minh');
+        $schedule->command('meetings:send-reminders')
+            ->everyMinute()
+            ->timezone('Asia/Ho_Chi_Minh');
     }
 
     /**

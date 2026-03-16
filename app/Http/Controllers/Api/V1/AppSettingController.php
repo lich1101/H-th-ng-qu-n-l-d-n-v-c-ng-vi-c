@@ -18,9 +18,9 @@ class AppSettingController extends Controller
         }
 
         return response()->json([
-            'brand_name' => $setting->brand_name ?: config('app.name', 'ClickOn'),
+            'brand_name' => $setting->brand_name ?: config('app.name', 'job clickon'),
             'primary_color' => $setting->primary_color ?: '#04BC5C',
-            'logo_url' => $setting->logo_url,
+            'logo_url' => $setting->logo_url ?: AppSetting::defaults()['logo_url'],
             'support_email' => $setting->support_email,
             'support_phone' => $setting->support_phone,
             'support_address' => $setting->support_address,
@@ -48,7 +48,7 @@ class AppSettingController extends Controller
             $setting = AppSetting::create(AppSetting::defaults());
         }
 
-        $logoUrl = $validated['logo_url'] ?? $setting->logo_url;
+        $logoUrl = $validated['logo_url'] ?? $setting->logo_url ?? AppSetting::defaults()['logo_url'];
         if ($request->hasFile('logo')) {
             $stored = $request->file('logo')->store('brand', 'public');
             $logoUrl = Storage::url($stored);
@@ -65,9 +65,9 @@ class AppSettingController extends Controller
         ]);
 
         return response()->json([
-            'brand_name' => $setting->brand_name,
+            'brand_name' => $setting->brand_name ?: config('app.name', 'job clickon'),
             'primary_color' => $setting->primary_color,
-            'logo_url' => $setting->logo_url,
+            'logo_url' => $setting->logo_url ?: AppSetting::defaults()['logo_url'],
             'support_email' => $setting->support_email,
             'support_phone' => $setting->support_phone,
             'support_address' => $setting->support_address,

@@ -4,7 +4,7 @@ import { Link, usePage } from '@inertiajs/inertia-react';
 
 export default function Guest({ children }) {
     const { settings } = usePage().props;
-    const brandName = settings?.brand_name || 'ClickOn';
+    const brandName = settings?.brand_name || 'job clickon';
     const logoUrl = settings?.logo_url;
 
     useEffect(() => {

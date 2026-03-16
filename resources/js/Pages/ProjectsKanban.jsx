@@ -48,6 +48,16 @@ const SERVICE_STYLES = {
     cham_soc_website_tong_the: 'bg-emerald-50 text-emerald-700 border-emerald-200',
 };
 
+const HANDOVER_LABELS = {
+    pending: 'Chờ duyệt bàn giao',
+    approved: 'Đã duyệt bàn giao',
+};
+
+const HANDOVER_STYLES = {
+    pending: 'bg-amber-50 text-amber-700 border-amber-200',
+    approved: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+};
+
 export default function ProjectsKanban(props) {
     const toast = useToast();
     const userRole = props?.auth?.user?.role || '';
@@ -79,6 +89,7 @@ export default function ProjectsKanban(props) {
         deadline: '',
         budget: '',
         status: DEFAULT_STATUSES[0].value,
+        handover_status: '',
         customer_requirement: '',
         owner_id: '',
         repo_url: '',
@@ -199,6 +210,18 @@ export default function ProjectsKanban(props) {
         return LABELS[project.service_type] || project.service_type || '';
     };
 
+    const handoverLabel = (value) => {
+        if (!value) return 'Chưa bàn giao';
+        return HANDOVER_LABELS[value] || value;
+    };
+
+    const projectProgress = (project) => {
+        const raw = project?.progress_percent;
+        const value = Number(raw ?? 0);
+        if (Number.isNaN(value)) return 0;
+        return Math.min(100, Math.max(0, Math.round(value)));
+    };
+
     const sortedByDeadline = useMemo(() => (
         [...projects].sort((a, b) => {
             const da = a.deadline ? new Date(a.deadline).getTime() : 0;
@@ -242,6 +265,7 @@ export default function ProjectsKanban(props) {
             deadline: '',
             budget: '',
             status: statusOptions[0]?.value || DEFAULT_STATUSES[0].value,
+            handover_status: '',
             customer_requirement: '',
             owner_id: '',
             repo_url: '',
@@ -272,6 +296,7 @@ export default function ProjectsKanban(props) {
             deadline: p.deadline || '',
             budget: p.budget ?? '',
             status: p.status || statusOptions[0]?.value || DEFAULT_STATUSES[0].value,
+            handover_status: p.handover_status || '',
             customer_requirement: p.customer_requirement || '',
             owner_id: p.owner_id || '',
             repo_url: p.repo_url || '',
@@ -302,6 +327,7 @@ export default function ProjectsKanban(props) {
                 start_date: form.start_date || null,
                 deadline: form.deadline || null,
                 service_type_other: form.service_type === 'khac' ? form.service_type_other : null,
+                handover_status: form.handover_status || null,
                 owner_id: form.owner_id ? Number(form.owner_id) : null,
                 repo_url: form.repo_url?.trim() ? form.repo_url.trim() : null,
             };
@@ -348,6 +374,7 @@ export default function ProjectsKanban(props) {
                 deadline: p.deadline,
                 budget: p.budget,
                 status: nextStatus,
+                handover_status: p.handover_status || null,
                 customer_requirement: p.customer_requirement,
                 owner_id: p.owner_id,
                 repo_url: p.repo_url,
@@ -356,6 +383,36 @@ export default function ProjectsKanban(props) {
             await fetchProjects();
         } catch (e) {
             toast.error(e?.response?.data?.message || 'Cập nhật trạng thái thất bại.');
+        }
+    };
+
+    const updateHandover = async (project, nextHandoverStatus) => {
+        if (!canUpdate) return toast.error('Bạn không có quyền cập nhật bàn giao.');
+        const shouldComplete =
+            nextHandoverStatus === 'approved' &&
+            projectProgress(project) >= 100 &&
+            project.status !== 'hoan_thanh';
+        try {
+            await axios.put(`/api/v1/projects/${project.id}`, {
+                code: project.code,
+                name: project.name,
+                client_id: project.client_id,
+                contract_id: project.contract_id,
+                service_type: project.service_type,
+                service_type_other: project.service_type_other || null,
+                start_date: project.start_date,
+                deadline: project.deadline,
+                budget: project.budget,
+                status: shouldComplete ? 'hoan_thanh' : project.status,
+                handover_status: nextHandoverStatus,
+                customer_requirement: project.customer_requirement,
+                owner_id: project.owner_id,
+                repo_url: project.repo_url,
+            });
+            toast.success('Đã cập nhật trạng thái bàn giao.');
+            await fetchProjects();
+        } catch (e) {
+            toast.error(e?.response?.data?.message || 'Cập nhật bàn giao thất bại.');
         }
     };
 
@@ -436,6 +493,8 @@ export default function ProjectsKanban(props) {
                                             <th className="py-2">Dự án</th>
                                             <th className="py-2">Dịch vụ</th>
                                             <th className="py-2">Trạng thái</th>
+                                            <th className="py-2">Tiến độ</th>
+                                            <th className="py-2">Bàn giao</th>
                                             <th className="py-2">Phụ trách</th>
                                             <th className="py-2">Hợp đồng</th>
                                             <th className="py-2">Hạn chót</th>
@@ -466,6 +525,23 @@ export default function ProjectsKanban(props) {
                                                         }`}
                                                     >
                                                         {LABELS[p.status] || p.status}
+                                                    </span>
+                                                </td>
+                                                <td className="py-3">
+                                                    <div className="w-24">
+                                                        <div className="text-xs text-text-muted mb-1">{projectProgress(p)}%</div>
+                                                        <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                                                            <div className="h-1.5 bg-primary" style={{ width: `${projectProgress(p)}%` }} />
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="py-3">
+                                                    <span
+                                                        className={`rounded-full border px-2 py-1 text-xs font-semibold ${
+                                                            HANDOVER_STYLES[p.handover_status] || 'bg-slate-100 text-slate-600 border-slate-200'
+                                                        }`}
+                                                    >
+                                                        {handoverLabel(p.handover_status)}
                                                     </span>
                                                 </td>
                                                 <td className="py-3 text-xs text-text-muted">
@@ -499,6 +575,24 @@ export default function ProjectsKanban(props) {
                                                     >
                                                         Kho
                                                     </a>
+                                                    {canUpdate && p.handover_status !== 'pending' && p.handover_status !== 'approved' && (
+                                                        <button
+                                                            className="text-xs font-semibold text-amber-700"
+                                                            onClick={() => updateHandover(p, 'pending')}
+                                                            type="button"
+                                                        >
+                                                            Gửi duyệt BG
+                                                        </button>
+                                                    )}
+                                                    {canUpdate && p.handover_status === 'pending' && (
+                                                        <button
+                                                            className="text-xs font-semibold text-emerald-700"
+                                                            onClick={() => updateHandover(p, 'approved')}
+                                                            type="button"
+                                                        >
+                                                            Duyệt BG
+                                                        </button>
+                                                    )}
                                                     {canUpdate && (
                                                         <button className="text-xs font-semibold text-primary" onClick={() => startEdit(p)} type="button">
                                                             Sửa
@@ -514,14 +608,14 @@ export default function ProjectsKanban(props) {
                                         ))}
                                         {loading && (
                                             <tr>
-                                                <td className="py-6 text-center text-sm text-text-muted" colSpan={7}>
+                                                <td className="py-6 text-center text-sm text-text-muted" colSpan={10}>
                                                     Đang tải...
                                                 </td>
                                             </tr>
                                         )}
                                         {!loading && projects.length === 0 && (
                                             <tr>
-                                                <td className="py-6 text-center text-sm text-text-muted" colSpan={8}>
+                                                <td className="py-6 text-center text-sm text-text-muted" colSpan={10}>
                                                     Chưa có dự án theo bộ lọc.
                                                 </td>
                                             </tr>
@@ -558,6 +652,33 @@ export default function ProjectsKanban(props) {
                                                 <p className={`text-xs mt-1 ${p.contract ? 'text-text-muted' : 'text-warning'}`}>
                                                     Hợp đồng: {p.contract?.code || 'Chưa có hợp đồng'}
                                                 </p>
+                                                <div className="mt-2 flex items-center justify-between text-xs text-text-muted">
+                                                    <span>Tiến độ: {projectProgress(p)}%</span>
+                                                    <span>{handoverLabel(p.handover_status)}</span>
+                                                </div>
+                                                <div className="mt-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                                                    <div className="h-1.5 bg-primary" style={{ width: `${projectProgress(p)}%` }} />
+                                                </div>
+                                                <div className="mt-2 flex items-center gap-2">
+                                                    {canUpdate && p.handover_status !== 'pending' && p.handover_status !== 'approved' && (
+                                                        <button
+                                                            className="text-[11px] font-semibold text-amber-700"
+                                                            onClick={() => updateHandover(p, 'pending')}
+                                                            type="button"
+                                                        >
+                                                            Gửi duyệt BG
+                                                        </button>
+                                                    )}
+                                                    {canUpdate && p.handover_status === 'pending' && (
+                                                        <button
+                                                            className="text-[11px] font-semibold text-emerald-700"
+                                                            onClick={() => updateHandover(p, 'approved')}
+                                                            type="button"
+                                                        >
+                                                            Duyệt BG
+                                                        </button>
+                                                    )}
+                                                </div>
                                                 <div className="mt-3 flex flex-wrap gap-2">
                                                     {statusOptions.map((s) => (
                                                         <button
@@ -597,6 +718,8 @@ export default function ProjectsKanban(props) {
                                             Hợp đồng: {p.contract?.code || 'Chưa có hợp đồng'}
                                         </p>
                                         <div className="mt-2 text-xs text-text-muted">Trạng thái: {LABELS[p.status] || p.status}</div>
+                                        <div className="mt-1 text-xs text-text-muted">Tiến độ: {projectProgress(p)}%</div>
+                                        <div className="mt-1 text-xs text-text-muted">Bàn giao: {handoverLabel(p.handover_status)}</div>
                                     </div>
                                 </div>
                             ))}
@@ -625,8 +748,11 @@ export default function ProjectsKanban(props) {
                                     <div className={`text-xs mb-2 ${p.contract ? 'text-text-muted' : 'text-warning'}`}>
                                         Hợp đồng: {p.contract?.code || 'Chưa có hợp đồng'}
                                     </div>
+                                    <div className="mb-2 text-xs text-text-muted">
+                                        Tiến độ: {projectProgress(p)}% • Bàn giao: {handoverLabel(p.handover_status)} • {totalDays} ngày
+                                    </div>
                                     <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
-                                            <div className="h-2 bg-primary" style={{ width: `${Math.min(100, totalDays * 8)}%` }} />
+                                            <div className="h-2 bg-primary" style={{ width: `${projectProgress(p)}%` }} />
                                         </div>
                                     </div>
                                 );
@@ -694,6 +820,15 @@ export default function ProjectsKanban(props) {
                     />
                     <select className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" value={form.status} onChange={(e) => setForm((s) => ({ ...s, status: e.target.value }))}>
                         {statusOptions.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                    </select>
+                    <select
+                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                        value={form.handover_status}
+                        onChange={(e) => setForm((s) => ({ ...s, handover_status: e.target.value }))}
+                    >
+                        <option value="">Chưa bàn giao</option>
+                        <option value="pending">Chờ duyệt bàn giao</option>
+                        <option value="approved">Đã duyệt bàn giao</option>
                     </select>
                     <textarea className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" rows={3} placeholder="Yêu cầu khách hàng" value={form.customer_requirement} onChange={(e) => setForm((s) => ({ ...s, customer_requirement: e.target.value }))} />
                     <div className="flex items-center gap-3">

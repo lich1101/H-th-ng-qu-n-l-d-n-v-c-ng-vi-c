@@ -28,4 +28,9 @@ class ProjectMeeting extends Model
     {
         return $this->hasMany(MeetingAttendee::class, 'meeting_id');
     }
+
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
 }

@@ -19,9 +19,9 @@ class AppSetting extends Model
     public static function defaults(): array
     {
         return [
-            'brand_name' => config('app.name', 'ClickOn'),
+            'brand_name' => config('app.name', 'job clickon'),
             'primary_color' => '#04BC5C',
-            'logo_url' => null,
+            'logo_url' => '/brand/icon.png',
             'support_email' => null,
             'support_phone' => null,
             'support_address' => null,

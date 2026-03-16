@@ -195,7 +195,7 @@ export default function RevenueTiers(props) {
                     />
                     <div className="grid grid-cols-2 gap-2">
                         <input
-                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            className="h-11 w-full rounded-2xl border border-slate-200/80 p-1"
                             type="color"
                             value={form.color_hex}
                             onChange={(e) => setForm((s) => ({ ...s, color_hex: e.target.value }))}

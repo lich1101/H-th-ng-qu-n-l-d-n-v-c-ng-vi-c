@@ -26,18 +26,6 @@ export default function PageContainer({
         >
             <Head title={title} />
 
-            {stats.length > 0 && (
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 mb-6">
-                    {stats.map((item) => (
-                        <div key={item.label} className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-card">
-                            <p className="text-xs uppercase tracking-wide text-text-subtle">{item.label}</p>
-                            <p className="mt-2 text-2xl font-semibold text-primary">{item.value}</p>
-                            {item.note && <p className="mt-1 text-xs text-text-muted">{item.note}</p>}
-                        </div>
-                    ))}
-                </div>
-            )}
-
             {children}
         </Authenticated>
     );

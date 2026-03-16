@@ -6,11 +6,9 @@ export default function FacebookPages(props) {
     const connected = Boolean(props.facebookConnected);
     const expiresAt = props.facebookTokenExpiresAt;
     const [pages, setPages] = useState([]);
-    const [token, setToken] = useState('');
     const [message, setMessage] = useState('');
     const [loading, setLoading] = useState(false);
     const [syncing, setSyncing] = useState(false);
-    const [showManual, setShowManual] = useState(false);
 
     const fetchPages = async () => {
         setLoading(true);
@@ -24,26 +22,28 @@ export default function FacebookPages(props) {
         }
     };
 
-    useEffect(() => {
-        fetchPages();
-    }, []);
-
-    const syncPages = async () => {
+    const autoSyncPages = async () => {
+        if (!connected) return;
         setSyncing(true);
         setMessage('');
         try {
-            const payload = token.trim()
-                ? { user_access_token: token.trim() }
-                : {};
-            const res = await axios.post('/api/v1/facebook/pages/sync', payload);
+            const res = await axios.post('/api/v1/facebook/pages/sync');
             setPages(res.data?.pages || []);
-            setMessage(res.data?.message || 'Đã đồng bộ danh sách Page.');
+            setMessage(res.data?.message || 'Đã tự động đồng bộ danh sách Page.');
         } catch (e) {
-            setMessage(e?.response?.data?.message || 'Đồng bộ thất bại.');
+            setMessage(e?.response?.data?.message || 'Đồng bộ danh sách Page thất bại.');
         } finally {
             setSyncing(false);
         }
     };
+
+    useEffect(() => {
+        fetchPages();
+        if (connected) {
+            autoSyncPages();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [connected]);
 
     const subscribePage = async (pageId) => {
         setMessage('');
@@ -83,17 +83,6 @@ export default function FacebookPages(props) {
         window.location.href = route('facebook.login');
     };
 
-    const handleDisconnect = async () => {
-        setMessage('');
-        try {
-            await axios.post(route('facebook.disconnect'));
-            setMessage('Đã ngắt kết nối Facebook.');
-            fetchPages();
-        } catch (e) {
-            setMessage(e?.response?.data?.message || 'Không thể ngắt kết nối.');
-        }
-    };
-
     return (
         <PageContainer
             auth={props.auth}
@@ -105,7 +94,7 @@ export default function FacebookPages(props) {
                 <div className="lg:col-span-1 bg-white rounded-2xl border border-slate-200/80 p-6 shadow-card">
                     <h3 className="font-semibold text-slate-900">Kết nối Page</h3>
                     <p className="text-sm text-text-muted mt-1">
-                        Đăng nhập Facebook để lấy danh sách Page quản lý.
+                        Sau khi đăng nhập Facebook, hệ thống tự động đồng bộ danh sách Page.
                     </p>
                     <div className="mt-4 space-y-3">
                         <div className="rounded-2xl border border-slate-200/80 p-4">
@@ -118,6 +107,11 @@ export default function FacebookPages(props) {
                                     Hết hạn: {new Date(expiresAt).toLocaleString()}
                                 </p>
                             )}
+                            {syncing && (
+                                <p className="text-xs text-primary mt-2">
+                                    Đang tự động đồng bộ danh sách Page...
+                                </p>
+                            )}
                         </div>
                         <button
                             type="button"
@@ -126,40 +120,6 @@ export default function FacebookPages(props) {
                         >
                             Đăng nhập Facebook
                         </button>
-                        <button
-                            type="button"
-                            onClick={syncPages}
-                            disabled={syncing}
-                            className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition disabled:opacity-60"
-                        >
-                            {syncing ? 'Đang đồng bộ...' : 'Đồng bộ danh sách Page'}
-                        </button>
-                        {connected && (
-                            <button
-                                type="button"
-                                onClick={handleDisconnect}
-                                className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition"
-                            >
-                                Ngắt kết nối
-                            </button>
-                        )}
-                        <button
-                            type="button"
-                            onClick={() => setShowManual((prev) => !prev)}
-                            className="text-xs text-slate-500 underline"
-                        >
-                            {showManual ? 'Ẩn nhập token thủ công' : 'Nhập token thủ công (tuỳ chọn)'}
-                        </button>
-                        {showManual && (
-                            <div className="space-y-2">
-                                <input
-                                    className="w-full rounded-xl border border-slate-200/80 px-3 py-2 text-sm"
-                                    placeholder="User Access Token"
-                                    value={token}
-                                    onChange={(e) => setToken(e.target.value)}
-                                />
-                            </div>
-                        )}
                         {message && (
                             <p className="text-sm text-emerald-600">{message}</p>
                         )}

@@ -1,268 +1,497 @@
-import React from 'react';
-import { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import { useToast } from '@/Contexts/ToastContext';
 
-export default function Meetings(props) {
-    const initialQuery = (() => {
-        if (typeof window === 'undefined') {
-            return { search: '', date_from: '', date_to: '', per_page: 10, page: 1 };
-        }
-        const params = new URLSearchParams(window.location.search);
-        const perPage = Number(params.get('per_page') || 10);
-        const page = Number(params.get('page') || 1);
+const WEEK_DAYS = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+
+const pad = (value) => String(value).padStart(2, '0');
+
+const toDateKey = (raw) => {
+    if (!raw) return '';
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) {
+        return String(raw).slice(0, 10);
+    }
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+};
+
+const toDateTimeLocal = (raw) => {
+    if (!raw) return '';
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) {
+        return String(raw).replace(' ', 'T').slice(0, 16);
+    }
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
+
+const formatDateTime = (raw) => {
+    if (!raw) return '—';
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) return raw;
+    return date.toLocaleString('vi-VN', {
+        hour: '2-digit',
+        minute: '2-digit',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+    });
+};
+
+const getMonthRange = (monthDate) => {
+    const start = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+    const end = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0);
+    return {
+        date_from: `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}`,
+        date_to: `${end.getFullYear()}-${pad(end.getMonth() + 1)}-${pad(end.getDate())}`,
+    };
+};
+
+const buildCalendarCells = (monthDate) => {
+    const firstDay = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+    const startOffset = (firstDay.getDay() + 6) % 7;
+    const startDate = new Date(firstDay);
+    startDate.setDate(firstDay.getDate() - startOffset);
+
+    return Array.from({ length: 42 }, (_, index) => {
+        const date = new Date(startDate);
+        date.setDate(startDate.getDate() + index);
         return {
-            search: params.get('search') || '',
-            date_from: params.get('date_from') || '',
-            date_to: params.get('date_to') || '',
-            per_page: Number.isNaN(perPage) ? 10 : perPage,
-            page: Number.isNaN(page) ? 1 : page,
+            key: `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`,
+            date,
+            isCurrentMonth: date.getMonth() === monthDate.getMonth(),
         };
-    })();
+    });
+};
+
+const defaultDateTimeByDate = (date) =>
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T09:00`;
+
+export default function Meetings(props) {
+    const toast = useToast();
+    const userRole = props?.auth?.user?.role || '';
+    const canManage = ['admin', 'quan_ly'].includes(userRole);
+    const canDelete = ['admin', 'quan_ly'].includes(userRole);
 
     const [meetings, setMeetings] = useState([]);
+    const [users, setUsers] = useState([]);
+    const [loading, setLoading] = useState(false);
     const [meetingMeta, setMeetingMeta] = useState({
         current_page: 1,
         last_page: 1,
         total: 0,
     });
-    const [meetingPage, setMeetingPage] = useState(initialQuery.page);
-    const [meetingFilters, setMeetingFilters] = useState({
-        search: initialQuery.search,
-        date_from: initialQuery.date_from,
-        date_to: initialQuery.date_to,
-        per_page: initialQuery.per_page,
+
+    const [currentMonth, setCurrentMonth] = useState(() => new Date());
+    const [selectedDate, setSelectedDate] = useState(() => new Date());
+    const [filters, setFilters] = useState(() => {
+        const range = getMonthRange(new Date());
+        return {
+            search: '',
+            date_from: range.date_from,
+            date_to: range.date_to,
+            attendee_id: '',
+            per_page: 200,
+            page: 1,
+        };
     });
-    const [editingId, setEditingId] = useState(null);
+
     const [showForm, setShowForm] = useState(false);
+    const [editingId, setEditingId] = useState(null);
+    const [showDetails, setShowDetails] = useState(false);
+    const [detailMeeting, setDetailMeeting] = useState(null);
     const [form, setForm] = useState({
         title: '',
-        scheduled_at: '',
+        scheduled_at: defaultDateTimeByDate(new Date()),
         meeting_link: '',
         description: '',
         minutes: '',
+        attendee_ids: [],
     });
-    const toast = useToast();
 
-    const getErrorMessage = (error, fallback) => {
-        return error?.response?.data?.message || fallback;
+    const getErrorMessage = (error, fallback) =>
+        error?.response?.data?.message || fallback;
+
+    const fetchUsers = async () => {
+        try {
+            const response = await axios.get('/api/v1/users/lookup', {
+                params: { per_page: 300 },
+            });
+            setUsers(response.data?.data || []);
+        } catch {
+            setUsers([]);
+        }
     };
 
-    const syncMeetingUrl = (filters, page) => {
-        if (typeof window === 'undefined') return;
-        const params = new URLSearchParams();
-        if (filters.search) params.set('search', filters.search);
-        if (filters.date_from) params.set('date_from', filters.date_from);
-        if (filters.date_to) params.set('date_to', filters.date_to);
-        if (Number(filters.per_page) !== 10) params.set('per_page', String(filters.per_page));
-        if (page > 1) params.set('page', String(page));
-        const queryString = params.toString();
-        const newUrl = `${window.location.pathname}${queryString ? `?${queryString}` : ''}`;
-        window.history.replaceState({}, '', newUrl);
-    };
-
-    const fetchMeetings = async (page = 1, filtersArg = meetingFilters) => {
+    const fetchMeetings = async (nextPage = 1, nextFilters = filters) => {
+        setLoading(true);
         try {
             const response = await axios.get('/api/v1/meetings', {
                 params: {
-                    ...filtersArg,
-                    page,
+                    search: nextFilters.search || undefined,
+                    date_from: nextFilters.date_from || undefined,
+                    date_to: nextFilters.date_to || undefined,
+                    attendee_id: nextFilters.attendee_id || undefined,
+                    per_page: nextFilters.per_page || 200,
+                    page: nextPage,
                 },
             });
-            const resolvedPage = response.data.current_page || 1;
-            setMeetings(response.data.data || []);
+            setMeetings(response.data?.data || []);
             setMeetingMeta({
-                current_page: resolvedPage,
-                last_page: response.data.last_page || 1,
-                total: response.data.total || 0,
+                current_page: response.data?.current_page || 1,
+                last_page: response.data?.last_page || 1,
+                total: response.data?.total || 0,
             });
-            setMeetingPage(resolvedPage);
-            syncMeetingUrl(filtersArg, resolvedPage);
         } catch (error) {
             toast.error(getErrorMessage(error, 'Không tải được danh sách lịch họp.'));
+        } finally {
+            setLoading(false);
         }
     };
 
     useEffect(() => {
-        fetchMeetings(initialQuery.page, {
-            search: initialQuery.search,
-            date_from: initialQuery.date_from,
-            date_to: initialQuery.date_to,
-            per_page: initialQuery.per_page,
-        });
+        fetchUsers();
+        fetchMeetings(1, filters);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    const createMeeting = async (e) => {
-        e.preventDefault();
-        try {
-            await axios.post('/api/v1/meetings', {
-                ...form,
-                scheduled_at: form.scheduled_at,
+    const meetingsByDate = useMemo(() => {
+        const map = {};
+        meetings.forEach((meeting) => {
+            const key = toDateKey(meeting.scheduled_at);
+            if (!key) return;
+            if (!map[key]) map[key] = [];
+            map[key].push(meeting);
+        });
+        Object.keys(map).forEach((key) => {
+            map[key].sort((a, b) => {
+                return new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime();
             });
-            setForm({ title: '', scheduled_at: '', meeting_link: '', description: '', minutes: '' });
-            setEditingId(null);
-            setShowForm(false);
-            await fetchMeetings(meetingPage);
-            toast.success('Tạo lịch họp thành công.');
-        } catch (error) {
-            toast.error(getErrorMessage(error, 'Tạo lịch họp thất bại.'));
-        }
+        });
+        return map;
+    }, [meetings]);
+
+    const selectedDateKey = toDateKey(selectedDate);
+    const selectedMeetings = meetingsByDate[selectedDateKey] || [];
+    const calendarCells = useMemo(() => buildCalendarCells(currentMonth), [currentMonth]);
+    const monthLabel = currentMonth.toLocaleDateString('vi-VN', { month: 'long', year: 'numeric' });
+
+    const toggleAttendee = (userId) => {
+        setForm((prev) => {
+            const current = prev.attendee_ids || [];
+            const exists = current.includes(userId);
+            return {
+                ...prev,
+                attendee_ids: exists
+                    ? current.filter((id) => id !== userId)
+                    : [...current, userId],
+            };
+        });
+    };
+
+    const openCreate = () => {
+        setEditingId(null);
+        setForm({
+            title: '',
+            scheduled_at: defaultDateTimeByDate(selectedDate),
+            meeting_link: '',
+            description: '',
+            minutes: '',
+            attendee_ids: [],
+        });
+        setShowForm(true);
     };
 
     const startEdit = (meeting) => {
         setEditingId(meeting.id);
         setForm({
             title: meeting.title || '',
-            scheduled_at: meeting.scheduled_at ? meeting.scheduled_at.slice(0, 16) : '',
+            scheduled_at: toDateTimeLocal(meeting.scheduled_at),
             meeting_link: meeting.meeting_link || '',
             description: meeting.description || '',
             minutes: meeting.minutes || '',
+            attendee_ids: (meeting.attendees || [])
+                .map((attendee) => Number(attendee.user_id || attendee.user?.id || 0))
+                .filter((id) => id > 0),
         });
         setShowForm(true);
     };
 
-    const updateMeeting = async (e) => {
-        e.preventDefault();
-        if (!editingId) return;
+    const closeForm = () => {
+        setShowForm(false);
+        setEditingId(null);
+    };
+
+    const saveMeeting = async (event) => {
+        event.preventDefault();
+        if (!canManage) {
+            toast.error('Bạn không có quyền thao tác lịch họp.');
+            return;
+        }
+        if (!form.title.trim() || !form.scheduled_at) {
+            toast.error('Vui lòng nhập tiêu đề và thời gian họp.');
+            return;
+        }
         try {
-            await axios.put(`/api/v1/meetings/${editingId}`, {
-                ...form,
+            const payload = {
+                title: form.title.trim(),
                 scheduled_at: form.scheduled_at,
-            });
-            setForm({ title: '', scheduled_at: '', meeting_link: '', description: '', minutes: '' });
-            setEditingId(null);
-            setShowForm(false);
-            await fetchMeetings(meetingPage);
-            toast.success('Cập nhật lịch họp thành công.');
+                meeting_link: form.meeting_link?.trim() || null,
+                description: form.description?.trim() || null,
+                minutes: form.minutes?.trim() || null,
+                attendee_ids: form.attendee_ids || [],
+            };
+            if (editingId) {
+                await axios.put(`/api/v1/meetings/${editingId}`, payload);
+                toast.success('Cập nhật lịch họp thành công.');
+            } else {
+                await axios.post('/api/v1/meetings', payload);
+                toast.success('Tạo lịch họp thành công, hệ thống đã gửi thông báo cho thành viên.');
+            }
+            closeForm();
+            await fetchMeetings(meetingMeta.current_page || 1, filters);
         } catch (error) {
-            toast.error(getErrorMessage(error, 'Cập nhật lịch họp thất bại.'));
+            toast.error(getErrorMessage(error, 'Lưu lịch họp thất bại.'));
         }
     };
 
-    const deleteMeeting = async (id) => {
+    const deleteMeeting = async (meetingId) => {
+        if (!canDelete) {
+            toast.error('Bạn không có quyền xóa lịch họp.');
+            return;
+        }
+        if (!window.confirm('Bạn có chắc muốn xóa lịch họp này?')) return;
         try {
-            await axios.delete(`/api/v1/meetings/${id}`);
-            if (editingId === id) {
-                setEditingId(null);
-                setForm({ title: '', scheduled_at: '', meeting_link: '', description: '', minutes: '' });
-                setShowForm(false);
-            }
-            await fetchMeetings(meetingPage);
+            await axios.delete(`/api/v1/meetings/${meetingId}`);
             toast.success('Xóa lịch họp thành công.');
+            if (showDetails && detailMeeting?.id === meetingId) {
+                setShowDetails(false);
+                setDetailMeeting(null);
+            }
+            await fetchMeetings(meetingMeta.current_page || 1, filters);
         } catch (error) {
             toast.error(getErrorMessage(error, 'Xóa lịch họp thất bại.'));
         }
     };
 
-    const applyFilters = async (e) => {
-        e.preventDefault();
-        await fetchMeetings(1, meetingFilters);
+    const applyFilters = async (event) => {
+        event.preventDefault();
+        await fetchMeetings(1, filters);
     };
 
-    const openCreate = () => {
-        setEditingId(null);
-        setForm({ title: '', scheduled_at: '', meeting_link: '', description: '', minutes: '' });
-        setShowForm(true);
+    const openMeetingDetails = (meeting) => {
+        setDetailMeeting(meeting);
+        setShowDetails(true);
     };
 
-    const closeForm = () => {
-        setEditingId(null);
-        setForm({ title: '', scheduled_at: '', meeting_link: '', description: '', minutes: '' });
-        setShowForm(false);
+    const moveMonth = (delta) => {
+        const next = new Date(currentMonth);
+        next.setMonth(next.getMonth() + delta);
+        setCurrentMonth(next);
     };
 
-    const goPrevPage = () => {
-        if (meetingMeta.current_page > 1) {
-            fetchMeetings(meetingMeta.current_page - 1);
-        }
-    };
-
-    const goNextPage = () => {
-        if (meetingMeta.current_page < meetingMeta.last_page) {
-            fetchMeetings(meetingMeta.current_page + 1);
-        }
+    const useCurrentMonthRange = async () => {
+        const range = getMonthRange(currentMonth);
+        const nextFilters = { ...filters, ...range };
+        setFilters(nextFilters);
+        await fetchMeetings(1, nextFilters);
     };
 
     return (
         <PageContainer
             auth={props.auth}
-            title="Lịch họp bàn giao"
-            description="Lên lịch họp, gửi lời mời và lưu biên bản theo từng dự án/công việc."
-            stats={[
-                { label: 'Tổng lịch họp', value: meetingMeta.total },
-                { label: 'Chế độ', value: editingId ? 'Đang chỉnh sửa' : 'Tạo mới' },
-                { label: 'Nguồn dữ liệu', value: 'API nội bộ' },
-                { label: 'Hỗ trợ', value: 'CRUD đầy đủ' },
-            ]}
+            title="Lịch họp"
+            description="Lịch họp theo dạng lịch tháng, có chọn nhiều thành viên và xem nhanh thông tin cuộc họp."
         >
-            <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
-                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4">
-                    <h3 className="font-semibold text-slate-900">Danh sách lịch họp</h3>
-                    <form onSubmit={applyFilters} className="flex flex-wrap gap-2">
+            <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card mb-4">
+                <form onSubmit={applyFilters} className="flex flex-wrap gap-2">
+                    <button
+                        type="button"
+                        className="rounded-2xl bg-primary text-white px-3 py-2 text-sm font-semibold"
+                        onClick={openCreate}
+                        disabled={!canManage}
+                    >
+                        Thêm lịch họp
+                    </button>
+                    <input
+                        type="text"
+                        className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                        placeholder="Tìm tiêu đề / ghi chú"
+                        value={filters.search}
+                        onChange={(e) => setFilters((prev) => ({ ...prev, search: e.target.value }))}
+                    />
+                    <input
+                        type="date"
+                        className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                        value={filters.date_from}
+                        onChange={(e) => setFilters((prev) => ({ ...prev, date_from: e.target.value }))}
+                    />
+                    <input
+                        type="date"
+                        className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                        value={filters.date_to}
+                        onChange={(e) => setFilters((prev) => ({ ...prev, date_to: e.target.value }))}
+                    />
+                    <select
+                        className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                        value={filters.attendee_id}
+                        onChange={(e) => setFilters((prev) => ({ ...prev, attendee_id: e.target.value }))}
+                    >
+                        <option value="">Tất cả thành viên</option>
+                        {users.map((user) => (
+                            <option key={user.id} value={user.id}>
+                                {user.name}
+                            </option>
+                        ))}
+                    </select>
+                    <button type="submit" className="rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700">
+                        Lọc
+                    </button>
+                    <button type="button" className="rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700" onClick={useCurrentMonthRange}>
+                        Lọc theo tháng đang xem
+                    </button>
+                </form>
+            </div>
+
+            <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+                <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-card">
+                    <div className="flex items-center justify-between mb-3">
                         <button
                             type="button"
-                            className="rounded-2xl bg-primary text-white px-3 py-2 text-sm font-semibold"
-                            onClick={openCreate}
+                            className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700"
+                            onClick={() => moveMonth(-1)}
                         >
-                            Thêm mới
+                            Tháng trước
                         </button>
-                        <input
-                            type="text"
-                            className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                            placeholder="Tìm tiêu đề"
-                            value={meetingFilters.search}
-                            onChange={(e) => setMeetingFilters((prev) => ({ ...prev, search: e.target.value }))}
-                        />
-                        <input
-                            type="date"
-                            className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                            value={meetingFilters.date_from}
-                            onChange={(e) => setMeetingFilters((prev) => ({ ...prev, date_from: e.target.value }))}
-                        />
-                        <input
-                            type="date"
-                            className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                            value={meetingFilters.date_to}
-                            onChange={(e) => setMeetingFilters((prev) => ({ ...prev, date_to: e.target.value }))}
-                        />
-                        <button type="submit" className="text-sm text-primary font-semibold">Lọc</button>
-                    </form>
-                </div>
-
-                <div className="space-y-3">
-                    {meetings.map((meeting) => (
-                        <div key={meeting.id} className="rounded-2xl border border-slate-200/80 p-4">
-                            <div className="flex items-center justify-between">
-                                <h4 className="font-semibold text-slate-900">{meeting.title}</h4>
-                                <div className="flex items-center gap-3 text-xs">
-                                    <button className="text-primary" onClick={() => startEdit(meeting)} type="button">Sửa</button>
-                                    <button className="text-danger" onClick={() => deleteMeeting(meeting.id)} type="button">Xóa</button>
-                                </div>
+                        <h3 className="text-sm font-semibold text-slate-900 capitalize">{monthLabel}</h3>
+                        <button
+                            type="button"
+                            className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700"
+                            onClick={() => moveMonth(1)}
+                        >
+                            Tháng sau
+                        </button>
+                    </div>
+                    <div className="grid grid-cols-7 gap-2 mb-2">
+                        {WEEK_DAYS.map((day) => (
+                            <div key={day} className="text-center text-[11px] font-semibold uppercase tracking-wide text-text-subtle">
+                                {day}
                             </div>
-                            <p className="text-xs text-text-muted mt-1">{meeting.scheduled_at}</p>
-                            {meeting.meeting_link && (
-                                <a className="text-xs text-primary mt-2 inline-block" href={meeting.meeting_link} target="_blank" rel="noreferrer">
-                                    Mở liên kết họp
-                                </a>
-                            )}
-                            {meeting.description && (
-                                <p className="text-xs text-text-muted mt-2">{meeting.description}</p>
-                            )}
-                        </div>
-                    ))}
-                    {!meetings.length && (
-                        <p className="text-sm text-text-muted">Chưa có lịch họp.</p>
-                    )}
+                        ))}
+                    </div>
+                    <div className="grid grid-cols-7 gap-2">
+                        {calendarCells.map((cell) => {
+                            const dayMeetings = meetingsByDate[cell.key] || [];
+                            const isSelected = cell.key === selectedDateKey;
+                            return (
+                                <button
+                                    key={cell.key}
+                                    type="button"
+                                    className={`min-h-[96px] rounded-xl border p-2 text-left transition ${
+                                        isSelected
+                                            ? 'border-primary bg-primary/5'
+                                            : cell.isCurrentMonth
+                                                ? 'border-slate-200/80 bg-white'
+                                                : 'border-slate-100 bg-slate-50 text-slate-400'
+                                    }`}
+                                    onClick={() => setSelectedDate(cell.date)}
+                                >
+                                    <div className="text-xs font-semibold">{cell.date.getDate()}</div>
+                                    <div className="mt-1 space-y-1">
+                                        {dayMeetings.slice(0, 2).map((meeting) => (
+                                            <div key={meeting.id} className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary truncate">
+                                                {meeting.title}
+                                            </div>
+                                        ))}
+                                        {dayMeetings.length > 2 && (
+                                            <div className="text-[10px] text-text-muted">+{dayMeetings.length - 2} lịch họp</div>
+                                        )}
+                                    </div>
+                                </button>
+                            );
+                        })}
+                    </div>
                 </div>
 
-                <div className="mt-4 flex items-center justify-between text-xs text-text-muted">
-                    <span>Trang {meetingMeta.current_page} / {meetingMeta.last_page}</span>
-                    <div className="flex gap-2">
-                        <button type="button" className="px-3 py-1 rounded-full border border-slate-200/80" onClick={goPrevPage}>Trước</button>
-                        <button type="button" className="px-3 py-1 rounded-full border border-slate-200/80" onClick={goNextPage}>Sau</button>
+                <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
+                    <div className="flex items-center justify-between mb-3">
+                        <h3 className="font-semibold text-slate-900">
+                            Sự kiện ngày {selectedDate.toLocaleDateString('vi-VN')}
+                        </h3>
+                        <span className="text-xs text-text-muted">{selectedMeetings.length} lịch họp</span>
+                    </div>
+                    <p className="text-xs text-text-muted mb-3">
+                        Chuột phải vào lịch họp để xem nhanh thành viên, ghi chú, link và thời gian bắt đầu.
+                    </p>
+                    <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+                        {loading && (
+                            <p className="text-sm text-text-muted">Đang tải dữ liệu lịch họp...</p>
+                        )}
+                        {!loading && selectedMeetings.length === 0 && (
+                            <p className="text-sm text-text-muted">Không có lịch họp trong ngày này.</p>
+                        )}
+                        {!loading && selectedMeetings.map((meeting) => (
+                            <div
+                                key={meeting.id}
+                                className="rounded-2xl border border-slate-200/80 p-3"
+                                onContextMenu={(event) => {
+                                    event.preventDefault();
+                                    openMeetingDetails(meeting);
+                                }}
+                            >
+                                <div className="flex items-start justify-between gap-2">
+                                    <div>
+                                        <p className="font-semibold text-slate-900">{meeting.title}</p>
+                                        <p className="text-xs text-text-muted mt-1">{formatDateTime(meeting.scheduled_at)}</p>
+                                        <p className="text-xs text-text-muted mt-1">
+                                            Thành viên: {(meeting.attendees || []).length}
+                                        </p>
+                                    </div>
+                                    <div className="flex items-center gap-2 text-xs">
+                                        {canManage && (
+                                            <button type="button" className="text-primary font-semibold" onClick={() => startEdit(meeting)}>
+                                                Sửa
+                                            </button>
+                                        )}
+                                        {canDelete && (
+                                            <button type="button" className="text-danger font-semibold" onClick={() => deleteMeeting(meeting.id)}>
+                                                Xóa
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                                {meeting.meeting_link && (
+                                    <a className="text-xs text-primary mt-2 inline-block" href={meeting.meeting_link} target="_blank" rel="noreferrer">
+                                        Mở liên kết họp
+                                    </a>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                    <div className="mt-4 flex items-center justify-between text-xs text-text-muted">
+                        <span>Tổng lịch trong bộ lọc: {meetingMeta.total}</span>
+                        <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                className="rounded-full border border-slate-200/80 px-3 py-1"
+                                disabled={meetingMeta.current_page <= 1}
+                                onClick={() => fetchMeetings(meetingMeta.current_page - 1, filters)}
+                            >
+                                Trước
+                            </button>
+                            <span>
+                                {meetingMeta.current_page}/{meetingMeta.last_page}
+                            </span>
+                            <button
+                                type="button"
+                                className="rounded-full border border-slate-200/80 px-3 py-1"
+                                disabled={meetingMeta.current_page >= meetingMeta.last_page}
+                                onClick={() => fetchMeetings(meetingMeta.current_page + 1, filters)}
+                            >
+                                Sau
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -271,10 +500,10 @@ export default function Meetings(props) {
                 open={showForm}
                 onClose={closeForm}
                 title={editingId ? `Cập nhật lịch họp #${editingId}` : 'Tạo lịch họp mới'}
-                description="Lên lịch họp, liên kết họp và biên bản."
+                description="Chọn thời gian họp, thành viên tham gia và ghi chú cuộc họp."
                 size="lg"
             >
-                <form onSubmit={editingId ? updateMeeting : createMeeting} className="space-y-3 text-sm">
+                <form onSubmit={saveMeeting} className="space-y-3 text-sm">
                     <input
                         type="text"
                         value={form.title}
@@ -295,7 +524,7 @@ export default function Meetings(props) {
                         value={form.meeting_link}
                         onChange={(e) => setForm((prev) => ({ ...prev, meeting_link: e.target.value }))}
                         className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        placeholder="Liên kết họp"
+                        placeholder="Liên kết họp (Google Meet/Zoom...)"
                     />
                     <textarea
                         value={form.description}
@@ -309,8 +538,30 @@ export default function Meetings(props) {
                         onChange={(e) => setForm((prev) => ({ ...prev, minutes: e.target.value }))}
                         className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
                         rows={3}
-                        placeholder="Biên bản"
+                        placeholder="Biên bản cuộc họp"
                     />
+                    <div className="rounded-2xl border border-slate-200/80 p-3">
+                        <p className="text-xs font-semibold text-slate-900 mb-2">Thành viên tham gia (multi select)</p>
+                        <div className="max-h-44 overflow-y-auto space-y-2 pr-1">
+                            {users.map((user) => {
+                                const checked = (form.attendee_ids || []).includes(user.id);
+                                return (
+                                    <label key={user.id} className="flex items-center gap-2 text-sm text-slate-700">
+                                        <input
+                                            type="checkbox"
+                                            checked={checked}
+                                            onChange={() => toggleAttendee(user.id)}
+                                        />
+                                        <span>{user.name}</span>
+                                        <span className="text-xs text-text-muted">({user.role})</span>
+                                    </label>
+                                );
+                            })}
+                            {users.length === 0 && (
+                                <p className="text-xs text-text-muted">Không tải được danh sách thành viên.</p>
+                            )}
+                        </div>
+                    </div>
                     <div className="flex items-center gap-3">
                         <button type="submit" className="flex-1 rounded-2xl bg-primary text-white py-2.5 font-semibold">
                             {editingId ? 'Cập nhật lịch họp' : 'Tạo lịch họp'}
@@ -320,6 +571,57 @@ export default function Meetings(props) {
                         </button>
                     </div>
                 </form>
+            </Modal>
+
+            <Modal
+                open={showDetails}
+                onClose={() => setShowDetails(false)}
+                title={detailMeeting?.title || 'Chi tiết lịch họp'}
+                description="Thông tin cuộc họp từ thao tác chuột phải."
+                size="md"
+            >
+                {!detailMeeting ? (
+                    <p className="text-sm text-text-muted">Không có dữ liệu.</p>
+                ) : (
+                    <div className="space-y-3 text-sm">
+                        <div>
+                            <p className="text-xs uppercase tracking-wide text-text-subtle">Thời gian bắt đầu</p>
+                            <p className="font-semibold text-slate-900">{formatDateTime(detailMeeting.scheduled_at)}</p>
+                        </div>
+                        <div>
+                            <p className="text-xs uppercase tracking-wide text-text-subtle">Thành viên tham gia</p>
+                            {detailMeeting.attendees?.length ? (
+                                <div className="mt-1 flex flex-wrap gap-2">
+                                    {detailMeeting.attendees.map((attendee) => (
+                                        <span key={attendee.id || `${detailMeeting.id}-${attendee.user_id}`} className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-700">
+                                            {attendee.user?.name || `#${attendee.user_id}`}
+                                        </span>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="text-text-muted">Không có thành viên.</p>
+                            )}
+                        </div>
+                        <div>
+                            <p className="text-xs uppercase tracking-wide text-text-subtle">Ghi chú cuộc họp</p>
+                            <p className="text-slate-800">{detailMeeting.description || '—'}</p>
+                        </div>
+                        <div>
+                            <p className="text-xs uppercase tracking-wide text-text-subtle">Biên bản</p>
+                            <p className="text-slate-800">{detailMeeting.minutes || '—'}</p>
+                        </div>
+                        <div>
+                            <p className="text-xs uppercase tracking-wide text-text-subtle">Liên kết họp</p>
+                            {detailMeeting.meeting_link ? (
+                                <a href={detailMeeting.meeting_link} target="_blank" rel="noreferrer" className="text-primary font-semibold">
+                                    {detailMeeting.meeting_link}
+                                </a>
+                            ) : (
+                                <p className="text-text-muted">—</p>
+                            )}
+                        </div>
+                    </div>
+                )}
             </Modal>
         </PageContainer>
     );

@@ -88,6 +88,29 @@ class ProjectController extends Controller
     {
         $validated = $request->validate($this->rules($project->id));
         $oldContractId = $project->contract_id;
+        $nextStatus = (string) ($validated['status'] ?? $project->status);
+        $nextHandoverStatus = (string) ($validated['handover_status'] ?? $project->handover_status ?? '');
+
+        if ($nextStatus === 'hoan_thanh' && $nextHandoverStatus !== 'approved') {
+            return response()->json([
+                'message' => 'Dự án chỉ được chuyển Hoàn thành sau khi duyệt bàn giao.',
+            ], 422);
+        }
+
+        if (($validated['handover_status'] ?? null) === 'approved' && ! in_array($request->user()->role, ['admin', 'quan_ly'], true)) {
+            return response()->json([
+                'message' => 'Bạn không có quyền duyệt bàn giao dự án.',
+            ], 403);
+        }
+
+        if ($nextHandoverStatus === 'approved') {
+            $validated['approved_by'] = $request->user()->id;
+            $validated['approved_at'] = now();
+        } elseif (($validated['handover_status'] ?? null) === 'pending') {
+            $validated['approved_by'] = null;
+            $validated['approved_at'] = null;
+        }
+
         if (($validated['service_type'] ?? $project->service_type) === 'khac') {
             $validated['service_type_other'] = trim((string) ($validated['service_type_other'] ?? $project->service_type_other ?? ''));
             if ($validated['service_type_other'] === '') {

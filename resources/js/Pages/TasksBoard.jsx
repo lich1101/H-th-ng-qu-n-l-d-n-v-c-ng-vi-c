@@ -129,6 +129,14 @@ export default function TasksBoard(props) {
     const [reviewItem, setReviewItem] = useState(null);
     const [itemUpdates, setItemUpdates] = useState([]);
 
+    const [showTaskChat, setShowTaskChat] = useState(false);
+    const [chatTask, setChatTask] = useState(null);
+    const [chatLoading, setChatLoading] = useState(false);
+    const [chatSending, setChatSending] = useState(false);
+    const [chatMessages, setChatMessages] = useState([]);
+    const [chatMessage, setChatMessage] = useState('');
+    const chatListRef = useRef(null);
+
     const statusOptions = useMemo(() => {
         const values = meta.task_statuses || [];
         if (!values.length) {
@@ -207,6 +215,77 @@ export default function TasksBoard(props) {
             toast.error(e?.response?.data?.message || 'Không tải được đầu việc.');
         } finally {
             setItemsLoading(false);
+        }
+    };
+
+    const formatChatTime = (raw) => {
+        if (!raw) return '';
+        const date = new Date(raw);
+        if (Number.isNaN(date.getTime())) return String(raw);
+        return date.toLocaleString('vi-VN', {
+            hour: '2-digit',
+            minute: '2-digit',
+            day: '2-digit',
+            month: '2-digit',
+        });
+    };
+
+    const fetchTaskChat = async (taskId, silent = false) => {
+        if (!taskId) {
+            setChatMessages([]);
+            return;
+        }
+        if (!silent) setChatLoading(true);
+        try {
+            const res = await axios.get(`/api/v1/tasks/${taskId}/comments`, {
+                params: { per_page: 60, page: 1 },
+            });
+            const rows = (res.data?.data || []).slice().reverse();
+            setChatMessages(rows);
+            if (chatListRef.current) {
+                setTimeout(() => {
+                    if (chatListRef.current) {
+                        chatListRef.current.scrollTop = chatListRef.current.scrollHeight;
+                    }
+                }, 0);
+            }
+        } catch (e) {
+            if (!silent) {
+                toast.error(e?.response?.data?.message || 'Không tải được hội thoại công việc.');
+            }
+        } finally {
+            if (!silent) setChatLoading(false);
+        }
+    };
+
+    const openTaskChat = async (task) => {
+        setChatTask(task);
+        setShowTaskChat(true);
+        setChatMessage('');
+        await fetchTaskChat(task.id);
+    };
+
+    const closeTaskChat = () => {
+        setShowTaskChat(false);
+        setChatTask(null);
+        setChatMessages([]);
+        setChatMessage('');
+    };
+
+    const sendTaskChat = async () => {
+        if (!chatTask?.id) return;
+        if (!chatMessage.trim()) return;
+        setChatSending(true);
+        try {
+            await axios.post(`/api/v1/tasks/${chatTask.id}/comments`, {
+                content: chatMessage.trim(),
+            });
+            setChatMessage('');
+            await fetchTaskChat(chatTask.id, true);
+        } catch (e) {
+            toast.error(e?.response?.data?.message || 'Gửi tin nhắn thất bại.');
+        } finally {
+            setChatSending(false);
         }
     };
 
@@ -414,6 +493,15 @@ export default function TasksBoard(props) {
         fetchTasks(1, { ...filters, page: 1 });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    useEffect(() => {
+        if (!showTaskChat || !chatTask?.id) return undefined;
+        const timer = setInterval(() => {
+            fetchTaskChat(chatTask.id, true);
+        }, 15000);
+        return () => clearInterval(timer);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [showTaskChat, chatTask?.id]);
 
     const stats = useMemo(() => {
         const open = metaPaging.total;
@@ -881,6 +969,12 @@ export default function TasksBoard(props) {
                                                         <button className="text-xs font-semibold text-sky-600" onClick={() => openItemsModal(t)} type="button">
                                                             Đầu việc
                                                         </button>
+                                                        <button className="text-xs font-semibold text-emerald-600 inline-flex items-center gap-1" onClick={() => openTaskChat(t)} type="button" title="Mở chat công việc">
+                                                            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">
+                                                                <path d="M21 15a4 4 0 01-4 4H7l-4 3V7a4 4 0 014-4h10a4 4 0 014 4z" />
+                                                            </svg>
+                                                            Chat
+                                                        </button>
                                                         {canAck && (
                                                             <button className="text-xs font-semibold text-amber-600" onClick={() => acknowledgeTask(t)} type="button">
                                                                 Xác nhận
@@ -936,6 +1030,12 @@ export default function TasksBoard(props) {
                                                                 <button className="hover:text-danger" onClick={() => remove(t.id)} type="button">Xoá</button>
                                                             )}
                                                             <button className="hover:text-sky-600" onClick={() => openItemsModal(t)} type="button">Đầu việc</button>
+                                                            <button className="hover:text-emerald-600 inline-flex items-center gap-1" onClick={() => openTaskChat(t)} type="button" title="Mở chat công việc">
+                                                                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">
+                                                                    <path d="M21 15a4 4 0 01-4 4H7l-4 3V7a4 4 0 014-4h10a4 4 0 014 4z" />
+                                                                </svg>
+                                                                Chat
+                                                            </button>
                                                         </div>
                                                     </div>
                                                     <h3 className="mt-3 font-semibold text-slate-900">{t.title}</h3>
@@ -1013,6 +1113,87 @@ export default function TasksBoard(props) {
                         </div>
                     )}
             </div>
+
+            {showTaskChat && (
+                <div className="fixed bottom-6 right-6 z-40 w-[360px] max-w-[calc(100vw-24px)] rounded-2xl border border-slate-200/80 bg-white shadow-2xl">
+                    <div className="flex items-center justify-between border-b border-slate-200/80 px-4 py-3">
+                        <div>
+                            <p className="text-xs uppercase tracking-wide text-text-subtle">Chat nội bộ theo công việc</p>
+                            <p className="text-sm font-semibold text-slate-900">{chatTask?.title || 'Hội thoại'}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                className="text-xs font-semibold text-primary"
+                                onClick={() => {
+                                    if (chatTask?.id) fetchTaskChat(chatTask.id);
+                                }}
+                            >
+                                Làm mới
+                            </button>
+                            <button
+                                type="button"
+                                className="h-7 w-7 rounded-full border border-slate-200 text-slate-500"
+                                onClick={closeTaskChat}
+                            >
+                                ×
+                            </button>
+                        </div>
+                    </div>
+
+                    <div
+                        ref={chatListRef}
+                        className="max-h-[360px] min-h-[220px] overflow-y-auto px-4 py-3 space-y-2 bg-slate-50/60"
+                    >
+                        {chatLoading && (
+                            <p className="text-xs text-text-muted">Đang tải hội thoại...</p>
+                        )}
+                        {!chatLoading && chatMessages.length === 0 && (
+                            <p className="text-xs text-text-muted">Chưa có tin nhắn. Hãy bắt đầu trao đổi.</p>
+                        )}
+                        {chatMessages.map((comment) => {
+                            const mine = Number(comment.user_id || 0) === Number(props?.auth?.user?.id || 0);
+                            return (
+                                <div key={comment.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+                                    <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${mine ? 'bg-primary text-white' : 'bg-white border border-slate-200/80 text-slate-800'}`}>
+                                        <p className={`text-[11px] ${mine ? 'text-white/80' : 'text-text-muted'}`}>
+                                            {comment.user?.name || 'Nhân sự'} • {formatChatTime(comment.created_at)}
+                                        </p>
+                                        <p className="whitespace-pre-wrap break-words mt-1">
+                                            {comment.is_recalled ? 'Tin nhắn đã thu hồi.' : (comment.content || '')}
+                                        </p>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    <div className="border-t border-slate-200/80 p-3">
+                        <div className="flex items-center gap-2">
+                            <input
+                                className="flex-1 rounded-xl border border-slate-200/80 px-3 py-2 text-sm"
+                                placeholder="Nhập tin nhắn..."
+                                value={chatMessage}
+                                onChange={(e) => setChatMessage(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && !e.shiftKey) {
+                                        e.preventDefault();
+                                        sendTaskChat();
+                                    }
+                                }}
+                            />
+                            <button
+                                type="button"
+                                className="rounded-xl bg-primary px-3 py-2 text-xs font-semibold text-white disabled:opacity-60"
+                                disabled={chatSending}
+                                onClick={sendTaskChat}
+                            >
+                                Gửi
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <Modal
                 open={showForm}

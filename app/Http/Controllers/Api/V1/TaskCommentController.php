@@ -70,6 +70,7 @@ class TaskCommentController extends Controller
             report($e);
         }
         $this->notifyTaggedUsers($request->user()->id, $taggedUsers, $task, $comment);
+        $this->notifyChatParticipants($request->user()->id, $task, $comment);
 
         return response()->json($comment, 201);
     }
@@ -206,7 +207,9 @@ class TaskCommentController extends Controller
                 $ids = $decoded;
             } elseif (str_contains($ids, ',')) {
                 $list = array_filter(array_map('trim', explode(',', $ids)));
-                $ids = array_values(array_filter($list, fn ($item) => is_numeric($item)));
+                $ids = array_values(array_filter($list, function ($item) {
+                    return is_numeric($item);
+                }));
             }
         }
 
@@ -297,7 +300,9 @@ class TaskCommentController extends Controller
         }
 
         $tagIds = $comments
-            ->flatMap(fn ($comment) => $comment->tagged_user_ids ?? [])
+            ->flatMap(function ($comment) {
+                return $comment->tagged_user_ids ?? [];
+            })
             ->filter()
             ->unique()
             ->values();
@@ -311,7 +316,9 @@ class TaskCommentController extends Controller
 
         $comments->each(function ($comment) use ($users) {
             $tagged = collect($comment->tagged_user_ids ?? [])
-                ->map(fn ($id) => $users->get($id))
+                ->map(function ($id) use ($users) {
+                    return $users->get($id);
+                })
                 ->filter()
                 ->values();
             $comment->setAttribute('tagged_users', $tagged);
@@ -374,7 +381,9 @@ class TaskCommentController extends Controller
             return;
         }
         $ids = $users->pluck('id')->filter()->unique()->values()->all();
-        $ids = array_values(array_filter($ids, fn ($id) => (int) $id !== (int) $senderId));
+        $ids = array_values(array_filter($ids, function ($id) use ($senderId) {
+            return (int) $id !== (int) $senderId;
+        }));
         if (empty($ids)) {
             return;
         }
@@ -385,6 +394,37 @@ class TaskCommentController extends Controller
         try {
             $notifier->notifyUsers($ids, $title, $body, [
                 'type' => 'task_comment_tag',
+                'task_id' => $task->id,
+                'comment_id' => $comment->id,
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+    }
+
+    private function notifyChatParticipants(int $senderId, Task $task, TaskComment $comment): void
+    {
+        $participantIds = $this->resolveChatParticipantIds($task)
+            ->map(function ($id) {
+                return (int) $id;
+            })
+            ->filter(function ($id) use ($senderId) {
+                return $id > 0 && $id !== (int) $senderId;
+            })
+            ->unique()
+            ->values()
+            ->all();
+
+        if (empty($participantIds)) {
+            return;
+        }
+
+        $notifier = app(NotificationService::class);
+        $title = 'Tin nhắn mới trong công việc';
+        $body = 'Công việc: '.$task->title;
+        try {
+            $notifier->notifyUsers($participantIds, $title, $body, [
+                'type' => 'task_chat_message',
                 'task_id' => $task->id,
                 'comment_id' => $comment->id,
             ]);

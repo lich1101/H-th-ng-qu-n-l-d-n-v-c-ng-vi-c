@@ -102,10 +102,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
         return Inertia::render('Meetings');
     })->name('meetings.index')->middleware('role:admin,quan_ly');
 
-    Route::get('/chat-noi-bo', function () {
-        return Inertia::render('InternalChat');
-    })->name('chat.internal');
-
     Route::get('/thong-bao', function () {
         return Inertia::render('NotificationCenter');
     })->name('notifications.center');
