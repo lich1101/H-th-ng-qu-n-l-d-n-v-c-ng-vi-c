@@ -17,7 +17,10 @@ return new class extends Migration
 
             $table->foreign('task_item_id')->references('id')->on('task_items')->cascadeOnDelete();
             $table->foreign('user_id')->references('id')->on('users')->cascadeOnDelete();
-            $table->unique(['task_item_id', 'user_id', 'reminder_date']);
+            $table->unique(
+                ['task_item_id', 'user_id', 'reminder_date'],
+                'tirl_item_user_date_uniq'
+            );
         });
     }
 

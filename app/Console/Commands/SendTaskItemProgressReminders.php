@@ -77,7 +77,9 @@ class SendTaskItemProgressReminders extends Command
         foreach ($grouped as $userId => $list) {
             $lines = collect($list)
                 ->take(5)
-                ->map(fn ($row) => "• {$row['title']} (chậm {$row['lag']}%)")
+                ->map(function ($row) {
+                    return "• {$row['title']} (chậm {$row['lag']}%)";
+                })
                 ->implode("\n");
             $extra = count($list) > 5 ? "\n+".(count($list) - 5)." đầu việc khác" : '';
 

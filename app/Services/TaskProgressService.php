@@ -22,8 +22,12 @@ class TaskProgressService
         $avg = (int) round($items->avg('progress_percent') ?? 0);
         $avg = max(0, min(100, $avg));
 
-        $statuses = $items->pluck('status')->filter()->map(fn ($s) => (string) $s)->all();
-        $allDone = count($statuses) > 0 && collect($statuses)->every(fn ($s) => $s === 'done');
+        $statuses = $items->pluck('status')->filter()->map(function ($s) {
+            return (string) $s;
+        })->all();
+        $allDone = count($statuses) > 0 && collect($statuses)->every(function ($s) {
+            return $s === 'done';
+        });
         $hasDoing = in_array('doing', $statuses, true);
         $hasBlocked = in_array('blocked', $statuses, true);
 

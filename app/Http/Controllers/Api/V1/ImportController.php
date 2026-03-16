@@ -68,7 +68,9 @@ class ImportController extends Controller
                 }
 
                 if ($client) {
-                    $client->update(array_filter($payload, fn ($value) => $value !== null && $value !== ''));
+                    $client->update(array_filter($payload, function ($value) {
+                        return $value !== null && $value !== '';
+                    }));
                     $report['updated']++;
                 } else {
                     if (empty($payload['lead_type_id'])) {

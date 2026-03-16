@@ -88,7 +88,9 @@ class PublicMobileController extends Controller
             ->values();
 
         $overloadList = $workload
-            ->filter(fn ($item) => $item['is_overload'])
+            ->filter(function ($item) {
+                return $item['is_overload'];
+            })
             ->values()
             ->take(6);
 
