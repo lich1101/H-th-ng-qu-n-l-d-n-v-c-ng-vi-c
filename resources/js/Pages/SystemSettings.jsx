@@ -455,8 +455,10 @@ export default function SystemSettings(props) {
                                 <div className="mt-4 rounded-2xl border border-slate-200/80 bg-slate-50 p-4">
                                     <h4 className="text-sm font-semibold text-slate-900">Kết quả push test gần nhất</h4>
                                     <div className="mt-2 grid gap-2 text-xs text-slate-600 md:grid-cols-2">
+                                        <div>Người nhận: <span className="font-semibold text-slate-900">{lastTestResult.target_user_name || '—'} (ID: {lastTestResult.target_user_id || '—'})</span></div>
                                         <div>Kết quả: <span className={`font-semibold ${lastTestResult.push_sent ? 'text-emerald-600' : 'text-rose-600'}`}>{lastTestResult.push_sent ? 'Đã gửi' : 'Chưa gửi'}</span></div>
                                         <div>Lý do: <span className="font-semibold text-slate-900">{lastTestResult?.push_result?.error || lastTestResult.error || '—'}</span></div>
+                                        <div>FCM sent/failed: <span className="font-semibold text-slate-900">{lastTestResult?.push_result?.sent ?? 0}/{lastTestResult?.push_result?.failed ?? 0}</span></div>
                                         <div>Token tổng: <span className="font-semibold text-slate-900">{lastTestResult.token_count ?? 0}</span></div>
                                         <div>Token Android: <span className="font-semibold text-slate-900">{lastTestResult?.token_by_platform?.android ?? 0}</span></div>
                                         <div>Token iOS: <span className="font-semibold text-slate-900">{lastTestResult?.token_by_platform?.ios ?? 0}</span></div>
@@ -471,6 +473,20 @@ export default function SystemSettings(props) {
                                                 {Object.entries(lastTestResult.push_result.errors).map(([token, info]) => (
                                                     <div key={token}>
                                                         • {(info?.status || 'UNKNOWN')} - {info?.message || 'FCM request failed'}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                    {Array.isArray(lastTestResult.token_samples) && lastTestResult.token_samples.length > 0 && (
+                                        <div className="mt-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs">
+                                            <div className="font-semibold text-slate-700">Token mẫu đang lưu cho user đích</div>
+                                            <div className="mt-2 space-y-1 text-slate-600">
+                                                {lastTestResult.token_samples.map((sample, idx) => (
+                                                    <div key={`${sample.token_suffix || 'token'}-${idx}`} className="rounded-lg border border-slate-100 px-2 py-1.5">
+                                                        <div>#{idx + 1} • {sample.platform || 'unknown'} • quyền: {sample.notifications_enabled === false ? 'OFF' : (sample.notifications_enabled === true ? 'ON' : 'UNKNOWN')}</div>
+                                                        <div>suffix: <span className="font-semibold text-slate-900">{sample.token_suffix || '—'}</span></div>
+                                                        <div>last_seen: {sample.last_seen_at || '—'} • updated: {sample.updated_at || '—'}</div>
                                                     </div>
                                                 ))}
                                             </div>
