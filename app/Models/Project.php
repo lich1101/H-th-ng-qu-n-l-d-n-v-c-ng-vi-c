@@ -25,6 +25,9 @@ class Project extends Model
         'created_by',
         'approved_by',
         'approved_at',
+        'owner_id',
+        'repo_url',
+        'progress_percent',
     ];
 
     protected $casts = [
@@ -32,6 +35,7 @@ class Project extends Model
         'deadline' => 'date',
         'approved_at' => 'datetime',
         'budget' => 'float',
+        'progress_percent' => 'integer',
     ];
 
     public function tasks()
@@ -52,5 +56,10 @@ class Project extends Model
     public function creator()
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function owner()
+    {
+        return $this->belongsTo(User::class, 'owner_id');
     }
 }

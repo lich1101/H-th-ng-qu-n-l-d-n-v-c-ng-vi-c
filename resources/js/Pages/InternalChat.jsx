@@ -25,6 +25,7 @@ export default function InternalChat(props) {
     const [mentionOpen, setMentionOpen] = useState(false);
     const [mentionAnchor, setMentionAnchor] = useState(-1);
     const [attachment, setAttachment] = useState(null);
+    const [taskQuery, setTaskQuery] = useState('');
     const [firebaseToken, setFirebaseToken] = useState('');
     const fileInputRef = useRef(null);
     const listRef = useRef(null);
@@ -58,6 +59,49 @@ export default function InternalChat(props) {
             .trim();
     };
 
+    const extractMentions = (value) => {
+        const tokens = [];
+        const regex = /@([^\s@]+)/g;
+        let match;
+        const content = value || '';
+        while ((match = regex.exec(content)) !== null) {
+            if (match[1]) tokens.push(match[1]);
+        }
+        return Array.from(new Set(tokens));
+    };
+
+    const collectMentionTargets = (value) => {
+        const tokens = extractMentions(value);
+        if (!tokens.length) return { tokens: [], resolved: [], unresolved: [] };
+        const resolved = [];
+        const unresolved = [];
+        tokens.forEach((token) => {
+            const key = normalizeToken(token);
+            if (!key) return;
+            let match =
+                taggedUsers.find((u) => {
+                    const nameKey = normalizeToken(u.name || '');
+                    const emailKey = normalizeToken(u.email || '');
+                    return nameKey === key || emailKey === key || emailKey.includes(key);
+                }) ||
+                (participants || []).find((u) => {
+                    const nameKey = normalizeToken(u.name || '');
+                    const emailKey = normalizeToken(u.email || '');
+                    return nameKey === key || emailKey === key || emailKey.includes(key);
+                });
+            if (match) {
+                resolved.push({
+                    id: match.id,
+                    name: match.name,
+                    email: match.email,
+                });
+            } else {
+                unresolved.push(token);
+            }
+        });
+        return { tokens, resolved, unresolved };
+    };
+
     const isNearBottom = () => {
         const el = listRef.current;
         if (!el) return true;
@@ -89,7 +133,7 @@ export default function InternalChat(props) {
                 return (
                     <span
                         key={`${part}-${idx}`}
-                        className="text-primary font-semibold bg-primary/10 px-1 rounded"
+                        className="text-emerald-700 font-semibold bg-emerald-100/80 px-1 rounded"
                     >
                         {part}
                     </span>
@@ -327,9 +371,19 @@ export default function InternalChat(props) {
             toast.error('Nội dung không được để trống.');
             return;
         }
+        const { tokens, resolved, unresolved } = collectMentionTargets(content);
+        const hasMention = tokens.length > 0;
+        if (hasMention && unresolved.length > 0) {
+            toast.error('Vui lòng chọn người cần tag từ danh sách gợi ý.');
+            return;
+        }
         try {
-            const ids = resolveTagIds(content);
-            const emails = resolveTagEmails(content);
+            const ids = new Set();
+            const emails = new Set();
+            resolved.forEach((u) => {
+                if (u.id) ids.add(u.id);
+                if (u.email) emails.add(u.email);
+            });
             const data = new FormData();
             data.append('content', content);
             ids.forEach((id) => data.append('tagged_user_ids[]', id));
@@ -386,57 +440,21 @@ export default function InternalChat(props) {
         });
     };
 
-    const resolveTagIds = (text) => {
-        const ids = new Set(taggedUsers.map((u) => u.id).filter(Boolean));
-        const matches = [...text.matchAll(/@([^\s@]+)/g)]
-            .map((m) => normalizeToken(m[1]))
-            .filter(Boolean);
-        if (!matches.length || !participants.length) {
-            return Array.from(ids);
-        }
-        const tokenSet = new Set(matches);
-        participants.forEach((p) => {
-            const nameKey = normalizeToken(p.name || '');
-            const email = (p.email || '').toLowerCase();
-            const emailUser = email.includes('@') ? email.split('@')[0] : '';
-            const emailKey = normalizeToken(emailUser);
-            if (
-                (nameKey && tokenSet.has(nameKey)) ||
-                (emailKey && tokenSet.has(emailKey))
-            ) {
-                ids.add(p.id);
-            }
-        });
-        return Array.from(ids);
+    const showMentionWarning = () => {
+        if (!content.trim()) return false;
+        const { tokens, unresolved } = collectMentionTargets(content);
+        if (!tokens.length) return false;
+        return unresolved.length > 0;
     };
 
-    const resolveTagEmails = (text) => {
-        const emails = new Set(
-            taggedUsers
-                .map((u) => (u.email || '').toLowerCase())
-                .filter((email) => email)
+    const filteredTasks = tasks.filter((t) => {
+        if (!taskQuery.trim()) return true;
+        const needle = taskQuery.toLowerCase();
+        return (
+            String(t.id).includes(needle) ||
+            (t.title || '').toLowerCase().includes(needle)
         );
-        const matches = [...text.matchAll(/@([^\s@]+)/g)]
-            .map((m) => normalizeToken(m[1]))
-            .filter(Boolean);
-        if (!matches.length || !participants.length) {
-            return Array.from(emails);
-        }
-        const tokenSet = new Set(matches);
-        participants.forEach((p) => {
-            const nameKey = normalizeToken(p.name || '');
-            const email = (p.email || '').toLowerCase();
-            const emailUser = email.includes('@') ? email.split('@')[0] : '';
-            const emailKey = normalizeToken(emailUser);
-            if (
-                (nameKey && tokenSet.has(nameKey)) ||
-                (emailKey && tokenSet.has(emailKey))
-            ) {
-                if (email) emails.add(email);
-            }
-        });
-        return Array.from(emails);
-    };
+    });
 
     const remove = async (c) => {
         if (!selectedTaskId) return;
@@ -477,28 +495,46 @@ export default function InternalChat(props) {
             <div className="grid gap-5 lg:grid-cols-3">
                 <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card lg:col-span-1">
                     <h3 className="font-semibold text-slate-900 mb-4">Kênh công việc</h3>
-                    <select
+                    <input
                         className="w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                        value={selectedTaskId}
-                        onChange={(e) => {
-                            const v = e.target.value;
-                            setSelectedTaskId(v);
-                        }}
-                    >
-                        <option value="">-- Chọn công việc --</option>
-                        {tasks.map((t) => (
-                            <option key={t.id} value={t.id}>
-                                #{t.id} • {t.title}
-                            </option>
-                        ))}
-                    </select>
+                        placeholder="Tìm công việc..."
+                        value={taskQuery}
+                        onChange={(e) => setTaskQuery(e.target.value)}
+                    />
+                    <div className="mt-3 max-h-[360px] overflow-y-auto space-y-2 pr-1">
+                        {filteredTasks.map((t) => {
+                            const active = String(t.id) === String(selectedTaskId);
+                            return (
+                                <button
+                                    key={t.id}
+                                    type="button"
+                                    onClick={() => setSelectedTaskId(String(t.id))}
+                                    className={`w-full text-left rounded-xl border px-3 py-2 text-sm transition ${
+                                        active
+                                            ? 'border-primary/30 bg-primary/5 text-primary'
+                                            : 'border-slate-200/80 hover:bg-slate-50 text-slate-700'
+                                    }`}
+                                >
+                                    <div className="font-semibold text-slate-900">
+                                        #{t.id} • {t.title}
+                                    </div>
+                                    <div className="text-xs text-text-muted mt-1">
+                                        {t.department_name || 'Chưa có phòng ban'}
+                                    </div>
+                                </button>
+                            );
+                        })}
+                        {!filteredTasks.length && (
+                            <p className="text-xs text-text-muted">Không có công việc phù hợp.</p>
+                        )}
+                    </div>
                     <div className="mt-4 text-xs text-text-muted space-y-2">
                         <p>• Mỗi công việc tương ứng một kênh chat.</p>
                         <p>• Bạn chỉ sửa/thu hồi bình luận do mình tạo.</p>
                     </div>
                 </div>
 
-                <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card lg:col-span-2 flex flex-col min-h-[520px]">
+                <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card lg:col-span-2 flex flex-col min-h-[520px] h-[calc(100vh-240px)]">
                     <div className="flex items-center justify-between mb-3">
                         <div>
                             <h3 className="font-semibold text-slate-900">Luồng hội thoại</h3>
@@ -576,7 +612,7 @@ export default function InternalChat(props) {
                                             </a>
                                         )}
                                         {!isRecalled && tags && (
-                                            <p className="text-xs text-primary mt-1">Tag: {tags}</p>
+                                            <p className="text-xs text-emerald-700 mt-1">Tag: {tags}</p>
                                         )}
                                         {canEditOrDelete(c) && !isRecalled && (
                                             <div className="mt-2 flex gap-3 text-xs justify-end">
@@ -589,6 +625,9 @@ export default function InternalChat(props) {
                                             </div>
                                         )}
                                     </div>
+                                    {isMine && (
+                                        <div className="ml-2 mt-5">{renderAvatar(c)}</div>
+                                    )}
                                 </div>
                             );
                         })}
@@ -604,12 +643,12 @@ export default function InternalChat(props) {
                                 {taggedUsers.map((u) => (
                                     <span
                                         key={u.id}
-                                        className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-1 text-xs text-primary"
+                                        className="inline-flex items-center gap-1 rounded-full bg-emerald-100/80 px-2 py-1 text-xs text-emerald-700"
                                     >
                                         @{u.name}
                                         <button
                                             type="button"
-                                            className="text-xs text-primary"
+                                            className="text-xs text-emerald-700"
                                             onClick={() =>
                                                 setTaggedUsers((prev) => prev.filter((x) => x.id !== u.id))
                                             }
@@ -628,6 +667,11 @@ export default function InternalChat(props) {
                             disabled={!selectedTaskId || selectedTask?.status === 'done'}
                             onChange={(e) => handleContentChange(e.target.value)}
                         />
+                        {showMentionWarning() && (
+                            <p className="mt-2 text-xs text-amber-600">
+                                Bạn đang gõ @ nhưng chưa chọn người từ danh sách gợi ý.
+                            </p>
+                        )}
                         {mentionOpen && (
                             <div className="mt-2 rounded-2xl border border-slate-200/80 bg-white shadow-card max-h-44 overflow-y-auto">
                                 {(participants || [])

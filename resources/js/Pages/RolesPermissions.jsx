@@ -31,9 +31,9 @@ export default function RolesPermissions(props) {
                         <tbody>
                             {[
                                 ['Quản trị', 'Toàn quyền', 'Toàn quyền', 'Duyệt', 'Toàn công ty'],
-                                ['Quản lý phòng ban', 'Theo phòng ban', 'Giao & theo dõi', 'Duyệt', 'Phòng ban phụ trách'],
+                                ['Quản lý phòng ban', 'Theo phòng ban', 'Giao & theo dõi', 'Duyệt', 'Không'],
                                 ['Nhân sự', 'Xem theo phân công', 'Thực hiện', 'Tải lên', 'Không'],
-                                ['Kế toán', 'Tạo & duyệt hợp đồng', 'Không', 'Theo dõi', 'Doanh thu hợp đồng'],
+                                ['Kế toán', 'Tạo & duyệt hợp đồng', 'Không', 'Theo dõi', 'Không'],
                             ].map((row) => (
                                 <tr key={row[0]} className="border-t border-slate-100">
                                     {row.map((cell) => (

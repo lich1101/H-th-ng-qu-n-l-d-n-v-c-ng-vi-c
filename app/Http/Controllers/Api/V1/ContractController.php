@@ -41,6 +41,15 @@ class ContractController extends Controller
         if ($request->filled('approval_status')) {
             $query->where('approval_status', (string) $request->input('approval_status'));
         }
+        if ($request->boolean('available_only')) {
+            $projectId = (int) $request->input('project_id', 0);
+            $query->where(function ($builder) use ($projectId) {
+                $builder->whereNull('project_id');
+                if ($projectId > 0) {
+                    $builder->orWhere('project_id', $projectId);
+                }
+            });
+        }
 
         if ($request->filled('search')) {
             $search = $request->input('search');

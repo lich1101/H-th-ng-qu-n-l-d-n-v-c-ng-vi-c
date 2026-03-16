@@ -16,6 +16,7 @@ class TaskItem extends Model
         'priority',
         'status',
         'progress_percent',
+        'start_date',
         'deadline',
         'assignee_id',
         'created_by',
@@ -24,6 +25,7 @@ class TaskItem extends Model
     ];
 
     protected $casts = [
+        'start_date' => 'date',
         'deadline' => 'datetime',
     ];
 

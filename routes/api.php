@@ -26,6 +26,8 @@ use App\Http\Controllers\Api\V1\DeviceTokenController;
 use App\Http\Controllers\Api\V1\MeetingController;
 use App\Http\Controllers\Api\V1\NotificationCenterController;
 use App\Http\Controllers\Api\V1\ProjectController;
+use App\Http\Controllers\Api\V1\ProjectFileController;
+use App\Http\Controllers\Api\V1\ProjectFlowController;
 use App\Http\Controllers\Api\V1\ImportController;
 use App\Http\Controllers\Api\V1\ProfileController;
 use App\Http\Controllers\Api\V1\PublicMobileController;
@@ -38,6 +40,7 @@ use App\Http\Controllers\Api\V1\TaskCommentController;
 use App\Http\Controllers\Api\V1\TaskController;
 use App\Http\Controllers\Api\V1\TaskItemController;
 use App\Http\Controllers\Api\V1\TaskItemUpdateController;
+use App\Http\Controllers\Api\V1\UserLookupController;
 use App\Http\Controllers\Api\V1\TaskUpdateController;
 use App\Http\Controllers\Api\V1\UserAccountController;
 
@@ -93,6 +96,18 @@ Route::prefix('v1')->group(function () {
             ->middleware('role:admin,quan_ly');
         Route::delete('/projects/{project}', [ProjectController::class, 'destroy'])
             ->middleware('role:admin');
+        Route::get('/projects/{project}/flow', [ProjectFlowController::class, 'show']);
+        Route::get('/projects/{project}/files', [ProjectFileController::class, 'index']);
+        Route::post('/projects/{project}/files/folder', [ProjectFileController::class, 'createFolder'])
+            ->middleware('role:admin,quan_ly');
+        Route::post('/projects/{project}/files/upload', [ProjectFileController::class, 'upload'])
+            ->middleware('role:admin,quan_ly,nhan_vien');
+        Route::post('/projects/{project}/files/{file}/trash', [ProjectFileController::class, 'trash'])
+            ->middleware('role:admin,quan_ly');
+        Route::post('/projects/{project}/files/{file}/restore', [ProjectFileController::class, 'restore'])
+            ->middleware('role:admin,quan_ly');
+        Route::delete('/projects/{project}/files/{file}', [ProjectFileController::class, 'destroy'])
+            ->middleware('role:admin,quan_ly');
 
         Route::get('/tasks', [TaskController::class, 'index']);
         Route::get('/tasks/{task}', [TaskController::class, 'show']);
@@ -159,6 +174,8 @@ Route::prefix('v1')->group(function () {
 
         Route::get('/users/accounts', [UserAccountController::class, 'index'])
             ->middleware('role:admin');
+        Route::get('/users/lookup', [UserLookupController::class, 'index'])
+            ->middleware('role:admin,quan_ly');
         Route::get('/users/accounts/stats', [UserAccountController::class, 'stats'])
             ->middleware('role:admin');
         Route::post('/users/accounts', [UserAccountController::class, 'store'])
@@ -299,7 +316,7 @@ Route::prefix('v1')->group(function () {
 
         Route::get('/reports/dashboard-summary', [ReportController::class, 'dashboardSummary']);
         Route::get('/reports/revenue', [ReportController::class, 'revenueByDepartment'])
-            ->middleware('role:admin,quan_ly');
+            ->middleware('role:admin');
         Route::get('/reports/company', [ReportController::class, 'companyRevenue'])
             ->middleware('role:admin');
 

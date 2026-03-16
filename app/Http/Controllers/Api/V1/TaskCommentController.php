@@ -58,7 +58,7 @@ class TaskCommentController extends Controller
         $comment = $task->comments()->create([
             'user_id' => $request->user()->id,
             'content' => $validated['content'],
-            'tagged_user_ids' => isset($validated['tagged_user_ids']) ? json_encode($validated['tagged_user_ids']) : null,
+            'tagged_user_ids' => $validated['tagged_user_ids'] ?? null,
             'attachment_path' => $attachmentPath,
         ]);
 
@@ -114,7 +114,7 @@ class TaskCommentController extends Controller
 
         $comment->update([
             'content' => $validated['content'],
-            'tagged_user_ids' => isset($validated['tagged_user_ids']) ? json_encode($validated['tagged_user_ids']) : null,
+            'tagged_user_ids' => $validated['tagged_user_ids'] ?? null,
             'attachment_path' => $attachmentPath,
             'is_recalled' => false,
             'recalled_at' => null,
@@ -360,6 +360,16 @@ class TaskCommentController extends Controller
     private function notifyTaggedUsers(int $senderId, $taggedUsers, Task $task, TaskComment $comment): void
     {
         $users = collect($taggedUsers)->filter();
+        if ($users->isEmpty()) {
+            $ids = collect($comment->tagged_user_ids ?? [])
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+            if (! empty($ids)) {
+                $users = User::query()->whereIn('id', $ids)->get();
+            }
+        }
         if ($users->isEmpty()) {
             return;
         }

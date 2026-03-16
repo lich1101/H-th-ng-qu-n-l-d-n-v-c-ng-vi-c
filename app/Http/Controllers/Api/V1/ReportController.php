@@ -14,8 +14,12 @@ use App\Models\Department;
 use App\Models\Contract;
 use App\Models\ContractPayment;
 use App\Models\ContractCost;
+use App\Models\Client;
 use App\Models\User;
+use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 
 class ReportController extends Controller
 {
@@ -244,23 +248,20 @@ class ReportController extends Controller
         ]);
     }
 
-    public function companyRevenue(): JsonResponse
+    public function companyRevenue(Request $request): JsonResponse
     {
         $approved = Contract::query()->where('approval_status', 'approved');
 
         $totalRevenue = (float) $approved->sum('value');
         $contractsTotal = (int) $approved->count();
-        $approvedIds = $approved->pluck('id');
-        $totalPaid = 0;
-        $totalCosts = 0;
-        if ($approvedIds->isNotEmpty()) {
-            $totalPaid = (float) ContractPayment::query()
-                ->whereIn('contract_id', $approvedIds)
-                ->sum('amount');
-            $totalCosts = (float) ContractCost::query()
-                ->whereIn('contract_id', $approvedIds)
-                ->sum('amount');
-        }
+        $totalPaid = (float) ContractPayment::query()
+            ->join('contracts', 'contract_payments.contract_id', '=', 'contracts.id')
+            ->where('contracts.approval_status', 'approved')
+            ->sum('contract_payments.amount');
+        $totalCosts = (float) ContractCost::query()
+            ->join('contracts', 'contract_costs.contract_id', '=', 'contracts.id')
+            ->where('contracts.approval_status', 'approved')
+            ->sum('contract_costs.amount');
         $totalDebt = max(0, $totalRevenue - $totalPaid);
         $netRevenue = $totalRevenue - $totalCosts;
 
@@ -300,6 +301,172 @@ class ReportController extends Controller
             })
             ->values();
 
+        $fromInput = $request->query('from');
+        $toInput = $request->query('to');
+        $targetRevenue = (float) $request->query('target_revenue', 0);
+
+        try {
+            $start = $fromInput ? Carbon::parse($fromInput) : now()->startOfMonth();
+        } catch (\Throwable $e) {
+            $start = now()->startOfMonth();
+        }
+        try {
+            $end = $toInput ? Carbon::parse($toInput) : now();
+        } catch (\Throwable $e) {
+            $end = now();
+        }
+
+        $start = $start->startOfDay();
+        $end = $end->endOfDay();
+        if ($end->lt($start)) {
+            [$start, $end] = [$end, $start];
+        }
+
+        $startDate = $start->toDateString();
+        $endDate = $end->toDateString();
+
+        $contractDateExpr = "DATE(COALESCE(contracts.signed_at, contracts.approved_at, contracts.created_at))";
+
+        $dailyRevenueRows = Contract::query()
+            ->where('approval_status', 'approved')
+            ->whereBetween(DB::raw($contractDateExpr), [$startDate, $endDate])
+            ->selectRaw("$contractDateExpr as date, SUM(contracts.value) as revenue")
+            ->groupBy('date')
+            ->get();
+        $dailyRevenueMap = $dailyRevenueRows->mapWithKeys(function ($row) {
+            return [$row->date => (float) $row->revenue];
+        });
+
+        $paymentsBase = ContractPayment::query()
+            ->join('contracts', 'contract_payments.contract_id', '=', 'contracts.id')
+            ->where('contracts.approval_status', 'approved')
+            ->whereNotNull('contract_payments.paid_at');
+
+        $paymentsAll = (clone $paymentsBase)
+            ->whereBetween('contract_payments.paid_at', [$startDate, $endDate])
+            ->selectRaw('contract_payments.paid_at as date, SUM(contract_payments.amount) as amount')
+            ->groupBy('date')
+            ->get();
+        $paymentsAllMap = $paymentsAll->mapWithKeys(function ($row) {
+            return [$row->date => (float) $row->amount];
+        });
+
+        $paymentsPeriod = (clone $paymentsBase)
+            ->whereBetween(DB::raw($contractDateExpr), [$startDate, $endDate])
+            ->whereBetween('contract_payments.paid_at', [$startDate, $endDate])
+            ->selectRaw('contract_payments.paid_at as date, SUM(contract_payments.amount) as amount')
+            ->groupBy('date')
+            ->get();
+        $paymentsPeriodMap = $paymentsPeriod->mapWithKeys(function ($row) {
+            return [$row->date => (float) $row->amount];
+        });
+
+        $paymentsPrePeriod = (clone $paymentsBase)
+            ->where(DB::raw($contractDateExpr), '<', $startDate)
+            ->whereBetween('contract_payments.paid_at', [$startDate, $endDate])
+            ->selectRaw('contract_payments.paid_at as date, SUM(contract_payments.amount) as amount')
+            ->groupBy('date')
+            ->get();
+        $paymentsPrePeriodMap = $paymentsPrePeriod->mapWithKeys(function ($row) {
+            return [$row->date => (float) $row->amount];
+        });
+
+        $prePeriodRevenue = Contract::query()
+            ->where('approval_status', 'approved')
+            ->where(DB::raw($contractDateExpr), '<', $startDate)
+            ->sum('value');
+
+        $prePeriodPaid = (clone $paymentsBase)
+            ->where(DB::raw($contractDateExpr), '<', $startDate)
+            ->where('contract_payments.paid_at', '<', $startDate)
+            ->sum('contract_payments.amount');
+
+        $openingPrevDebt = max(0, (float) $prePeriodRevenue - (float) $prePeriodPaid);
+
+        $clientsBeforeStart = Client::query()
+            ->whereDate('created_at', '<', $startDate)
+            ->count();
+        $clientsDailyRows = Client::query()
+            ->whereBetween(DB::raw('DATE(created_at)'), [$startDate, $endDate])
+            ->selectRaw('DATE(created_at) as date, COUNT(*) as total')
+            ->groupBy('date')
+            ->get();
+        $clientsDailyMap = $clientsDailyRows->mapWithKeys(function ($row) {
+            return [$row->date => (int) $row->total];
+        });
+
+        $rows = [];
+        $cumRevenue = 0;
+        $cumCollected = 0;
+        $cumPaymentsAll = 0;
+        $cumPrePeriodPayments = 0;
+        $cumAgents = $clientsBeforeStart;
+        $monthKey = null;
+        $monthAgents = 0;
+
+        $cursor = $start->copy();
+        while ($cursor->lte($end)) {
+            $dateKey = $cursor->toDateString();
+            $revDaily = (float) ($dailyRevenueMap[$dateKey] ?? 0);
+            $cumRevenue += $revDaily;
+
+            $collectedDaily = (float) ($paymentsPeriodMap[$dateKey] ?? 0);
+            $cumCollected += $collectedDaily;
+
+            $debtDaily = max(0, $revDaily - $collectedDaily);
+            $debtCumulative = max(0, $cumRevenue - $cumCollected);
+
+            $preCollectedDaily = (float) ($paymentsPrePeriodMap[$dateKey] ?? 0);
+            $prevDebtOpen = max(0, $openingPrevDebt - $cumPrePeriodPayments);
+            $cumPrePeriodPayments += $preCollectedDaily;
+            $prevDebtRemaining = max(0, $prevDebtOpen - $preCollectedDaily);
+
+            $paymentsAllDaily = (float) ($paymentsAllMap[$dateKey] ?? 0);
+            $cumPaymentsAll += $paymentsAllDaily;
+
+            $agentsDaily = (int) ($clientsDailyMap[$dateKey] ?? 0);
+            $cumAgents += $agentsDaily;
+
+            $currentMonthKey = $cursor->format('Y-m');
+            if ($monthKey !== $currentMonthKey) {
+                $monthKey = $currentMonthKey;
+                $monthAgents = 0;
+            }
+            $monthAgents += $agentsDaily;
+
+            $targetRate = $targetRevenue > 0
+                ? round(($revDaily / $targetRevenue) * 100, 2)
+                : 0;
+            $cashRate = $revDaily > 0 ? round(($collectedDaily / $revDaily) * 100, 2) : 0;
+            $debtRate = $revDaily > 0 ? round(($debtDaily / $revDaily) * 100, 2) : 0;
+
+            $rows[] = [
+                'date' => $dateKey,
+                'revenue_cumulative' => round($cumRevenue, 2),
+                'revenue_daily' => round($revDaily, 2),
+                'collected_cumulative' => round($cumCollected, 2),
+                'collected_daily' => round($collectedDaily, 2),
+                'debt_cumulative' => round($debtCumulative, 2),
+                'debt_daily' => round($debtDaily, 2),
+                'debt_collected' => round($collectedDaily, 2),
+                'prev_month_debt_open' => round($prevDebtOpen, 2),
+                'prev_month_debt_collected' => round($preCollectedDaily, 2),
+                'cash_cumulative_period' => round($cumPaymentsAll, 2),
+                'cash_daily_total' => round($paymentsAllDaily, 2),
+                'agents_total' => $cumAgents,
+                'agents_month_cumulative' => $monthAgents,
+                'agents_daily_new' => $agentsDaily,
+                'agents_dropped' => 0,
+                'target_revenue' => round($targetRevenue, 2),
+                'target_rate' => $targetRate,
+                'cash_rate' => $cashRate,
+                'debt_rate' => $debtRate,
+                'prev_month_debt_remaining' => round($prevDebtRemaining, 2),
+            ];
+
+            $cursor->addDay();
+        }
+
         return response()->json([
             'total_revenue' => round($totalRevenue, 2),
             'total_paid' => round($totalPaid, 2),
@@ -309,6 +476,11 @@ class ReportController extends Controller
             'contracts_total' => $contractsTotal,
             'monthly' => $monthlyRows,
             'top_customers' => $topCustomers,
+            'daily_rows' => $rows,
+            'period' => [
+                'from' => $startDate,
+                'to' => $endDate,
+            ],
         ]);
     }
 }

@@ -58,6 +58,7 @@ export default function ProjectsKanban(props) {
     const [loading, setLoading] = useState(false);
     const [projects, setProjects] = useState([]);
     const [contracts, setContracts] = useState([]);
+    const [owners, setOwners] = useState([]);
     const [meta, setMeta] = useState({});
     const [editingId, setEditingId] = useState(null);
     const [showForm, setShowForm] = useState(false);
@@ -79,6 +80,8 @@ export default function ProjectsKanban(props) {
         budget: '',
         status: DEFAULT_STATUSES[0].value,
         customer_requirement: '',
+        owner_id: '',
+        repo_url: '',
     });
 
     const statusOptions = useMemo(() => {
@@ -121,10 +124,25 @@ export default function ProjectsKanban(props) {
         }
     };
 
-    const fetchContracts = async () => {
+    const fetchContracts = async (projectId = null) => {
         try {
-            const res = await axios.get('/api/v1/contracts', { params: { per_page: 200 } });
+            const res = await axios.get('/api/v1/contracts', {
+                params: {
+                    per_page: 200,
+                    available_only: true,
+                    ...(projectId ? { project_id: projectId } : {}),
+                },
+            });
             setContracts(res.data?.data || []);
+        } catch {
+            // ignore
+        }
+    };
+
+    const fetchOwners = async () => {
+        try {
+            const res = await axios.get('/api/v1/users/lookup');
+            setOwners(res.data?.data || []);
         } catch {
             // ignore
         }
@@ -134,6 +152,7 @@ export default function ProjectsKanban(props) {
         fetchMeta();
         fetchProjects();
         fetchContracts();
+        fetchOwners();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -224,7 +243,10 @@ export default function ProjectsKanban(props) {
             budget: '',
             status: statusOptions[0]?.value || DEFAULT_STATUSES[0].value,
             customer_requirement: '',
+            owner_id: '',
+            repo_url: '',
         });
+        fetchContracts();
     };
 
     const openCreate = () => {
@@ -251,8 +273,11 @@ export default function ProjectsKanban(props) {
             budget: p.budget ?? '',
             status: p.status || statusOptions[0]?.value || DEFAULT_STATUSES[0].value,
             customer_requirement: p.customer_requirement || '',
+            owner_id: p.owner_id || '',
+            repo_url: p.repo_url || '',
         });
         setShowForm(true);
+        fetchContracts(p.id);
     };
 
     const save = async () => {
@@ -277,6 +302,8 @@ export default function ProjectsKanban(props) {
                 start_date: form.start_date || null,
                 deadline: form.deadline || null,
                 service_type_other: form.service_type === 'khac' ? form.service_type_other : null,
+                owner_id: form.owner_id ? Number(form.owner_id) : null,
+                repo_url: form.repo_url?.trim() ? form.repo_url.trim() : null,
             };
             if (editingId) {
                 await axios.put(`/api/v1/projects/${editingId}`, payload);
@@ -322,6 +349,8 @@ export default function ProjectsKanban(props) {
                 budget: p.budget,
                 status: nextStatus,
                 customer_requirement: p.customer_requirement,
+                owner_id: p.owner_id,
+                repo_url: p.repo_url,
             });
             toast.success('Đã cập nhật trạng thái.');
             await fetchProjects();
@@ -407,6 +436,7 @@ export default function ProjectsKanban(props) {
                                             <th className="py-2">Dự án</th>
                                             <th className="py-2">Dịch vụ</th>
                                             <th className="py-2">Trạng thái</th>
+                                            <th className="py-2">Phụ trách</th>
                                             <th className="py-2">Hợp đồng</th>
                                             <th className="py-2">Hạn chót</th>
                                             <th className="py-2">Ngân sách</th>
@@ -438,6 +468,9 @@ export default function ProjectsKanban(props) {
                                                         {LABELS[p.status] || p.status}
                                                     </span>
                                                 </td>
+                                                <td className="py-3 text-xs text-text-muted">
+                                                    {p.owner?.name || '—'}
+                                                </td>
                                                 <td className={`py-3 text-xs ${p.contract ? 'text-text-muted' : 'text-warning'}`}>
                                                     {p.contract?.code || 'Chưa có hợp đồng'}
                                                 </td>
@@ -448,6 +481,24 @@ export default function ProjectsKanban(props) {
                                                     {p.budget ? Number(p.budget).toLocaleString('vi-VN') : '—'}
                                                 </td>
                                                 <td className="py-3 text-right space-x-2">
+                                                    <a
+                                                        className="text-xs font-semibold text-slate-600"
+                                                        href={`/du-an/${p.id}`}
+                                                    >
+                                                        Chi tiết
+                                                    </a>
+                                                    <a
+                                                        className="text-xs font-semibold text-primary"
+                                                        href={`/du-an/${p.id}/luong`}
+                                                    >
+                                                        Luồng
+                                                    </a>
+                                                    <a
+                                                        className="text-xs font-semibold text-slate-600"
+                                                        href={`/du-an/${p.id}/kho`}
+                                                    >
+                                                        Kho
+                                                    </a>
                                                     {canUpdate && (
                                                         <button className="text-xs font-semibold text-primary" onClick={() => startEdit(p)} type="button">
                                                             Sửa
@@ -470,7 +521,7 @@ export default function ProjectsKanban(props) {
                                         )}
                                         {!loading && projects.length === 0 && (
                                             <tr>
-                                                <td className="py-6 text-center text-sm text-text-muted" colSpan={7}>
+                                                <td className="py-6 text-center text-sm text-text-muted" colSpan={8}>
                                                     Chưa có dự án theo bộ lọc.
                                                 </td>
                                             </tr>
@@ -605,22 +656,42 @@ export default function ProjectsKanban(props) {
                             onChange={(e) => setForm((s) => ({ ...s, service_type_other: e.target.value }))}
                         />
                     )}
-                    <select
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        value={form.contract_id}
-                        onChange={(e) => setForm((s) => ({ ...s, contract_id: e.target.value }))}
-                    >
-                        <option value="">Chọn hợp đồng (bắt buộc để tạo công việc)</option>
-                        {contracts.map((c) => (
-                            <option key={c.id} value={c.id}>
-                                {c.code} • {c.title}
-                            </option>
-                        ))}
-                    </select>
+                    <div className="grid grid-cols-2 gap-2">
+                        <select
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            value={form.contract_id}
+                            onChange={(e) => setForm((s) => ({ ...s, contract_id: e.target.value }))}
+                        >
+                            <option value="">Chọn hợp đồng (bắt buộc để tạo công việc)</option>
+                            {contracts.map((c) => (
+                                <option key={c.id} value={c.id}>
+                                    {c.code} • {c.title}
+                                </option>
+                            ))}
+                        </select>
+                        <select
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            value={form.owner_id}
+                            onChange={(e) => setForm((s) => ({ ...s, owner_id: e.target.value }))}
+                        >
+                            <option value="">Người phụ trách triển khai</option>
+                            {owners.map((u) => (
+                                <option key={u.id} value={u.id}>
+                                    {u.name} ({u.role})
+                                </option>
+                            ))}
+                        </select>
+                    </div>
                     <div className="grid grid-cols-2 gap-2">
                         <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" type="date" value={form.start_date} onChange={(e) => setForm((s) => ({ ...s, start_date: e.target.value }))} />
                         <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" type="date" value={form.deadline} onChange={(e) => setForm((s) => ({ ...s, deadline: e.target.value }))} />
                     </div>
+                    <input
+                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                        placeholder="Link kho dự án (tuỳ chọn)"
+                        value={form.repo_url}
+                        onChange={(e) => setForm((s) => ({ ...s, repo_url: e.target.value }))}
+                    />
                     <select className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" value={form.status} onChange={(e) => setForm((s) => ({ ...s, status: e.target.value }))}>
                         {statusOptions.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
                     </select>

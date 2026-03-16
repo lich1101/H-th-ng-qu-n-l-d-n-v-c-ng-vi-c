@@ -46,9 +46,33 @@ Route::middleware(['auth', 'verified'])->group(function () {
         return Inertia::render('ProjectsKanban');
     })->name('projects.kanban')->middleware('role:admin,quan_ly');
 
+    Route::get('/du-an/{project}', function (App\Models\Project $project) {
+        return Inertia::render('ProjectDetail', [
+            'projectId' => $project->id,
+        ]);
+    })->name('projects.detail')->middleware('role:admin,quan_ly,nhan_vien');
+
+    Route::get('/du-an/{project}/luong', function (App\Models\Project $project) {
+        return Inertia::render('ProjectFlow', [
+            'projectId' => $project->id,
+        ]);
+    })->name('projects.flow')->middleware('role:admin,quan_ly,nhan_vien');
+
+    Route::get('/du-an/{project}/kho', function (App\Models\Project $project) {
+        return Inertia::render('ProjectFiles', [
+            'projectId' => $project->id,
+        ]);
+    })->name('projects.files')->middleware('role:admin,quan_ly,nhan_vien');
+
     Route::get('/cong-viec', function () {
         return Inertia::render('TasksBoard');
     })->name('tasks.board')->middleware('role:admin,quan_ly,nhan_vien');
+
+    Route::get('/cong-viec/{task}', function (App\Models\Task $task) {
+        return Inertia::render('TaskDetail', [
+            'taskId' => $task->id,
+        ]);
+    })->name('tasks.detail')->middleware('role:admin,quan_ly,nhan_vien');
 
     Route::get('/deadline', function () {
         return Inertia::render('DeadlineReminders');
@@ -63,8 +87,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     })->name('reports.kpi')->middleware('role:admin,quan_ly');
 
     Route::get('/bao-cao-doanh-thu', function () {
-        return Inertia::render('RevenueReport');
-    })->name('reports.revenue')->middleware('role:admin,quan_ly');
+        return redirect()->route('reports.company');
+    })->name('reports.revenue')->middleware('role:admin');
 
     Route::get('/bao-cao-doanh-thu-cong-ty', function () {
         return Inertia::render('CompanyRevenueReport');

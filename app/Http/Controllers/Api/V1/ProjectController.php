@@ -14,7 +14,7 @@ class ProjectController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = Project::query()->with(['client', 'creator', 'contract']);
+        $query = Project::query()->with(['client', 'creator', 'contract', 'owner']);
 
         if ($request->filled('status')) {
             $query->where('status', $request->input('status'));
@@ -59,6 +59,9 @@ class ProjectController extends Controller
             if (! $contract) {
                 return response()->json(['message' => 'Hợp đồng không tồn tại.'], 422);
             }
+            if ($contract->project_id) {
+                return response()->json(['message' => 'Hợp đồng đã liên kết với dự án khác.'], 422);
+            }
             if (! empty($validated['client_id']) && (int) $validated['client_id'] !== (int) $contract->client_id) {
                 return response()->json(['message' => 'Khách hàng không khớp với hợp đồng.'], 422);
             }
@@ -71,19 +74,20 @@ class ProjectController extends Controller
             $contract->update(['project_id' => $project->id]);
         }
 
-        return response()->json($project->load(['client', 'creator', 'contract']), 201);
+        return response()->json($project->load(['client', 'creator', 'contract', 'owner']), 201);
     }
 
     public function show(Project $project): JsonResponse
     {
         return response()->json(
-            $project->load(['client', 'creator', 'tasks', 'contract'])
+            $project->load(['client', 'creator', 'tasks', 'contract', 'owner'])
         );
     }
 
     public function update(Request $request, Project $project): JsonResponse
     {
         $validated = $request->validate($this->rules($project->id));
+        $oldContractId = $project->contract_id;
         if (($validated['service_type'] ?? $project->service_type) === 'khac') {
             $validated['service_type_other'] = trim((string) ($validated['service_type_other'] ?? $project->service_type_other ?? ''));
             if ($validated['service_type_other'] === '') {
@@ -98,6 +102,9 @@ class ProjectController extends Controller
             if (! $contract) {
                 return response()->json(['message' => 'Hợp đồng không tồn tại.'], 422);
             }
+            if ($contract->project_id && (int) $contract->project_id !== (int) $project->id) {
+                return response()->json(['message' => 'Hợp đồng đã liên kết với dự án khác.'], 422);
+            }
             if (! empty($validated['client_id']) && (int) $validated['client_id'] !== (int) $contract->client_id) {
                 return response()->json(['message' => 'Khách hàng không khớp với hợp đồng.'], 422);
             }
@@ -108,8 +115,13 @@ class ProjectController extends Controller
         if ($contract && empty($contract->project_id)) {
             $contract->update(['project_id' => $project->id]);
         }
+        if ($oldContractId && $oldContractId !== ($contract->id ?? $oldContractId)) {
+            Contract::where('id', $oldContractId)
+                ->where('project_id', $project->id)
+                ->update(['project_id' => null]);
+        }
 
-        return response()->json($project->load(['client', 'creator', 'contract']));
+        return response()->json($project->load(['client', 'creator', 'contract', 'owner']));
     }
 
     public function destroy(Project $project): JsonResponse
@@ -143,6 +155,8 @@ class ProjectController extends Controller
             'customer_requirement' => ['nullable', 'string'],
             'approved_by' => ['nullable', 'integer', 'exists:users,id'],
             'approved_at' => ['nullable', 'date'],
+            'owner_id' => ['nullable', 'integer', 'exists:users,id'],
+            'repo_url' => ['nullable', 'string', 'max:255'],
         ];
     }
 

@@ -8,6 +8,7 @@ use App\Models\TaskItem;
 use App\Models\TaskItemUpdate;
 use App\Models\User;
 use App\Services\TaskProgressService;
+use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -74,6 +75,36 @@ class TaskItemUpdateController extends Controller
             'attachment_path' => $attachmentPath,
             'review_status' => 'pending',
         ]);
+
+        try {
+            $projectOwnerId = $task->project ? $task->project->owner_id : null;
+            $managerId = null;
+            if ($task->department_id) {
+                $managerId = $task->department()->value('manager_id');
+            }
+
+            $targets = collect([$projectOwnerId, $managerId])
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+
+            if (! empty($targets)) {
+                app(NotificationService::class)->notifyUsers(
+                    $targets,
+                    'Báo cáo đầu việc mới',
+                    'Đầu việc: '.$item->title,
+                    [
+                        'type' => 'task_item_update_pending',
+                        'task_id' => $task->id,
+                        'task_item_id' => $item->id,
+                        'task_item_update_id' => $update->id,
+                    ]
+                );
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
 
         return response()->json($update->load(['submitter', 'reviewer']), 201);
     }

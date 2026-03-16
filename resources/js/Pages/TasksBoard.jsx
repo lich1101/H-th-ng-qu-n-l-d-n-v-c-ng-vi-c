@@ -110,6 +110,7 @@ export default function TasksBoard(props) {
         priority: 'medium',
         status: 'todo',
         progress_percent: '',
+        start_date: '',
         deadline: '',
         assignee_id: '',
     });
@@ -217,6 +218,7 @@ export default function TasksBoard(props) {
             priority: 'medium',
             status: statusOptions[0] || 'todo',
             progress_percent: '',
+            start_date: '',
             deadline: '',
             assignee_id: '',
         });
@@ -237,6 +239,7 @@ export default function TasksBoard(props) {
             priority: item.priority || 'medium',
             status: item.status || statusOptions[0] || 'todo',
             progress_percent: item.progress_percent ?? '',
+            start_date: item.start_date ? String(item.start_date).slice(0, 10) : '',
             deadline: item.deadline ? String(item.deadline).slice(0, 10) : '',
             assignee_id: item.assignee_id || '',
         });
@@ -263,6 +266,7 @@ export default function TasksBoard(props) {
                     priority: itemForm.priority,
                     status: itemForm.status,
                     progress_percent: itemForm.progress_percent === '' ? null : Number(itemForm.progress_percent),
+                    start_date: itemForm.start_date || null,
                     deadline: itemForm.deadline || null,
                     assignee_id: itemForm.assignee_id ? Number(itemForm.assignee_id) : null,
                 });
@@ -274,6 +278,7 @@ export default function TasksBoard(props) {
                     priority: itemForm.priority,
                     status: itemForm.status,
                     progress_percent: itemForm.progress_percent === '' ? null : Number(itemForm.progress_percent),
+                    start_date: itemForm.start_date || null,
                     deadline: itemForm.deadline || null,
                     assignee_id: itemForm.assignee_id ? Number(itemForm.assignee_id) : null,
                 });
@@ -1153,6 +1158,7 @@ export default function TasksBoard(props) {
                                 <div className="mt-2 flex flex-wrap gap-2 text-xs text-text-muted">
                                     <span>Trạng thái: {LABELS[item.status] || item.status}</span>
                                     <span>Tiến độ: {item.progress_percent ?? 0}%</span>
+                                    <span>Bắt đầu: {item.start_date ? String(item.start_date).slice(0, 10) : '—'}</span>
                                     <span>Hạn: {item.deadline ? String(item.deadline).slice(0, 10) : '—'}</span>
                                 </div>
                                 <div className="mt-3 flex flex-wrap gap-2 text-xs">
@@ -1230,8 +1236,8 @@ export default function TasksBoard(props) {
                                         <input
                                             className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
                                             type="date"
-                                            value={itemForm.deadline}
-                                            onChange={(e) => setItemForm((s) => ({ ...s, deadline: e.target.value }))}
+                                            value={itemForm.start_date}
+                                            onChange={(e) => setItemForm((s) => ({ ...s, start_date: e.target.value }))}
                                         />
                                         <input
                                             className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
@@ -1241,6 +1247,17 @@ export default function TasksBoard(props) {
                                             value={itemForm.progress_percent}
                                             onChange={(e) => setItemForm((s) => ({ ...s, progress_percent: e.target.value }))}
                                         />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <input
+                                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                            type="date"
+                                            value={itemForm.deadline}
+                                            onChange={(e) => setItemForm((s) => ({ ...s, deadline: e.target.value }))}
+                                        />
+                                        <div className="text-xs text-text-muted flex items-center px-2">
+                                            % tiến độ cập nhật theo báo cáo
+                                        </div>
                                     </div>
                                     <div className="flex items-center gap-2">
                                         <button

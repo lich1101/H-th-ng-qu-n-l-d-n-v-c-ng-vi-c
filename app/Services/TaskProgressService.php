@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Task;
+use App\Services\ProjectProgressService;
 
 class TaskProgressService
 {
@@ -46,5 +47,13 @@ class TaskProgressService
         }
 
         $task->update($payload);
+
+        if ($task->project) {
+            try {
+                ProjectProgressService::recalc($task->project);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
     }
 }
