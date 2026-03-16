@@ -78,11 +78,12 @@ class MeetingController extends Controller
 
         $attendeeIds = $this->normalizeAttendeeIds($validated['attendee_ids'] ?? []);
         $this->syncAttendees($meeting, $attendeeIds);
-        $this->notifyMeetingCreated($meeting, $attendeeIds);
 
         $this->log($request, 'meeting_created', 'meeting', $meeting->id, [
             'title' => ['old' => null, 'new' => $meeting->title],
         ]);
+
+        $this->notifyMeetingCreated($meeting, $attendeeIds);
 
         return response()->json(
             $meeting->load(['attendees.user:id,name,email,avatar_url']),
@@ -204,7 +205,7 @@ class MeetingController extends Controller
             : '';
 
         try {
-            $notifier->notifyUsers(
+            $notifier->notifyUsersAfterResponse(
                 $attendeeIds,
                 'Lịch họp mới',
                 $scheduledAt === ''

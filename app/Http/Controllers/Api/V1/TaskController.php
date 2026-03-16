@@ -91,24 +91,26 @@ class TaskController extends Controller
 
         $task = Task::create($validated);
 
+        $managerId = null;
         if ($request->user()->role === 'admin' && ! empty($task->department_id)) {
             $managerId = Department::query()
                 ->where('id', $task->department_id)
                 ->value('manager_id');
-            if ($managerId) {
-                try {
-                    app(NotificationService::class)->notifyUsers(
-                        [$managerId],
-                        'Có công việc mới được phân công',
-                        'Công việc: '.$task->title,
-                        [
-                            'type' => 'task_assigned',
-                            'task_id' => $task->id,
-                        ]
-                    );
-                } catch (\Throwable $e) {
-                    report($e);
-                }
+        }
+
+        if ($managerId) {
+            try {
+                app(NotificationService::class)->notifyUsersAfterResponse(
+                    [$managerId],
+                    'Có công việc mới được phân công',
+                    'Công việc: '.$task->title,
+                    [
+                        'type' => 'task_assigned',
+                        'task_id' => $task->id,
+                    ]
+                );
+            } catch (\Throwable $e) {
+                report($e);
             }
         }
 

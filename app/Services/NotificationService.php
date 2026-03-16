@@ -40,6 +40,18 @@ class NotificationService
         }
     }
 
+    public function notifyUsersAfterResponse(array $userIds, string $title, string $body, array $data = []): void
+    {
+        $userIds = array_values(array_filter(array_unique(array_map('intval', $userIds))));
+        if (empty($userIds)) {
+            return;
+        }
+
+        app()->terminating(function () use ($userIds, $title, $body, $data) {
+            $this->notifyUsers($userIds, $title, $body, $data);
+        });
+    }
+
     public function notifyUser(User $user, string $title, string $body, array $data = []): void
     {
         $settings = $this->notificationSettings();

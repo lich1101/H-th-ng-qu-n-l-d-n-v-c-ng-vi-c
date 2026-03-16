@@ -107,28 +107,6 @@ class ContractController extends Controller
 
         $contract = Contract::create($validated);
 
-        if (($contract->approval_status ?? '') === 'pending') {
-            $accountantIds = User::query()
-                ->where('role', 'ke_toan')
-                ->pluck('id')
-                ->all();
-            if (! empty($accountantIds)) {
-                try {
-                    app(NotificationService::class)->notifyUsers(
-                        $accountantIds,
-                        'Hợp đồng mới cần duyệt',
-                        'Hợp đồng: '.$contract->title,
-                        [
-                            'type' => 'contract_approval',
-                            'contract_id' => $contract->id,
-                        ]
-                    );
-                } catch (\Throwable $e) {
-                    report($e);
-                }
-            }
-        }
-
         if (! empty($validated['project_id'])) {
             Project::where('id', $validated['project_id'])->update([
                 'contract_id' => $contract->id,
@@ -143,6 +121,28 @@ class ContractController extends Controller
 
         if ($contract->approval_status === 'approved') {
             $this->syncClientRevenue($contract->client);
+        }
+
+        if (($contract->approval_status ?? '') === 'pending') {
+            $accountantIds = User::query()
+                ->where('role', 'ke_toan')
+                ->pluck('id')
+                ->all();
+            if (! empty($accountantIds)) {
+                try {
+                    app(NotificationService::class)->notifyUsersAfterResponse(
+                        $accountantIds,
+                        'Hợp đồng mới cần duyệt',
+                        'Hợp đồng: '.$contract->title,
+                        [
+                            'type' => 'contract_approval',
+                            'contract_id' => $contract->id,
+                        ]
+                    );
+                } catch (\Throwable $e) {
+                    report($e);
+                }
+            }
         }
 
         return response()->json($contract->load(['client', 'project', 'opportunity', 'creator', 'approver', 'items']), 201);

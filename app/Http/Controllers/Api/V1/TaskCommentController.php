@@ -417,7 +417,7 @@ class TaskCommentController extends Controller
         $title = 'Bạn được nhắc đến trong trao đổi';
         $body = 'Công việc: '.$task->title;
         try {
-            $notifier->notifyUsers($ids, $title, $body, [
+            $notifier->notifyUsersAfterResponse($ids, $title, $body, [
                 'type' => 'task_comment_tag',
                 'task_id' => $task->id,
                 'comment_id' => $comment->id,
@@ -452,7 +452,7 @@ class TaskCommentController extends Controller
         $title = 'Tin nhắn mới trong công việc';
         $body = 'Công việc: '.$task->title;
         try {
-            $notifier->notifyUsers($participantIds, $title, $body, [
+            $notifier->notifyUsersAfterResponse($participantIds, $title, $body, [
                 'type' => 'task_chat_message',
                 'task_id' => $task->id,
                 'comment_id' => $comment->id,

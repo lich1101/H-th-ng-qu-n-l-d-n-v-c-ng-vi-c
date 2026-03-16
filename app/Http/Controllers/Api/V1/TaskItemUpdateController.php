@@ -90,7 +90,7 @@ class TaskItemUpdateController extends Controller
                 ->all();
 
             if (! empty($targets)) {
-                app(NotificationService::class)->notifyUsers(
+                app(NotificationService::class)->notifyUsersAfterResponse(
                     $targets,
                     'Báo cáo đầu việc mới',
                     'Đầu việc: '.$item->title,

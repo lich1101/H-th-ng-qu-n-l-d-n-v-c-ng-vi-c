@@ -143,7 +143,7 @@ class TaskItemController extends Controller
 
         if (! empty($item->assignee_id)) {
             try {
-                app(NotificationService::class)->notifyUsers(
+                app(NotificationService::class)->notifyUsersAfterResponse(
                     [$item->assignee_id],
                     'Bạn có đầu việc mới',
                     'Đầu việc: '.$item->title,
