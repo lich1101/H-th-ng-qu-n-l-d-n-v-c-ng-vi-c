@@ -35,6 +35,13 @@ export default function NotificationCenter(props) {
         fetchData();
     };
 
+    const clearRead = async (sourceType) => {
+        await axios.post('/api/v1/notifications/in-app/clear-read', {
+            source_type: sourceType,
+        });
+        fetchData();
+    };
+
     return (
         <PageContainer
             auth={props.auth}
@@ -52,13 +59,22 @@ export default function NotificationCenter(props) {
                 <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
                     <div className="flex items-center justify-between mb-4">
                         <h3 className="font-semibold text-slate-900">Thông báo của bạn</h3>
-                        <button
-                            type="button"
-                            className="text-xs text-primary"
-                            onClick={() => markAllRead('in_app')}
-                        >
-                            Đọc tất cả
-                        </button>
+                        <div className="flex items-center gap-3">
+                            <button
+                                type="button"
+                                className="text-xs text-primary"
+                                onClick={() => markAllRead('in_app')}
+                            >
+                                Đọc tất cả
+                            </button>
+                            <button
+                                type="button"
+                                className="text-xs text-slate-500"
+                                onClick={() => clearRead('in_app')}
+                            >
+                                Xóa đã xem
+                            </button>
+                        </div>
                     </div>
                     <div className="space-y-3 text-sm">
                         {notifications.map((item) => (

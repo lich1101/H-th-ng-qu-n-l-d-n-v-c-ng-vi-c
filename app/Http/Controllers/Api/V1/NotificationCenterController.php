@@ -197,4 +197,46 @@ class NotificationCenterController extends Controller
 
         return response()->json(['message' => 'Đã đánh dấu tất cả là đã đọc.']);
     }
+
+    public function clearRead(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'source_type' => ['nullable', 'in:deadline_reminder,activity_log,in_app,all'],
+        ]);
+
+        $sourceType = $validated['source_type'] ?? 'in_app';
+        $userId = $request->user()->id;
+        $deleted = 0;
+
+        if (in_array($sourceType, ['all', 'in_app'], true)) {
+            $deleted += InAppNotification::query()
+                ->where('user_id', $userId)
+                ->whereNotNull('read_at')
+                ->delete();
+            if ($sourceType === 'in_app') {
+                return response()->json(['message' => 'Đã xóa thông báo đã xem.']);
+            }
+        }
+
+        if (in_array($sourceType, ['all', 'deadline_reminder'], true)) {
+            $deleted += NotificationRead::query()
+                ->where('user_id', $userId)
+                ->where('source_type', 'deadline_reminder')
+                ->whereNotNull('read_at')
+                ->delete();
+        }
+
+        if (in_array($sourceType, ['all', 'activity_log'], true)) {
+            $deleted += NotificationRead::query()
+                ->where('user_id', $userId)
+                ->where('source_type', 'activity_log')
+                ->whereNotNull('read_at')
+                ->delete();
+        }
+
+        return response()->json([
+            'message' => 'Đã xóa thông báo đã xem.',
+            'deleted' => $deleted,
+        ]);
+    }
 }

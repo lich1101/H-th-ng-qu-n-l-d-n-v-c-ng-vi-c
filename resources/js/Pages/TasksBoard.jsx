@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
@@ -114,6 +114,7 @@ export default function TasksBoard(props) {
         assignee_id: '',
     });
     const [savingItem, setSavingItem] = useState(false);
+    const savingItemRef = useRef(false);
     const [editingItemId, setEditingItemId] = useState(null);
     const [showItemReport, setShowItemReport] = useState(false);
     const [reportItem, setReportItem] = useState(null);
@@ -243,7 +244,7 @@ export default function TasksBoard(props) {
 
     const saveItem = async () => {
         if (!itemsTask) return;
-        if (savingItem) return;
+        if (savingItemRef.current || savingItem) return;
         if (!itemForm.title.trim()) {
             toast.error('Vui lòng nhập tiêu đề đầu việc.');
             return;
@@ -252,6 +253,7 @@ export default function TasksBoard(props) {
             toast.error('Vui lòng chọn nhân sự phụ trách.');
             return;
         }
+        savingItemRef.current = true;
         setSavingItem(true);
         try {
             if (editingItemId) {
@@ -283,6 +285,7 @@ export default function TasksBoard(props) {
         } catch (e) {
             toast.error(e?.response?.data?.message || 'Lưu đầu việc thất bại.');
         } finally {
+            savingItemRef.current = false;
             setSavingItem(false);
         }
     };

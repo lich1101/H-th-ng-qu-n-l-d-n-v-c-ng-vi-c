@@ -17,6 +17,9 @@ class Kernel extends ConsoleKernel
     {
         $schedule->command('reminders:sync-deadline')->hourly();
         $schedule->command('reminders:send-deadline')->everyMinute();
+        $schedule->command('notifications:cleanup')
+            ->dailyAt('00:30')
+            ->timezone('Asia/Ho_Chi_Minh');
     }
 
     /**

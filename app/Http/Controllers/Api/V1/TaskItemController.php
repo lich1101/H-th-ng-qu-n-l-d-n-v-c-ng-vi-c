@@ -69,10 +69,13 @@ class TaskItemController extends Controller
             ], 500);
         }
 
+        $warnings = [];
+
         try {
             TaskProgressService::recalc($task);
         } catch (\Throwable $e) {
             report($e);
+            $warnings[] = 'progress';
         }
 
         if (! empty($item->assignee_id)) {
@@ -89,10 +92,16 @@ class TaskItemController extends Controller
                 );
             } catch (\Throwable $e) {
                 report($e);
+                $warnings[] = 'push';
             }
         }
 
-        return response()->json($item->load(['assignee', 'reviewer']), 201);
+        $payload = $item->load(['assignee', 'reviewer'])->toArray();
+        if (! empty($warnings)) {
+            $payload['warnings'] = $warnings;
+        }
+
+        return response()->json($payload, 201);
     }
 
     public function update(Task $task, TaskItem $item, Request $request): JsonResponse

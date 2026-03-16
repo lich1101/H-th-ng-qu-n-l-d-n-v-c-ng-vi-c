@@ -67,15 +67,19 @@ class TaskController extends Controller
                 ->where('id', $task->department_id)
                 ->value('manager_id');
             if ($managerId) {
-                app(NotificationService::class)->notifyUsers(
-                    [$managerId],
-                    'Có công việc mới được phân công',
-                    'Công việc: '.$task->title,
-                    [
-                        'type' => 'task_assigned',
-                        'task_id' => $task->id,
-                    ]
-                );
+                try {
+                    app(NotificationService::class)->notifyUsers(
+                        [$managerId],
+                        'Có công việc mới được phân công',
+                        'Công việc: '.$task->title,
+                        [
+                            'type' => 'task_assigned',
+                            'task_id' => $task->id,
+                        ]
+                    );
+                } catch (\Throwable $e) {
+                    report($e);
+                }
             }
         }
 

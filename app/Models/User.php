@@ -25,6 +25,7 @@ class User extends Authenticatable
         'department',
         'department_id',
         'phone',
+        'avatar_url',
         'workload_capacity',
         'is_active',
         'facebook_user_access_token',

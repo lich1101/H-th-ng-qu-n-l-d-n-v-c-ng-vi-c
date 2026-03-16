@@ -64,7 +64,11 @@ class TaskCommentController extends Controller
 
         $comment->load('user');
         $taggedUsers = $this->attachTaggedUsers(collect([$comment]));
-        $this->syncFirebase($task, $comment, $taggedUsers);
+        try {
+            $this->syncFirebase($task, $comment, $taggedUsers);
+        } catch (\Throwable $e) {
+            report($e);
+        }
         $this->notifyTaggedUsers($request->user()->id, $taggedUsers, $task, $comment);
 
         return response()->json($comment, 201);
@@ -84,6 +88,9 @@ class TaskCommentController extends Controller
 
         if (! $this->canMutate($request, $comment)) {
             return response()->json(['message' => 'Forbidden.'], 403);
+        }
+        if ($comment->is_recalled) {
+            return response()->json(['message' => 'Tin nhắn đã bị thu hồi, không thể chỉnh sửa.'], 422);
         }
 
         $this->normalizeTaggedIds($request);
@@ -109,11 +116,17 @@ class TaskCommentController extends Controller
             'content' => $validated['content'],
             'tagged_user_ids' => isset($validated['tagged_user_ids']) ? json_encode($validated['tagged_user_ids']) : null,
             'attachment_path' => $attachmentPath,
+            'is_recalled' => false,
+            'recalled_at' => null,
         ]);
 
         $comment->load('user');
         $taggedUsers = $this->attachTaggedUsers(collect([$comment]));
-        $this->syncFirebase($task, $comment, $taggedUsers);
+        try {
+            $this->syncFirebase($task, $comment, $taggedUsers);
+        } catch (\Throwable $e) {
+            report($e);
+        }
         $this->notifyTaggedUsers($request->user()->id, $taggedUsers, $task, $comment);
 
         return response()->json($comment);
@@ -132,12 +145,25 @@ class TaskCommentController extends Controller
             return response()->json(['message' => 'Forbidden.'], 403);
         }
 
-        $comment->delete();
+        if (! $comment->is_recalled) {
+            $comment->update([
+                'content' => '',
+                'tagged_user_ids' => null,
+                'attachment_path' => null,
+                'is_recalled' => true,
+                'recalled_at' => now(),
+            ]);
+        }
 
-        $firebase = app(FirebaseService::class);
-        $firebase->deleteTaskMessage($task->id, $comment->id);
+        $comment->load('user');
+        $taggedUsers = $this->attachTaggedUsers(collect([$comment]));
+        try {
+            $this->syncFirebase($task, $comment, $taggedUsers);
+        } catch (\Throwable $e) {
+            report($e);
+        }
 
-        return response()->json(['message' => 'Comment deleted.']);
+        return response()->json(['message' => 'Comment recalled.']);
     }
 
     public function participants(Task $task, Request $request): JsonResponse
@@ -153,6 +179,7 @@ class TaskCommentController extends Controller
                     'name' => $user->name,
                     'role' => $user->role,
                     'email' => $user->email,
+                    'avatar_url' => $user->avatar_url,
                 ];
             });
 
@@ -167,11 +194,7 @@ class TaskCommentController extends Controller
             return false;
         }
 
-        if ($comment->user_id === $user->id) {
-            return true;
-        }
-
-        return in_array($user->role, ['admin', 'quan_ly'], true);
+        return (int) $comment->user_id === (int) $user->id;
     }
 
     private function normalizeTaggedIds(Request $request): void
@@ -283,7 +306,7 @@ class TaskCommentController extends Controller
             ? collect()
             : User::query()
                 ->whereIn('id', $tagIds)
-                ->get(['id', 'name', 'role', 'email'])
+                ->get(['id', 'name', 'role', 'email', 'avatar_url'])
                 ->keyBy('id');
 
         $comments->each(function ($comment) use ($users) {
@@ -307,10 +330,13 @@ class TaskCommentController extends Controller
             'created_at' => optional($comment->created_at)->toIso8601String(),
             'updated_at' => optional($comment->updated_at)->toIso8601String(),
             'user_id' => $comment->user_id,
+            'is_recalled' => (bool) $comment->is_recalled,
+            'recalled_at' => optional($comment->recalled_at)->toIso8601String(),
             'user' => [
                 'id' => $comment->user_id,
                 'name' => $user ? $user->name : null,
                 'role' => $user ? $user->role : null,
+                'avatar_url' => $user ? $user->avatar_url : null,
             ],
             'tagged_user_ids' => $comment->tagged_user_ids ?? [],
             'tagged_users' => collect($taggedUsers)
@@ -320,6 +346,7 @@ class TaskCommentController extends Controller
                         'name' => $u->name,
                         'role' => $u->role,
                         'email' => $u->email,
+                        'avatar_url' => $u->avatar_url,
                     ];
                 })
                 ->values()

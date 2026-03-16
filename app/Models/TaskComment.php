@@ -15,10 +15,14 @@ class TaskComment extends Model
         'content',
         'tagged_user_ids',
         'attachment_path',
+        'is_recalled',
+        'recalled_at',
     ];
 
     protected $casts = [
         'tagged_user_ids' => 'array',
+        'is_recalled' => 'boolean',
+        'recalled_at' => 'datetime',
     ];
 
     public function task()

@@ -27,6 +27,7 @@ use App\Http\Controllers\Api\V1\MeetingController;
 use App\Http\Controllers\Api\V1\NotificationCenterController;
 use App\Http\Controllers\Api\V1\ProjectController;
 use App\Http\Controllers\Api\V1\ImportController;
+use App\Http\Controllers\Api\V1\ProfileController;
 use App\Http\Controllers\Api\V1\PublicMobileController;
 use App\Http\Controllers\Api\V1\ReportController;
 use App\Http\Controllers\Api\V1\ServiceWorkflowController;
@@ -74,6 +75,7 @@ Route::prefix('v1')->group(function () {
     Route::middleware('auth:sanctum')->group(function () {
         Route::get('/me', [AuthController::class, 'me']);
         Route::post('/logout', [AuthController::class, 'logout']);
+        Route::post('/profile/avatar', [ProfileController::class, 'updateAvatar']);
         Route::post('/device-tokens', [DeviceTokenController::class, 'store']);
         Route::get('/firebase/token', [FirebaseTokenController::class, 'show']);
         Route::post('/push/test', [PushTestController::class, 'store'])
@@ -313,5 +315,6 @@ Route::prefix('v1')->group(function () {
         Route::get('/notifications/in-app', [NotificationCenterController::class, 'index']);
         Route::post('/notifications/in-app/read', [NotificationCenterController::class, 'markRead']);
         Route::post('/notifications/in-app/read-all', [NotificationCenterController::class, 'markAllRead']);
+        Route::post('/notifications/in-app/clear-read', [NotificationCenterController::class, 'clearRead']);
     });
 });

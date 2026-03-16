@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import axios from 'axios';
 import Dropdown from '@/Components/Dropdown';
 import { Link, usePage } from '@inertiajs/inertia-react';
 
@@ -10,6 +11,8 @@ export default function Authenticated({ auth, header, children }) {
     const brandName = settings?.brand_name || 'ClickOn';
     const brandSubtitle = settings?.brand_subtitle || 'Khách hàng • Phòng ban • Kế toán';
     const logoUrl = settings?.logo_url;
+    const [avatarUrl, setAvatarUrl] = useState(auth?.user?.avatar_url || '');
+    const fileInputRef = useRef(null);
 
     useEffect(() => {
         if (!settings?.primary_color) return;
@@ -27,6 +30,33 @@ export default function Authenticated({ auth, header, children }) {
         quan_ly: 'Quản lý',
         nhan_vien: 'Nhân sự',
         ke_toan: 'Kế toán',
+    };
+
+    const initials = (name) => {
+        const parts = (name || '')
+            .trim()
+            .split(/\s+/)
+            .filter(Boolean);
+        if (!parts.length) return 'U';
+        if (parts.length === 1) return parts[0][0]?.toUpperCase() || 'U';
+        return `${parts[0][0] || ''}${parts[1][0] || ''}`.toUpperCase();
+    };
+
+    const handleAvatarChange = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        try {
+            const data = new FormData();
+            data.append('avatar', file);
+            const res = await axios.post('/api/v1/profile/avatar', data, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+            });
+            setAvatarUrl(res.data?.avatar_url || '');
+        } catch (err) {
+            console.error(err);
+        } finally {
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        }
     };
 
     const menuGroups = useMemo(
@@ -217,7 +247,20 @@ export default function Authenticated({ auth, header, children }) {
                                                 type="button"
                                                 className="inline-flex items-center px-3 py-2 border border-slate-200 text-sm leading-4 font-medium rounded-md text-slate-700 bg-white hover:text-slate-900"
                                             >
-                                                {auth.user.name}
+                                                <span className="flex items-center gap-2">
+                                                    {avatarUrl ? (
+                                                        <img
+                                                            src={avatarUrl}
+                                                            alt={auth.user.name}
+                                                            className="h-7 w-7 rounded-full object-cover border border-slate-200"
+                                                        />
+                                                    ) : (
+                                                        <span className="h-7 w-7 rounded-full bg-primary/10 text-primary text-xs font-semibold flex items-center justify-center">
+                                                            {initials(auth.user.name)}
+                                                        </span>
+                                                    )}
+                                                    <span>{auth.user.name}</span>
+                                                </span>
                                                 <svg
                                                     className="ml-2 -mr-0.5 h-4 w-4"
                                                     xmlns="http://www.w3.org/2000/svg"
@@ -235,11 +278,25 @@ export default function Authenticated({ auth, header, children }) {
                                     </Dropdown.Trigger>
 
                                     <Dropdown.Content>
+                                        <button
+                                            type="button"
+                                            className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-100"
+                                            onClick={() => fileInputRef.current?.click()}
+                                        >
+                                            Đổi avatar
+                                        </button>
                                         <Dropdown.Link href={route('logout')} method="post" as="button">
                                             Đăng xuất
                                         </Dropdown.Link>
                                     </Dropdown.Content>
                                 </Dropdown>
+                                <input
+                                    ref={fileInputRef}
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    onChange={handleAvatarChange}
+                                />
                             </div>
                         </div>
                     </header>

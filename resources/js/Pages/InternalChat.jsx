@@ -32,8 +32,30 @@ export default function InternalChat(props) {
 
     const canEditOrDelete = (comment) => {
         if (!user) return false;
-        if (comment.user_id === user.id) return true;
-        return ['admin', 'quan_ly'].includes(user.role);
+        return comment.user_id === user.id && !comment.is_recalled;
+    };
+
+    const formatTime = (raw) => {
+        if (!raw) return '';
+        const date = new Date(raw);
+        if (Number.isNaN(date.getTime())) return raw;
+        return date.toLocaleString('vi-VN', {
+            hour: '2-digit',
+            minute: '2-digit',
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+        });
+    };
+
+    const normalizeToken = (value) => {
+        return (value || '')
+            .toString()
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/\s+/g, '')
+            .trim();
     };
 
     const isNearBottom = () => {
@@ -75,6 +97,40 @@ export default function InternalChat(props) {
             }
             return <span key={`${part}-${idx}`}>{part}</span>;
         });
+    };
+
+    const initials = (name) => {
+        const parts = (name || '')
+            .trim()
+            .split(/\s+/)
+            .filter(Boolean);
+        if (!parts.length) return 'U';
+        if (parts.length === 1) return parts[0][0]?.toUpperCase() || 'U';
+        return `${parts[0][0] || ''}${parts[1][0] || ''}`.toUpperCase();
+    };
+
+    const renderAvatar = (comment) => {
+        const name = comment.user?.name || comment.user_name || 'Người dùng';
+        const avatarUrl = comment.user?.avatar_url || '';
+        if (avatarUrl) {
+            return (
+                <img
+                    src={avatarUrl}
+                    alt={name}
+                    className="h-9 w-9 rounded-full object-cover border border-slate-200"
+                />
+            );
+        }
+        return (
+            <div className="h-9 w-9 rounded-full bg-primary/10 text-primary font-semibold text-xs flex items-center justify-center border border-slate-200">
+                {initials(name)}
+            </div>
+        );
+    };
+
+    const showMessageInfo = (comment) => {
+        const time = formatTime(comment.created_at || '');
+        toast.success(time ? `Thời gian: ${time}` : 'Không có thời gian.');
     };
 
     const fetchTasks = async () => {
@@ -232,6 +288,14 @@ export default function InternalChat(props) {
             toast.error('Bạn không có quyền sửa bình luận này.');
             return;
         }
+        if (c.is_recalled) {
+            toast.error('Tin nhắn đã bị thu hồi, không thể chỉnh sửa.');
+            return;
+        }
+        if (selectedTask?.status === 'done') {
+            toast.error('Công việc đã hoàn thành, không thể chỉnh sửa.');
+            return;
+        }
         setEditingId(c.id);
         setContent(c.content || '');
         if (Array.isArray(c.tagged_users) && c.tagged_users.length) {
@@ -324,26 +388,24 @@ export default function InternalChat(props) {
 
     const resolveTagIds = (text) => {
         const ids = new Set(taggedUsers.map((u) => u.id).filter(Boolean));
-        const matches = [...text.matchAll(/@([^\s@]+)/g)].map((m) => m[1]?.toLowerCase() || '');
+        const matches = [...text.matchAll(/@([^\s@]+)/g)]
+            .map((m) => normalizeToken(m[1]))
+            .filter(Boolean);
         if (!matches.length || !participants.length) {
             return Array.from(ids);
         }
+        const tokenSet = new Set(matches);
         participants.forEach((p) => {
-            const name = (p.name || '').toLowerCase();
-            const nameCompact = name.replace(/\s+/g, '');
+            const nameKey = normalizeToken(p.name || '');
             const email = (p.email || '').toLowerCase();
             const emailUser = email.includes('@') ? email.split('@')[0] : '';
-            matches.forEach((token) => {
-                if (!token) return;
-                const tokenCompact = token.replace(/\s+/g, '');
-                if (
-                    token === name ||
-                    tokenCompact === nameCompact ||
-                    (emailUser && token === emailUser)
-                ) {
-                    ids.add(p.id);
-                }
-            });
+            const emailKey = normalizeToken(emailUser);
+            if (
+                (nameKey && tokenSet.has(nameKey)) ||
+                (emailKey && tokenSet.has(emailKey))
+            ) {
+                ids.add(p.id);
+            }
         });
         return Array.from(ids);
     };
@@ -354,26 +416,24 @@ export default function InternalChat(props) {
                 .map((u) => (u.email || '').toLowerCase())
                 .filter((email) => email)
         );
-        const matches = [...text.matchAll(/@([^\s@]+)/g)].map((m) => m[1]?.toLowerCase() || '');
+        const matches = [...text.matchAll(/@([^\s@]+)/g)]
+            .map((m) => normalizeToken(m[1]))
+            .filter(Boolean);
         if (!matches.length || !participants.length) {
             return Array.from(emails);
         }
+        const tokenSet = new Set(matches);
         participants.forEach((p) => {
-            const name = (p.name || '').toLowerCase();
-            const nameCompact = name.replace(/\s+/g, '');
+            const nameKey = normalizeToken(p.name || '');
             const email = (p.email || '').toLowerCase();
             const emailUser = email.includes('@') ? email.split('@')[0] : '';
-            matches.forEach((token) => {
-                if (!token) return;
-                const tokenCompact = token.replace(/\s+/g, '');
-                if (
-                    token === name ||
-                    tokenCompact === nameCompact ||
-                    (emailUser && token === emailUser)
-                ) {
-                    if (email) emails.add(email);
-                }
-            });
+            const emailKey = normalizeToken(emailUser);
+            if (
+                (nameKey && tokenSet.has(nameKey)) ||
+                (emailKey && tokenSet.has(emailKey))
+            ) {
+                if (email) emails.add(email);
+            }
         });
         return Array.from(emails);
     };
@@ -381,16 +441,22 @@ export default function InternalChat(props) {
     const remove = async (c) => {
         if (!selectedTaskId) return;
         if (!canEditOrDelete(c)) {
-            toast.error('Bạn không có quyền xóa bình luận này.');
+            toast.error('Bạn không có quyền thu hồi bình luận này.');
             return;
         }
-        if (!confirm('Xóa bình luận này?')) return;
+        if (c.is_recalled) {
+            toast.error('Tin nhắn đã bị thu hồi.');
+            return;
+        }
+        if (!confirm('Thu hồi tin nhắn này?')) return;
         try {
             await axios.delete(`/api/v1/tasks/${selectedTaskId}/comments/${c.id}`);
-            toast.success('Đã xóa bình luận.');
-            await fetchComments(selectedTaskId);
+            toast.success('Đã thu hồi tin nhắn.');
+            if (!firebaseReady || !firebaseToken) {
+                await fetchComments(selectedTaskId);
+            }
         } catch (e) {
-            toast.error(e?.response?.data?.message || 'Xóa bình luận thất bại.');
+            toast.error(e?.response?.data?.message || 'Thu hồi tin nhắn thất bại.');
         }
     };
 
@@ -428,7 +494,7 @@ export default function InternalChat(props) {
                     </select>
                     <div className="mt-4 text-xs text-text-muted space-y-2">
                         <p>• Mỗi công việc tương ứng một kênh chat.</p>
-                        <p>• Bạn chỉ sửa/xóa bình luận do mình tạo hoặc là Quản trị/Trưởng phòng.</p>
+                        <p>• Bạn chỉ sửa/thu hồi bình luận do mình tạo.</p>
                     </div>
                 </div>
 
@@ -465,6 +531,7 @@ export default function InternalChat(props) {
                         {comments.map((c) => {
                             const author = c.user?.name || c.user_name || 'Người dùng';
                             const isMine = user && c.user_id === user.id;
+                            const isRecalled = c.is_recalled === true;
                             const tags =
                                 Array.isArray(c.tagged_users) && c.tagged_users.length
                                     ? c.tagged_users.map((u) => u.name).join(', ')
@@ -476,20 +543,29 @@ export default function InternalChat(props) {
                                     key={c.id || `${c.user_id}-${c.created_at}`}
                                     className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}
                                 >
+                                    {!isMine && <div className="mr-2 mt-5">{renderAvatar(c)}</div>}
                                     <div className={`max-w-[75%] ${isMine ? 'text-right' : 'text-left'}`}>
-                                        <div className="text-xs text-text-muted mb-1">
-                                            {author} • {c.created_at || ''}
-                                        </div>
+                                        <div className="text-xs text-text-muted mb-1">{author}</div>
                                         <div
+                                            onContextMenu={(e) => {
+                                                e.preventDefault();
+                                                showMessageInfo(c);
+                                            }}
                                             className={`chat-fade rounded-2xl border px-4 py-3 text-sm break-words whitespace-pre-wrap ${
                                                 isMine
                                                     ? 'bg-primary/10 border-primary/20 text-slate-900'
                                                     : 'bg-slate-50 border-slate-200/80 text-slate-700'
                                             }`}
                                         >
-                                            {renderMessageContent(c.content)}
+                                            {isRecalled ? (
+                                                <span className="italic text-text-muted">
+                                                    Tin nhắn đã bị thu hồi.
+                                                </span>
+                                            ) : (
+                                                renderMessageContent(c.content)
+                                            )}
                                         </div>
-                                        {c.attachment_path && (
+                                        {!isRecalled && c.attachment_path && (
                                             <a
                                                 className="text-xs text-primary mt-2 inline-block"
                                                 href={c.attachment_path}
@@ -499,16 +575,16 @@ export default function InternalChat(props) {
                                                 Tệp đính kèm
                                             </a>
                                         )}
-                                        {tags && (
-                                            <p className="text-xs text-text-muted mt-1">Tag: {tags}</p>
+                                        {!isRecalled && tags && (
+                                            <p className="text-xs text-primary mt-1">Tag: {tags}</p>
                                         )}
-                                        {canEditOrDelete(c) && (
+                                        {canEditOrDelete(c) && !isRecalled && (
                                             <div className="mt-2 flex gap-3 text-xs justify-end">
                                                 <button className="text-primary" onClick={() => startEdit(c)} type="button">
                                                     Sửa
                                                 </button>
                                                 <button className="text-danger" onClick={() => remove(c)} type="button">
-                                                    Xóa
+                                                    Thu hồi
                                                 </button>
                                             </div>
                                         )}
@@ -556,9 +632,10 @@ export default function InternalChat(props) {
                             <div className="mt-2 rounded-2xl border border-slate-200/80 bg-white shadow-card max-h-44 overflow-y-auto">
                                 {(participants || [])
                                     .filter((u) => {
-                                        const query = mentionQuery.toLowerCase();
-                                        const name = (u.name || '').toLowerCase();
-                                        const email = (u.email || '').toLowerCase();
+                                        const query = normalizeToken(mentionQuery);
+                                        if (!query) return true;
+                                        const name = normalizeToken(u.name || '');
+                                        const email = normalizeToken(u.email || '');
                                         return name.includes(query) || email.includes(query);
                                     })
                                     .slice(0, 8)

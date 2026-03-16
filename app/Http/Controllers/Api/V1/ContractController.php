@@ -104,15 +104,19 @@ class ContractController extends Controller
                 ->pluck('id')
                 ->all();
             if (! empty($accountantIds)) {
-                app(NotificationService::class)->notifyUsers(
-                    $accountantIds,
-                    'Hợp đồng mới cần duyệt',
-                    'Hợp đồng: '.$contract->title,
-                    [
-                        'type' => 'contract_approval',
-                        'contract_id' => $contract->id,
-                    ]
-                );
+                try {
+                    app(NotificationService::class)->notifyUsers(
+                        $accountantIds,
+                        'Hợp đồng mới cần duyệt',
+                        'Hợp đồng: '.$contract->title,
+                        [
+                            'type' => 'contract_approval',
+                            'contract_id' => $contract->id,
+                        ]
+                    );
+                } catch (\Throwable $e) {
+                    report($e);
+                }
             }
         }
 
