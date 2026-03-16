@@ -93,6 +93,8 @@ export default function Authenticated({ auth, header, children }) {
                 items: [
                     { label: 'Dự án', icon: 'project', routeName: 'projects.kanban', href: route('projects.kanban'), roles: ['admin', 'quan_ly'] },
                     { label: 'Công việc', icon: 'tasks', routeName: 'tasks.board', href: route('tasks.board'), roles: ['admin', 'quan_ly', 'nhan_vien'] },
+                    { label: 'Công việc theo nhân sự', icon: 'users', routeName: 'tasks.by-staff', href: route('tasks.by-staff'), roles: ['admin', 'quan_ly', 'nhan_vien'] },
+                    { label: 'Đầu việc', icon: 'tasks', routeName: 'task-items.board', href: route('task-items.board'), roles: ['admin', 'quan_ly', 'nhan_vien'] },
                     { label: 'Nhắc hạn', icon: 'alarm', routeName: 'deadlines.index', href: route('deadlines.index'), roles: ['admin', 'quan_ly', 'nhan_vien'] },
                     { label: 'Bàn giao', icon: 'handover', routeName: 'handover.index', href: route('handover.index'), roles: ['admin', 'quan_ly', 'nhan_vien'] },
                     { label: 'Điều phối phòng ban', icon: 'route', routeName: 'department-assignments.index', href: route('department-assignments.index'), roles: ['admin', 'quan_ly', 'nhan_vien'] },

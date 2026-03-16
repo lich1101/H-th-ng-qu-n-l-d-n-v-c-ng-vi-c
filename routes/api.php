@@ -145,6 +145,8 @@ Route::prefix('v1')->group(function () {
             ->middleware('role:admin,quan_ly');
 
         Route::get('/tasks/{task}/items', [TaskItemController::class, 'index']);
+        Route::get('/task-items', [TaskItemController::class, 'globalIndex'])
+            ->middleware('role:admin,quan_ly,nhan_vien');
         Route::post('/tasks/{task}/items', [TaskItemController::class, 'store'])
             ->middleware('role:admin,quan_ly');
         Route::put('/tasks/{task}/items/{item}', [TaskItemController::class, 'update'])

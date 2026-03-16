@@ -10,9 +10,70 @@ use App\Services\NotificationService;
 use App\Services\TaskProgressService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Database\Eloquent\Builder;
 
 class TaskItemController extends Controller
 {
+    public function globalIndex(Request $request): JsonResponse
+    {
+        $query = TaskItem::query()
+            ->with([
+                'task:id,project_id,department_id,title,assignee_id,created_by,assigned_by',
+                'task.project:id,name,code',
+                'assignee:id,name,email,avatar_url',
+                'reviewer:id,name,email,avatar_url',
+            ]);
+
+        $this->applyItemScope($query, $request->user());
+
+        if ($request->filled('project_id')) {
+            $projectId = (int) $request->input('project_id');
+            $query->whereHas('task', function ($builder) use ($projectId) {
+                $builder->where('project_id', $projectId);
+            });
+        }
+
+        if ($request->filled('task_id')) {
+            $query->where('task_id', (int) $request->input('task_id'));
+        }
+
+        if ($request->filled('assignee_id')) {
+            $query->where('assignee_id', (int) $request->input('assignee_id'));
+        }
+
+        if ($request->filled('status')) {
+            $query->where('status', (string) $request->input('status'));
+        }
+
+        if ($request->filled('search')) {
+            $search = trim((string) $request->input('search'));
+            $query->where(function ($builder) use ($search) {
+                $builder->where('title', 'like', "%{$search}%")
+                    ->orWhere('description', 'like', "%{$search}%")
+                    ->orWhereHas('task', function ($taskQuery) use ($search) {
+                        $taskQuery->where('title', 'like', "%{$search}%");
+                    });
+            });
+        }
+
+        if ($request->filled('start_from')) {
+            $query->whereDate('start_date', '>=', $request->input('start_from'));
+        }
+        if ($request->filled('start_to')) {
+            $query->whereDate('start_date', '<=', $request->input('start_to'));
+        }
+        if ($request->filled('deadline_from')) {
+            $query->whereDate('deadline', '>=', $request->input('deadline_from'));
+        }
+        if ($request->filled('deadline_to')) {
+            $query->whereDate('deadline', '<=', $request->input('deadline_to'));
+        }
+
+        return response()->json(
+            $query->orderByDesc('id')->paginate((int) $request->input('per_page', 30))
+        );
+    }
+
     public function index(Task $task, Request $request): JsonResponse
     {
         if (! $this->canAccessTask($request->user(), $task)) {
@@ -213,5 +274,44 @@ class TaskItemController extends Controller
                 abort(response()->json(['message' => 'Nhân sự không thuộc phòng ban bạn quản lý.'], 403));
             }
         }
+    }
+
+    private function applyItemScope(Builder $query, ?User $user): void
+    {
+        if (! $user) {
+            $query->whereRaw('1 = 0');
+            return;
+        }
+
+        if ($user->role === 'admin') {
+            return;
+        }
+
+        if ($user->role === 'ke_toan') {
+            $query->whereRaw('1 = 0');
+            return;
+        }
+
+        if ($user->role === 'quan_ly') {
+            $deptIds = $user->managedDepartments()->pluck('id');
+            $query->where(function ($builder) use ($deptIds, $user) {
+                $builder->whereHas('task', function ($taskQuery) use ($deptIds, $user) {
+                    $taskQuery->whereIn('department_id', $deptIds)
+                        ->orWhereHas('assignee', function ($assigneeQuery) use ($deptIds) {
+                            $assigneeQuery->whereIn('department_id', $deptIds);
+                        })
+                        ->orWhere('created_by', $user->id)
+                        ->orWhere('assigned_by', $user->id);
+                });
+            });
+            return;
+        }
+
+        $query->where(function ($builder) use ($user) {
+            $builder->where('assignee_id', $user->id)
+                ->orWhereHas('task', function ($taskQuery) use ($user) {
+                    $taskQuery->where('assignee_id', $user->id);
+                });
+        });
     }
 }

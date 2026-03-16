@@ -504,7 +504,11 @@ export default function ProjectsKanban(props) {
                                     </thead>
                                     <tbody>
                                         {projects.map((p) => (
-                                            <tr key={p.id} className="border-b border-slate-100">
+                                            <tr
+                                                key={p.id}
+                                                className="border-b border-slate-100 cursor-pointer hover:bg-slate-50/70"
+                                                onClick={() => { window.location.href = `/cong-viec?project_id=${p.id}`; }}
+                                            >
                                                 <td className="py-3">
                                                     <div className="font-medium text-slate-900">{p.name}</div>
                                                     <div className="text-xs text-text-muted">{p.code}</div>
@@ -560,25 +564,28 @@ export default function ProjectsKanban(props) {
                                                     <a
                                                         className="text-xs font-semibold text-slate-600"
                                                         href={`/du-an/${p.id}`}
+                                                        onClick={(e) => e.stopPropagation()}
                                                     >
                                                         Chi tiết
                                                     </a>
                                                     <a
                                                         className="text-xs font-semibold text-primary"
                                                         href={`/du-an/${p.id}/luong`}
+                                                        onClick={(e) => e.stopPropagation()}
                                                     >
                                                         Luồng
                                                     </a>
                                                     <a
                                                         className="text-xs font-semibold text-slate-600"
                                                         href={`/du-an/${p.id}/kho`}
+                                                        onClick={(e) => e.stopPropagation()}
                                                     >
                                                         Kho
                                                     </a>
                                                     {canUpdate && p.handover_status !== 'pending' && p.handover_status !== 'approved' && (
                                                         <button
                                                             className="text-xs font-semibold text-amber-700"
-                                                            onClick={() => updateHandover(p, 'pending')}
+                                                            onClick={(e) => { e.stopPropagation(); updateHandover(p, 'pending'); }}
                                                             type="button"
                                                         >
                                                             Gửi duyệt BG
@@ -587,19 +594,19 @@ export default function ProjectsKanban(props) {
                                                     {canUpdate && p.handover_status === 'pending' && (
                                                         <button
                                                             className="text-xs font-semibold text-emerald-700"
-                                                            onClick={() => updateHandover(p, 'approved')}
+                                                            onClick={(e) => { e.stopPropagation(); updateHandover(p, 'approved'); }}
                                                             type="button"
                                                         >
                                                             Duyệt BG
                                                         </button>
                                                     )}
                                                     {canUpdate && (
-                                                        <button className="text-xs font-semibold text-primary" onClick={() => startEdit(p)} type="button">
+                                                        <button className="text-xs font-semibold text-primary" onClick={(e) => { e.stopPropagation(); startEdit(p); }} type="button">
                                                             Sửa
                                                         </button>
                                                     )}
                                                     {canDelete && (
-                                                        <button className="text-xs font-semibold text-rose-500" onClick={() => remove(p.id)} type="button">
+                                                        <button className="text-xs font-semibold text-rose-500" onClick={(e) => { e.stopPropagation(); remove(p.id); }} type="button">
                                                             Xóa
                                                         </button>
                                                     )}
@@ -635,15 +642,19 @@ export default function ProjectsKanban(props) {
                                     </div>
                                     <div className="space-y-3">
                                         {col.items.map((p) => (
-                                            <div key={p.id} className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-card">
+                                            <div
+                                                key={p.id}
+                                                className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-card cursor-pointer"
+                                                onClick={() => { window.location.href = `/cong-viec?project_id=${p.id}`; }}
+                                            >
                                                 <div className="flex items-center justify-between">
                                                     <span className="text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
                                                         {serviceLabel(p)}
                                                     </span>
                                                     <div className="flex items-center gap-2 text-xs text-text-muted">
-                                                        <button className="hover:text-slate-900" onClick={() => startEdit(p)} type="button">Sửa</button>
+                                                        <button className="hover:text-slate-900" onClick={(e) => { e.stopPropagation(); startEdit(p); }} type="button">Sửa</button>
                                                         {canDelete && (
-                                                            <button className="hover:text-danger" onClick={() => remove(p.id)} type="button">Xoá</button>
+                                                            <button className="hover:text-danger" onClick={(e) => { e.stopPropagation(); remove(p.id); }} type="button">Xoá</button>
                                                         )}
                                                     </div>
                                                 </div>
@@ -663,7 +674,7 @@ export default function ProjectsKanban(props) {
                                                     {canUpdate && p.handover_status !== 'pending' && p.handover_status !== 'approved' && (
                                                         <button
                                                             className="text-[11px] font-semibold text-amber-700"
-                                                            onClick={() => updateHandover(p, 'pending')}
+                                                            onClick={(e) => { e.stopPropagation(); updateHandover(p, 'pending'); }}
                                                             type="button"
                                                         >
                                                             Gửi duyệt BG
@@ -672,7 +683,7 @@ export default function ProjectsKanban(props) {
                                                     {canUpdate && p.handover_status === 'pending' && (
                                                         <button
                                                             className="text-[11px] font-semibold text-emerald-700"
-                                                            onClick={() => updateHandover(p, 'approved')}
+                                                            onClick={(e) => { e.stopPropagation(); updateHandover(p, 'approved'); }}
                                                             type="button"
                                                         >
                                                             Duyệt BG
@@ -684,7 +695,7 @@ export default function ProjectsKanban(props) {
                                                         <button
                                                             key={s.value}
                                                             className={`text-xs px-2 py-1 rounded-full border ${p.status === s.value ? 'border-primary text-primary' : 'border-slate-200/80 text-text-muted'}`}
-                                                            onClick={() => quickMove(p, s.value)}
+                                                            onClick={(e) => { e.stopPropagation(); quickMove(p, s.value); }}
                                                             type="button"
                                                         >
                                                             {s.label}

@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\AppSetting;
 use App\Models\TaskItem;
 use App\Models\TaskItemReminderLog;
 use App\Services\NotificationService;
@@ -15,6 +16,11 @@ class SendTaskItemProgressReminders extends Command
 
     public function handle(): int
     {
+        $setting = AppSetting::query()->first();
+        if ($setting && $setting->task_item_progress_reminder_enabled === false) {
+            return self::SUCCESS;
+        }
+
         $today = Carbon::now('Asia/Ho_Chi_Minh')->startOfDay();
         $items = TaskItem::query()
             ->whereNotNull('assignee_id')

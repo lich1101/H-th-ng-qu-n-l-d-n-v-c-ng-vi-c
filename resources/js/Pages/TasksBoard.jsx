@@ -50,11 +50,19 @@ export default function TasksBoard(props) {
     const [tasks, setTasks] = useState([]);
     const [projects, setProjects] = useState([]);
     const [departments, setDepartments] = useState([]);
+    const [userOptions, setUserOptions] = useState([]);
     const [meta, setMeta] = useState({});
     const [viewMode, setViewMode] = useState('list');
+    const queryParams = typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search)
+        : new URLSearchParams();
     const [filters, setFilters] = useState({
-        project_id: '',
-        status: '',
+        project_id: queryParams.get('project_id') || '',
+        status: queryParams.get('status') || '',
+        assignee_id: queryParams.get('assignee_id') || '',
+        search: queryParams.get('search') || '',
+        deadline_from: queryParams.get('deadline_from') || '',
+        deadline_to: queryParams.get('deadline_to') || '',
         per_page: 30,
         page: 1,
     });
@@ -135,7 +143,17 @@ export default function TasksBoard(props) {
     const [chatSending, setChatSending] = useState(false);
     const [chatMessages, setChatMessages] = useState([]);
     const [chatMessage, setChatMessage] = useState('');
+    const [chatParticipants, setChatParticipants] = useState([]);
+    const [chatMentionCandidates, setChatMentionCandidates] = useState([]);
+    const [chatMention, setChatMention] = useState({
+        open: false,
+        start: -1,
+        end: -1,
+        query: '',
+    });
+    const [chatMentionTokens, setChatMentionTokens] = useState([]);
     const chatListRef = useRef(null);
+    const chatInputRef = useRef(null);
 
     const statusOptions = useMemo(() => {
         const values = meta.task_statuses || [];
@@ -178,6 +196,15 @@ export default function TasksBoard(props) {
         }
     };
 
+    const fetchUsers = async () => {
+        try {
+            const res = await axios.get('/api/v1/users/lookup');
+            setUserOptions(res.data?.data || []);
+        } catch {
+            setUserOptions([]);
+        }
+    };
+
     const fetchTasks = async (page = filters.page, nextFilters = filters) => {
         setLoading(true);
         try {
@@ -187,6 +214,10 @@ export default function TasksBoard(props) {
                     page,
                     ...(nextFilters.project_id ? { project_id: nextFilters.project_id } : {}),
                     ...(nextFilters.status ? { status: nextFilters.status } : {}),
+                    ...(nextFilters.assignee_id ? { assignee_id: nextFilters.assignee_id } : {}),
+                    ...(nextFilters.search ? { search: nextFilters.search } : {}),
+                    ...(nextFilters.deadline_from ? { deadline_from: nextFilters.deadline_from } : {}),
+                    ...(nextFilters.deadline_to ? { deadline_to: nextFilters.deadline_to } : {}),
                 },
             });
             setTasks(res.data?.data || []);
@@ -196,6 +227,16 @@ export default function TasksBoard(props) {
                 total: res.data?.total || 0,
             });
             setFilters((s) => ({ ...s, page: res.data?.current_page || 1 }));
+            if (typeof window !== 'undefined') {
+                const params = new URLSearchParams();
+                ['project_id', 'status', 'assignee_id', 'search', 'deadline_from', 'deadline_to'].forEach((key) => {
+                    if (nextFilters[key]) {
+                        params.set(key, String(nextFilters[key]));
+                    }
+                });
+                const query = params.toString();
+                window.history.replaceState({}, '', query ? `/cong-viec?${query}` : '/cong-viec');
+            }
         } catch (e) {
             toast.error(e?.response?.data?.message || 'Không tải được danh sách công việc.');
         } finally {
@@ -258,11 +299,100 @@ export default function TasksBoard(props) {
         }
     };
 
+    const fetchChatParticipants = async (taskId) => {
+        if (!taskId) {
+            setChatParticipants([]);
+            return;
+        }
+        try {
+            const res = await axios.get(`/api/v1/tasks/${taskId}/chat-participants`);
+            const rows = res.data?.data || [];
+            setChatParticipants(rows);
+        } catch {
+            setChatParticipants([]);
+        }
+    };
+
+    const resolveMentionContext = (value, cursor) => {
+        const index = Math.max(0, Math.min(cursor, value.length));
+        const left = value.slice(0, index);
+        const atIndex = left.lastIndexOf('@');
+        if (atIndex < 0) return null;
+        if (atIndex > 0 && /\S/.test(left[atIndex - 1])) return null;
+        const keyword = left.slice(atIndex + 1);
+        if (keyword.includes(' ') || keyword.includes('\n') || keyword.includes('\t')) return null;
+        return {
+            start: atIndex,
+            end: index,
+            query: keyword.trim().toLowerCase(),
+        };
+    };
+
+    const applyMentionCandidates = (query) => {
+        const keyword = String(query || '').toLowerCase();
+        const filtered = chatParticipants.filter((user) => {
+            const name = String(user?.name || '').toLowerCase();
+            const email = String(user?.email || '').toLowerCase();
+            return !keyword || name.includes(keyword) || email.includes(keyword);
+        }).slice(0, 8);
+        setChatMentionCandidates(filtered);
+        return filtered;
+    };
+
+    const closeMention = () => {
+        setChatMention({ open: false, start: -1, end: -1, query: '' });
+        setChatMentionCandidates([]);
+    };
+
+    const selectMention = (user) => {
+        if (!user || chatMention.start < 0 || chatMention.end < 0) return;
+        const label = String(user.name || user.email || `user_${user.id}`).replace(/\s+/g, '_');
+        const token = `@${label}`;
+        const nextMessage = `${chatMessage.slice(0, chatMention.start)}${token} ${chatMessage.slice(chatMention.end)}`;
+        setChatMessage(nextMessage);
+        setChatMentionTokens((current) => {
+            const next = current.filter((item) => item.id !== user.id);
+            next.push({ id: user.id, token });
+            return next;
+        });
+        closeMention();
+        setTimeout(() => {
+            if (chatInputRef.current) {
+                chatInputRef.current.focus();
+            }
+        }, 0);
+    };
+
+    const handleChatMessageChange = (value, cursorPosition) => {
+        setChatMessage(value);
+        const context = resolveMentionContext(value, cursorPosition);
+        if (!context) {
+            closeMention();
+            return;
+        }
+        const candidates = applyMentionCandidates(context.query);
+        if (!candidates.length) {
+            closeMention();
+            return;
+        }
+        setChatMention({
+            open: true,
+            start: context.start,
+            end: context.end,
+            query: context.query,
+        });
+    };
+
     const openTaskChat = async (task) => {
         setChatTask(task);
         setShowTaskChat(true);
         setChatMessage('');
-        await fetchTaskChat(task.id);
+        closeMention();
+        setChatMentionTokens([]);
+        await Promise.all([
+            fetchTaskChat(task.id),
+            fetchChatParticipants(task.id),
+        ]);
     };
 
     const closeTaskChat = () => {
@@ -270,23 +400,38 @@ export default function TasksBoard(props) {
         setChatTask(null);
         setChatMessages([]);
         setChatMessage('');
+        setChatParticipants([]);
+        setChatMentionTokens([]);
+        closeMention();
     };
 
     const sendTaskChat = async () => {
         if (!chatTask?.id) return;
         if (!chatMessage.trim()) return;
+        const taggedUserIds = chatMentionTokens
+            .filter((item) => chatMessage.includes(item.token))
+            .map((item) => Number(item.id))
+            .filter((id, index, arr) => Number.isFinite(id) && id > 0 && arr.indexOf(id) === index);
         setChatSending(true);
         try {
             await axios.post(`/api/v1/tasks/${chatTask.id}/comments`, {
                 content: chatMessage.trim(),
+                ...(taggedUserIds.length ? { tagged_user_ids: taggedUserIds } : {}),
             });
             setChatMessage('');
+            setChatMentionTokens([]);
+            closeMention();
             await fetchTaskChat(chatTask.id, true);
         } catch (e) {
             toast.error(e?.response?.data?.message || 'Gửi tin nhắn thất bại.');
         } finally {
             setChatSending(false);
         }
+    };
+
+    const openTaskDetail = (taskId) => {
+        if (!taskId) return;
+        window.location.href = `/cong-viec/${taskId}`;
     };
 
     const resetItemForm = () => {
@@ -490,6 +635,7 @@ export default function TasksBoard(props) {
         fetchMeta();
         fetchProjects();
         fetchDepartments();
+        fetchUsers();
         fetchTasks(1, { ...filters, page: 1 });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -502,6 +648,12 @@ export default function TasksBoard(props) {
         return () => clearInterval(timer);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [showTaskChat, chatTask?.id]);
+
+    useEffect(() => {
+        if (!chatMention.open) return;
+        applyMentionCandidates(chatMention.query);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [chatParticipants]);
 
     const stats = useMemo(() => {
         const open = metaPaging.total;
@@ -862,6 +1014,32 @@ export default function TasksBoard(props) {
                             <option value="">Tất cả trạng thái</option>
                             {statusOptions.map((s) => <option key={s} value={s}>{LABELS[s] || s}</option>)}
                         </select>
+                        <select
+                            className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                            value={filters.assignee_id}
+                            onChange={(e) => setFilters((s) => ({ ...s, assignee_id: e.target.value }))}
+                        >
+                            <option value="">Tất cả nhân sự</option>
+                            {userOptions.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                        </select>
+                        <input
+                            className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                            placeholder="Tìm theo tiêu đề/mô tả"
+                            value={filters.search}
+                            onChange={(e) => setFilters((s) => ({ ...s, search: e.target.value }))}
+                        />
+                        <input
+                            type="date"
+                            className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                            value={filters.deadline_from}
+                            onChange={(e) => setFilters((s) => ({ ...s, deadline_from: e.target.value }))}
+                        />
+                        <input
+                            type="date"
+                            className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                            value={filters.deadline_to}
+                            onChange={(e) => setFilters((s) => ({ ...s, deadline_to: e.target.value }))}
+                        />
                     </div>
                     <div className="flex items-center gap-2">
                         {[
@@ -912,7 +1090,11 @@ export default function TasksBoard(props) {
                                                 t.assignee_id === props?.auth?.user?.id || ['admin', 'quan_ly'].includes(userRole)
                                             );
                                             return (
-                                                <tr key={t.id} className="border-b border-slate-100">
+                                                <tr
+                                                    key={t.id}
+                                                    className="border-b border-slate-100 cursor-pointer hover:bg-slate-50/70"
+                                                    onClick={() => openTaskDetail(t.id)}
+                                                >
                                                     <td className="py-3">
                                                         <div className="font-medium text-slate-900">{t.title}</div>
                                                         <div className="text-xs text-text-muted">{t.description || '—'}</div>
@@ -957,26 +1139,26 @@ export default function TasksBoard(props) {
                                                     </td>
                                                     <td className="py-3 text-right space-x-2">
                                                         {canEdit && (
-                                                            <button className="text-xs font-semibold text-primary" onClick={() => startEdit(t)} type="button">
+                                                            <button className="text-xs font-semibold text-primary" onClick={(e) => { e.stopPropagation(); startEdit(t); }} type="button">
                                                                 Sửa
                                                             </button>
                                                         )}
                                                         {canDelete && (
-                                                            <button className="text-xs font-semibold text-rose-500" onClick={() => remove(t.id)} type="button">
+                                                            <button className="text-xs font-semibold text-rose-500" onClick={(e) => { e.stopPropagation(); remove(t.id); }} type="button">
                                                                 Xóa
                                                             </button>
                                                         )}
-                                                        <button className="text-xs font-semibold text-sky-600" onClick={() => openItemsModal(t)} type="button">
+                                                        <button className="text-xs font-semibold text-sky-600" onClick={(e) => { e.stopPropagation(); openItemsModal(t); }} type="button">
                                                             Đầu việc
                                                         </button>
-                                                        <button className="text-xs font-semibold text-emerald-600 inline-flex items-center gap-1" onClick={() => openTaskChat(t)} type="button" title="Mở chat công việc">
+                                                        <button className="text-xs font-semibold text-emerald-600 inline-flex items-center gap-1" onClick={(e) => { e.stopPropagation(); openTaskChat(t); }} type="button" title="Mở chat công việc">
                                                             <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">
                                                                 <path d="M21 15a4 4 0 01-4 4H7l-4 3V7a4 4 0 014-4h10a4 4 0 014 4z" />
                                                             </svg>
                                                             Chat
                                                         </button>
                                                         {canAck && (
-                                                            <button className="text-xs font-semibold text-amber-600" onClick={() => acknowledgeTask(t)} type="button">
+                                                            <button className="text-xs font-semibold text-amber-600" onClick={(e) => { e.stopPropagation(); acknowledgeTask(t); }} type="button">
                                                                 Xác nhận
                                                             </button>
                                                         )}
@@ -1017,20 +1199,24 @@ export default function TasksBoard(props) {
                                                 t.assignee_id === props?.auth?.user?.id || ['admin', 'quan_ly'].includes(userRole)
                                             );
                                             return (
-                                                <div key={t.id} className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-card">
+                                                <div
+                                                    key={t.id}
+                                                    className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-card cursor-pointer"
+                                                    onClick={() => openTaskDetail(t.id)}
+                                                >
                                                     <div className="flex items-center justify-between">
                                                         <span className="text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
                                                             {PRIORITY_LABELS[t.priority] || t.priority || 'Trung bình'}
                                                         </span>
                                                         <div className="flex items-center gap-2 text-xs text-text-muted">
                                                             {canEdit && (
-                                                                <button className="hover:text-slate-900" onClick={() => startEdit(t)} type="button">Sửa</button>
+                                                                <button className="hover:text-slate-900" onClick={(e) => { e.stopPropagation(); startEdit(t); }} type="button">Sửa</button>
                                                             )}
                                                             {canDelete && (
-                                                                <button className="hover:text-danger" onClick={() => remove(t.id)} type="button">Xoá</button>
+                                                                <button className="hover:text-danger" onClick={(e) => { e.stopPropagation(); remove(t.id); }} type="button">Xoá</button>
                                                             )}
-                                                            <button className="hover:text-sky-600" onClick={() => openItemsModal(t)} type="button">Đầu việc</button>
-                                                            <button className="hover:text-emerald-600 inline-flex items-center gap-1" onClick={() => openTaskChat(t)} type="button" title="Mở chat công việc">
+                                                            <button className="hover:text-sky-600" onClick={(e) => { e.stopPropagation(); openItemsModal(t); }} type="button">Đầu việc</button>
+                                                            <button className="hover:text-emerald-600 inline-flex items-center gap-1" onClick={(e) => { e.stopPropagation(); openTaskChat(t); }} type="button" title="Mở chat công việc">
                                                                 <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">
                                                                     <path d="M21 15a4 4 0 01-4 4H7l-4 3V7a4 4 0 014-4h10a4 4 0 014 4z" />
                                                                 </svg>
@@ -1048,7 +1234,7 @@ export default function TasksBoard(props) {
                                                         <div className="mt-3 flex items-center justify-between text-xs">
                                                             <span className="text-warning font-semibold">Chưa xác nhận</span>
                                                             {canAck && (
-                                                                <button className="text-primary font-semibold" onClick={() => acknowledgeTask(t)} type="button">
+                                                                <button className="text-primary font-semibold" onClick={(e) => { e.stopPropagation(); acknowledgeTask(t); }} type="button">
                                                                     Xác nhận nhận công việc
                                                                 </button>
                                                             )}
@@ -1115,10 +1301,10 @@ export default function TasksBoard(props) {
             </div>
 
             {showTaskChat && (
-                <div className="fixed bottom-6 right-6 z-40 w-[360px] max-w-[calc(100vw-24px)] rounded-2xl border border-slate-200/80 bg-white shadow-2xl">
-                    <div className="flex items-center justify-between border-b border-slate-200/80 px-4 py-3">
+                <div className="fixed bottom-6 right-6 z-40 w-[380px] max-w-[calc(100vw-24px)] rounded-2xl border border-slate-200/80 bg-white shadow-2xl">
+                    <div className="flex items-center justify-between border-b border-slate-200/80 bg-slate-50/80 px-4 py-3">
                         <div>
-                            <p className="text-xs uppercase tracking-wide text-text-subtle">Chat nội bộ theo công việc</p>
+                            <p className="text-xs uppercase tracking-wide text-text-subtle">Trao đổi nội bộ</p>
                             <p className="text-sm font-semibold text-slate-900">{chatTask?.title || 'Hội thoại'}</p>
                         </div>
                         <div className="flex items-center gap-2">
@@ -1169,27 +1355,62 @@ export default function TasksBoard(props) {
                     </div>
 
                     <div className="border-t border-slate-200/80 p-3">
-                        <div className="flex items-center gap-2">
-                            <input
-                                className="flex-1 rounded-xl border border-slate-200/80 px-3 py-2 text-sm"
-                                placeholder="Nhập tin nhắn..."
-                                value={chatMessage}
-                                onChange={(e) => setChatMessage(e.target.value)}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter' && !e.shiftKey) {
-                                        e.preventDefault();
-                                        sendTaskChat();
-                                    }
-                                }}
-                            />
-                            <button
-                                type="button"
-                                className="rounded-xl bg-primary px-3 py-2 text-xs font-semibold text-white disabled:opacity-60"
-                                disabled={chatSending}
-                                onClick={sendTaskChat}
-                            >
-                                Gửi
-                            </button>
+                        {chatMentionTokens.length > 0 && (
+                            <div className="mb-2 flex flex-wrap gap-1.5">
+                                {chatMentionTokens.map((item) => (
+                                    <span key={item.id} className="rounded-full bg-primary/10 px-2 py-1 text-[11px] font-semibold text-primary">
+                                        {item.token}
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+                        <div className="relative">
+                            {chatMention.open && chatMentionCandidates.length > 0 && (
+                                <div className="absolute bottom-[52px] left-0 z-30 w-full rounded-xl border border-slate-200 bg-white p-1 shadow-lg">
+                                    {chatMentionCandidates.map((user) => (
+                                        <button
+                                            key={user.id}
+                                            type="button"
+                                            className="flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-sm hover:bg-slate-50"
+                                            onMouseDown={(e) => {
+                                                e.preventDefault();
+                                                selectMention(user);
+                                            }}
+                                        >
+                                            <span className="font-medium text-slate-800">{user.name}</span>
+                                            <span className="text-xs text-slate-500">{user.email}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                            <div className="flex items-center gap-2">
+                                <input
+                                    ref={chatInputRef}
+                                    className="flex-1 rounded-xl border border-slate-200/80 px-3 py-2 text-sm"
+                                    placeholder="Nhập tin nhắn... (gõ @ để tag)"
+                                    value={chatMessage}
+                                    onChange={(e) => handleChatMessageChange(e.target.value, e.target.selectionStart ?? e.target.value.length)}
+                                    onBlur={() => {
+                                        setTimeout(() => {
+                                            closeMention();
+                                        }, 120);
+                                    }}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter' && !e.shiftKey) {
+                                            e.preventDefault();
+                                            sendTaskChat();
+                                        }
+                                    }}
+                                />
+                                <button
+                                    type="button"
+                                    className="rounded-xl bg-primary px-3 py-2 text-xs font-semibold text-white disabled:opacity-60"
+                                    disabled={chatSending}
+                                    onClick={sendTaskChat}
+                                >
+                                    Gửi
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>

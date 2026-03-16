@@ -35,8 +35,37 @@ class TaskController extends Controller
             $query->where('status', $request->input('status'));
         }
 
+        if ($request->filled('department_id')) {
+            $query->where('department_id', (int) $request->input('department_id'));
+        }
+
         if ($request->filled('assignee_id')) {
             $query->where('assignee_id', (int) $request->input('assignee_id'));
+        }
+
+        if ($request->filled('search')) {
+            $search = trim((string) $request->input('search'));
+            $query->where(function ($builder) use ($search) {
+                $builder->where('title', 'like', "%{$search}%")
+                    ->orWhere('description', 'like', "%{$search}%")
+                    ->orWhereHas('project', function ($projectQuery) use ($search) {
+                        $projectQuery->where('name', 'like', "%{$search}%")
+                            ->orWhere('code', 'like', "%{$search}%");
+                    });
+            });
+        }
+
+        if ($request->filled('start_from')) {
+            $query->whereDate('start_at', '>=', $request->input('start_from'));
+        }
+        if ($request->filled('start_to')) {
+            $query->whereDate('start_at', '<=', $request->input('start_to'));
+        }
+        if ($request->filled('deadline_from')) {
+            $query->whereDate('deadline', '>=', $request->input('deadline_from'));
+        }
+        if ($request->filled('deadline_to')) {
+            $query->whereDate('deadline', '<=', $request->input('deadline_to'));
         }
 
         return response()->json(
@@ -245,7 +274,7 @@ class TaskController extends Controller
         }
 
         $deptIds = $user->managedDepartments()->pluck('id');
-        $departmentId = $validated['department_id'] ?? $task?->department_id;
+        $departmentId = $validated['department_id'] ?? ($task ? $task->department_id : null);
         if ($departmentId && ! $deptIds->contains($departmentId)) {
             abort(response()->json(['message' => 'Bạn không có quyền giao việc cho phòng ban này.'], 403));
         }

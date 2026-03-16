@@ -44,6 +44,12 @@ class HandleInertiaRequests extends Middleware
                 'support_email' => $setting->support_email,
                 'support_phone' => $setting->support_phone,
                 'support_address' => $setting->support_address,
+                'notifications_push_enabled' => (bool) ($setting->notifications_push_enabled ?? true),
+                'notifications_in_app_enabled' => (bool) ($setting->notifications_in_app_enabled ?? true),
+                'notifications_email_fallback_enabled' => (bool) ($setting->notifications_email_fallback_enabled ?? true),
+                'notifications_dedupe_seconds' => (int) ($setting->notifications_dedupe_seconds ?? 45),
+                'meeting_reminder_minutes_before' => (int) ($setting->meeting_reminder_minutes_before ?? 60),
+                'task_item_progress_reminder_enabled' => (bool) ($setting->task_item_progress_reminder_enabled ?? true),
             ]
             : AppSetting::defaults();
 

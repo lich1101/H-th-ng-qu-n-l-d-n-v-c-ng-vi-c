@@ -24,12 +24,29 @@ class ProjectController extends Controller
             $query->where('service_type', $request->input('service_type'));
         }
 
+        if ($request->filled('owner_id')) {
+            $query->where('owner_id', (int) $request->input('owner_id'));
+        }
+
         if ($request->filled('search')) {
             $search = $request->input('search');
             $query->where(function ($builder) use ($search) {
                 $builder->where('name', 'like', "%{$search}%")
                     ->orWhere('code', 'like', "%{$search}%");
             });
+        }
+
+        if ($request->filled('start_from')) {
+            $query->whereDate('start_date', '>=', $request->input('start_from'));
+        }
+        if ($request->filled('start_to')) {
+            $query->whereDate('start_date', '<=', $request->input('start_to'));
+        }
+        if ($request->filled('deadline_from')) {
+            $query->whereDate('deadline', '>=', $request->input('deadline_from'));
+        }
+        if ($request->filled('deadline_to')) {
+            $query->whereDate('deadline', '<=', $request->input('deadline_to'));
         }
 
         return response()->json(

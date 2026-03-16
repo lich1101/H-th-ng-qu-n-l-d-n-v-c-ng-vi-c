@@ -68,6 +68,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
         return Inertia::render('TasksBoard');
     })->name('tasks.board')->middleware('role:admin,quan_ly,nhan_vien');
 
+    Route::get('/cong-viec-theo-nhan-su', function () {
+        return Inertia::render('TasksByStaff');
+    })->name('tasks.by-staff')->middleware('role:admin,quan_ly,nhan_vien');
+
+    Route::get('/dau-viec', function () {
+        return Inertia::render('TaskItemsBoard');
+    })->name('task-items.board')->middleware('role:admin,quan_ly,nhan_vien');
+
     Route::get('/cong-viec/{task}', function (App\Models\Task $task) {
         return Inertia::render('TaskDetail', [
             'taskId' => $task->id,

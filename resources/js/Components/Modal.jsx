@@ -9,7 +9,7 @@ const sizeMap = {
 
 export default function Modal({
     open,
-    title,
+    title = 'Thông tin',
     description,
     onClose,
     size = 'lg',
@@ -20,16 +20,16 @@ export default function Modal({
 
     return (
         <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4 py-6"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm"
             onClick={onClose}
             role="dialog"
             aria-modal="true"
         >
             <div
-                className={`w-full ${sizeClass} max-h-[90vh] rounded-2xl bg-white border border-slate-200/80 shadow-card flex flex-col overflow-hidden`}
+                className={`w-full ${sizeClass} max-h-[90vh] rounded-3xl bg-white border border-slate-200/80 shadow-[0_30px_80px_rgba(15,23,42,0.22)] flex flex-col overflow-hidden`}
                 onClick={(event) => event.stopPropagation()}
             >
-                <div className="flex items-start justify-between px-5 py-4 border-b border-slate-200/80">
+                <div className="flex items-start justify-between border-b border-slate-200/80 bg-slate-50/80 px-5 py-4">
                     <div>
                         {title && <h3 className="text-lg font-semibold text-slate-900">{title}</h3>}
                         {description && <p className="text-sm text-text-muted mt-1">{description}</p>}
@@ -37,7 +37,7 @@ export default function Modal({
                     {onClose && (
                         <button
                             type="button"
-                            className="rounded-xl border border-slate-200/80 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                            className="rounded-xl border border-slate-200/80 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-white"
                             onClick={onClose}
                             aria-label="Đóng"
                         >

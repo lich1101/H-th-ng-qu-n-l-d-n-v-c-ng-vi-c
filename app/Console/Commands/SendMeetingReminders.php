@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\AppSetting;
 use App\Models\MeetingReminderLog;
 use App\Models\ProjectMeeting;
 use App\Services\NotificationService;
@@ -16,9 +17,15 @@ class SendMeetingReminders extends Command
 
     public function handle(): int
     {
+        $setting = AppSetting::query()->first();
+        $minutesBefore = max(1, (int) ($setting->meeting_reminder_minutes_before ?? 60));
         $timezone = config('app.timezone', 'Asia/Ho_Chi_Minh');
-        $windowStart = now()->addHour()->subMinute();
-        $windowEnd = now()->addHour()->addMinute();
+        $windowStart = now()->addMinutes($minutesBefore)->subMinute();
+        $windowEnd = now()->addMinutes($minutesBefore)->addMinute();
+        $reminderType = 'before_'.$minutesBefore.'_minutes';
+        $title = $minutesBefore === 60
+            ? 'Nhắc lịch họp: còn 1 giờ'
+            : 'Nhắc lịch họp: còn '.$minutesBefore.' phút';
         $sentCount = 0;
 
         $meetings = ProjectMeeting::query()
@@ -51,7 +58,7 @@ class SendMeetingReminders extends Command
 
             $alreadySentIds = MeetingReminderLog::query()
                 ->where('meeting_id', $meeting->id)
-                ->where('reminder_type', 'one_hour_before')
+                ->where('reminder_type', $reminderType)
                 ->whereIn('user_id', $attendeeIds->all())
                 ->pluck('user_id')
                 ->map(function ($id) {
@@ -76,10 +83,10 @@ class SendMeetingReminders extends Command
             try {
                 $notifier->notifyUsers(
                     $targetIds->all(),
-                    'Nhắc lịch họp: còn 1 giờ',
+                    $title,
                     "{$meeting->title} lúc {$scheduled}",
                     [
-                        'type' => 'meeting_reminder_1h',
+                        'type' => 'meeting_reminder_'.$minutesBefore.'m',
                         'meeting_id' => $meeting->id,
                         'scheduled_at' => optional($meeting->scheduled_at)->toIso8601String(),
                     ]
@@ -93,7 +100,7 @@ class SendMeetingReminders extends Command
                 return [
                     'meeting_id' => $meeting->id,
                     'user_id' => (int) $userId,
-                    'reminder_type' => 'one_hour_before',
+                    'reminder_type' => $reminderType,
                     'sent_at' => now(),
                     'created_at' => now(),
                     'updated_at' => now(),

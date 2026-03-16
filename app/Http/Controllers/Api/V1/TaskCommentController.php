@@ -21,7 +21,7 @@ class TaskCommentController extends Controller
             return response()->json(['message' => 'Không có quyền xem trao đổi.'], 403);
         }
         $comments = $task->comments()
-            ->with('user')
+            ->with('user:id,name,email,role,avatar_url')
             ->latest()
             ->paginate((int) $request->input('per_page', 20));
 
@@ -62,15 +62,15 @@ class TaskCommentController extends Controller
             'attachment_path' => $attachmentPath,
         ]);
 
-        $comment->load('user');
+        $comment->load('user:id,name,email,role,avatar_url');
         $taggedUsers = $this->attachTaggedUsers(collect([$comment]));
         try {
             $this->syncFirebase($task, $comment, $taggedUsers);
         } catch (\Throwable $e) {
             report($e);
         }
-        $this->notifyTaggedUsers($request->user()->id, $taggedUsers, $task, $comment);
-        $this->notifyChatParticipants($request->user()->id, $task, $comment);
+        $taggedIds = $this->notifyTaggedUsers($request->user()->id, $taggedUsers, $task, $comment);
+        $this->notifyChatParticipants($request->user()->id, $task, $comment, $taggedIds);
 
         return response()->json($comment, 201);
     }
@@ -121,7 +121,7 @@ class TaskCommentController extends Controller
             'recalled_at' => null,
         ]);
 
-        $comment->load('user');
+        $comment->load('user:id,name,email,role,avatar_url');
         $taggedUsers = $this->attachTaggedUsers(collect([$comment]));
         try {
             $this->syncFirebase($task, $comment, $taggedUsers);
@@ -156,7 +156,7 @@ class TaskCommentController extends Controller
             ]);
         }
 
-        $comment->load('user');
+        $comment->load('user:id,name,email,role,avatar_url');
         $taggedUsers = $this->attachTaggedUsers(collect([$comment]));
         try {
             $this->syncFirebase($task, $comment, $taggedUsers);
@@ -174,6 +174,14 @@ class TaskCommentController extends Controller
         }
 
         $participants = $this->resolveChatParticipants($task)
+            ->when($request->filled('search'), function ($collection) use ($request) {
+                $keyword = strtolower(trim((string) $request->input('search')));
+                return $collection->filter(function ($user) use ($keyword) {
+                    $name = strtolower((string) ($user->name ?? ''));
+                    $email = strtolower((string) ($user->email ?? ''));
+                    return str_contains($name, $keyword) || str_contains($email, $keyword);
+                })->values();
+            })
             ->map(function ($user) {
                 return [
                     'id' => $user->id,
@@ -262,7 +270,7 @@ class TaskCommentController extends Controller
         $ids = $this->resolveChatParticipantIds($task);
         return User::query()
             ->whereIn('id', $ids)
-            ->get(['id', 'name', 'role', 'email']);
+            ->get(['id', 'name', 'role', 'email', 'avatar_url']);
     }
 
     private function resolveChatParticipantIds(Task $task)
@@ -288,6 +296,23 @@ class TaskCommentController extends Controller
         if ($task->assignee_id) {
             $ids->push($task->assignee_id);
         }
+
+        if ($task->reviewer_id) {
+            $ids->push($task->reviewer_id);
+        }
+
+        if ($task->created_by) {
+            $ids->push($task->created_by);
+        }
+
+        if ($task->assigned_by) {
+            $ids->push($task->assigned_by);
+        }
+
+        $commenterIds = $task->comments()
+            ->whereNotNull('user_id')
+            ->pluck('user_id');
+        $ids = $ids->merge($commenterIds);
 
         return $ids->filter()->unique()->values();
     }
@@ -364,7 +389,7 @@ class TaskCommentController extends Controller
         $firebase->pushTaskMessage($task->id, $comment->id, $payload);
     }
 
-    private function notifyTaggedUsers(int $senderId, $taggedUsers, Task $task, TaskComment $comment): void
+    private function notifyTaggedUsers(int $senderId, $taggedUsers, Task $task, TaskComment $comment): array
     {
         $users = collect($taggedUsers)->filter();
         if ($users->isEmpty()) {
@@ -378,14 +403,14 @@ class TaskCommentController extends Controller
             }
         }
         if ($users->isEmpty()) {
-            return;
+            return [];
         }
         $ids = $users->pluck('id')->filter()->unique()->values()->all();
         $ids = array_values(array_filter($ids, function ($id) use ($senderId) {
             return (int) $id !== (int) $senderId;
         }));
         if (empty($ids)) {
-            return;
+            return [];
         }
 
         $notifier = app(NotificationService::class);
@@ -400,16 +425,20 @@ class TaskCommentController extends Controller
         } catch (\Throwable $e) {
             report($e);
         }
+
+        return $ids;
     }
 
-    private function notifyChatParticipants(int $senderId, Task $task, TaskComment $comment): void
+    private function notifyChatParticipants(int $senderId, Task $task, TaskComment $comment, array $excludedUserIds = []): void
     {
         $participantIds = $this->resolveChatParticipantIds($task)
             ->map(function ($id) {
                 return (int) $id;
             })
-            ->filter(function ($id) use ($senderId) {
-                return $id > 0 && $id !== (int) $senderId;
+            ->filter(function ($id) use ($senderId, $excludedUserIds) {
+                return $id > 0
+                    && $id !== (int) $senderId
+                    && ! in_array((int) $id, $excludedUserIds, true);
             })
             ->unique()
             ->values()

@@ -20,14 +20,42 @@ class ProjectFlowController extends Controller
         }
 
         $contract = $project->contract()->select([
-            'id', 'title', 'code', 'status', 'approval_status', 'value', 'start_date', 'end_date', 'signed_at',
+            'id',
+            'title',
+            'code',
+            'status',
+            'approval_status',
+            'value',
+            'start_date',
+            'end_date',
+            'signed_at',
+            'payment_times',
+            'notes',
         ])->first();
 
         $tasks = Task::query()
             ->where('project_id', $project->id)
-            ->with(['assignee', 'department'])
+            ->with([
+                'assignee:id,name,email,role',
+                'department:id,name',
+                'reviewer:id,name,email,role',
+            ])
             ->select([
-                'id', 'project_id', 'title', 'status', 'deadline', 'assignee_id', 'department_id', 'progress_percent',
+                'id',
+                'project_id',
+                'title',
+                'description',
+                'priority',
+                'status',
+                'start_at',
+                'deadline',
+                'completed_at',
+                'assignee_id',
+                'department_id',
+                'reviewer_id',
+                'progress_percent',
+                'require_acknowledgement',
+                'acknowledged_at',
             ])
             ->orderBy('id')
             ->get();
@@ -36,16 +64,33 @@ class ProjectFlowController extends Controller
         $items = $taskIds
             ? TaskItem::query()
                 ->whereIn('task_id', $taskIds)
-                ->with('assignee')
+                ->with([
+                    'assignee:id,name,email,role',
+                    'reviewer:id,name,email,role',
+                ])
                 ->select([
-                    'id', 'task_id', 'title', 'status', 'deadline', 'assignee_id', 'progress_percent', 'start_date',
+                    'id',
+                    'task_id',
+                    'title',
+                    'description',
+                    'priority',
+                    'status',
+                    'deadline',
+                    'assignee_id',
+                    'reviewer_id',
+                    'progress_percent',
+                    'start_date',
+                    'created_at',
                 ])
                 ->orderBy('id')
                 ->get()
             : collect();
 
         return response()->json([
-            'project' => $project->load('owner'),
+            'project' => $project->load([
+                'owner:id,name,email,role',
+                'client:id,name,company',
+            ]),
             'contract' => $contract,
             'tasks' => $tasks,
             'items' => $items,

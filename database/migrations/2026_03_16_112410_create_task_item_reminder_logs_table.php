@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasTable('task_item_reminder_logs')) {
+            return;
+        }
+
         Schema::create('task_item_reminder_logs', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('task_item_id');
