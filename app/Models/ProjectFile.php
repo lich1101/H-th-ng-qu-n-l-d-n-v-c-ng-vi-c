@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Storage;
 
 class ProjectFile extends Model
 {
@@ -30,6 +31,11 @@ class ProjectFile extends Model
         'size' => 'integer',
     ];
 
+    protected $appends = [
+        'public_url',
+        'extension',
+    ];
+
     public function project()
     {
         return $this->belongsTo(Project::class);
@@ -43,5 +49,19 @@ class ProjectFile extends Model
     public function children()
     {
         return $this->hasMany(ProjectFile::class, 'parent_id');
+    }
+
+    public function getPublicUrlAttribute(): ?string
+    {
+        if ($this->is_folder || empty($this->path)) {
+            return null;
+        }
+
+        return Storage::url($this->path);
+    }
+
+    public function getExtensionAttribute(): string
+    {
+        return strtolower((string) pathinfo((string) $this->name, PATHINFO_EXTENSION));
     }
 }

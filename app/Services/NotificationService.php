@@ -6,6 +6,7 @@ use App\Models\AppSetting;
 use App\Models\User;
 use App\Models\UserDeviceToken;
 use App\Models\InAppNotification;
+use App\Models\UserNotificationPreference;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
 
@@ -15,6 +16,7 @@ class NotificationService
 
     private $firebase;
     private $cachedSettings = null;
+    private $cachedUserPreferences = [];
 
     public function __construct(FirebaseService $firebase)
     {
@@ -55,6 +57,11 @@ class NotificationService
     public function notifyUser(User $user, string $title, string $body, array $data = []): void
     {
         $settings = $this->notificationSettings();
+        $data = $this->appendCategoryToData($data);
+
+        if ($this->resolvePreferenceBlockReason($user, $data) !== null) {
+            return;
+        }
 
         if ($this->shouldSkipDuplicate($user, $title, $body, $data)) {
             return;
@@ -65,14 +72,28 @@ class NotificationService
         }
 
         $tokens = [];
+        $pushAttempted = false;
         if ($settings['push_enabled']) {
+            $pushAttempted = true;
             $tokens = UserDeviceToken::query()
                 ->where('user_id', $user->id)
+                ->where(function ($query) {
+                    $query->whereNull('notifications_enabled')
+                        ->orWhere('notifications_enabled', true);
+                })
                 ->pluck('token')
                 ->all();
         }
 
-        $result = $this->safeSendPush($tokens, $title, $body, $data, $user->id);
+        $result = $pushAttempted
+            ? $this->safeSendPush($tokens, $title, $body, $data, $user->id)
+            : [
+                'sent' => 0,
+                'failed' => 0,
+                'failed_tokens' => [],
+                'errors' => [],
+                'error' => 'push_channel_disabled',
+            ];
         $sent = (int) ($result['sent'] ?? 0);
         $failedTokens = $result['failed_tokens'] ?? [];
 
@@ -80,7 +101,7 @@ class NotificationService
             UserDeviceToken::query()->whereIn('token', $failedTokens)->delete();
         }
 
-        if ($sent <= 0 && $settings['email_fallback_enabled']) {
+        if ($pushAttempted && $sent <= 0 && $settings['email_fallback_enabled']) {
             $this->sendEmailFallback($user, $title, $body);
         }
     }
@@ -88,12 +109,34 @@ class NotificationService
     public function notifyUserWithResult(User $user, string $title, string $body, array $data = []): array
     {
         $settings = $this->notificationSettings();
+        $data = $this->appendCategoryToData($data);
+        $blockedReason = $this->resolvePreferenceBlockReason($user, $data);
+
+        if ($blockedReason !== null) {
+            return [
+                'push_sent' => false,
+                'email_sent' => false,
+                'error' => $blockedReason,
+                'push_result' => [
+                    'sent' => 0,
+                    'failed' => 0,
+                    'failed_tokens' => [],
+                    'error' => $blockedReason,
+                ],
+            ];
+        }
 
         if ($this->shouldSkipDuplicate($user, $title, $body, $data)) {
             return [
                 'push_sent' => false,
                 'email_sent' => false,
                 'error' => 'duplicate_suppressed',
+                'push_result' => [
+                    'sent' => 0,
+                    'failed' => 0,
+                    'failed_tokens' => [],
+                    'error' => 'duplicate_suppressed',
+                ],
             ];
         }
 
@@ -102,14 +145,28 @@ class NotificationService
         }
 
         $tokens = [];
+        $pushAttempted = false;
         if ($settings['push_enabled']) {
+            $pushAttempted = true;
             $tokens = UserDeviceToken::query()
                 ->where('user_id', $user->id)
+                ->where(function ($query) {
+                    $query->whereNull('notifications_enabled')
+                        ->orWhere('notifications_enabled', true);
+                })
                 ->pluck('token')
                 ->all();
         }
 
-        $result = $this->safeSendPush($tokens, $title, $body, $data, $user->id);
+        $result = $pushAttempted
+            ? $this->safeSendPush($tokens, $title, $body, $data, $user->id)
+            : [
+                'sent' => 0,
+                'failed' => 0,
+                'failed_tokens' => [],
+                'errors' => [],
+                'error' => 'push_channel_disabled',
+            ];
         $sent = (int) ($result['sent'] ?? 0);
         $failedTokens = $result['failed_tokens'] ?? [];
         $error = $result['error'] ?? null;
@@ -119,7 +176,7 @@ class NotificationService
         }
 
         $emailSent = false;
-        if ($sent <= 0 && $settings['email_fallback_enabled']) {
+        if ($pushAttempted && $sent <= 0 && $settings['email_fallback_enabled']) {
             $emailSent = $this->sendEmailFallback($user, $title, $body);
         }
 
@@ -127,6 +184,7 @@ class NotificationService
             'push_sent' => $sent > 0,
             'email_sent' => $emailSent,
             'error' => $error,
+            'push_result' => $result,
         ];
     }
 
@@ -142,7 +200,8 @@ class NotificationService
                 'sent' => 0,
                 'failed' => 0,
                 'failed_tokens' => [],
-                'error' => null,
+                'errors' => [],
+                'error' => 'no_device_tokens',
             ];
         }
 
@@ -156,7 +215,8 @@ class NotificationService
             return [
                 'sent' => 0,
                 'failed' => count($tokens),
-                'failed_tokens' => $tokens,
+                'failed_tokens' => [],
+                'errors' => [],
                 'error' => $e->getMessage(),
             ];
         }
@@ -290,6 +350,95 @@ class NotificationService
     private function isAssoc(array $array): bool
     {
         return array_keys($array) !== range(0, count($array) - 1);
+    }
+
+    private function appendCategoryToData(array $data): array
+    {
+        $category = $this->resolveCategory($data);
+        if (! isset($data['category']) || trim((string) $data['category']) === '') {
+            $data['category'] = $category;
+        }
+
+        return $data;
+    }
+
+    private function resolvePreferenceBlockReason(User $user, array $data): ?string
+    {
+        $preference = $this->userPreference($user);
+
+        if (! ($preference['notifications_enabled'] ?? true)) {
+            return 'user_notifications_disabled';
+        }
+
+        $category = $this->resolveCategory($data);
+        if ($category === 'crm_realtime' && ! ($preference['category_crm_realtime_enabled'] ?? true)) {
+            return 'user_crm_realtime_disabled';
+        }
+        if ($category === 'system' && ! ($preference['category_system_enabled'] ?? true)) {
+            return 'user_system_notifications_disabled';
+        }
+
+        return null;
+    }
+
+    private function resolveCategory(array $data): string
+    {
+        $explicit = trim((string) ($data['category'] ?? ''));
+        if (in_array($explicit, ['system', 'crm_realtime'], true)) {
+            return $explicit;
+        }
+
+        $type = strtolower(trim((string) ($data['type'] ?? 'general')));
+        if ($type === '') {
+            return 'system';
+        }
+
+        $crmTypes = [
+            'facebook_lead',
+            'contract_approval',
+            'crm_realtime',
+            'crm_notification',
+            'lead_notification',
+        ];
+        if (str_starts_with($type, 'crm_') || in_array($type, $crmTypes, true)) {
+            return 'crm_realtime';
+        }
+
+        return 'system';
+    }
+
+    private function userPreference(User $user): array
+    {
+        if (isset($this->cachedUserPreferences[$user->id])) {
+            return $this->cachedUserPreferences[$user->id];
+        }
+
+        $defaults = UserNotificationPreference::defaults();
+        try {
+            $preference = UserNotificationPreference::query()
+                ->where('user_id', $user->id)
+                ->first();
+        } catch (\Throwable $e) {
+            Log::warning('User notification preference lookup failed', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
+            $preference = null;
+        }
+
+        $this->cachedUserPreferences[$user->id] = [
+            'notifications_enabled' => $preference
+                ? (bool) $preference->notifications_enabled
+                : (bool) $defaults['notifications_enabled'],
+            'category_system_enabled' => $preference
+                ? (bool) $preference->category_system_enabled
+                : (bool) $defaults['category_system_enabled'],
+            'category_crm_realtime_enabled' => $preference
+                ? (bool) $preference->category_crm_realtime_enabled
+                : (bool) $defaults['category_crm_realtime_enabled'],
+        ];
+
+        return $this->cachedUserPreferences[$user->id];
     }
 
     private function notificationSettings(): array

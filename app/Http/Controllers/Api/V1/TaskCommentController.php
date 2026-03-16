@@ -9,6 +9,7 @@ use App\Models\TaskComment;
 use App\Models\User;
 use App\Services\FirebaseService;
 use App\Services\NotificationService;
+use App\Services\ProjectFileService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -51,8 +52,7 @@ class TaskCommentController extends Controller
 
         $attachmentPath = $validated['attachment_path'] ?? null;
         if ($request->hasFile('attachment')) {
-            $storedPath = $request->file('attachment')->store('task_comments', 'public');
-            $attachmentPath = Storage::url($storedPath);
+            $attachmentPath = $this->storeAttachment($task, $request);
         }
 
         $comment = $task->comments()->create([
@@ -105,12 +105,16 @@ class TaskCommentController extends Controller
             'attachment' => ['nullable', 'file', 'max:10240'],
         ]);
 
+        $previousAttachmentPath = $comment->attachment_path;
         $attachmentPath = $comment->attachment_path;
         if ($request->hasFile('attachment')) {
-            $storedPath = $request->file('attachment')->store('task_comments', 'public');
-            $attachmentPath = Storage::url($storedPath);
+            $attachmentPath = $this->storeAttachment($task, $request);
         } elseif (array_key_exists('attachment_path', $validated)) {
             $attachmentPath = $validated['attachment_path'];
+        }
+
+        if (! empty($previousAttachmentPath) && $previousAttachmentPath !== $attachmentPath) {
+            app(ProjectFileService::class)->deleteByPublicUrl($previousAttachmentPath);
         }
 
         $comment->update([
@@ -146,6 +150,7 @@ class TaskCommentController extends Controller
             return response()->json(['message' => 'Forbidden.'], 403);
         }
 
+        $previousAttachmentPath = $comment->attachment_path;
         if (! $comment->is_recalled) {
             $comment->update([
                 'content' => '',
@@ -154,6 +159,10 @@ class TaskCommentController extends Controller
                 'is_recalled' => true,
                 'recalled_at' => now(),
             ]);
+        }
+
+        if (! empty($previousAttachmentPath)) {
+            app(ProjectFileService::class)->deleteByPublicUrl($previousAttachmentPath);
         }
 
         $comment->load('user:id,name,email,role,avatar_url');
@@ -384,6 +393,7 @@ class TaskCommentController extends Controller
                 ->values()
                 ->all(),
             'attachment_path' => $comment->attachment_path,
+            'attachment_name' => $comment->attachment_name,
         ];
 
         $firebase->pushTaskMessage($task->id, $comment->id, $payload);
@@ -460,5 +470,35 @@ class TaskCommentController extends Controller
         } catch (\Throwable $e) {
             report($e);
         }
+    }
+
+    private function storeAttachment(Task $task, Request $request): string
+    {
+        if (! $request->hasFile('attachment')) {
+            return '';
+        }
+
+        if ($task->project) {
+            $fileService = app(ProjectFileService::class);
+            $chatFolder = $fileService->ensureFolder(
+                $task->project,
+                'Trao doi cong viec',
+                $request->user()->id
+            );
+
+            $projectFile = $fileService->upload(
+                $task->project,
+                $request->file('attachment'),
+                $request->user()->id,
+                $chatFolder,
+                $task->title
+            );
+
+            return $fileService->publicUrl($projectFile->path) ?? '';
+        }
+
+        $storedPath = $request->file('attachment')->store('task_comments', 'public');
+
+        return Storage::url($storedPath);
     }
 }

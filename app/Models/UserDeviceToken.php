@@ -11,10 +11,12 @@ class UserDeviceToken extends Model
         'token',
         'platform',
         'device_name',
+        'notifications_enabled',
         'last_seen_at',
     ];
 
     protected $casts = [
+        'notifications_enabled' => 'boolean',
         'last_seen_at' => 'datetime',
     ];
 

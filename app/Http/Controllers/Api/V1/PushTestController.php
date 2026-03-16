@@ -9,6 +9,7 @@ use App\Services\NotificationService;
 use App\Services\FirebaseService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 
 class PushTestController extends Controller
 {
@@ -38,8 +39,36 @@ class PushTestController extends Controller
         }
 
         try {
-            $tokenCount = (int) UserDeviceToken::query()
+            $tokenColumns = ['token', 'platform', 'last_seen_at', 'updated_at'];
+            if (Schema::hasColumn('user_device_tokens', 'notifications_enabled')) {
+                $tokenColumns[] = 'notifications_enabled';
+            }
+
+            $tokens = UserDeviceToken::query()
                 ->where('user_id', $targetUser->id)
+                ->get($tokenColumns);
+
+            $tokenCount = (int) $tokens->count();
+            $tokensByPlatform = [
+                'ios' => (int) $tokens->where('platform', 'ios')->count(),
+                'android' => (int) $tokens->where('platform', 'android')->count(),
+                'web' => (int) $tokens->where('platform', 'web')->count(),
+            ];
+            $tokensEnabled = (int) $tokens
+                ->filter(function ($item) {
+                    if (! array_key_exists('notifications_enabled', $item->getAttributes())) {
+                        return true;
+                    }
+                    return $item->notifications_enabled !== false;
+                })
+                ->count();
+            $tokensDisabled = (int) $tokens
+                ->filter(function ($item) {
+                    if (! array_key_exists('notifications_enabled', $item->getAttributes())) {
+                        return false;
+                    }
+                    return $item->notifications_enabled === false;
+                })
                 ->count();
 
             $result = $notifications->notifyUserWithResult(
@@ -57,13 +86,26 @@ class PushTestController extends Controller
             return response()->json([
                 'ok' => (bool) ($result['push_sent'] ?? false),
                 'token_count' => $tokenCount,
+                'token_by_platform' => $tokensByPlatform,
+                'token_notifications_enabled' => $tokensEnabled,
+                'token_notifications_disabled' => $tokensDisabled,
                 'push_sent' => $result['push_sent'] ?? false,
                 'email_sent' => $result['email_sent'] ?? false,
                 'error' => $result['error'] ?? null,
+                'push_result' => $result['push_result'] ?? null,
                 'target_user_id' => $targetUser->id,
                 'target_user_name' => $targetUser->name,
                 'firebase_enabled' => $firebase->enabled(),
                 'access_token_ready' => $firebase->accessTokenAvailable(),
+                'token_samples' => $tokens->map(function ($item) {
+                    return [
+                        'platform' => $item->platform,
+                        'notifications_enabled' => $item->notifications_enabled,
+                        'token_suffix' => substr((string) $item->token, -14),
+                        'last_seen_at' => $item->last_seen_at,
+                        'updated_at' => $item->updated_at,
+                    ];
+                })->values(),
             ]);
         } catch (\Throwable $e) {
             return response()->json([

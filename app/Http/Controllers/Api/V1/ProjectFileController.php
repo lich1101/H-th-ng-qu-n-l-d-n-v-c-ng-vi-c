@@ -5,10 +5,10 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Models\Project;
 use App\Models\ProjectFile;
+use App\Services\ProjectFileService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 
 class ProjectFileController extends Controller
 {
@@ -34,7 +34,7 @@ class ProjectFileController extends Controller
         return response()->json(['data' => $items]);
     }
 
-    public function createFolder(Project $project, Request $request): JsonResponse
+    public function createFolder(Project $project, Request $request, ProjectFileService $files): JsonResponse
     {
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:120'],
@@ -49,30 +49,22 @@ class ProjectFileController extends Controller
                 ->first();
         }
 
-        $basePath = $parent ? $parent->path : $this->basePath($project->id);
-        $folderName = trim($validated['name']);
-        $path = rtrim($basePath, '/').'/'.$folderName;
-
-        Storage::disk('public')->makeDirectory($path);
-
-        $folder = ProjectFile::create([
-            'project_id' => $project->id,
-            'parent_id' => $parent?->id,
-            'name' => $folderName,
-            'path' => $path,
-            'is_folder' => true,
-            'created_by' => $request->user()->id,
-            'updated_by' => $request->user()->id,
-        ]);
+        $folder = $files->ensureFolder(
+            $project,
+            (string) $validated['name'],
+            $request->user()->id,
+            $parent
+        );
 
         return response()->json($folder, 201);
     }
 
-    public function upload(Project $project, Request $request): JsonResponse
+    public function upload(Project $project, Request $request, ProjectFileService $files): JsonResponse
     {
         $validated = $request->validate([
             'file' => ['required', 'file', 'max:20480'],
             'parent_id' => ['nullable', 'integer', 'exists:project_files,id'],
+            'label' => ['nullable', 'string', 'max:160'],
         ]);
 
         $parent = null;
@@ -83,24 +75,49 @@ class ProjectFileController extends Controller
                 ->first();
         }
 
-        $basePath = $parent ? $parent->path : $this->basePath($project->id);
-        $original = $request->file('file')->getClientOriginalName();
-        $name = $this->ensureUniqueName($basePath, $original);
-        $storedPath = $request->file('file')->storeAs($basePath, $name, 'public');
-
-        $file = ProjectFile::create([
-            'project_id' => $project->id,
-            'parent_id' => $parent?->id,
-            'name' => $name,
-            'path' => $storedPath,
-            'mime_type' => $request->file('file')->getClientMimeType(),
-            'size' => $request->file('file')->getSize() ?? 0,
-            'is_folder' => false,
-            'created_by' => $request->user()->id,
-            'updated_by' => $request->user()->id,
-        ]);
+        $file = $files->upload(
+            $project,
+            $request->file('file'),
+            $request->user()->id,
+            $parent,
+            $validated['label'] ?? null
+        );
 
         return response()->json($file, 201);
+    }
+
+    public function update(
+        Project $project,
+        ProjectFile $file,
+        Request $request,
+        ProjectFileService $files
+    ): JsonResponse {
+        if ($file->project_id !== $project->id) {
+            return response()->json(['message' => 'File không thuộc dự án.'], 422);
+        }
+
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:180'],
+        ]);
+
+        $renamed = $files->rename($file, (string) $validated['name'], $request->user()->id);
+
+        return response()->json($renamed);
+    }
+
+    public function duplicate(
+        Project $project,
+        ProjectFile $file,
+        Request $request,
+        ProjectFileService $files
+    ): JsonResponse {
+        if ($file->project_id !== $project->id) {
+            return response()->json(['message' => 'File không thuộc dự án.'], 422);
+        }
+
+        $copy = $files->duplicate($file, $request->user()->id);
+
+        return response()->json($copy, 201);
     }
 
     public function trash(Project $project, ProjectFile $file, Request $request): JsonResponse
@@ -131,24 +148,6 @@ class ProjectFileController extends Controller
         $this->deleteFileRecursive($file);
 
         return response()->json(['message' => 'Đã xóa vĩnh viễn.']);
-    }
-
-    private function basePath(int $projectId): string
-    {
-        return 'project_files/'.$projectId;
-    }
-
-    private function ensureUniqueName(string $basePath, string $name): string
-    {
-        $disk = Storage::disk('public');
-        $candidate = $name;
-        $counter = 1;
-        while ($disk->exists($basePath.'/'.$candidate)) {
-            $candidate = pathinfo($name, PATHINFO_FILENAME)
-                .'_'.($counter++)
-                .(pathinfo($name, PATHINFO_EXTENSION) ? '.'.pathinfo($name, PATHINFO_EXTENSION) : '');
-        }
-        return $candidate;
     }
 
     private function markDeleted(ProjectFile $file, bool $deleted, int $userId): void

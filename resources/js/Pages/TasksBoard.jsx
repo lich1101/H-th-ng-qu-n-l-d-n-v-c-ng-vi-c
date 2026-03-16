@@ -143,7 +143,9 @@ export default function TasksBoard(props) {
     const [chatSending, setChatSending] = useState(false);
     const [chatMessages, setChatMessages] = useState([]);
     const [chatMessage, setChatMessage] = useState('');
+    const [chatAttachment, setChatAttachment] = useState(null);
     const [chatParticipants, setChatParticipants] = useState([]);
+    const [chatTaggedUsers, setChatTaggedUsers] = useState([]);
     const [chatMentionCandidates, setChatMentionCandidates] = useState([]);
     const [chatMention, setChatMention] = useState({
         open: false,
@@ -151,9 +153,9 @@ export default function TasksBoard(props) {
         end: -1,
         query: '',
     });
-    const [chatMentionTokens, setChatMentionTokens] = useState([]);
     const chatListRef = useRef(null);
     const chatInputRef = useRef(null);
+    const chatAttachmentInputRef = useRef(null);
 
     const statusOptions = useMemo(() => {
         const values = meta.task_statuses || [];
@@ -271,6 +273,276 @@ export default function TasksBoard(props) {
         });
     };
 
+    const normalizeToken = (value) => {
+        return (value || '')
+            .toString()
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/\s+/g, '')
+            .trim();
+    };
+
+    const normalizeMentionPhrase = (value) => {
+        return (value || '')
+            .toString()
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+    };
+
+    const mentionIdentity = (user) => {
+        if (!user) return '';
+        if (user.id) return `id:${user.id}`;
+        if (user.email) return `email:${String(user.email).toLowerCase()}`;
+        const name = normalizeMentionPhrase(user.name || '');
+        return name ? `name:${name}` : '';
+    };
+
+    const mentionCandidates = () => {
+        const unique = new Map();
+        [...(chatTaggedUsers || []), ...(chatParticipants || [])].forEach((user) => {
+            const key = mentionIdentity(user);
+            if (!key || unique.has(key)) return;
+            unique.set(key, {
+                id: user.id,
+                name: user.name || '',
+                email: user.email || '',
+                avatar_url: user.avatar_url || '',
+                role: user.role || '',
+            });
+        });
+        return Array.from(unique.values());
+    };
+
+    const startsWithMentionBoundary = (phrase, candidate) => {
+        if (phrase === candidate) return true;
+        if (!phrase.startsWith(candidate) || phrase.length <= candidate.length) {
+            return false;
+        }
+        const next = phrase.slice(candidate.length, candidate.length + 1);
+        return /[\s.,!?:;)\]}]/.test(next);
+    };
+
+    const matchCompletedMention = (value) => {
+        const phrase = normalizeMentionPhrase(value);
+        if (!phrase) return null;
+
+        let bestMatch = null;
+        let bestLength = -1;
+
+        mentionCandidates().forEach((user) => {
+            [normalizeMentionPhrase(user.name), normalizeMentionPhrase(user.email)]
+                .filter(Boolean)
+                .forEach((candidate) => {
+                    if (startsWithMentionBoundary(phrase, candidate) && candidate.length > bestLength) {
+                        bestMatch = user;
+                        bestLength = candidate.length;
+                    }
+                });
+        });
+
+        return bestMatch;
+    };
+
+    const extractMentions = (value) => {
+        const tokens = [];
+        const regex = /@([^\s@]+)/g;
+        let match;
+        const content = value || '';
+        while ((match = regex.exec(content)) !== null) {
+            if (match[1]) tokens.push(match[1]);
+        }
+        return Array.from(new Set(tokens));
+    };
+
+    const containsExactMention = (normalizedText, candidate) => {
+        if (!candidate) return false;
+        const needle = `@${candidate}`;
+        let start = 0;
+        while (true) {
+            const index = normalizedText.indexOf(needle, start);
+            if (index < 0) return false;
+            const end = index + needle.length;
+            if (end >= normalizedText.length) return true;
+            if (/[\s.,!?:;)\]}]/.test(normalizedText.slice(end, end + 1))) {
+                return true;
+            }
+            start = index + 1;
+        }
+    };
+
+    const extractExactMentionMatches = (value) => {
+        const normalizedText = normalizeMentionPhrase(value);
+        if (!normalizedText) return [];
+
+        const matches = new Map();
+        mentionCandidates().forEach((user) => {
+            const key = mentionIdentity(user);
+            if (!key) return;
+            const candidates = [normalizeMentionPhrase(user.name), normalizeMentionPhrase(user.email)].filter(Boolean);
+            if (candidates.some((candidate) => containsExactMention(normalizedText, candidate))) {
+                matches.set(key, user);
+            }
+        });
+
+        return Array.from(matches.values());
+    };
+
+    const collectMentionTargets = (value) => {
+        const tokens = extractMentions(value);
+        const resolvedByIdentity = new Map();
+
+        extractExactMentionMatches(value).forEach((user) => {
+            const key = mentionIdentity(user);
+            if (!key) return;
+            resolvedByIdentity.set(key, {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+            });
+        });
+
+        if (!tokens.length) {
+            return {
+                tokens: [],
+                resolved: Array.from(resolvedByIdentity.values()),
+                unresolved: [],
+            };
+        }
+
+        const unresolved = [];
+        tokens.forEach((token) => {
+            const key = normalizeToken(token);
+            if (!key) return;
+            const match = mentionCandidates().find((u) => {
+                const nameKey = normalizeToken(u.name || '');
+                const emailKey = normalizeToken(u.email || '');
+                return nameKey === key || emailKey === key || emailKey.includes(key);
+            });
+            if (match) {
+                resolvedByIdentity.set(mentionIdentity(match), {
+                    id: match.id,
+                    name: match.name,
+                    email: match.email,
+                });
+            } else {
+                const coveredByExactMatch = Array.from(resolvedByIdentity.values()).some((user) => {
+                    const nameKey = normalizeToken(user.name || '');
+                    const emailKey = normalizeToken(user.email || '');
+                    return (nameKey && nameKey.startsWith(key)) || (emailKey && emailKey.startsWith(key));
+                });
+                if (!coveredByExactMatch) {
+                    unresolved.push(token);
+                }
+            }
+        });
+
+        return {
+            tokens,
+            resolved: Array.from(resolvedByIdentity.values()),
+            unresolved,
+        };
+    };
+
+    const showChatMentionWarning = () => {
+        if (!chatMessage.trim()) return false;
+        const { tokens, unresolved } = collectMentionTargets(chatMessage);
+        if (!tokens.length) return false;
+        return unresolved.length > 0;
+    };
+
+    const renderChatMessageContent = (text, tagged = []) => {
+        const value = text || '';
+        if (!value) return null;
+
+        const linkifyText = (raw, keyPrefix) => {
+            return raw
+                .split(/(https?:\/\/[^\s]+)/g)
+                .filter((part) => part !== '')
+                .map((part, idx) => {
+                    if (/^https?:\/\//i.test(part)) {
+                        return (
+                            <a
+                                key={`${keyPrefix}-link-${idx}`}
+                                className="text-sky-600 underline underline-offset-2"
+                                href={part}
+                                target="_blank"
+                                rel="noreferrer"
+                            >
+                                {part}
+                            </a>
+                        );
+                    }
+
+                    return <span key={`${keyPrefix}-text-${idx}`}>{part}</span>;
+                });
+        };
+
+        const mentionPatterns = Array.from(
+            new Set(
+                (tagged || [])
+                    .flatMap((user) => [
+                        user?.name ? `@${user.name}` : '',
+                        user?.email ? `@${user.email}` : '',
+                    ])
+                    .filter(Boolean)
+            )
+        ).sort((a, b) => b.length - a.length);
+
+        if (!mentionPatterns.length) {
+            return linkifyText(value, 'plain');
+        }
+
+        const ranges = [];
+        let cursor = 0;
+        while (cursor < value.length) {
+            const matchedPattern = mentionPatterns.find((pattern) => {
+                const slice = value.slice(cursor, cursor + pattern.length);
+                if (slice.toLowerCase() !== pattern.toLowerCase()) return false;
+                const next = value.slice(cursor + pattern.length, cursor + pattern.length + 1);
+                return !next || /[\s.,!?:;)\]}]/.test(next);
+            });
+
+            if (matchedPattern) {
+                ranges.push({ start: cursor, end: cursor + matchedPattern.length });
+                cursor += matchedPattern.length;
+                continue;
+            }
+
+            cursor += 1;
+        }
+
+        if (!ranges.length) {
+            return linkifyText(value, 'plain');
+        }
+
+        const nodes = [];
+        let current = 0;
+        ranges.forEach((range, idx) => {
+            if (range.start > current) {
+                nodes.push(...linkifyText(value.slice(current, range.start), `plain-${idx}`));
+            }
+            nodes.push(
+                <span
+                    key={`mention-${idx}`}
+                    className="rounded bg-emerald-100/80 px-1 font-semibold text-emerald-700"
+                >
+                    {value.slice(range.start, range.end)}
+                </span>
+            );
+            current = range.end;
+        });
+
+        if (current < value.length) {
+            nodes.push(...linkifyText(value.slice(current), 'plain-tail'));
+        }
+
+        return nodes;
+    };
+
     const fetchTaskChat = async (taskId, silent = false) => {
         if (!taskId) {
             setChatMessages([]);
@@ -313,26 +585,11 @@ export default function TasksBoard(props) {
         }
     };
 
-    const resolveMentionContext = (value, cursor) => {
-        const index = Math.max(0, Math.min(cursor, value.length));
-        const left = value.slice(0, index);
-        const atIndex = left.lastIndexOf('@');
-        if (atIndex < 0) return null;
-        if (atIndex > 0 && /\S/.test(left[atIndex - 1])) return null;
-        const keyword = left.slice(atIndex + 1);
-        if (keyword.includes(' ') || keyword.includes('\n') || keyword.includes('\t')) return null;
-        return {
-            start: atIndex,
-            end: index,
-            query: keyword.trim().toLowerCase(),
-        };
-    };
-
     const applyMentionCandidates = (query) => {
-        const keyword = String(query || '').toLowerCase();
-        const filtered = chatParticipants.filter((user) => {
-            const name = String(user?.name || '').toLowerCase();
-            const email = String(user?.email || '').toLowerCase();
+        const keyword = normalizeToken(query || '');
+        const filtered = mentionCandidates().filter((user) => {
+            const name = normalizeToken(user?.name || '');
+            const email = normalizeToken(user?.email || '');
             return !keyword || name.includes(keyword) || email.includes(keyword);
         }).slice(0, 8);
         setChatMentionCandidates(filtered);
@@ -345,15 +602,16 @@ export default function TasksBoard(props) {
     };
 
     const selectMention = (user) => {
-        if (!user || chatMention.start < 0 || chatMention.end < 0) return;
-        const label = String(user.name || user.email || `user_${user.id}`).replace(/\s+/g, '_');
-        const token = `@${label}`;
-        const nextMessage = `${chatMessage.slice(0, chatMention.start)}${token} ${chatMessage.slice(chatMention.end)}`;
+        if (!user || chatMention.start < 0) return;
+        const before = chatMessage.slice(0, chatMention.start);
+        const after = chatMessage.slice(chatMention.start).replace(/^@([^\n@]*)/, `@${user.name} `);
+        const nextMessage = `${before}${after}`;
         setChatMessage(nextMessage);
-        setChatMentionTokens((current) => {
-            const next = current.filter((item) => item.id !== user.id);
-            next.push({ id: user.id, token });
-            return next;
+        setChatTaggedUsers((current) => {
+            if (current.some((item) => mentionIdentity(item) === mentionIdentity(user))) {
+                return current;
+            }
+            return [...current, { id: user.id, name: user.name, email: user.email }];
         });
         closeMention();
         setTimeout(() => {
@@ -365,21 +623,33 @@ export default function TasksBoard(props) {
 
     const handleChatMessageChange = (value, cursorPosition) => {
         setChatMessage(value);
-        const context = resolveMentionContext(value, cursorPosition);
-        if (!context) {
+        const context = value.lastIndexOf('@', Math.max(0, cursorPosition - 1));
+        if (context < 0) {
             closeMention();
             return;
         }
-        const candidates = applyMentionCandidates(context.query);
+        const query = value.slice(context + 1, cursorPosition);
+        const completedUser = matchCompletedMention(query);
+        if (completedUser) {
+            setChatTaggedUsers((current) => {
+                if (current.some((item) => mentionIdentity(item) === mentionIdentity(completedUser))) {
+                    return current;
+                }
+                return [...current, completedUser];
+            });
+            closeMention();
+            return;
+        }
+        const candidates = applyMentionCandidates(query);
         if (!candidates.length) {
             closeMention();
             return;
         }
         setChatMention({
             open: true,
-            start: context.start,
-            end: context.end,
-            query: context.query,
+            start: context,
+            end: cursorPosition,
+            query,
         });
     };
 
@@ -387,8 +657,9 @@ export default function TasksBoard(props) {
         setChatTask(task);
         setShowTaskChat(true);
         setChatMessage('');
+        setChatAttachment(null);
         closeMention();
-        setChatMentionTokens([]);
+        setChatTaggedUsers([]);
         await Promise.all([
             fetchTaskChat(task.id),
             fetchChatParticipants(task.id),
@@ -400,27 +671,42 @@ export default function TasksBoard(props) {
         setChatTask(null);
         setChatMessages([]);
         setChatMessage('');
+        setChatAttachment(null);
         setChatParticipants([]);
-        setChatMentionTokens([]);
+        setChatTaggedUsers([]);
         closeMention();
     };
 
     const sendTaskChat = async () => {
         if (!chatTask?.id) return;
-        if (!chatMessage.trim()) return;
-        const taggedUserIds = chatMentionTokens
-            .filter((item) => chatMessage.includes(item.token))
-            .map((item) => Number(item.id))
-            .filter((id, index, arr) => Number.isFinite(id) && id > 0 && arr.indexOf(id) === index);
+        if (!chatMessage.trim() && !chatAttachment) return;
+        const { tokens, resolved, unresolved } = collectMentionTargets(chatMessage);
+        if (tokens.length > 0 && unresolved.length > 0) {
+            toast.error('Vui lòng chọn người cần tag từ danh sách gợi ý.');
+            return;
+        }
         setChatSending(true);
         try {
-            await axios.post(`/api/v1/tasks/${chatTask.id}/comments`, {
-                content: chatMessage.trim(),
-                ...(taggedUserIds.length ? { tagged_user_ids: taggedUserIds } : {}),
+            const ids = new Set();
+            resolved.forEach((user) => {
+                if (user.id) ids.add(user.id);
+            });
+            const data = new FormData();
+            data.append('content', chatMessage.trim());
+            ids.forEach((id) => data.append('tagged_user_ids[]', id));
+            if (chatAttachment) {
+                data.append('attachment', chatAttachment);
+            }
+            await axios.post(`/api/v1/tasks/${chatTask.id}/comments`, data, {
+                headers: { 'Content-Type': 'multipart/form-data' },
             });
             setChatMessage('');
-            setChatMentionTokens([]);
+            setChatAttachment(null);
+            setChatTaggedUsers([]);
             closeMention();
+            if (chatAttachmentInputRef.current) {
+                chatAttachmentInputRef.current.value = '';
+            }
             await fetchTaskChat(chatTask.id, true);
         } catch (e) {
             toast.error(e?.response?.data?.message || 'Gửi tin nhắn thất bại.');
@@ -1339,15 +1625,39 @@ export default function TasksBoard(props) {
                         )}
                         {chatMessages.map((comment) => {
                             const mine = Number(comment.user_id || 0) === Number(props?.auth?.user?.id || 0);
+                            const tags =
+                                Array.isArray(comment.tagged_users) && comment.tagged_users.length
+                                    ? comment.tagged_users.map((u) => u.name).join(', ')
+                                    : Array.isArray(comment.tagged_user_ids)
+                                        ? comment.tagged_user_ids.join(', ')
+                                        : '';
                             return (
                                 <div key={comment.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
                                     <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${mine ? 'bg-primary text-white' : 'bg-white border border-slate-200/80 text-slate-800'}`}>
                                         <p className={`text-[11px] ${mine ? 'text-white/80' : 'text-text-muted'}`}>
                                             {comment.user?.name || 'Nhân sự'} • {formatChatTime(comment.created_at)}
                                         </p>
-                                        <p className="whitespace-pre-wrap break-words mt-1">
-                                            {comment.is_recalled ? 'Tin nhắn đã thu hồi.' : (comment.content || '')}
-                                        </p>
+                                        <div className="mt-1 whitespace-pre-wrap break-words">
+                                            {comment.is_recalled ? 'Tin nhắn đã thu hồi.' : renderChatMessageContent(comment.content, comment.tagged_users || [])}
+                                        </div>
+                                        {!comment.is_recalled && comment.attachment_path && (
+                                            <a
+                                                className={`mt-2 inline-block text-xs underline underline-offset-2 ${
+                                                    mine ? 'text-white' : 'text-primary'
+                                                }`}
+                                                href={comment.attachment_path}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                download={comment.attachment_name || true}
+                                            >
+                                                {comment.attachment_name || 'Tệp đính kèm'}
+                                            </a>
+                                        )}
+                                        {!comment.is_recalled && tags && (
+                                            <p className={`mt-1 text-[11px] ${mine ? 'text-white/85' : 'text-emerald-700'}`}>
+                                                Tag: {tags}
+                                            </p>
+                                        )}
                                     </div>
                                 </div>
                             );
@@ -1355,11 +1665,18 @@ export default function TasksBoard(props) {
                     </div>
 
                     <div className="border-t border-slate-200/80 p-3">
-                        {chatMentionTokens.length > 0 && (
+                        {chatTaggedUsers.length > 0 && (
                             <div className="mb-2 flex flex-wrap gap-1.5">
-                                {chatMentionTokens.map((item) => (
-                                    <span key={item.id} className="rounded-full bg-primary/10 px-2 py-1 text-[11px] font-semibold text-primary">
-                                        {item.token}
+                                {chatTaggedUsers.map((item) => (
+                                    <span key={item.id} className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-1 text-[11px] font-semibold text-primary">
+                                        @{item.name}
+                                        <button
+                                            type="button"
+                                            className="text-primary/70"
+                                            onClick={() => setChatTaggedUsers((current) => current.filter((user) => user.id !== item.id))}
+                                        >
+                                            ×
+                                        </button>
                                     </span>
                                 ))}
                             </div>
@@ -1402,6 +1719,19 @@ export default function TasksBoard(props) {
                                         }
                                     }}
                                 />
+                                <input
+                                    ref={chatAttachmentInputRef}
+                                    type="file"
+                                    className="hidden"
+                                    onChange={(e) => setChatAttachment(e.target.files?.[0] || null)}
+                                />
+                                <button
+                                    type="button"
+                                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
+                                    onClick={() => chatAttachmentInputRef.current?.click()}
+                                >
+                                    Tệp
+                                </button>
                                 <button
                                     type="button"
                                     className="rounded-xl bg-primary px-3 py-2 text-xs font-semibold text-white disabled:opacity-60"
@@ -1411,6 +1741,28 @@ export default function TasksBoard(props) {
                                     Gửi
                                 </button>
                             </div>
+                            {showChatMentionWarning() && (
+                                <p className="mt-2 text-xs text-amber-600">
+                                    Bạn đang gõ @ nhưng chưa chọn người từ danh sách gợi ý.
+                                </p>
+                            )}
+                            {chatAttachment && (
+                                <div className="mt-2 flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                                    <span className="truncate">{chatAttachment.name}</span>
+                                    <button
+                                        type="button"
+                                        className="text-rose-600"
+                                        onClick={() => {
+                                            setChatAttachment(null);
+                                            if (chatAttachmentInputRef.current) {
+                                                chatAttachmentInputRef.current.value = '';
+                                            }
+                                        }}
+                                    >
+                                        Bỏ
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

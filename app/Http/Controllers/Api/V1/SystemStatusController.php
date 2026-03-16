@@ -7,6 +7,7 @@ use App\Models\AppSetting;
 use App\Models\UserDeviceToken;
 use App\Services\FirebaseService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Schema;
 
 class SystemStatusController extends Controller
 {
@@ -20,6 +21,46 @@ class SystemStatusController extends Controller
             ->selectRaw('platform, count(*) as total')
             ->groupBy('platform')
             ->pluck('total', 'platform');
+        $permissionByPlatform = [
+            'ios' => ['enabled' => 0, 'disabled' => 0, 'unknown' => 0],
+            'android' => ['enabled' => 0, 'disabled' => 0, 'unknown' => 0],
+            'web' => ['enabled' => 0, 'disabled' => 0, 'unknown' => 0],
+        ];
+        $permissionsEnabledTotal = 0;
+        $permissionsDisabledTotal = 0;
+        $permissionsUnknownTotal = $totalTokens;
+        if (Schema::hasColumn('user_device_tokens', 'notifications_enabled')) {
+            $permissionRows = UserDeviceToken::query()
+                ->selectRaw('platform, notifications_enabled, count(*) as total')
+                ->groupBy('platform', 'notifications_enabled')
+                ->get();
+
+            foreach ($permissionRows as $row) {
+                $platform = (string) ($row->platform ?? '');
+                if (! array_key_exists($platform, $permissionByPlatform)) {
+                    $permissionByPlatform[$platform] = ['enabled' => 0, 'disabled' => 0, 'unknown' => 0];
+                }
+
+                $total = (int) ($row->total ?? 0);
+                if ($row->notifications_enabled === null) {
+                    $permissionByPlatform[$platform]['unknown'] += $total;
+                } elseif ((bool) $row->notifications_enabled) {
+                    $permissionByPlatform[$platform]['enabled'] += $total;
+                } else {
+                    $permissionByPlatform[$platform]['disabled'] += $total;
+                }
+            }
+
+            $permissionsEnabledTotal = (int) UserDeviceToken::query()
+                ->where('notifications_enabled', true)
+                ->count();
+            $permissionsDisabledTotal = (int) UserDeviceToken::query()
+                ->where('notifications_enabled', false)
+                ->count();
+            $permissionsUnknownTotal = (int) UserDeviceToken::query()
+                ->whereNull('notifications_enabled')
+                ->count();
+        }
         $lastSeen = UserDeviceToken::query()->max('last_seen_at');
         $lastUpdated = UserDeviceToken::query()->max('updated_at');
 
@@ -37,6 +78,12 @@ class SystemStatusController extends Controller
                     'ios' => (int) ($byPlatform['ios'] ?? 0),
                     'android' => (int) ($byPlatform['android'] ?? 0),
                     'web' => (int) ($byPlatform['web'] ?? 0),
+                ],
+                'permissions' => [
+                    'enabled_total' => $permissionsEnabledTotal,
+                    'disabled_total' => $permissionsDisabledTotal,
+                    'unknown_total' => $permissionsUnknownTotal,
+                    'by_platform' => $permissionByPlatform,
                 ],
                 'last_seen_at' => $lastSeen,
                 'last_updated_at' => $lastUpdated,

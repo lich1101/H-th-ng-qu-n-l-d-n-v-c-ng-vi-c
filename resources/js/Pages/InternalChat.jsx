@@ -59,6 +59,70 @@ export default function InternalChat(props) {
             .trim();
     };
 
+    const normalizeMentionPhrase = (value) => {
+        return (value || '')
+            .toString()
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+    };
+
+    const mentionIdentity = (user) => {
+        if (!user) return '';
+        if (user.id) return `id:${user.id}`;
+        if (user.email) return `email:${String(user.email).toLowerCase()}`;
+        const name = normalizeMentionPhrase(user.name || '');
+        return name ? `name:${name}` : '';
+    };
+
+    const mentionCandidates = () => {
+        const unique = new Map();
+        [...(taggedUsers || []), ...(participants || [])].forEach((user) => {
+            const key = mentionIdentity(user);
+            if (!key || unique.has(key)) return;
+            unique.set(key, {
+                id: user.id,
+                name: user.name || '',
+                email: user.email || '',
+                avatar_url: user.avatar_url || '',
+                role: user.role || '',
+            });
+        });
+        return Array.from(unique.values());
+    };
+
+    const startsWithMentionBoundary = (phrase, candidate) => {
+        if (phrase === candidate) return true;
+        if (!phrase.startsWith(candidate) || phrase.length <= candidate.length) {
+            return false;
+        }
+        const next = phrase.slice(candidate.length, candidate.length + 1);
+        return /[\s.,!?:;)\]}]/.test(next);
+    };
+
+    const matchCompletedMention = (value) => {
+        const phrase = normalizeMentionPhrase(value);
+        if (!phrase) return null;
+
+        let bestMatch = null;
+        let bestLength = -1;
+
+        mentionCandidates().forEach((user) => {
+            [normalizeMentionPhrase(user.name), normalizeMentionPhrase(user.email)]
+                .filter(Boolean)
+                .forEach((candidate) => {
+                    if (startsWithMentionBoundary(phrase, candidate) && candidate.length > bestLength) {
+                        bestMatch = user;
+                        bestLength = candidate.length;
+                    }
+                });
+        });
+
+        return bestMatch;
+    };
+
     const extractMentions = (value) => {
         const tokens = [];
         const regex = /@([^\s@]+)/g;
@@ -70,36 +134,88 @@ export default function InternalChat(props) {
         return Array.from(new Set(tokens));
     };
 
+    const containsExactMention = (normalizedText, candidate) => {
+        if (!candidate) return false;
+        const needle = `@${candidate}`;
+        let start = 0;
+        while (true) {
+            const index = normalizedText.indexOf(needle, start);
+            if (index < 0) return false;
+            const end = index + needle.length;
+            if (end >= normalizedText.length) return true;
+            if (/[\s.,!?:;)\]}]/.test(normalizedText.slice(end, end + 1))) {
+                return true;
+            }
+            start = index + 1;
+        }
+    };
+
+    const extractExactMentionMatches = (value) => {
+        const normalizedText = normalizeMentionPhrase(value);
+        if (!normalizedText) return [];
+
+        const matches = new Map();
+        mentionCandidates().forEach((user) => {
+            const key = mentionIdentity(user);
+            if (!key) return;
+            const candidates = [normalizeMentionPhrase(user.name), normalizeMentionPhrase(user.email)].filter(Boolean);
+            if (candidates.some((candidate) => containsExactMention(normalizedText, candidate))) {
+                matches.set(key, user);
+            }
+        });
+
+        return Array.from(matches.values());
+    };
+
     const collectMentionTargets = (value) => {
         const tokens = extractMentions(value);
-        if (!tokens.length) return { tokens: [], resolved: [], unresolved: [] };
-        const resolved = [];
+        const resolvedByIdentity = new Map();
+
+        extractExactMentionMatches(value).forEach((user) => {
+            const key = mentionIdentity(user);
+            if (!key) return;
+            resolvedByIdentity.set(key, {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+            });
+        });
+
+        if (!tokens.length) {
+            return {
+                tokens: [],
+                resolved: Array.from(resolvedByIdentity.values()),
+                unresolved: [],
+            };
+        }
+
         const unresolved = [];
         tokens.forEach((token) => {
             const key = normalizeToken(token);
             if (!key) return;
-            let match =
-                taggedUsers.find((u) => {
-                    const nameKey = normalizeToken(u.name || '');
-                    const emailKey = normalizeToken(u.email || '');
-                    return nameKey === key || emailKey === key || emailKey.includes(key);
-                }) ||
-                (participants || []).find((u) => {
+            const match = mentionCandidates().find((u) => {
                     const nameKey = normalizeToken(u.name || '');
                     const emailKey = normalizeToken(u.email || '');
                     return nameKey === key || emailKey === key || emailKey.includes(key);
                 });
             if (match) {
-                resolved.push({
+                resolvedByIdentity.set(mentionIdentity(match), {
                     id: match.id,
                     name: match.name,
                     email: match.email,
                 });
             } else {
-                unresolved.push(token);
+                const coveredByExactMatch = Array.from(resolvedByIdentity.values()).some((user) => {
+                    const nameKey = normalizeToken(user.name || '');
+                    const emailKey = normalizeToken(user.email || '');
+                    return (nameKey && nameKey.startsWith(key)) || (emailKey && emailKey.startsWith(key));
+                });
+                if (!coveredByExactMatch) {
+                    unresolved.push(token);
+                }
             }
         });
-        return { tokens, resolved, unresolved };
+        return { tokens, resolved: Array.from(resolvedByIdentity.values()), unresolved };
     };
 
     const isNearBottom = () => {
@@ -124,23 +240,93 @@ export default function InternalChat(props) {
         return msg;
     };
 
-    const renderMessageContent = (text) => {
+    const renderMessageContent = (text, tagged = []) => {
         const value = text || '';
         if (!value) return null;
-        const parts = value.split(/(@[^\s@]+)/g).filter((p) => p !== '');
-        return parts.map((part, idx) => {
-            if (part.startsWith('@')) {
-                return (
-                    <span
-                        key={`${part}-${idx}`}
-                        className="text-emerald-700 font-semibold bg-emerald-100/80 px-1 rounded"
-                    >
-                        {part}
-                    </span>
-                );
+
+        const linkifyText = (raw, keyPrefix) => {
+            return raw
+                .split(/(https?:\/\/[^\s]+)/g)
+                .filter((part) => part !== '')
+                .map((part, idx) => {
+                    if (/^https?:\/\//i.test(part)) {
+                        return (
+                            <a
+                                key={`${keyPrefix}-link-${idx}`}
+                                className="text-sky-600 underline underline-offset-2"
+                                href={part}
+                                target="_blank"
+                                rel="noreferrer"
+                            >
+                                {part}
+                            </a>
+                        );
+                    }
+
+                    return <span key={`${keyPrefix}-text-${idx}`}>{part}</span>;
+                });
+        };
+
+        const mentionPatterns = Array.from(
+            new Set(
+                (tagged || [])
+                    .flatMap((user) => [
+                        user?.name ? `@${user.name}` : '',
+                        user?.email ? `@${user.email}` : '',
+                    ])
+                    .filter(Boolean)
+            )
+        ).sort((a, b) => b.length - a.length);
+
+        if (!mentionPatterns.length) {
+            return linkifyText(value, 'plain');
+        }
+
+        const ranges = [];
+        let cursor = 0;
+        while (cursor < value.length) {
+            const matchedPattern = mentionPatterns.find((pattern) => {
+                const slice = value.slice(cursor, cursor + pattern.length);
+                if (slice.toLowerCase() !== pattern.toLowerCase()) return false;
+                const next = value.slice(cursor + pattern.length, cursor + pattern.length + 1);
+                return !next || /[\s.,!?:;)\]}]/.test(next);
+            });
+
+            if (matchedPattern) {
+                ranges.push({ start: cursor, end: cursor + matchedPattern.length });
+                cursor += matchedPattern.length;
+                continue;
             }
-            return <span key={`${part}-${idx}`}>{part}</span>;
+
+            cursor += 1;
+        }
+
+        if (!ranges.length) {
+            return linkifyText(value, 'plain');
+        }
+
+        const nodes = [];
+        let current = 0;
+        ranges.forEach((range, idx) => {
+            if (range.start > current) {
+                nodes.push(...linkifyText(value.slice(current, range.start), `plain-${idx}`));
+            }
+            nodes.push(
+                <span
+                    key={`mention-${idx}`}
+                    className="text-emerald-700 font-semibold bg-emerald-100/80 px-1 rounded"
+                >
+                    {value.slice(range.start, range.end)}
+                </span>
+            );
+            current = range.end;
         });
+
+        if (current < value.length) {
+            nodes.push(...linkifyText(value.slice(current), 'plain-tail'));
+        }
+
+        return nodes;
     };
 
     const initials = (name) => {
@@ -413,11 +599,25 @@ export default function InternalChat(props) {
 
     const handleContentChange = (value) => {
         setContent(value);
-        const match = value.match(/@([^\s@]*)$/);
-        if (match) {
-            setMentionQuery(match[1]);
+        const anchor = value.lastIndexOf('@');
+        if (anchor >= 0) {
+            const query = value.slice(anchor + 1);
+            const completedUser = matchCompletedMention(query);
+            if (completedUser) {
+                setTaggedUsers((prev) => {
+                    if (prev.some((user) => mentionIdentity(user) === mentionIdentity(completedUser))) {
+                        return prev;
+                    }
+                    return [...prev, completedUser];
+                });
+                setMentionOpen(false);
+                setMentionQuery('');
+                setMentionAnchor(-1);
+                return;
+            }
+            setMentionQuery(query);
             setMentionOpen(true);
-            setMentionAnchor(value.lastIndexOf('@'));
+            setMentionAnchor(anchor);
         } else {
             setMentionOpen(false);
             setMentionQuery('');
@@ -428,14 +628,14 @@ export default function InternalChat(props) {
     const handlePickMention = (user) => {
         if (mentionAnchor < 0) return;
         const before = content.slice(0, mentionAnchor);
-        const after = content.slice(mentionAnchor).replace(/@([^\s@]*)/, `@${user.name} `);
+        const after = content.slice(mentionAnchor).replace(/^@([^\n@]*)/, `@${user.name} `);
         const next = `${before}${after}`;
         setContent(next);
         setMentionOpen(false);
         setMentionQuery('');
         setMentionAnchor(-1);
         setTaggedUsers((prev) => {
-            if (prev.some((u) => u.id === user.id)) return prev;
+            if (prev.some((u) => mentionIdentity(u) === mentionIdentity(user))) return prev;
             return [...prev, { id: user.id, name: user.name, email: user.email }];
         });
     };
@@ -598,7 +798,7 @@ export default function InternalChat(props) {
                                                     Tin nhắn đã bị thu hồi.
                                                 </span>
                                             ) : (
-                                                renderMessageContent(c.content)
+                                                renderMessageContent(c.content, c.tagged_users || [])
                                             )}
                                         </div>
                                         {!isRecalled && c.attachment_path && (
@@ -607,8 +807,9 @@ export default function InternalChat(props) {
                                                 href={c.attachment_path}
                                                 target="_blank"
                                                 rel="noreferrer"
+                                                download={c.attachment_name || true}
                                             >
-                                                Tệp đính kèm
+                                                {c.attachment_name || 'Tệp đính kèm'}
                                             </a>
                                         )}
                                         {!isRecalled && tags && (

@@ -52,6 +52,11 @@ class User extends Authenticatable
         return $this->hasMany(UserDeviceToken::class);
     }
 
+    public function notificationPreference()
+    {
+        return $this->hasOne(UserNotificationPreference::class);
+    }
+
     /**
      * The attributes that should be hidden for serialization.
      *

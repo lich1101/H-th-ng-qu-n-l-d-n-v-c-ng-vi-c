@@ -25,6 +25,10 @@ class TaskComment extends Model
         'recalled_at' => 'datetime',
     ];
 
+    protected $appends = [
+        'attachment_name',
+    ];
+
     public function task()
     {
         return $this->belongsTo(Task::class);
@@ -33,5 +37,17 @@ class TaskComment extends Model
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function getAttachmentNameAttribute(): ?string
+    {
+        if (empty($this->attachment_path)) {
+            return null;
+        }
+
+        $path = parse_url((string) $this->attachment_path, PHP_URL_PATH) ?: (string) $this->attachment_path;
+        $name = basename($path);
+
+        return $name === '' ? null : $name;
     }
 }

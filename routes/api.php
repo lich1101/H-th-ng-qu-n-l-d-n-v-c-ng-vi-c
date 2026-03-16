@@ -44,6 +44,7 @@ use App\Http\Controllers\Api\V1\TaskItemUpdateController;
 use App\Http\Controllers\Api\V1\UserLookupController;
 use App\Http\Controllers\Api\V1\TaskUpdateController;
 use App\Http\Controllers\Api\V1\UserAccountController;
+use App\Http\Controllers\Api\V1\UserNotificationPreferenceController;
 
 /*
 |--------------------------------------------------------------------------
@@ -81,6 +82,8 @@ Route::prefix('v1')->group(function () {
         Route::post('/logout', [AuthController::class, 'logout']);
         Route::post('/profile/avatar', [ProfileController::class, 'updateAvatar']);
         Route::post('/device-tokens', [DeviceTokenController::class, 'store']);
+        Route::get('/notification-preferences', [UserNotificationPreferenceController::class, 'show']);
+        Route::put('/notification-preferences', [UserNotificationPreferenceController::class, 'update']);
         Route::get('/firebase/token', [FirebaseTokenController::class, 'show']);
         Route::post('/push/test', [PushTestController::class, 'store'])
             ->middleware('role:admin');
@@ -102,6 +105,10 @@ Route::prefix('v1')->group(function () {
         Route::post('/projects/{project}/files/folder', [ProjectFileController::class, 'createFolder'])
             ->middleware('role:admin,quan_ly');
         Route::post('/projects/{project}/files/upload', [ProjectFileController::class, 'upload'])
+            ->middleware('role:admin,quan_ly,nhan_vien');
+        Route::put('/projects/{project}/files/{file}', [ProjectFileController::class, 'update'])
+            ->middleware('role:admin,quan_ly,nhan_vien');
+        Route::post('/projects/{project}/files/{file}/duplicate', [ProjectFileController::class, 'duplicate'])
             ->middleware('role:admin,quan_ly,nhan_vien');
         Route::post('/projects/{project}/files/{file}/trash', [ProjectFileController::class, 'trash'])
             ->middleware('role:admin,quan_ly');

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class FirebaseService
 {
@@ -70,26 +71,59 @@ class FirebaseService
     public function sendPush(array $tokens, string $title, string $body, array $data = []): array
     {
         if (! $this->enabled()) {
-            return ['sent' => 0, 'failed' => count($tokens), 'failed_tokens' => $tokens];
+            return [
+                'sent' => 0,
+                'failed' => count($tokens),
+                'failed_tokens' => [],
+                'temporary_failed_tokens' => $tokens,
+                'errors' => [],
+                'error' => 'firebase_disabled',
+            ];
         }
         $tokens = array_values(array_filter(array_unique($tokens)));
         if (empty($tokens)) {
-            return ['sent' => 0, 'failed' => 0, 'failed_tokens' => []];
+            return [
+                'sent' => 0,
+                'failed' => 0,
+                'failed_tokens' => [],
+                'temporary_failed_tokens' => [],
+                'errors' => [],
+                'error' => 'no_device_tokens',
+            ];
         }
 
         $accessToken = $this->getAccessToken();
         if (! $accessToken) {
-            return ['sent' => 0, 'failed' => count($tokens), 'failed_tokens' => $tokens];
+            return [
+                'sent' => 0,
+                'failed' => count($tokens),
+                'failed_tokens' => [],
+                'temporary_failed_tokens' => $tokens,
+                'errors' => [],
+                'error' => 'firebase_access_token_unavailable',
+            ];
         }
 
         $projectId = (string) config('firebase.project_id');
         $url = "https://fcm.googleapis.com/v1/projects/{$projectId}/messages:send";
         $sent = 0;
-        $failedTokens = [];
+        $invalidTokens = [];
+        $temporaryFailedTokens = [];
+        $errors = [];
+        $channelId = trim((string) config('firebase.push_channel_id', 'crm_default'));
+        if ($channelId === '') {
+            $channelId = 'crm_default';
+        }
 
         $stringData = [];
         foreach ($data as $key => $value) {
-            $stringData[(string) $key] = is_scalar($value) ? (string) $value : json_encode($value);
+            if (is_scalar($value)) {
+                $stringData[(string) $key] = (string) $value;
+                continue;
+            }
+
+            $encoded = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            $stringData[(string) $key] = $encoded === false ? '' : $encoded;
         }
 
         foreach ($tokens as $token) {
@@ -101,6 +135,30 @@ class FirebaseService
                         'body' => $body,
                     ],
                     'data' => $stringData,
+                    'android' => [
+                        'priority' => 'HIGH',
+                        'notification' => [
+                            'channel_id' => $channelId,
+                            'notification_priority' => 'PRIORITY_HIGH',
+                            'sound' => 'default',
+                            'default_sound' => true,
+                        ],
+                    ],
+                    'apns' => [
+                        'headers' => [
+                            'apns-priority' => '10',
+                        ],
+                        'payload' => [
+                            'aps' => [
+                                'sound' => 'default',
+                            ],
+                        ],
+                    ],
+                    'webpush' => [
+                        'headers' => [
+                            'Urgency' => 'high',
+                        ],
+                    ],
                 ],
             ];
 
@@ -111,15 +169,78 @@ class FirebaseService
             if ($response->ok()) {
                 $sent++;
             } else {
-                $failedTokens[] = $token;
+                $error = $this->extractFcmError($response);
+                $errors[$token] = $error;
+                if ($this->isInvalidTokenError($error)) {
+                    $invalidTokens[] = $token;
+                } else {
+                    $temporaryFailedTokens[] = $token;
+                }
+                Log::warning('FCM push token failed', [
+                    'token_suffix' => substr($token, -12),
+                    'status' => $error['status'] ?? null,
+                    'message' => $error['message'] ?? null,
+                    'http_code' => $response->status(),
+                ]);
             }
         }
 
+        $failed = count($invalidTokens) + count($temporaryFailedTokens);
+
         return [
             'sent' => $sent,
-            'failed' => count($failedTokens),
-            'failed_tokens' => $failedTokens,
+            'failed' => $failed,
+            'failed_tokens' => $invalidTokens,
+            'temporary_failed_tokens' => $temporaryFailedTokens,
+            'errors' => $errors,
+            'error' => $failed > 0 ? 'push_failed' : null,
         ];
+    }
+
+    private function extractFcmError($response): array
+    {
+        $status = '';
+        $message = '';
+        $code = $response->status();
+
+        $json = $response->json();
+        if (is_array($json)) {
+            $error = $json['error'] ?? null;
+            if (is_array($error)) {
+                $status = (string) ($error['status'] ?? '');
+                $message = trim((string) ($error['message'] ?? ''));
+                if (isset($error['code']) && is_numeric($error['code'])) {
+                    $code = (int) $error['code'];
+                }
+            }
+        }
+
+        if ($message === '') {
+            $message = trim((string) $response->body());
+        }
+        if ($message === '') {
+            $message = 'FCM request failed';
+        }
+
+        return [
+            'code' => $code,
+            'status' => $status,
+            'message' => substr($message, 0, 300),
+        ];
+    }
+
+    private function isInvalidTokenError(array $error): bool
+    {
+        $status = strtoupper(trim((string) ($error['status'] ?? '')));
+        $message = strtolower((string) ($error['message'] ?? ''));
+
+        if (in_array($status, ['UNREGISTERED', 'INVALID_ARGUMENT'], true)) {
+            return true;
+        }
+
+        return str_contains($message, 'invalid registration token')
+            || str_contains($message, 'not a valid fcm registration token')
+            || str_contains($message, 'requested entity was not found');
     }
 
     public function createCustomToken(string $uid, array $claims = []): ?string

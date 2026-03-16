@@ -1,9 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { Link } from '@inertiajs/inertia-react';
 import ReactFlow, { Background, Controls } from 'reactflow';
 import 'reactflow/dist/style.css';
-import Modal from '@/Components/Modal';
 import PageContainer from '@/Components/PageContainer';
 import { useToast } from '@/Contexts/ToastContext';
 
@@ -53,6 +52,17 @@ const ROLE_LABELS = {
     quan_ly: 'Quản lý',
     nhan_vien: 'Nhân sự',
     ke_toan: 'Kế toán',
+};
+
+const NODE_WIDTH = 276;
+const HINT_CARD_WIDTH = 360;
+const HINT_CARD_MAX_HEIGHT = 440;
+const LEVEL_Y = {
+    contract: 0,
+    project: 300,
+    task: 690,
+    item: 1120,
+    user: 1520,
 };
 
 const SERVICE_LABELS = {
@@ -122,7 +132,7 @@ const hexToRgba = (hex, alpha) => {
 };
 
 const nodeStyle = (accent, isActive) => ({
-    width: 296,
+    width: NODE_WIDTH,
     padding: 0,
     overflow: 'hidden',
     cursor: 'pointer',
@@ -213,9 +223,9 @@ function FlowNodeCard({ detail }) {
                 )}
 
                 <div className="flex items-center justify-between pt-1 text-[11px]">
-                    <span className="text-slate-400">{detail.footer || 'Nhấn để xem chi tiết'}</span>
+                    <span className="text-slate-400">{detail.footer || 'Nhấn để xem ghi chú nhanh'}</span>
                     <span className="font-semibold" style={{ color: accent }}>
-                        Xem popup
+                        Xem chú thích
                     </span>
                 </div>
             </div>
@@ -251,14 +261,132 @@ function DetailList({ rows }) {
     );
 }
 
+function FloatingDetailHint({ hint, onClose }) {
+    const detail = hint?.detail;
+
+    if (!detail) {
+        return null;
+    }
+
+    const accent = detail.accentColor || TYPE_TONES[detail.type] || '#2563eb';
+    const stats = (detail.modalStats || detail.stats || []).slice(0, 4);
+    const rows = (detail.rows || []).slice(0, 6);
+
+    return (
+        <div
+            className="pointer-events-auto absolute z-20"
+            style={{ left: hint.position.x, top: hint.position.y, width: hint.width }}
+        >
+            <div
+                className="absolute -top-2 h-4 w-4 rotate-45 rounded-[4px] border-l border-t border-slate-200/80 bg-white"
+                style={{ left: hint.arrowLeft - 8 }}
+            />
+
+            <div className="relative overflow-hidden rounded-[28px] border border-slate-200/90 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.18)]">
+                <div
+                    className="absolute inset-x-0 top-0 h-24"
+                    style={{ background: `linear-gradient(135deg, ${hexToRgba(accent, 0.18)}, ${hexToRgba(accent, 0.03)})` }}
+                />
+
+                <div className="relative space-y-4 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                            <div
+                                className="inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]"
+                                style={{ backgroundColor: hexToRgba(accent, 0.12), color: accent }}
+                            >
+                                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: accent }} />
+                                {TYPE_LABELS[detail.type] || detail.type}
+                            </div>
+                            <div className="mt-3 text-sm font-semibold leading-6 text-slate-900 break-words">
+                                {detail.title}
+                            </div>
+                            {detail.subtitle && (
+                                <div className="mt-1 text-xs leading-5 text-slate-500 break-words">
+                                    {detail.subtitle}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="flex shrink-0 items-start gap-2">
+                            <div
+                                className="rounded-full px-2.5 py-1 text-[11px] font-semibold"
+                                style={{ backgroundColor: hexToRgba(accent, 0.12), color: accent }}
+                            >
+                                {detail.statusText}
+                            </div>
+                            <button
+                                type="button"
+                                className="rounded-full border border-slate-200 bg-white p-1 text-slate-400 transition hover:text-slate-600"
+                                onClick={onClose}
+                            >
+                                <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor" aria-hidden="true">
+                                    <path
+                                        fillRule="evenodd"
+                                        d="M4.22 4.22a.75.75 0 0 1 1.06 0L10 8.94l4.72-4.72a.75.75 0 1 1 1.06 1.06L11.06 10l4.72 4.72a.75.75 0 1 1-1.06 1.06L10 11.06l-4.72 4.72a.75.75 0 0 1-1.06-1.06L8.94 10 4.22 5.28a.75.75 0 0 1 0-1.06Z"
+                                        clipRule="evenodd"
+                                    />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    {stats.length > 0 && (
+                        <div className="grid grid-cols-2 gap-2">
+                            {stats.map((stat) => (
+                                <div
+                                    key={`${detail.id}-${stat.label}`}
+                                    className="rounded-2xl border border-slate-200/80 bg-slate-50/80 px-3 py-2"
+                                >
+                                    <div className="text-[10px] uppercase tracking-[0.16em] text-slate-400">{stat.label}</div>
+                                    <div className="mt-1 text-[13px] font-semibold text-slate-800 break-words">{stat.value}</div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    <div className="space-y-3">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Ghi chú nhanh</div>
+                        <div className="max-h-[220px] overflow-y-auto pr-1">
+                            <DetailList rows={rows} />
+                        </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-200/80 bg-slate-50/70 px-4 py-3">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Mô tả</div>
+                        <div className="mt-2 max-h-24 overflow-y-auto text-sm leading-6 text-slate-600">
+                            {detail.description || 'Chưa có mô tả chi tiết cho nút này.'}
+                        </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3">
+                        <div className="text-xs text-slate-400">Chạm ra ngoài để đóng</div>
+                        {detail.href && (
+                            <Link
+                                href={detail.href}
+                                className="inline-flex rounded-2xl px-4 py-2 text-sm font-semibold text-white"
+                                style={{ backgroundColor: accent }}
+                            >
+                                {detail.hrefLabel || 'Mở trang chi tiết'}
+                            </Link>
+                        )}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 export default function ProjectFlow({ auth, projectId }) {
     const toast = useToast();
     const [flow, setFlow] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [selectedDetail, setSelectedDetail] = useState(null);
+    const [activeHint, setActiveHint] = useState(null);
+    const flowSurfaceRef = useRef(null);
 
     const fetchData = async () => {
         setLoading(true);
+        setActiveHint(null);
         try {
             const res = await axios.get(`/api/v1/projects/${projectId}/flow`);
             setFlow(res.data || null);
@@ -273,6 +401,21 @@ export default function ProjectFlow({ auth, projectId }) {
         fetchData();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [projectId]);
+
+    useEffect(() => {
+        if (!activeHint) {
+            return undefined;
+        }
+
+        const onKeyDown = (event) => {
+            if (event.key === 'Escape') {
+                setActiveHint(null);
+            }
+        };
+
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [activeHint]);
 
     const overview = useMemo(() => {
         if (!flow?.project) return [];
@@ -321,7 +464,7 @@ export default function ProjectFlow({ auth, projectId }) {
         const contract = flow.contract;
         const tasks = flow.tasks || [];
         const items = flow.items || [];
-        const selectedId = selectedDetail?.id || null;
+        const selectedId = activeHint?.id || null;
 
         const itemsByTask = items.reduce((acc, item) => {
             acc[item.task_id] = acc[item.task_id] || [];
@@ -430,7 +573,7 @@ export default function ProjectFlow({ auth, projectId }) {
             ],
             href: route('projects.detail', project.id),
             hrefLabel: 'Mở trang dự án',
-        }, 0, 220);
+        }, 0, LEVEL_Y.project);
 
         edges.push({
             id: `${contractIdNode}-${projectIdNode}`,
@@ -441,8 +584,8 @@ export default function ProjectFlow({ auth, projectId }) {
             style: { stroke: '#94a3b8', strokeWidth: 2.1 },
         });
 
-        const ITEM_GAP = 320;
-        const TASK_GAP = 120;
+        const ITEM_GAP = 392;
+        const TASK_GAP = 220;
         const taskLayouts = [];
         let cursorX = 0;
 
@@ -507,7 +650,7 @@ export default function ProjectFlow({ auth, projectId }) {
                 ],
                 href: route('tasks.detail', task.id),
                 hrefLabel: 'Mở trang công việc',
-            }, taskX, 470);
+            }, taskX, LEVEL_Y.task);
 
             edges.push({
                 id: `${projectIdNode}-${taskNodeId}`,
@@ -552,7 +695,7 @@ export default function ProjectFlow({ auth, projectId }) {
                         { label: 'Ưu tiên', value: priorityLabel(item.priority) },
                         { label: 'Phụ trách', value: safeText(item.assignee?.name, 'Chưa phân công') },
                     ],
-                }, itemX, 730);
+                }, itemX, LEVEL_Y.item);
 
                 edges.push({
                     id: `${taskNodeId}-${itemNodeId}`,
@@ -602,7 +745,7 @@ export default function ProjectFlow({ auth, projectId }) {
                         { label: 'Công việc', value: String(taskCount) },
                         { label: 'Vai trò', value: group.user ? roleLabel(group.user.role) : 'Chưa phân công' },
                     ],
-                }, userX, 1000);
+                }, userX, LEVEL_Y.user);
 
                 group.items.forEach((item) => {
                     edges.push({
@@ -622,7 +765,47 @@ export default function ProjectFlow({ auth, projectId }) {
         }
 
         return { nodes, edges };
-    }, [flow, selectedDetail]);
+    }, [activeHint, flow]);
+
+    const openHintAtCursor = (event, node) => {
+        const detail = node?.data?.detail;
+        if (!detail) {
+            return;
+        }
+
+        if (!flowSurfaceRef.current) {
+            setActiveHint({
+                id: node.id,
+                detail,
+                position: { x: 24, y: 24 },
+                width: HINT_CARD_WIDTH,
+                arrowLeft: 36,
+            });
+            return;
+        }
+
+        const rect = flowSurfaceRef.current.getBoundingClientRect();
+        const rawX = event.clientX - rect.left;
+        const rawY = event.clientY - rect.top;
+        const width = Math.min(HINT_CARD_WIDTH, Math.max(280, rect.width - 32));
+        const x = Math.min(Math.max(rawX + 20, 16), Math.max(16, rect.width - width - 16));
+        const y = Math.min(Math.max(rawY + 18, 16), Math.max(16, rect.height - HINT_CARD_MAX_HEIGHT - 16));
+        const arrowLeft = Math.min(Math.max(rawX - x, 28), width - 28);
+
+        setActiveHint((current) => {
+            if (current?.id === node.id) {
+                return null;
+            }
+
+            return {
+                id: node.id,
+                detail,
+                position: { x, y },
+                width,
+                arrowLeft,
+            };
+        });
+    };
 
     return (
         <PageContainer
@@ -651,7 +834,7 @@ export default function ProjectFlow({ auth, projectId }) {
                             <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">Cách đọc cây</div>
                             <div className="mt-2 text-sm text-slate-600">
                                 Mỗi node giờ hiển thị theo dạng thẻ: loại dữ liệu, tiêu đề, trạng thái, tiến độ và 2-4 dòng metadata quan trọng.
-                                Nhấn vào node để mở popup chi tiết thay vì hiện toast ngắn như trước.
+                                Nhấn vào node để mở chú thích nổi ngay gần vị trí bấm, giúp xem nhanh mà không bị bật popup che toàn màn hình.
                             </div>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
@@ -698,115 +881,38 @@ export default function ProjectFlow({ auth, projectId }) {
                 )}
 
                 {!loading && flow?.project && (
-                    <div className="h-[78vh] min-h-[620px] overflow-hidden rounded-[32px] border border-slate-200/80 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.08)]">
+                    <div
+                        ref={flowSurfaceRef}
+                        className="relative h-[82vh] min-h-[760px] overflow-hidden rounded-[32px] border border-slate-200/80 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.08)]"
+                    >
                         <ReactFlow
                             nodes={nodes}
                             edges={edges}
                             fitView
-                            fitViewOptions={{ padding: 0.14 }}
+                            fitViewOptions={{ padding: 0.2, minZoom: 0.48 }}
                             nodesDraggable={false}
                             nodesConnectable={false}
-                            onNodeClick={(_, node) => {
-                                setSelectedDetail(node?.data?.detail || null);
-                            }}
+                            minZoom={0.35}
+                            maxZoom={1.4}
+                            onNodeClick={openHintAtCursor}
+                            onPaneClick={() => setActiveHint(null)}
                             defaultEdgeOptions={{ animated: false, type: 'smoothstep' }}
                             zoomOnDoubleClick={false}
                             proOptions={{ hideAttribution: true }}
                         >
-                            <Background color="#dbe3ef" gap={22} size={1.2} />
+                            <Background color="#dbe3ef" gap={28} size={1.2} />
                             <Controls showInteractive={false} />
                         </ReactFlow>
+
+                        {activeHint && (
+                            <div className="pointer-events-none absolute inset-0 z-20">
+                                <FloatingDetailHint hint={activeHint} onClose={() => setActiveHint(null)} />
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
 
-            <Modal
-                open={Boolean(selectedDetail)}
-                onClose={() => setSelectedDetail(null)}
-                size="xl"
-                title={selectedDetail?.title}
-                description={selectedDetail ? `${TYPE_LABELS[selectedDetail.type]} • ${selectedDetail.statusText}` : ''}
-            >
-                {selectedDetail && (
-                    <div className="space-y-6">
-                        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                            {(selectedDetail.modalStats || selectedDetail.stats || []).map((stat) => (
-                                <div
-                                    key={`${selectedDetail.id}-${stat.label}`}
-                                    className="rounded-[24px] border border-slate-200/80 bg-slate-50/70 px-4 py-4"
-                                >
-                                    <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">{stat.label}</div>
-                                    <div className="mt-2 text-base font-semibold text-slate-900 break-words">{stat.value}</div>
-                                </div>
-                            ))}
-                        </div>
-
-                        <div className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(280px,0.9fr)]">
-                            <div className="space-y-4">
-                                <div className="rounded-[28px] border border-slate-200/80 bg-white p-5">
-                                    <div className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Thông tin chuẩn hoá</div>
-                                    <div className="mt-4">
-                                        <DetailList rows={selectedDetail.rows || []} />
-                                    </div>
-                                </div>
-
-                                <div className="rounded-[28px] border border-slate-200/80 bg-white p-5">
-                                    <div className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Mô tả chi tiết</div>
-                                    <div className="mt-3 text-sm leading-7 text-slate-700 whitespace-pre-wrap">
-                                        {selectedDetail.description || 'Chưa có mô tả chi tiết cho nút này.'}
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="space-y-4">
-                                <div className="rounded-[28px] border border-slate-200/80 bg-slate-50/70 p-5">
-                                    <div className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Tóm tắt nhanh</div>
-                                    <div className="mt-4 space-y-3 text-sm">
-                                        <div className="flex items-start justify-between gap-3">
-                                            <span className="text-slate-500">Loại dữ liệu</span>
-                                            <span className="font-semibold text-slate-900">{TYPE_LABELS[selectedDetail.type] || selectedDetail.type}</span>
-                                        </div>
-                                        <div className="flex items-start justify-between gap-3">
-                                            <span className="text-slate-500">Trạng thái</span>
-                                            <span className="font-semibold text-slate-900">{selectedDetail.statusText}</span>
-                                        </div>
-                                        {typeof selectedDetail.progress === 'number' && (
-                                            <div className="flex items-start justify-between gap-3">
-                                                <span className="text-slate-500">Tiến độ</span>
-                                                <span className="font-semibold text-slate-900">{clampPercent(selectedDetail.progress)}%</span>
-                                            </div>
-                                        )}
-                                        {selectedDetail.subtitle && (
-                                            <div className="flex items-start justify-between gap-3">
-                                                <span className="text-slate-500">Ngữ cảnh</span>
-                                                <span className="max-w-[65%] text-right font-semibold text-slate-900 break-words">{selectedDetail.subtitle}</span>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-
-                                <div className="rounded-[28px] border border-slate-200/80 bg-white p-5">
-                                    <div className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Gợi ý thao tác</div>
-                                    <p className="mt-3 text-sm leading-7 text-slate-600">
-                                        Popup này thay cho thông báo nhanh trước đây, nên mình giữ nội dung theo kiểu hồ sơ ngắn: dễ scan,
-                                        đủ metadata, và hợp để đối chiếu khi xem luồng.
-                                    </p>
-                                    {selectedDetail.href && (
-                                        <div className="mt-4">
-                                            <Link
-                                                href={selectedDetail.href}
-                                                className="inline-flex rounded-2xl bg-primary px-4 py-2 text-sm font-semibold text-white"
-                                            >
-                                                {selectedDetail.hrefLabel || 'Mở trang chi tiết'}
-                                            </Link>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
-            </Modal>
         </PageContainer>
     );
 }

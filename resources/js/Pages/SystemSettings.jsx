@@ -155,7 +155,8 @@ export default function SystemSettings(props) {
             if (result.push_sent) {
                 toast.success(`Đã gửi push tới ${result.target_user_name || 'tài khoản đích'}.`);
             } else {
-                toast.error(result.error || 'Không gửi được push. Kiểm tra token/config bên dưới.');
+                const reason = result?.push_result?.error || result.error || 'push_failed';
+                toast.error(`Không gửi được push (${reason}). Kiểm tra token/config bên dưới.`);
             }
             await reloadSystemStatus();
         } catch (e) {
@@ -186,6 +187,10 @@ export default function SystemSettings(props) {
         rows.push({ key: 'Tokens iOS', value: String(pushTokens?.by_platform?.ios ?? 0) });
         rows.push({ key: 'Tokens Android', value: String(pushTokens?.by_platform?.android ?? 0) });
         rows.push({ key: 'Tokens Web', value: String(pushTokens?.by_platform?.web ?? 0) });
+        rows.push({ key: 'Permission ON (device)', value: String(pushTokens?.permissions?.enabled_total ?? 0) });
+        rows.push({ key: 'Permission OFF (device)', value: String(pushTokens?.permissions?.disabled_total ?? 0) });
+        rows.push({ key: 'Android permission ON', value: String(pushTokens?.permissions?.by_platform?.android?.enabled ?? 0) });
+        rows.push({ key: 'Android permission OFF', value: String(pushTokens?.permissions?.by_platform?.android?.disabled ?? 0) });
         rows.push({ key: 'Token update gần nhất', value: pushTokens.last_updated_at || '—' });
 
         return rows;
