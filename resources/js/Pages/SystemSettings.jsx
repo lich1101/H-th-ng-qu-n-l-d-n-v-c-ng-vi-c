@@ -37,6 +37,7 @@ export default function SystemSettings(props) {
     const [systemStatus, setSystemStatus] = useState(null);
     const [users, setUsers] = useState([]);
     const [testingPush, setTestingPush] = useState(false);
+    const [lastTestResult, setLastTestResult] = useState(null);
     const [testForm, setTestForm] = useState({
         user_id: '',
         title: 'Test thông báo',
@@ -152,6 +153,7 @@ export default function SystemSettings(props) {
             };
             const res = await axios.post('/api/v1/push/test', payload);
             const result = res.data || {};
+            setLastTestResult(result);
             if (result.push_sent) {
                 toast.success(`Đã gửi push tới ${result.target_user_name || 'tài khoản đích'}.`);
             } else {
@@ -448,6 +450,34 @@ export default function SystemSettings(props) {
                                     {testingPush ? 'Đang gửi...' : 'Gửi push test'}
                                 </button>
                             </div>
+
+                            {lastTestResult && (
+                                <div className="mt-4 rounded-2xl border border-slate-200/80 bg-slate-50 p-4">
+                                    <h4 className="text-sm font-semibold text-slate-900">Kết quả push test gần nhất</h4>
+                                    <div className="mt-2 grid gap-2 text-xs text-slate-600 md:grid-cols-2">
+                                        <div>Kết quả: <span className={`font-semibold ${lastTestResult.push_sent ? 'text-emerald-600' : 'text-rose-600'}`}>{lastTestResult.push_sent ? 'Đã gửi' : 'Chưa gửi'}</span></div>
+                                        <div>Lý do: <span className="font-semibold text-slate-900">{lastTestResult?.push_result?.error || lastTestResult.error || '—'}</span></div>
+                                        <div>Token tổng: <span className="font-semibold text-slate-900">{lastTestResult.token_count ?? 0}</span></div>
+                                        <div>Token Android: <span className="font-semibold text-slate-900">{lastTestResult?.token_by_platform?.android ?? 0}</span></div>
+                                        <div>Token iOS: <span className="font-semibold text-slate-900">{lastTestResult?.token_by_platform?.ios ?? 0}</span></div>
+                                        <div>Token Web: <span className="font-semibold text-slate-900">{lastTestResult?.token_by_platform?.web ?? 0}</span></div>
+                                        <div>Token quyền ON: <span className="font-semibold text-slate-900">{lastTestResult.token_notifications_enabled ?? 0}</span></div>
+                                        <div>Token quyền OFF: <span className="font-semibold text-slate-900">{lastTestResult.token_notifications_disabled ?? 0}</span></div>
+                                    </div>
+                                    {lastTestResult?.push_result?.errors && Object.keys(lastTestResult.push_result.errors).length > 0 && (
+                                        <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs">
+                                            <div className="font-semibold text-rose-700">Chi tiết lỗi FCM</div>
+                                            <div className="mt-1 space-y-1 text-rose-700">
+                                                {Object.entries(lastTestResult.push_result.errors).map(([token, info]) => (
+                                                    <div key={token}>
+                                                        • {(info?.status || 'UNKNOWN')} - {info?.message || 'FCM request failed'}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
 
                             <div className="mt-5 rounded-2xl border border-slate-200/80">
                                 <div className="border-b border-slate-200/80 px-4 py-3 text-sm font-semibold text-slate-900">
