@@ -3,7 +3,7 @@ import { Head, Link, usePage } from '@inertiajs/inertia-react';
 
 export default function PrivacyPolicy() {
     const { settings } = usePage().props;
-    const brandName = settings?.brand_name || 'job clickon';
+    const brandName = settings?.brand_name || 'Job ClickOn';
     const supportEmail = settings?.support_email || '';
     const supportPhone = settings?.support_phone || '';
     const supportAddress = settings?.support_address || '';

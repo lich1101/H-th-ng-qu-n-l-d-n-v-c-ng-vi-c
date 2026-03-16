@@ -6,7 +6,7 @@
         <link rel="icon" type="image/png" href="/brand/favicon-32x32.png">
         <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
 
-        <title>job clickon</title>
+        <title>Job ClickOn</title>
 
         <!-- Fonts -->
         <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">

@@ -7,7 +7,7 @@ export default function Authenticated({ auth, header, children }) {
     const { settings } = usePage().props;
     const [showSidebar, setShowSidebar] = useState(false);
     const currentRole = auth?.user?.role || '';
-    const brandName = settings?.brand_name || 'job clickon';
+    const brandName = settings?.brand_name || 'Job ClickOn';
     const brandSubtitle = settings?.brand_subtitle || 'Khách hàng • Phòng ban • Kế toán';
     const logoUrl = settings?.logo_url;
     const [avatarUrl, setAvatarUrl] = useState(auth?.user?.avatar_url || '');

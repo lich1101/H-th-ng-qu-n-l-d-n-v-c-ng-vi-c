@@ -4,7 +4,7 @@ export default function ApplicationLogo({ className, logoUrl, brandName }) {
     return (
         <img
             src={logoUrl || '/brand/icon.png'}
-            alt={brandName || 'job clickon'}
+            alt={brandName || 'Job ClickOn'}
             className={className}
         />
     );

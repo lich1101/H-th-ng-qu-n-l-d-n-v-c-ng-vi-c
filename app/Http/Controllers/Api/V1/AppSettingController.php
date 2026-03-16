@@ -18,7 +18,7 @@ class AppSettingController extends Controller
         }
 
         return response()->json([
-            'brand_name' => $setting->brand_name ?: config('app.name', 'job clickon'),
+            'brand_name' => $setting->brand_name ?: config('app.name', 'Job ClickOn'),
             'primary_color' => $setting->primary_color ?: '#04BC5C',
             'logo_url' => $setting->logo_url ?: AppSetting::defaults()['logo_url'],
             'support_email' => $setting->support_email,
@@ -65,7 +65,7 @@ class AppSettingController extends Controller
         ]);
 
         return response()->json([
-            'brand_name' => $setting->brand_name ?: config('app.name', 'job clickon'),
+            'brand_name' => $setting->brand_name ?: config('app.name', 'Job ClickOn'),
             'primary_color' => $setting->primary_color,
             'logo_url' => $setting->logo_url ?: AppSetting::defaults()['logo_url'],
             'support_email' => $setting->support_email,
