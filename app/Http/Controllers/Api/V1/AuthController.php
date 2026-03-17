@@ -3,9 +3,11 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Models\UserDeviceToken;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 
 class AuthController extends Controller
@@ -32,7 +34,20 @@ class AuthController extends Controller
             ], 403);
         }
 
-        $token = $user->createToken($validated['device_name'] ?? 'api-client')->plainTextToken;
+        $deviceName = trim((string) ($validated['device_name'] ?? 'mobile-app'));
+        if ($deviceName === '') {
+            $deviceName = 'mobile-app';
+        }
+
+        $token = DB::transaction(function () use ($user, $deviceName) {
+            // Mobile app is limited to one active device session per account.
+            $user->tokens()->delete();
+            UserDeviceToken::query()
+                ->where('user_id', $user->id)
+                ->delete();
+
+            return $user->createToken('mobile:'.$deviceName, ['mobile'])->plainTextToken;
+        });
 
         return response()->json([
             'token' => $token,
@@ -48,7 +63,18 @@ class AuthController extends Controller
 
     public function logout(Request $request): JsonResponse
     {
-        $request->user()->currentAccessToken()->delete();
+        $user = $request->user();
+
+        if ($user) {
+            UserDeviceToken::query()
+                ->where('user_id', $user->id)
+                ->delete();
+        }
+
+        $currentToken = $request->user()->currentAccessToken();
+        if ($currentToken) {
+            $currentToken->delete();
+        }
 
         return response()->json([
             'message' => 'Logged out successfully.',
