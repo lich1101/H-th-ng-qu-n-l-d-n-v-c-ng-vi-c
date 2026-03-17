@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
-use App\Models\UserDeviceToken;
 use App\Models\User;
+use App\Models\UserDeviceToken;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -42,9 +42,6 @@ class AuthController extends Controller
         $token = DB::transaction(function () use ($user, $deviceName) {
             // Mobile app is limited to one active device session per account.
             $user->tokens()->delete();
-            UserDeviceToken::query()
-                ->where('user_id', $user->id)
-                ->delete();
 
             return $user->createToken('mobile:'.$deviceName, ['mobile'])->plainTextToken;
         });

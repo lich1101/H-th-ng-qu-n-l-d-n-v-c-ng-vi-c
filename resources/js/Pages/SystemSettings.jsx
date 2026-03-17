@@ -143,6 +143,23 @@ export default function SystemSettings(props) {
         }
     };
 
+    const toPushErrorLabel = (reason) => {
+        const key = String(reason || '').trim();
+        if (!key) return 'push_failed';
+        const map = {
+            no_device_tokens: 'không có token thiết bị',
+            firebase_disabled: 'firebase chưa cấu hình',
+            firebase_access_token_unavailable: 'không lấy được access token firebase',
+            push_channel_disabled: 'kênh push đang tắt',
+            notification_disabled: 'người dùng đã tắt thông báo',
+            category_disabled_system: 'đã tắt thông báo hệ thống',
+            category_disabled_crm_realtime: 'đã tắt thông báo CRM realtime',
+            duplicate_suppressed: 'thông báo trùng (bị chặn)',
+            push_failed: 'gửi push thất bại',
+        };
+        return map[key] || key;
+    };
+
     const submitPushTest = async () => {
         setTestingPush(true);
         try {
@@ -158,7 +175,11 @@ export default function SystemSettings(props) {
                 toast.success(`Đã gửi push tới ${result.target_user_name || 'tài khoản đích'}.`);
             } else {
                 const reason = result?.push_result?.error || result.error || 'push_failed';
-                toast.error(`Không gửi được push (${reason}). Kiểm tra token/config bên dưới.`);
+                if ((result?.token_count ?? 0) <= 0) {
+                    toast.error('Tài khoản đích chưa có token thiết bị mobile. Hãy đăng nhập app và đồng bộ token.');
+                } else {
+                    toast.error(`Không gửi được push (${toPushErrorLabel(reason)}). Kiểm tra token/config bên dưới.`);
+                }
             }
             await reloadSystemStatus();
         } catch (e) {
