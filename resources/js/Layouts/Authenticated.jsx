@@ -61,18 +61,32 @@ export default function Authenticated({ auth, header, children }) {
         return new Date(timestamp).toLocaleDateString('vi-VN');
     };
 
+    const parseCount = (value) => {
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric) || numeric < 0) return null;
+        return Math.trunc(numeric);
+    };
+
     const buildNotificationCollections = (payload) => {
-        const inAppRows = (payload?.notifications || []).map((item) => ({
-            key: `in_app:${item.id}`,
-            source_type: 'in_app',
-            source_id: item.id,
-            notification_type: item.type || 'general',
-            title: item.title || 'Thông báo',
-            body: item.body || '',
-            created_at: item.created_at,
-            is_read: !!item.is_read,
-            kind: 'Thông báo',
-        }));
+        const inAppRows = (payload?.notifications || []).map((item) => {
+            const data = item?.data && typeof item.data === 'object' ? item.data : {};
+            const taskId = Number(item?.task_id || data?.task_id || 0);
+            const commentId = Number(item?.comment_id || data?.comment_id || 0);
+            return {
+                key: `in_app:${item.id}`,
+                source_type: 'in_app',
+                source_id: item.id,
+                notification_type: item.type || 'general',
+                title: item.title || 'Thông báo',
+                body: item.body || '',
+                data,
+                task_id: taskId > 0 ? taskId : null,
+                comment_id: commentId > 0 ? commentId : null,
+                created_at: item.created_at,
+                is_read: !!item.is_read,
+                kind: 'Thông báo',
+            };
+        });
 
         const chatRows = inAppRows
             .filter((item) => CHAT_NOTIFICATION_TYPES.has(item.notification_type))
@@ -92,6 +106,7 @@ export default function Authenticated({ auth, header, children }) {
             notification_type: 'deadline_reminder',
             title: item.task_title || 'Nhắc hạn công việc',
             body: `${item.trigger_type || 'nhắc hạn'} • ${item.status || 'pending'}`,
+            task_id: item?.task_id ? Number(item.task_id) : null,
             created_at: item.sent_at || item.scheduled_at,
             is_read: !!item.is_read,
             kind: 'Nhắc hạn',
@@ -130,8 +145,12 @@ export default function Authenticated({ auth, header, children }) {
             const collections = buildNotificationCollections(response.data || {});
             setNotificationItems(collections.notificationRows);
             setChatItems(collections.chatRows);
-            setNotificationUnread(collections.unreadNotificationCount);
-            setChatUnread(collections.unreadChatCount);
+            const unreadNotificationFromApi = parseCount(response.data?.unread_notification);
+            const unreadChatFromApi = parseCount(response.data?.unread_chat);
+            setNotificationUnread(
+                unreadNotificationFromApi ?? collections.unreadNotificationCount
+            );
+            setChatUnread(unreadChatFromApi ?? collections.unreadChatCount);
         } catch (error) {
             console.error(error);
         } finally {
@@ -457,10 +476,7 @@ export default function Authenticated({ auth, header, children }) {
         return notificationItems;
     }, [notificationItems, notificationTab]);
 
-    const quickUnreadCount = useMemo(
-        () => notificationItems.filter((item) => !item.is_read).length,
-        [notificationItems]
-    );
+    const quickUnreadCount = notificationUnread;
 
     const filteredChatItems = useMemo(() => {
         const source = chatTab === 'unread'
@@ -473,34 +489,60 @@ export default function Authenticated({ auth, header, children }) {
         ));
     }, [chatItems, chatSearch, chatTab]);
 
-    const quickChatUnreadCount = useMemo(
-        () => chatItems.filter((item) => !item.is_read).length,
-        [chatItems]
-    );
+    const quickChatUnreadCount = chatUnread;
 
-    const markSingleNotificationRead = async (item) => {
+    const markSingleNotificationRead = async (item, options = {}) => {
+        const shouldRefresh = options.refresh !== false;
         if (!item || item.is_read) return;
         try {
             await axios.post('/api/v1/notifications/in-app/read', {
                 source_type: item.source_type,
                 source_id: item.source_id,
             });
-            await fetchNotifications({ silent: true });
+            if (shouldRefresh) {
+                await fetchNotifications({ silent: true });
+            }
         } catch (error) {
             console.error(error);
         }
     };
 
+    const isChatItem = (item) => CHAT_NOTIFICATION_TYPES.has(item?.notification_type || '');
+
+    const extractTaskId = (item) => {
+        const directTaskId = Number(item?.task_id || 0);
+        if (Number.isFinite(directTaskId) && directTaskId > 0) return directTaskId;
+        const payload = item?.data && typeof item.data === 'object' ? item.data : {};
+        const payloadTaskId = Number(payload?.task_id || 0);
+        if (Number.isFinite(payloadTaskId) && payloadTaskId > 0) return payloadTaskId;
+        return null;
+    };
+
+    const openTaskChatFromItem = (item) => {
+        const taskId = extractTaskId(item);
+        if (taskId) {
+            window.location.href = `/cong-viec?chat_task_id=${taskId}`;
+            return;
+        }
+        window.location.href = '/cong-viec';
+    };
+
+    const handleNotificationItemClick = async (item) => {
+        const shouldNavigateChat = isChatItem(item);
+        await markSingleNotificationRead(item, { refresh: !shouldNavigateChat });
+        if (shouldNavigateChat) {
+            openTaskChatFromItem(item);
+        }
+    };
+
     const markAllNotificationsRead = async () => {
         try {
-            const unreadItems = notificationItems.filter((item) => !item.is_read);
-            if (unreadItems.length === 0) return;
-            await Promise.all(unreadItems.map((item) => (
-                axios.post('/api/v1/notifications/in-app/read', {
-                    source_type: item.source_type,
-                    source_id: item.source_id,
-                })
-            )));
+            if (notificationUnread <= 0) return;
+            await Promise.all([
+                axios.post('/api/v1/notifications/in-app/read-all', { source_type: 'non_chat_in_app' }),
+                axios.post('/api/v1/notifications/in-app/read-all', { source_type: 'deadline_reminder' }),
+                axios.post('/api/v1/notifications/in-app/read-all', { source_type: 'activity_log' }),
+            ]);
             await fetchNotifications({ silent: true });
         } catch (error) {
             console.error(error);
@@ -509,14 +551,8 @@ export default function Authenticated({ auth, header, children }) {
 
     const markAllChatsRead = async () => {
         try {
-            const unreadItems = chatItems.filter((item) => !item.is_read);
-            if (unreadItems.length === 0) return;
-            await Promise.all(unreadItems.map((item) => (
-                axios.post('/api/v1/notifications/in-app/read', {
-                    source_type: item.source_type,
-                    source_id: item.source_id,
-                })
-            )));
+            if (chatUnread <= 0) return;
+            await axios.post('/api/v1/notifications/in-app/read-all', { source_type: 'chat_in_app' });
             await fetchNotifications({ silent: true });
         } catch (error) {
             console.error(error);
@@ -723,7 +759,7 @@ export default function Authenticated({ auth, header, children }) {
                                                                 ? 'hover:bg-slate-50'
                                                                 : 'bg-blue-50/60 hover:bg-blue-50'
                                                         }`}
-                                                        onClick={() => markSingleNotificationRead(item)}
+                                                        onClick={() => handleNotificationItemClick(item)}
                                                     >
                                                         <span className="mt-0.5 h-10 w-10 shrink-0 rounded-full bg-slate-200 text-slate-600 text-[11px] font-semibold flex items-center justify-center">
                                                             {item.kind.slice(0, 1)}
@@ -860,7 +896,7 @@ export default function Authenticated({ auth, header, children }) {
                                                                 ? 'hover:bg-slate-50'
                                                                 : 'bg-blue-50/60 hover:bg-blue-50'
                                                         }`}
-                                                        onClick={() => markSingleNotificationRead(item)}
+                                                        onClick={() => handleNotificationItemClick(item)}
                                                     >
                                                         <span className="mt-0.5 h-10 w-10 shrink-0 rounded-full bg-indigo-100 text-indigo-700 text-[11px] font-semibold flex items-center justify-center">
                                                             {item.kind.slice(0, 1)}

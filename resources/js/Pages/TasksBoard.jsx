@@ -56,6 +56,16 @@ export default function TasksBoard(props) {
     const queryParams = typeof window !== 'undefined'
         ? new URLSearchParams(window.location.search)
         : new URLSearchParams();
+    const initialChatTaskId = useMemo(() => {
+        if (typeof window === 'undefined') return 0;
+        const raw = new URLSearchParams(window.location.search).get('chat_task_id');
+        const value = Number(raw || 0);
+        if (!Number.isFinite(value) || value <= 0) return 0;
+        return Math.trunc(value);
+    }, []);
+    const pendingChatTaskIdRef = useRef(initialChatTaskId);
+    const queryChatHandledRef = useRef(initialChatTaskId <= 0);
+    const queryChatOpeningRef = useRef(false);
     const [filters, setFilters] = useState({
         project_id: queryParams.get('project_id') || '',
         status: queryParams.get('status') || '',
@@ -67,6 +77,7 @@ export default function TasksBoard(props) {
         page: 1,
     });
     const [metaPaging, setMetaPaging] = useState({ current_page: 1, last_page: 1, total: 0 });
+    const [tasksFetched, setTasksFetched] = useState(false);
 
     const [editingId, setEditingId] = useState(null);
     const [showForm, setShowForm] = useState(false);
@@ -243,6 +254,7 @@ export default function TasksBoard(props) {
             toast.error(e?.response?.data?.message || 'Không tải được danh sách công việc.');
         } finally {
             setLoading(false);
+            setTasksFetched(true);
         }
     };
 
@@ -934,6 +946,60 @@ export default function TasksBoard(props) {
         return () => clearInterval(timer);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [showTaskChat, chatTask?.id]);
+
+    useEffect(() => {
+        if (queryChatHandledRef.current || queryChatOpeningRef.current) return;
+        if (!tasksFetched || loading) return;
+
+        const taskId = pendingChatTaskIdRef.current;
+        if (!taskId) {
+            queryChatHandledRef.current = true;
+            return;
+        }
+
+        let cancelled = false;
+        queryChatOpeningRef.current = true;
+
+        const removeQueryChatParam = () => {
+            if (typeof window === 'undefined') return;
+            const params = new URLSearchParams(window.location.search);
+            if (!params.has('chat_task_id')) return;
+            params.delete('chat_task_id');
+            const query = params.toString();
+            window.history.replaceState({}, '', query ? `/cong-viec?${query}` : '/cong-viec');
+        };
+
+        const openFromQuery = async () => {
+            try {
+                let targetTask = tasks.find((task) => Number(task?.id) === taskId);
+                if (!targetTask) {
+                    const response = await axios.get(`/api/v1/tasks/${taskId}`);
+                    targetTask = response.data || null;
+                }
+                if (!cancelled && targetTask?.id) {
+                    await openTaskChat(targetTask);
+                }
+            } catch (e) {
+                if (!cancelled) {
+                    toast.error(e?.response?.data?.message || 'Không mở được hội thoại từ thông báo.');
+                }
+            } finally {
+                if (!cancelled) {
+                    queryChatHandledRef.current = true;
+                    queryChatOpeningRef.current = false;
+                    pendingChatTaskIdRef.current = 0;
+                    removeQueryChatParam();
+                }
+            }
+        };
+
+        openFromQuery();
+
+        return () => {
+            cancelled = true;
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [tasksFetched, loading, tasks]);
 
     useEffect(() => {
         if (!chatMention.open) return;
