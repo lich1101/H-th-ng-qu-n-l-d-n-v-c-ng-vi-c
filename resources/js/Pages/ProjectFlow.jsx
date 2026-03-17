@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
-import { Link } from '@inertiajs/inertia-react';
+import { Head, Link } from '@inertiajs/inertia-react';
 import ReactFlow, { Background, Controls } from 'reactflow';
 import 'reactflow/dist/style.css';
-import PageContainer from '@/Components/PageContainer';
+import Authenticated from '@/Layouts/Authenticated';
 import { useToast } from '@/Contexts/ToastContext';
 
 const TYPE_LABELS = {
@@ -59,10 +59,10 @@ const HINT_CARD_WIDTH = 360;
 const HINT_CARD_MAX_HEIGHT = 440;
 const LEVEL_Y = {
     contract: 0,
-    project: 300,
-    task: 690,
-    item: 1120,
-    user: 1520,
+    project: 360,
+    task: 860,
+    item: 1410,
+    user: 1960,
 };
 
 const SERVICE_LABELS = {
@@ -228,18 +228,6 @@ function FlowNodeCard({ detail }) {
                         Xem chú thích
                     </span>
                 </div>
-            </div>
-        </div>
-    );
-}
-
-function SummaryCard({ label, value, hint, tone }) {
-    return (
-        <div className="rounded-[28px] border border-slate-200/80 bg-white px-5 py-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)]">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">{label}</div>
-            <div className="mt-3 text-2xl font-semibold text-slate-900">{value}</div>
-            <div className="mt-2 text-sm" style={{ color: tone || '#64748b' }}>
-                {hint}
             </div>
         </div>
     );
@@ -417,42 +405,6 @@ export default function ProjectFlow({ auth, projectId }) {
         return () => window.removeEventListener('keydown', onKeyDown);
     }, [activeHint]);
 
-    const overview = useMemo(() => {
-        if (!flow?.project) return [];
-        const tasks = flow.tasks || [];
-        const items = flow.items || [];
-        const assigneeCount = new Set(items.filter((item) => item.assignee?.id).map((item) => item.assignee.id)).size;
-        const activeTasks = tasks.filter((task) => !['done', 'hoan_thanh'].includes(String(task.status || '').toLowerCase())).length;
-        const contractValue = flow.contract ? formatCurrency(flow.contract.value) : 'Chưa có';
-
-        return [
-            {
-                label: 'Hợp đồng',
-                value: contractValue,
-                hint: flow.contract ? statusLabel(flow.contract.status || flow.contract.approval_status) : 'Dự án chưa gắn hợp đồng',
-                tone: colorByStatus(flow.contract?.status || flow.contract?.approval_status, TYPE_TONES.contract),
-            },
-            {
-                label: 'Tiến độ dự án',
-                value: `${clampPercent(flow.project.progress_percent)}%`,
-                hint: `${tasks.length} công việc đang theo dõi`,
-                tone: colorByStatus(flow.project.status, TYPE_TONES.project),
-            },
-            {
-                label: 'Công việc mở',
-                value: String(activeTasks),
-                hint: `${items.length} đầu việc trong cây`,
-                tone: TYPE_TONES.task,
-            },
-            {
-                label: 'Nhân sự tham gia',
-                value: String(assigneeCount),
-                hint: 'Gom theo người để cây gọn hơn',
-                tone: TYPE_TONES.user,
-            },
-        ];
-    }, [flow]);
-
     const { nodes, edges } = useMemo(() => {
         if (!flow?.project) {
             return { nodes: [], edges: [] };
@@ -581,7 +533,7 @@ export default function ProjectFlow({ auth, projectId }) {
             target: projectIdNode,
             type: 'smoothstep',
             animated: Boolean(contract),
-            style: { stroke: '#94a3b8', strokeWidth: 2.1 },
+            style: { stroke: '#94a3b8', strokeWidth: 2.8 },
         });
 
         const ITEM_GAP = 392;
@@ -660,7 +612,7 @@ export default function ProjectFlow({ auth, projectId }) {
                 animated: ['doing', 'dang_trien_khai'].includes(String(task.status || '').toLowerCase()),
                 style: {
                     stroke: hexToRgba(colorByStatus(task.status, TYPE_TONES.task), 0.38),
-                    strokeWidth: 2.1,
+                    strokeWidth: 2.7,
                 },
             });
 
@@ -705,7 +657,7 @@ export default function ProjectFlow({ auth, projectId }) {
                     animated: ['doing', 'dang_trien_khai'].includes(String(item.status || '').toLowerCase()),
                     style: {
                         stroke: hexToRgba(colorByStatus(item.status, TYPE_TONES.item), 0.28),
-                        strokeWidth: 1.8,
+                        strokeWidth: 2.3,
                     },
                 });
             });
@@ -756,7 +708,7 @@ export default function ProjectFlow({ auth, projectId }) {
                         animated: !['done', 'hoan_thanh'].includes(String(item.status || '').toLowerCase()),
                         style: {
                             stroke: hexToRgba(colorByStatus(item.status, TYPE_TONES.user), 0.24),
-                            strokeWidth: 1.5,
+                            strokeWidth: 2,
                             strokeDasharray: '6 6',
                         },
                     });
@@ -807,53 +759,66 @@ export default function ProjectFlow({ auth, projectId }) {
         });
     };
 
-    return (
-        <PageContainer
-            auth={auth}
-            title="Luồng dự án"
-            description={flow?.project?.name
-                ? `Theo dõi chuỗi hợp đồng → dự án → công việc → đầu việc → nhân sự của ${flow.project.name}.`
-                : 'Theo dõi chuỗi hợp đồng → dự án → công việc → đầu việc → nhân sự.'}
-        >
-            <div className="space-y-5">
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                    {overview.map((card) => (
-                        <SummaryCard
-                            key={card.label}
-                            label={card.label}
-                            value={card.value}
-                            hint={card.hint}
-                            tone={card.tone}
-                        />
-                    ))}
-                </div>
+    const legendItems = [
+        { label: 'Đang chạy', tone: colorByStatus('doing') },
+        { label: 'Chờ duyệt', tone: colorByStatus('pending') },
+        { label: 'Bị chặn / tạm dừng', tone: colorByStatus('blocked') },
+        { label: 'Hoàn tất', tone: colorByStatus('done') },
+    ];
 
-                <div className="rounded-[28px] border border-slate-200/80 bg-white px-5 py-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)]">
-                    <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-                        <div>
-                            <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">Cách đọc cây</div>
-                            <div className="mt-2 text-sm text-slate-600">
-                                Mỗi node giờ hiển thị theo dạng thẻ: loại dữ liệu, tiêu đề, trạng thái, tiến độ và 2-4 dòng metadata quan trọng.
-                                Nhấn vào node để mở chú thích nổi ngay gần vị trí bấm, giúp xem nhanh mà không bị bật popup che toàn màn hình.
+    return (
+        <Authenticated auth={auth}>
+            <Head title="Luồng dự án" />
+
+            <div className="-mx-4 md:-mx-8">
+                <div
+                    ref={flowSurfaceRef}
+                    className="relative h-[calc(100vh-82px)] min-h-[760px] overflow-hidden border-y border-slate-200/80 bg-white"
+                >
+                    {!loading && flow?.project && (
+                        <ReactFlow
+                            nodes={nodes}
+                            edges={edges}
+                            fitView
+                            fitViewOptions={{ padding: 0.1 }}
+                            nodesDraggable={false}
+                            nodesConnectable={false}
+                            minZoom={0.001}
+                            maxZoom={100}
+                            onNodeClick={openHintAtCursor}
+                            onPaneClick={() => setActiveHint(null)}
+                            defaultEdgeOptions={{ animated: false, type: 'smoothstep' }}
+                            zoomOnDoubleClick={false}
+                            proOptions={{ hideAttribution: true }}
+                        >
+                            <Background color="#dbe3ef" gap={30} size={1.25} />
+                            <Controls showInteractive={false} />
+                        </ReactFlow>
+                    )}
+
+                    {loading && (
+                        <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/78 text-sm text-slate-500">
+                            Đang tải cây luồng dự án...
+                        </div>
+                    )}
+
+                    {!loading && !flow?.project && (
+                        <div className="absolute inset-0 z-20 flex items-center justify-center bg-white text-sm text-slate-500">
+                            Không có dữ liệu luồng cho dự án này.
+                        </div>
+                    )}
+
+                    <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-3 p-4">
+                        <div className="pointer-events-auto rounded-2xl border border-slate-200/80 bg-white/92 px-4 py-2.5 shadow-sm backdrop-blur">
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Luồng dự án</div>
+                            <div className="mt-0.5 text-sm font-semibold text-slate-800">
+                                {flow?.project?.name || `Dự án #${projectId}`}
                             </div>
                         </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                            {[
-                                { label: 'Đang chạy', tone: colorByStatus('doing') },
-                                { label: 'Chờ duyệt', tone: colorByStatus('pending') },
-                                { label: 'Bị chặn / tạm dừng', tone: colorByStatus('blocked') },
-                            ].map((item) => (
-                                <span
-                                    key={item.label}
-                                    className="rounded-full px-3 py-1.5 text-xs font-semibold"
-                                    style={{ backgroundColor: hexToRgba(item.tone, 0.12), color: item.tone }}
-                                >
-                                    {item.label}
-                                </span>
-                            ))}
+                        <div className="pointer-events-auto flex items-center gap-2">
                             <button
                                 type="button"
-                                className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                                className="rounded-2xl border border-slate-200 bg-white/95 px-4 py-2 text-sm font-semibold text-slate-700 backdrop-blur hover:bg-slate-50"
                                 onClick={fetchData}
                             >
                                 Tải lại
@@ -866,53 +831,35 @@ export default function ProjectFlow({ auth, projectId }) {
                             </Link>
                         </div>
                     </div>
-                </div>
 
-                {loading && (
-                    <div className="rounded-[28px] border border-dashed border-slate-200 bg-white px-6 py-10 text-sm text-slate-500">
-                        Đang tải cây luồng dự án...
-                    </div>
-                )}
+                    {activeHint && flow?.project && (
+                        <div className="pointer-events-none absolute inset-0 z-20">
+                            <FloatingDetailHint hint={activeHint} onClose={() => setActiveHint(null)} />
+                        </div>
+                    )}
 
-                {!loading && !flow?.project && (
-                    <div className="rounded-[28px] border border-dashed border-slate-200 bg-white px-6 py-10 text-sm text-slate-500">
-                        Không có dữ liệu luồng cho dự án này.
-                    </div>
-                )}
-
-                {!loading && flow?.project && (
-                    <div
-                        ref={flowSurfaceRef}
-                        className="relative h-[82vh] min-h-[760px] overflow-hidden rounded-[32px] border border-slate-200/80 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.08)]"
-                    >
-                        <ReactFlow
-                            nodes={nodes}
-                            edges={edges}
-                            fitView
-                            fitViewOptions={{ padding: 0.2, minZoom: 0.48 }}
-                            nodesDraggable={false}
-                            nodesConnectable={false}
-                            minZoom={0.35}
-                            maxZoom={1.4}
-                            onNodeClick={openHintAtCursor}
-                            onPaneClick={() => setActiveHint(null)}
-                            defaultEdgeOptions={{ animated: false, type: 'smoothstep' }}
-                            zoomOnDoubleClick={false}
-                            proOptions={{ hideAttribution: true }}
-                        >
-                            <Background color="#dbe3ef" gap={28} size={1.2} />
-                            <Controls showInteractive={false} />
-                        </ReactFlow>
-
-                        {activeHint && (
-                            <div className="pointer-events-none absolute inset-0 z-20">
-                                <FloatingDetailHint hint={activeHint} onClose={() => setActiveHint(null)} />
+                    {flow?.project && (
+                        <div className="pointer-events-none absolute bottom-4 right-4 z-20">
+                            <div className="pointer-events-auto rounded-2xl border border-slate-200/80 bg-white/94 px-4 py-3 shadow-[0_14px_34px_rgba(15,23,42,0.14)] backdrop-blur">
+                                <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+                                    Chú thích màu
+                                </div>
+                                <div className="mt-2 space-y-1.5">
+                                    {legendItems.map((item) => (
+                                        <div key={item.label} className="flex items-center gap-2 text-xs text-slate-700">
+                                            <span
+                                                className="h-2.5 w-2.5 rounded-full"
+                                                style={{ backgroundColor: item.tone }}
+                                            />
+                                            <span>{item.label}</span>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
-                        )}
-                    </div>
-                )}
+                        </div>
+                    )}
+                </div>
             </div>
-
-        </PageContainer>
+        </Authenticated>
     );
 }
