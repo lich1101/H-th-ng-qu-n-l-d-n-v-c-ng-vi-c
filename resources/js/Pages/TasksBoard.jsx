@@ -1587,11 +1587,16 @@ export default function TasksBoard(props) {
             </div>
 
             {showTaskChat && (
-                <div className="fixed bottom-6 right-6 z-40 w-[380px] max-w-[calc(100vw-24px)] rounded-2xl border border-slate-200/80 bg-white shadow-2xl">
-                    <div className="flex items-center justify-between border-b border-slate-200/80 bg-slate-50/80 px-4 py-3">
-                        <div>
-                            <p className="text-xs uppercase tracking-wide text-text-subtle">Trao đổi nội bộ</p>
-                            <p className="text-sm font-semibold text-slate-900">{chatTask?.title || 'Hội thoại'}</p>
+                <div className="fixed bottom-6 right-6 z-40 w-[410px] max-w-[calc(100vw-20px)] rounded-3xl border border-slate-200/80 bg-white shadow-[0_30px_80px_rgba(15,23,42,0.25)]">
+                    <div className="flex items-center justify-between border-b border-slate-200/80 bg-slate-50/80 px-4 py-3 rounded-t-3xl">
+                        <div className="flex items-center gap-3">
+                            <span className="h-9 w-9 rounded-full bg-primary/10 text-primary flex items-center justify-center font-semibold text-sm">
+                                C
+                            </span>
+                            <div>
+                                <p className="text-sm font-semibold text-slate-900">Đoạn chat</p>
+                                <p className="text-xs text-slate-500 line-clamp-1">{chatTask?.title || 'Hội thoại công việc'}</p>
+                            </div>
                         </div>
                         <div className="flex items-center gap-2">
                             <button
@@ -1605,7 +1610,7 @@ export default function TasksBoard(props) {
                             </button>
                             <button
                                 type="button"
-                                className="h-7 w-7 rounded-full border border-slate-200 text-slate-500"
+                                className="h-8 w-8 rounded-full border border-slate-200 text-slate-500 hover:bg-slate-100"
                                 onClick={closeTaskChat}
                             >
                                 ×
@@ -1615,7 +1620,7 @@ export default function TasksBoard(props) {
 
                     <div
                         ref={chatListRef}
-                        className="max-h-[360px] min-h-[220px] overflow-y-auto px-4 py-3 space-y-2 bg-slate-50/60"
+                        className="max-h-[400px] min-h-[250px] overflow-y-auto px-4 py-3 space-y-2 bg-[#f0f2f5]"
                     >
                         {chatLoading && (
                             <p className="text-xs text-text-muted">Đang tải hội thoại...</p>
@@ -1631,40 +1636,63 @@ export default function TasksBoard(props) {
                                     : Array.isArray(comment.tagged_user_ids)
                                         ? comment.tagged_user_ids.join(', ')
                                         : '';
+                            const senderName = comment.user?.name || 'Nhân sự';
+                            const avatarUrl = comment.user?.avatar_url || '';
+                            const senderInitial = String(senderName).trim().slice(0, 1).toUpperCase() || 'U';
                             return (
-                                <div key={comment.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
-                                    <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${mine ? 'bg-primary text-white' : 'bg-white border border-slate-200/80 text-slate-800'}`}>
-                                        <p className={`text-[11px] ${mine ? 'text-white/80' : 'text-text-muted'}`}>
-                                            {comment.user?.name || 'Nhân sự'} • {formatChatTime(comment.created_at)}
+                                <div key={comment.id} className={`flex gap-2 ${mine ? 'justify-end' : 'justify-start'}`}>
+                                    {!mine && (
+                                        <span className="mt-5 h-7 w-7 shrink-0 overflow-hidden rounded-full border border-slate-200 bg-white text-[11px] font-semibold text-slate-600 flex items-center justify-center">
+                                            {avatarUrl ? (
+                                                <img src={avatarUrl} alt={senderName} className="h-full w-full object-cover" />
+                                            ) : senderInitial}
+                                        </span>
+                                    )}
+                                    <div className="max-w-[80%]">
+                                        <p className={`mb-1 text-[11px] ${mine ? 'text-right text-slate-500' : 'text-slate-500'}`}>
+                                            {senderName} • {formatChatTime(comment.created_at)}
                                         </p>
-                                        <div className="mt-1 whitespace-pre-wrap break-words">
-                                            {comment.is_recalled ? 'Tin nhắn đã thu hồi.' : renderChatMessageContent(comment.content, comment.tagged_users || [])}
+                                        <div className={`rounded-2xl px-3 py-2 text-sm shadow-sm ${
+                                            mine
+                                                ? 'bg-primary text-white rounded-br-md'
+                                                : 'bg-white border border-slate-200/80 text-slate-800 rounded-bl-md'
+                                        }`}>
+                                            <div className="whitespace-pre-wrap break-words">
+                                                {comment.is_recalled ? 'Tin nhắn đã thu hồi.' : renderChatMessageContent(comment.content, comment.tagged_users || [])}
+                                            </div>
+                                            {!comment.is_recalled && comment.attachment_path && (
+                                                <a
+                                                    className={`mt-2 inline-block text-xs underline underline-offset-2 ${
+                                                        mine ? 'text-white' : 'text-primary'
+                                                    }`}
+                                                    href={comment.attachment_path}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    download={comment.attachment_name || true}
+                                                >
+                                                    {comment.attachment_name || 'Tệp đính kèm'}
+                                                </a>
+                                            )}
+                                            {!comment.is_recalled && tags && (
+                                                <p className={`mt-1 text-[11px] ${mine ? 'text-white/90' : 'text-emerald-700'}`}>
+                                                    Tag: {tags}
+                                                </p>
+                                            )}
                                         </div>
-                                        {!comment.is_recalled && comment.attachment_path && (
-                                            <a
-                                                className={`mt-2 inline-block text-xs underline underline-offset-2 ${
-                                                    mine ? 'text-white' : 'text-primary'
-                                                }`}
-                                                href={comment.attachment_path}
-                                                target="_blank"
-                                                rel="noreferrer"
-                                                download={comment.attachment_name || true}
-                                            >
-                                                {comment.attachment_name || 'Tệp đính kèm'}
-                                            </a>
-                                        )}
-                                        {!comment.is_recalled && tags && (
-                                            <p className={`mt-1 text-[11px] ${mine ? 'text-white/85' : 'text-emerald-700'}`}>
-                                                Tag: {tags}
-                                            </p>
-                                        )}
                                     </div>
+                                    {mine && (
+                                        <span className="mt-5 h-7 w-7 shrink-0 overflow-hidden rounded-full border border-slate-200 bg-white text-[11px] font-semibold text-slate-600 flex items-center justify-center">
+                                            {props?.auth?.user?.avatar_url ? (
+                                                <img src={props.auth.user.avatar_url} alt={props.auth.user.name} className="h-full w-full object-cover" />
+                                            ) : String(props?.auth?.user?.name || 'U').trim().slice(0, 1).toUpperCase()}
+                                        </span>
+                                    )}
                                 </div>
                             );
                         })}
                     </div>
 
-                    <div className="border-t border-slate-200/80 p-3">
+                    <div className="border-t border-slate-200/80 p-3 bg-white rounded-b-3xl">
                         {chatTaggedUsers.length > 0 && (
                             <div className="mb-2 flex flex-wrap gap-1.5">
                                 {chatTaggedUsers.map((item) => (
@@ -1703,7 +1731,7 @@ export default function TasksBoard(props) {
                             <div className="flex items-center gap-2">
                                 <input
                                     ref={chatInputRef}
-                                    className="flex-1 rounded-xl border border-slate-200/80 px-3 py-2 text-sm"
+                                    className="flex-1 rounded-full border border-slate-200/80 bg-slate-50 px-4 py-2.5 text-sm"
                                     placeholder="Nhập tin nhắn... (gõ @ để tag)"
                                     value={chatMessage}
                                     onChange={(e) => handleChatMessageChange(e.target.value, e.target.selectionStart ?? e.target.value.length)}
@@ -1727,14 +1755,14 @@ export default function TasksBoard(props) {
                                 />
                                 <button
                                     type="button"
-                                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
+                                    className="rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
                                     onClick={() => chatAttachmentInputRef.current?.click()}
                                 >
                                     Tệp
                                 </button>
                                 <button
                                     type="button"
-                                    className="rounded-xl bg-primary px-3 py-2 text-xs font-semibold text-white disabled:opacity-60"
+                                    className="rounded-full bg-primary px-4 py-2 text-xs font-semibold text-white disabled:opacity-60"
                                     disabled={chatSending}
                                     onClick={sendTaskChat}
                                 >

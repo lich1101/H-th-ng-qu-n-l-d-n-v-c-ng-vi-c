@@ -12,6 +12,24 @@ export default function Authenticated({ auth, header, children }) {
     const logoUrl = settings?.logo_url;
     const [avatarUrl, setAvatarUrl] = useState(auth?.user?.avatar_url || '');
     const fileInputRef = useRef(null);
+    const notificationButtonRef = useRef(null);
+    const notificationPanelRef = useRef(null);
+    const chatButtonRef = useRef(null);
+    const chatPanelRef = useRef(null);
+    const [notificationOpen, setNotificationOpen] = useState(false);
+    const [notificationTab, setNotificationTab] = useState('all');
+    const [notificationLoading, setNotificationLoading] = useState(false);
+    const [notificationItems, setNotificationItems] = useState([]);
+    const [notificationUnread, setNotificationUnread] = useState(0);
+    const [chatOpen, setChatOpen] = useState(false);
+    const [chatTab, setChatTab] = useState('all');
+    const [chatSearch, setChatSearch] = useState('');
+    const [chatItems, setChatItems] = useState([]);
+    const [chatUnread, setChatUnread] = useState(0);
+    const CHAT_NOTIFICATION_TYPES = useMemo(
+        () => new Set(['task_chat_message', 'task_comment_tag']),
+        []
+    );
 
     useEffect(() => {
         if (!settings?.primary_color) return;
@@ -23,6 +41,132 @@ export default function Authenticated({ auth, header, children }) {
         if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return;
         document.documentElement.style.setProperty('--color-primary', `${r} ${g} ${b}`);
     }, [settings?.primary_color]);
+
+    const toTimestamp = (value) => {
+        if (!value) return 0;
+        const timestamp = new Date(value).getTime();
+        return Number.isFinite(timestamp) ? timestamp : 0;
+    };
+
+    const relativeTime = (value) => {
+        const timestamp = toTimestamp(value);
+        if (!timestamp) return 'Vừa xong';
+        const diffMs = Date.now() - timestamp;
+        const diffMinutes = Math.max(1, Math.floor(diffMs / (1000 * 60)));
+        if (diffMinutes < 60) return `${diffMinutes} phút`;
+        const diffHours = Math.floor(diffMinutes / 60);
+        if (diffHours < 24) return `${diffHours} giờ`;
+        const diffDays = Math.floor(diffHours / 24);
+        if (diffDays < 7) return `${diffDays} ngày`;
+        return new Date(timestamp).toLocaleDateString('vi-VN');
+    };
+
+    const buildNotificationCollections = (payload) => {
+        const inAppRows = (payload?.notifications || []).map((item) => ({
+            key: `in_app:${item.id}`,
+            source_type: 'in_app',
+            source_id: item.id,
+            notification_type: item.type || 'general',
+            title: item.title || 'Thông báo',
+            body: item.body || '',
+            created_at: item.created_at,
+            is_read: !!item.is_read,
+            kind: 'Thông báo',
+        }));
+
+        const chatRows = inAppRows
+            .filter((item) => CHAT_NOTIFICATION_TYPES.has(item.notification_type))
+            .map((item) => ({
+                ...item,
+                kind: 'Tin nhắn',
+            }))
+            .sort((a, b) => toTimestamp(b.created_at) - toTimestamp(a.created_at))
+            .slice(0, 40);
+
+        const notifyRows = inAppRows.filter((item) => !CHAT_NOTIFICATION_TYPES.has(item.notification_type));
+
+        const reminderRows = (payload?.reminders || []).map((item) => ({
+            key: `deadline_reminder:${item.id}`,
+            source_type: 'deadline_reminder',
+            source_id: item.id,
+            notification_type: 'deadline_reminder',
+            title: item.task_title || 'Nhắc hạn công việc',
+            body: `${item.trigger_type || 'nhắc hạn'} • ${item.status || 'pending'}`,
+            created_at: item.sent_at || item.scheduled_at,
+            is_read: !!item.is_read,
+            kind: 'Nhắc hạn',
+        }));
+
+        const logRows = (payload?.logs || []).map((item) => ({
+            key: `activity_log:${item.id}`,
+            source_type: 'activity_log',
+            source_id: item.id,
+            notification_type: 'activity_log',
+            title: item.actor ? `${item.actor} vừa thao tác` : 'Hoạt động hệ thống',
+            body: `${item.action || 'activity'} • ${item.subject_type || 'object'} #${item.subject_id || ''}`,
+            created_at: item.created_at,
+            is_read: !!item.is_read,
+            kind: 'Hoạt động',
+        }));
+
+        const notificationRows = [...notifyRows, ...reminderRows, ...logRows]
+            .sort((a, b) => toTimestamp(b.created_at) - toTimestamp(a.created_at))
+            .slice(0, 40);
+
+        return {
+            notificationRows,
+            chatRows,
+            unreadNotificationCount: notificationRows.filter((item) => !item.is_read).length,
+            unreadChatCount: chatRows.filter((item) => !item.is_read).length,
+        };
+    };
+
+    const fetchNotifications = async ({ silent = false } = {}) => {
+        if (!silent) setNotificationLoading(true);
+        try {
+            const response = await axios.get('/api/v1/notifications/in-app', {
+                params: { notify_limit: 30, reminder_limit: 20, log_limit: 20 },
+            });
+            const collections = buildNotificationCollections(response.data || {});
+            setNotificationItems(collections.notificationRows);
+            setChatItems(collections.chatRows);
+            setNotificationUnread(collections.unreadNotificationCount);
+            setChatUnread(collections.unreadChatCount);
+        } catch (error) {
+            console.error(error);
+        } finally {
+            if (!silent) setNotificationLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchNotifications();
+        const timer = setInterval(() => {
+            fetchNotifications({ silent: true });
+        }, 30000);
+        return () => clearInterval(timer);
+    }, []);
+
+    useEffect(() => {
+        if (!notificationOpen && !chatOpen) return;
+
+        const onClickOutside = (event) => {
+            const target = event.target;
+            if (
+                notificationPanelRef.current?.contains(target)
+                || notificationButtonRef.current?.contains(target)
+                || chatPanelRef.current?.contains(target)
+                || chatButtonRef.current?.contains(target)
+            ) {
+                return;
+            }
+            setNotificationOpen(false);
+            setChatOpen(false);
+        };
+
+        document.addEventListener('mousedown', onClickOutside);
+        return () => document.removeEventListener('mousedown', onClickOutside);
+    }, [notificationOpen, chatOpen]);
 
     const roleLabels = {
         admin: 'Quản trị',
@@ -306,6 +450,79 @@ export default function Authenticated({ auth, header, children }) {
         setCollapsedGroups((prev) => ({ ...prev, [label]: !prev[label] }));
     };
 
+    const filteredNotificationItems = useMemo(() => {
+        if (notificationTab === 'unread') {
+            return notificationItems.filter((item) => !item.is_read);
+        }
+        return notificationItems;
+    }, [notificationItems, notificationTab]);
+
+    const quickUnreadCount = useMemo(
+        () => notificationItems.filter((item) => !item.is_read).length,
+        [notificationItems]
+    );
+
+    const filteredChatItems = useMemo(() => {
+        const source = chatTab === 'unread'
+            ? chatItems.filter((item) => !item.is_read)
+            : chatItems;
+        const keyword = chatSearch.trim().toLowerCase();
+        if (!keyword) return source;
+        return source.filter((item) => (
+            `${item.title || ''} ${item.body || ''}`.toLowerCase().includes(keyword)
+        ));
+    }, [chatItems, chatSearch, chatTab]);
+
+    const quickChatUnreadCount = useMemo(
+        () => chatItems.filter((item) => !item.is_read).length,
+        [chatItems]
+    );
+
+    const markSingleNotificationRead = async (item) => {
+        if (!item || item.is_read) return;
+        try {
+            await axios.post('/api/v1/notifications/in-app/read', {
+                source_type: item.source_type,
+                source_id: item.source_id,
+            });
+            await fetchNotifications({ silent: true });
+        } catch (error) {
+            console.error(error);
+        }
+    };
+
+    const markAllNotificationsRead = async () => {
+        try {
+            const unreadItems = notificationItems.filter((item) => !item.is_read);
+            if (unreadItems.length === 0) return;
+            await Promise.all(unreadItems.map((item) => (
+                axios.post('/api/v1/notifications/in-app/read', {
+                    source_type: item.source_type,
+                    source_id: item.source_id,
+                })
+            )));
+            await fetchNotifications({ silent: true });
+        } catch (error) {
+            console.error(error);
+        }
+    };
+
+    const markAllChatsRead = async () => {
+        try {
+            const unreadItems = chatItems.filter((item) => !item.is_read);
+            if (unreadItems.length === 0) return;
+            await Promise.all(unreadItems.map((item) => (
+                axios.post('/api/v1/notifications/in-app/read', {
+                    source_type: item.source_type,
+                    source_id: item.source_id,
+                })
+            )));
+            await fetchNotifications({ silent: true });
+        } catch (error) {
+            console.error(error);
+        }
+    };
+
     return (
             <div className="min-h-screen bg-app-bg text-slate-900">
             <div className="flex min-h-screen">
@@ -417,39 +634,292 @@ export default function Authenticated({ auth, header, children }) {
                                 <span className="hidden md:inline-flex rounded-full bg-emerald-100 text-emerald-700 px-2.5 py-1 text-xs">
                                     {roleLabels[currentRole] || currentRole || 'user'}
                                 </span>
+                                <div className="relative">
+                                    <button
+                                        ref={notificationButtonRef}
+                                        type="button"
+                                        className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 hover:bg-slate-100"
+                                        onClick={() => {
+                                            setChatOpen(false);
+                                            setNotificationOpen((prev) => !prev);
+                                            if (!notificationOpen) {
+                                                fetchNotifications({ silent: true });
+                                            }
+                                        }}
+                                        aria-label="Mở thông báo"
+                                    >
+                                        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+                                            <path d="M18 8a6 6 0 10-12 0c0 7-3 7-3 7h18s-3 0-3-7" />
+                                            <path d="M13.73 21a2 2 0 01-3.46 0" />
+                                        </svg>
+                                        {notificationUnread > 0 && (
+                                            <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-semibold flex items-center justify-center">
+                                                {notificationUnread > 99 ? '99+' : notificationUnread}
+                                            </span>
+                                        )}
+                                    </button>
+
+                                    {notificationOpen && (
+                                        <div
+                                            ref={notificationPanelRef}
+                                            className="absolute right-0 mt-2 w-[380px] max-w-[92vw] rounded-2xl border border-slate-200 bg-white shadow-2xl z-50"
+                                        >
+                                            <div className="px-4 pt-4 pb-3 border-b border-slate-100">
+                                                <div className="flex items-center justify-between">
+                                                    <p className="text-2xl font-bold text-slate-900">Thông báo</p>
+                                                    <button
+                                                        type="button"
+                                                        className="text-xs text-primary font-semibold"
+                                                        onClick={markAllNotificationsRead}
+                                                    >
+                                                        Đọc tất cả
+                                                    </button>
+                                                </div>
+                                                <div className="mt-3 flex items-center gap-2">
+                                                    <button
+                                                        type="button"
+                                                        className={`rounded-full px-3 py-1 text-sm font-semibold ${
+                                                            notificationTab === 'all'
+                                                                ? 'bg-primary/10 text-primary'
+                                                                : 'bg-slate-100 text-slate-700'
+                                                        }`}
+                                                        onClick={() => setNotificationTab('all')}
+                                                    >
+                                                        Tất cả
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className={`rounded-full px-3 py-1 text-sm font-semibold ${
+                                                            notificationTab === 'unread'
+                                                                ? 'bg-primary/10 text-primary'
+                                                                : 'bg-slate-100 text-slate-700'
+                                                        }`}
+                                                        onClick={() => setNotificationTab('unread')}
+                                                    >
+                                                        Chưa đọc
+                                                    </button>
+                                                    <Link
+                                                        href={route('notifications.center')}
+                                                        className="ml-auto text-xs text-primary font-semibold"
+                                                    >
+                                                        Xem tất cả
+                                                    </Link>
+                                                </div>
+                                            </div>
+
+                                            <div className="max-h-[440px] overflow-y-auto p-2">
+                                                {notificationLoading && (
+                                                    <div className="px-3 py-8 text-sm text-center text-slate-500">
+                                                        Đang tải thông báo...
+                                                    </div>
+                                                )}
+
+                                                {!notificationLoading && filteredNotificationItems.map((item) => (
+                                                    <button
+                                                        key={item.key}
+                                                        type="button"
+                                                        className={`w-full text-left flex items-start gap-3 rounded-xl px-3 py-3 transition ${
+                                                            item.is_read
+                                                                ? 'hover:bg-slate-50'
+                                                                : 'bg-blue-50/60 hover:bg-blue-50'
+                                                        }`}
+                                                        onClick={() => markSingleNotificationRead(item)}
+                                                    >
+                                                        <span className="mt-0.5 h-10 w-10 shrink-0 rounded-full bg-slate-200 text-slate-600 text-[11px] font-semibold flex items-center justify-center">
+                                                            {item.kind.slice(0, 1)}
+                                                        </span>
+                                                        <span className="min-w-0 flex-1">
+                                                            <span className="block text-sm font-semibold text-slate-900 line-clamp-2">
+                                                                {item.title}
+                                                            </span>
+                                                            {item.body && (
+                                                                <span className="mt-0.5 block text-xs text-slate-600 line-clamp-2">
+                                                                    {item.body}
+                                                                </span>
+                                                            )}
+                                                            <span className="mt-1 block text-[11px] font-semibold text-primary">
+                                                                {relativeTime(item.created_at)}
+                                                            </span>
+                                                        </span>
+                                                        {!item.is_read && (
+                                                            <span className="mt-1 inline-flex h-5 min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-semibold text-white shrink-0">
+                                                                1
+                                                            </span>
+                                                        )}
+                                                    </button>
+                                                ))}
+
+                                                {!notificationLoading && filteredNotificationItems.length === 0 && (
+                                                    <div className="px-3 py-8 text-sm text-center text-slate-500">
+                                                        {notificationTab === 'unread'
+                                                            ? 'Không có thông báo chưa đọc.'
+                                                            : 'Chưa có thông báo mới.'}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            <div className="px-4 py-3 border-t border-slate-100 text-xs text-slate-500">
+                                                Chưa đọc: <span className="font-semibold text-slate-700">{quickUnreadCount}</span>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="relative">
+                                    <button
+                                        ref={chatButtonRef}
+                                        type="button"
+                                        className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 hover:bg-slate-100"
+                                        onClick={() => {
+                                            setNotificationOpen(false);
+                                            setChatOpen((prev) => !prev);
+                                            if (!chatOpen) {
+                                                fetchNotifications({ silent: true });
+                                            }
+                                        }}
+                                        aria-label="Mở đoạn chat"
+                                    >
+                                        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+                                            <path d="M21 15a4 4 0 01-4 4H7l-4 3V7a4 4 0 014-4h10a4 4 0 014 4z" />
+                                        </svg>
+                                        {chatUnread > 0 && (
+                                            <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-semibold flex items-center justify-center">
+                                                {chatUnread > 99 ? '99+' : chatUnread}
+                                            </span>
+                                        )}
+                                    </button>
+
+                                    {chatOpen && (
+                                        <div
+                                            ref={chatPanelRef}
+                                            className="absolute right-0 mt-2 w-[380px] max-w-[92vw] rounded-2xl border border-slate-200 bg-white shadow-2xl z-50"
+                                        >
+                                            <div className="px-4 pt-4 pb-3 border-b border-slate-100">
+                                                <div className="flex items-center justify-between">
+                                                    <p className="text-2xl font-bold text-slate-900">Đoạn chat</p>
+                                                    <button
+                                                        type="button"
+                                                        className="text-xs text-primary font-semibold"
+                                                        onClick={markAllChatsRead}
+                                                    >
+                                                        Đọc tất cả
+                                                    </button>
+                                                </div>
+                                                <div className="mt-3">
+                                                    <input
+                                                        value={chatSearch}
+                                                        onChange={(e) => setChatSearch(e.target.value)}
+                                                        className="w-full rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-sm"
+                                                        placeholder="Tìm trong đoạn chat..."
+                                                    />
+                                                </div>
+                                                <div className="mt-3 flex items-center gap-2">
+                                                    <button
+                                                        type="button"
+                                                        className={`rounded-full px-3 py-1 text-sm font-semibold ${
+                                                            chatTab === 'all'
+                                                                ? 'bg-primary/10 text-primary'
+                                                                : 'bg-slate-100 text-slate-700'
+                                                        }`}
+                                                        onClick={() => setChatTab('all')}
+                                                    >
+                                                        Tất cả
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className={`rounded-full px-3 py-1 text-sm font-semibold ${
+                                                            chatTab === 'unread'
+                                                                ? 'bg-primary/10 text-primary'
+                                                                : 'bg-slate-100 text-slate-700'
+                                                        }`}
+                                                        onClick={() => setChatTab('unread')}
+                                                    >
+                                                        Chưa đọc
+                                                    </button>
+                                                    <Link
+                                                        href={route('tasks.board')}
+                                                        className="ml-auto text-xs text-primary font-semibold"
+                                                    >
+                                                        Xem công việc
+                                                    </Link>
+                                                </div>
+                                            </div>
+
+                                            <div className="max-h-[440px] overflow-y-auto p-2">
+                                                {notificationLoading && (
+                                                    <div className="px-3 py-8 text-sm text-center text-slate-500">
+                                                        Đang tải đoạn chat...
+                                                    </div>
+                                                )}
+
+                                                {!notificationLoading && filteredChatItems.map((item) => (
+                                                    <button
+                                                        key={item.key}
+                                                        type="button"
+                                                        className={`w-full text-left flex items-start gap-3 rounded-xl px-3 py-3 transition ${
+                                                            item.is_read
+                                                                ? 'hover:bg-slate-50'
+                                                                : 'bg-blue-50/60 hover:bg-blue-50'
+                                                        }`}
+                                                        onClick={() => markSingleNotificationRead(item)}
+                                                    >
+                                                        <span className="mt-0.5 h-10 w-10 shrink-0 rounded-full bg-indigo-100 text-indigo-700 text-[11px] font-semibold flex items-center justify-center">
+                                                            {item.kind.slice(0, 1)}
+                                                        </span>
+                                                        <span className="min-w-0 flex-1">
+                                                            <span className="block text-sm font-semibold text-slate-900 line-clamp-2">
+                                                                {item.title}
+                                                            </span>
+                                                            {item.body && (
+                                                                <span className="mt-0.5 block text-xs text-slate-600 line-clamp-2">
+                                                                    {item.body}
+                                                                </span>
+                                                            )}
+                                                            <span className="mt-1 block text-[11px] font-semibold text-primary">
+                                                                {relativeTime(item.created_at)}
+                                                            </span>
+                                                        </span>
+                                                        {!item.is_read && (
+                                                            <span className="mt-1 inline-flex h-5 min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-semibold text-white shrink-0">
+                                                                1
+                                                            </span>
+                                                        )}
+                                                    </button>
+                                                ))}
+
+                                                {!notificationLoading && filteredChatItems.length === 0 && (
+                                                    <div className="px-3 py-8 text-sm text-center text-slate-500">
+                                                        {chatTab === 'unread'
+                                                            ? 'Không có đoạn chat chưa đọc.'
+                                                            : 'Chưa có đoạn chat mới.'}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            <div className="px-4 py-3 border-t border-slate-100 text-xs text-slate-500">
+                                                Tin chưa đọc: <span className="font-semibold text-slate-700">{quickChatUnreadCount}</span>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
                                 <Dropdown>
                                     <Dropdown.Trigger>
                                         <span className="inline-flex rounded-md">
                                             <button
                                                 type="button"
-                                                className="inline-flex items-center px-3 py-2 border border-slate-200 text-sm leading-4 font-medium rounded-md text-slate-700 bg-white hover:text-slate-900"
+                                                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white hover:bg-slate-100"
+                                                aria-label="Mở tài khoản"
                                             >
-                                                <span className="flex items-center gap-2">
-                                                    {avatarUrl ? (
-                                                        <img
-                                                            src={avatarUrl}
-                                                            alt={auth.user.name}
-                                                            className="h-7 w-7 rounded-full object-cover border border-slate-200"
-                                                        />
-                                                    ) : (
-                                                        <span className="h-7 w-7 rounded-full bg-primary/10 text-primary text-xs font-semibold flex items-center justify-center">
-                                                            {initials(auth.user.name)}
-                                                        </span>
-                                                    )}
-                                                    <span>{auth.user.name}</span>
-                                                </span>
-                                                <svg
-                                                    className="ml-2 -mr-0.5 h-4 w-4"
-                                                    xmlns="http://www.w3.org/2000/svg"
-                                                    viewBox="0 0 20 20"
-                                                    fill="currentColor"
-                                                >
-                                                    <path
-                                                        fillRule="evenodd"
-                                                        d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
-                                                        clipRule="evenodd"
+                                                {avatarUrl ? (
+                                                    <img
+                                                        src={avatarUrl}
+                                                        alt={auth.user.name}
+                                                        className="h-10 w-10 rounded-full object-cover"
                                                     />
-                                                </svg>
+                                                ) : (
+                                                    <span className="h-10 w-10 rounded-full bg-primary/10 text-primary text-xs font-semibold flex items-center justify-center">
+                                                        {initials(auth.user.name)}
+                                                    </span>
+                                                )}
                                             </button>
                                         </span>
                                     </Dropdown.Trigger>
