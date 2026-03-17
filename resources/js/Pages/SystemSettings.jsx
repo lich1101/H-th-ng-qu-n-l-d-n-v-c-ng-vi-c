@@ -174,6 +174,11 @@ export default function SystemSettings(props) {
             if (result.push_sent) {
                 toast.success(`Đã gửi push tới ${result.target_user_name || 'tài khoản đích'}.`);
             } else {
+                if (result?.message) {
+                    toast.error(`Push test lỗi: ${result.message}`);
+                    await reloadSystemStatus();
+                    return;
+                }
                 const reason = result?.push_result?.error || result.error || 'push_failed';
                 if ((result?.token_count ?? 0) <= 0) {
                     toast.error('Tài khoản đích chưa có token thiết bị mobile. Hãy đăng nhập app và đồng bộ token.');
@@ -477,6 +482,7 @@ export default function SystemSettings(props) {
                                     <h4 className="text-sm font-semibold text-slate-900">Kết quả push test gần nhất</h4>
                                     <div className="mt-2 grid gap-2 text-xs text-slate-600 md:grid-cols-2">
                                         <div>Người nhận: <span className="font-semibold text-slate-900">{lastTestResult.target_user_name || '—'} (ID: {lastTestResult.target_user_id || '—'})</span></div>
+                                        <div>Email đích: <span className="font-semibold text-slate-900">{lastTestResult.target_user_email || '—'}</span></div>
                                         <div>Kết quả: <span className={`font-semibold ${lastTestResult.push_sent ? 'text-emerald-600' : 'text-rose-600'}`}>{lastTestResult.push_sent ? 'Đã gửi' : 'Chưa gửi'}</span></div>
                                         <div>Lý do: <span className="font-semibold text-slate-900">{lastTestResult?.push_result?.error || lastTestResult.error || '—'}</span></div>
                                         <div>FCM sent/failed: <span className="font-semibold text-slate-900">{lastTestResult?.push_result?.sent ?? 0}/{lastTestResult?.push_result?.failed ?? 0}</span></div>
@@ -486,7 +492,24 @@ export default function SystemSettings(props) {
                                         <div>Token Web: <span className="font-semibold text-slate-900">{lastTestResult?.token_by_platform?.web ?? 0}</span></div>
                                         <div>Token quyền ON: <span className="font-semibold text-slate-900">{lastTestResult.token_notifications_enabled ?? 0}</span></div>
                                         <div>Token quyền OFF: <span className="font-semibold text-slate-900">{lastTestResult.token_notifications_disabled ?? 0}</span></div>
+                                        <div>Requested user_id: <span className="font-semibold text-slate-900">{lastTestResult?.debug?.requested_user_id ?? '—'}</span></div>
+                                        <div>Acting user_id: <span className="font-semibold text-slate-900">{lastTestResult?.debug?.acting_user_id ?? '—'}</span></div>
+                                        <div>DB connection: <span className="font-semibold text-slate-900">{lastTestResult?.debug?.db_connection ?? '—'}</span></div>
+                                        <div>DB name: <span className="font-semibold text-slate-900">{lastTestResult?.debug?.db_database ?? '—'}</span></div>
+                                        <div>DB host: <span className="font-semibold text-slate-900">{lastTestResult?.debug?.db_host ?? '—'}</span></div>
                                     </div>
+                                    {Array.isArray(lastTestResult?.debug?.recent_token_users) && lastTestResult.debug.recent_token_users.length > 0 && (
+                                        <div className="mt-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs">
+                                            <div className="font-semibold text-slate-700">Token owners gần nhất (debug)</div>
+                                            <div className="mt-2 space-y-1 text-slate-600">
+                                                {lastTestResult.debug.recent_token_users.map((row, idx) => (
+                                                    <div key={`${row.user_id}-${idx}`}>
+                                                        #{idx + 1} user_id={row.user_id} • {row.platform || 'unknown'} • {row.updated_at || '—'}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
                                     {lastTestResult?.push_result?.errors && Object.keys(lastTestResult.push_result.errors).length > 0 && (
                                         <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs">
                                             <div className="font-semibold text-rose-700">Chi tiết lỗi FCM</div>

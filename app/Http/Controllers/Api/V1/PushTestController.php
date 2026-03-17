@@ -31,6 +31,7 @@ class PushTestController extends Controller
         ]);
 
         $targetUser = $user;
+        $requestedUserId = ! empty($validated['user_id']) ? (int) $validated['user_id'] : null;
         if (! empty($validated['user_id']) && $user->role === 'admin') {
             $selected = User::query()->find((int) $validated['user_id']);
             if ($selected) {
@@ -95,8 +96,30 @@ class PushTestController extends Controller
                 'push_result' => $result['push_result'] ?? null,
                 'target_user_id' => $targetUser->id,
                 'target_user_name' => $targetUser->name,
+                'target_user_email' => $targetUser->email,
                 'firebase_enabled' => $firebase->enabled(),
                 'access_token_ready' => $firebase->accessTokenAvailable(),
+                'debug' => [
+                    'requested_user_id' => $requestedUserId,
+                    'acting_user_id' => (int) $user->id,
+                    'target_user_id' => (int) $targetUser->id,
+                    'db_connection' => config('database.default'),
+                    'db_database' => (string) config('database.connections.'.config('database.default').'.database'),
+                    'db_host' => (string) config('database.connections.'.config('database.default').'.host'),
+                    'recent_token_users' => UserDeviceToken::query()
+                        ->select(['user_id', 'platform', 'updated_at'])
+                        ->orderByDesc('updated_at')
+                        ->limit(5)
+                        ->get()
+                        ->map(function ($item) {
+                            return [
+                                'user_id' => (int) $item->user_id,
+                                'platform' => $item->platform,
+                                'updated_at' => $item->updated_at,
+                            ];
+                        })
+                        ->values(),
+                ],
                 'token_samples' => $tokens->map(function ($item) {
                     return [
                         'platform' => $item->platform,
@@ -113,6 +136,16 @@ class PushTestController extends Controller
                 'message' => $e->getMessage(),
                 'file' => basename($e->getFile()),
                 'line' => $e->getLine(),
+                'target_user_id' => $targetUser ? $targetUser->id : null,
+                'target_user_name' => $targetUser ? $targetUser->name : null,
+                'target_user_email' => $targetUser ? $targetUser->email : null,
+                'debug' => [
+                    'requested_user_id' => $requestedUserId,
+                    'acting_user_id' => (int) $user->id,
+                    'db_connection' => config('database.default'),
+                    'db_database' => (string) config('database.connections.'.config('database.default').'.database'),
+                    'db_host' => (string) config('database.connections.'.config('database.default').'.host'),
+                ],
                 'firebase_enabled' => $firebase->enabled(),
                 'access_token_ready' => $firebase->accessTokenAvailable(),
             ]);
