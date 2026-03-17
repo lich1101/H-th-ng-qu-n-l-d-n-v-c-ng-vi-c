@@ -25,7 +25,7 @@ class FirebaseService
 
     public function accessTokenAvailable(): bool
     {
-        return (bool) $this->getAccessToken();
+        return (bool) $this->getMessagingAccessToken();
     }
 
     public function pushTaskMessage(int $taskId, int $messageId, array $payload): bool
@@ -33,7 +33,7 @@ class FirebaseService
         if (! $this->databaseEnabled()) {
             return false;
         }
-        $token = $this->getAccessToken();
+        $token = $this->getDatabaseAccessToken();
         if (! $token) {
             return false;
         }
@@ -54,7 +54,7 @@ class FirebaseService
         if (! $this->databaseEnabled()) {
             return false;
         }
-        $token = $this->getAccessToken();
+        $token = $this->getDatabaseAccessToken();
         if (! $token) {
             return false;
         }
@@ -92,7 +92,7 @@ class FirebaseService
             ];
         }
 
-        $accessToken = $this->getAccessToken();
+        $accessToken = $this->getMessagingAccessToken();
         if (! $accessToken) {
             return [
                 'sent' => 0,
@@ -283,12 +283,38 @@ class FirebaseService
 
     private function getAccessToken(): ?string
     {
-        $cached = Cache::get('firebase_access_token');
+        return $this->getMessagingAccessToken();
+    }
+
+    private function getMessagingAccessToken(): ?string
+    {
+        return $this->getScopedAccessToken(
+            [
+                'https://www.googleapis.com/auth/firebase.messaging',
+            ],
+            'firebase_access_token_messaging'
+        );
+    }
+
+    private function getDatabaseAccessToken(): ?string
+    {
+        return $this->getScopedAccessToken(
+            [
+                'https://www.googleapis.com/auth/firebase.database',
+                'https://www.googleapis.com/auth/userinfo.email',
+            ],
+            'firebase_access_token_database'
+        );
+    }
+
+    private function getScopedAccessToken(array $scopes, string $cacheKey): ?string
+    {
+        $cached = Cache::get($cacheKey);
         if (is_string($cached) && $cached !== '') {
-            return $cached;
+            return trim($cached);
         }
 
-        $jwt = $this->makeJwt();
+        $jwt = $this->makeJwt($scopes);
         if (! $jwt) {
             return null;
         }
@@ -305,7 +331,8 @@ class FirebaseService
         $data = $response->json();
         $token = is_array($data) ? ($data['access_token'] ?? null) : null;
         if (is_string($token) && $token !== '') {
-            Cache::put('firebase_access_token', $token, 3500);
+            $token = trim($token);
+            Cache::put($cacheKey, $token, 3500);
             return $token;
         }
 
@@ -314,8 +341,16 @@ class FirebaseService
 
     private function sendFcmRequest(string $url, array $payload, string &$accessToken)
     {
+        $accessToken = trim($accessToken);
+
         $response = Http::timeout(10)
-            ->withToken($accessToken)
+            ->connectTimeout(5)
+            ->withHeaders([
+                'Authorization' => 'Bearer '.$accessToken,
+                'Accept' => 'application/json',
+                'Content-Type' => 'application/json; charset=UTF-8',
+            ])
+            ->withOptions(['version' => 1.1])
             ->post($url, $payload);
 
         if ($response->status() !== 401) {
@@ -323,15 +358,21 @@ class FirebaseService
         }
 
         // Access token may be stale/revoked in cache; refresh once and retry.
-        Cache::forget('firebase_access_token');
-        $freshToken = $this->getAccessToken();
+        Cache::forget('firebase_access_token_messaging');
+        $freshToken = $this->getMessagingAccessToken();
         if (! is_string($freshToken) || $freshToken === '') {
             return $response;
         }
 
-        $accessToken = $freshToken;
+        $accessToken = trim($freshToken);
         return Http::timeout(10)
-            ->withToken($accessToken)
+            ->connectTimeout(5)
+            ->withHeaders([
+                'Authorization' => 'Bearer '.$accessToken,
+                'Accept' => 'application/json',
+                'Content-Type' => 'application/json; charset=UTF-8',
+            ])
+            ->withOptions(['version' => 1.1])
             ->post($url, $payload);
     }
 
@@ -344,7 +385,7 @@ class FirebaseService
         }
     }
 
-    private function makeJwt(): ?string
+    private function makeJwt(array $scopes): ?string
     {
         $clientEmail = (string) config('firebase.client_email');
         $privateKey = (string) config('firebase.private_key');
@@ -360,11 +401,7 @@ class FirebaseService
         ]));
         $claims = $this->base64UrlEncode(json_encode([
             'iss' => $clientEmail,
-            'scope' => implode(' ', [
-                'https://www.googleapis.com/auth/firebase.messaging',
-                'https://www.googleapis.com/auth/firebase.database',
-                'https://www.googleapis.com/auth/userinfo.email',
-            ]),
+            'scope' => implode(' ', $scopes),
             'aud' => 'https://oauth2.googleapis.com/token',
             'iat' => $now,
             'exp' => $now + 3600,
