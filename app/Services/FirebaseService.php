@@ -162,9 +162,7 @@ class FirebaseService
                 ],
             ];
 
-            $response = Http::timeout(10)
-                ->withToken($accessToken)
-                ->post($url, $payload);
+            $response = $this->sendFcmRequest($url, $payload, $accessToken);
 
             if ($response->ok()) {
                 $sent++;
@@ -176,7 +174,7 @@ class FirebaseService
                 } else {
                     $temporaryFailedTokens[] = $token;
                 }
-                Log::warning('FCM push token failed', [
+                $this->safeLogWarning('FCM push token failed', [
                     'token_suffix' => substr($token, -12),
                     'status' => $error['status'] ?? null,
                     'message' => $error['message'] ?? null,
@@ -312,6 +310,38 @@ class FirebaseService
         }
 
         return null;
+    }
+
+    private function sendFcmRequest(string $url, array $payload, string &$accessToken)
+    {
+        $response = Http::timeout(10)
+            ->withToken($accessToken)
+            ->post($url, $payload);
+
+        if ($response->status() !== 401) {
+            return $response;
+        }
+
+        // Access token may be stale/revoked in cache; refresh once and retry.
+        Cache::forget('firebase_access_token');
+        $freshToken = $this->getAccessToken();
+        if (! is_string($freshToken) || $freshToken === '') {
+            return $response;
+        }
+
+        $accessToken = $freshToken;
+        return Http::timeout(10)
+            ->withToken($accessToken)
+            ->post($url, $payload);
+    }
+
+    private function safeLogWarning(string $message, array $context = []): void
+    {
+        try {
+            Log::warning($message, $context);
+        } catch (\Throwable $e) {
+            // Ignore log-write failures so push flow can continue.
+        }
     }
 
     private function makeJwt(): ?string

@@ -180,8 +180,14 @@ export default function SystemSettings(props) {
                     return;
                 }
                 const reason = result?.push_result?.error || result.error || 'push_failed';
+                const hasUnauthenticatedError = Boolean(
+                    result?.push_result?.errors &&
+                    Object.values(result.push_result.errors).some((info) => String(info?.status || '').toUpperCase() === 'UNAUTHENTICATED')
+                );
                 if ((result?.token_count ?? 0) <= 0) {
                     toast.error('Tài khoản đích chưa có token thiết bị mobile. Hãy đăng nhập app và đồng bộ token.');
+                } else if (hasUnauthenticatedError) {
+                    toast.error('Firebase đang trả UNAUTHENTICATED (401). Kiểm tra lại FIREBASE_CLIENT_EMAIL/FIREBASE_PRIVATE_KEY và xóa cache cấu hình.');
                 } else {
                     toast.error(`Không gửi được push (${toPushErrorLabel(reason)}). Kiểm tra token/config bên dưới.`);
                 }
