@@ -291,6 +291,8 @@ class FirebaseService
         return $this->getScopedAccessToken(
             [
                 'https://www.googleapis.com/auth/firebase.messaging',
+                'https://www.googleapis.com/auth/firebase.database',
+                'https://www.googleapis.com/auth/userinfo.email',
             ],
             'firebase_access_token_messaging'
         );
@@ -349,6 +351,13 @@ class FirebaseService
 
         $response = $this->performFcmHttpRequest($url, $body, $accessToken);
 
+        if ($this->responseStatus($response) === 401) {
+            $binaryResponse = $this->performFcmBinaryCurlRequest($url, $body, $accessToken);
+            if ($binaryResponse !== null && $this->responseStatus($binaryResponse) !== 401) {
+                return $binaryResponse;
+            }
+        }
+
         if ($this->responseStatus($response) !== 401) {
             return $response;
         }
@@ -361,7 +370,15 @@ class FirebaseService
         }
 
         $accessToken = trim($freshToken);
-        return $this->performFcmHttpRequest($url, $body, $accessToken);
+        $retryResponse = $this->performFcmHttpRequest($url, $body, $accessToken);
+        if ($this->responseStatus($retryResponse) === 401) {
+            $binaryRetryResponse = $this->performFcmBinaryCurlRequest($url, $body, $accessToken);
+            if ($binaryRetryResponse !== null) {
+                return $binaryRetryResponse;
+            }
+        }
+
+        return $retryResponse;
     }
 
     private function performFcmHttpRequest(string $url, string $body, string $accessToken)
@@ -418,6 +435,88 @@ class FirebaseService
             ])
             ->withBody($body, 'application/json; charset=UTF-8')
             ->post($url);
+    }
+
+    private function performFcmBinaryCurlRequest(string $url, string $body, string $accessToken): ?array
+    {
+        $curlBinary = $this->findCurlBinaryPath();
+        if ($curlBinary === null || ! function_exists('proc_open')) {
+            return null;
+        }
+
+        $disabledFunctions = array_map('trim', explode(',', (string) ini_get('disable_functions')));
+        if (in_array('proc_open', $disabledFunctions, true)) {
+            return null;
+        }
+
+        $command = [
+            $curlBinary,
+            '--silent',
+            '--show-error',
+            '--max-time',
+            '10',
+            '--connect-timeout',
+            '5',
+            '--http2',
+            '-X',
+            'POST',
+            $url,
+            '-H',
+            'Authorization: Bearer '.$accessToken,
+            '-H',
+            'Accept: application/json',
+            '-H',
+            'Content-Type: application/json; charset=UTF-8',
+            '--data-binary',
+            $body,
+            '--write-out',
+            "\n__HTTP_STATUS__:%{http_code}",
+        ];
+
+        $descriptors = [
+            1 => ['pipe', 'w'],
+            2 => ['pipe', 'w'],
+        ];
+
+        $process = @proc_open($command, $descriptors, $pipes, null, null, ['bypass_shell' => true]);
+        if (! is_resource($process)) {
+            return null;
+        }
+
+        $stdout = stream_get_contents($pipes[1]);
+        fclose($pipes[1]);
+        $stderr = stream_get_contents($pipes[2]);
+        fclose($pipes[2]);
+        proc_close($process);
+
+        $status = 0;
+        $rawBody = (string) $stdout;
+        if (preg_match('/__HTTP_STATUS__:(\d+)\s*$/', $rawBody, $matches) === 1) {
+            $status = (int) $matches[1];
+            $rawBody = preg_replace('/\n__HTTP_STATUS__:\d+\s*$/', '', $rawBody) ?? $rawBody;
+        }
+
+        $rawBody = trim($rawBody);
+        if ($rawBody === '' && trim((string) $stderr) !== '') {
+            $rawBody = trim((string) $stderr);
+        }
+
+        return [
+            'status' => $status,
+            'body' => $rawBody,
+            'json' => json_decode($rawBody, true),
+        ];
+    }
+
+    private function findCurlBinaryPath(): ?string
+    {
+        foreach (['/usr/bin/curl', '/bin/curl'] as $path) {
+            if (is_file($path) && is_executable($path)) {
+                return $path;
+            }
+        }
+
+        return null;
     }
 
     private function responseStatus($response): int
