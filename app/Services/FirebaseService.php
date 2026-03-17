@@ -368,11 +368,14 @@ class FirebaseService
     {
         if (function_exists('curl_init')) {
             $ch = curl_init($url);
-            curl_setopt_array($ch, [
+            $curlOptions = [
                 CURLOPT_POST => true,
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_TIMEOUT => 10,
                 CURLOPT_CONNECTTIMEOUT => 5,
+                CURLOPT_SSL_VERIFYPEER => true,
+                CURLOPT_SSL_VERIFYHOST => 2,
+                CURLOPT_USERAGENT => 'curl/8.0.1',
                 CURLOPT_HTTPHEADER => [
                     'Authorization: Bearer '.$accessToken,
                     'Accept: application/json',
@@ -380,7 +383,13 @@ class FirebaseService
                     'Expect:',
                 ],
                 CURLOPT_POSTFIELDS => $body,
-            ]);
+            ];
+
+            if (defined('CURL_HTTP_VERSION_2TLS')) {
+                $curlOptions[CURLOPT_HTTP_VERSION] = CURL_HTTP_VERSION_2TLS;
+            }
+
+            curl_setopt_array($ch, $curlOptions);
 
             $rawBody = curl_exec($ch);
             $curlError = curl_error($ch);
