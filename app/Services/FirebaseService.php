@@ -164,7 +164,7 @@ class FirebaseService
 
             $response = $this->sendFcmRequest($url, $payload, $accessToken);
 
-            if ($response->ok()) {
+            if ($this->responseOk($response)) {
                 $sent++;
             } else {
                 $error = $this->extractFcmError($response);
@@ -178,7 +178,7 @@ class FirebaseService
                     'token_suffix' => substr($token, -12),
                     'status' => $error['status'] ?? null,
                     'message' => $error['message'] ?? null,
-                    'http_code' => $response->status(),
+                    'http_code' => $this->responseStatus($response),
                 ]);
             }
         }
@@ -199,9 +199,9 @@ class FirebaseService
     {
         $status = '';
         $message = '';
-        $code = $response->status();
+        $code = $this->responseStatus($response);
 
-        $json = $response->json();
+        $json = $this->responseJson($response);
         if (is_array($json)) {
             $error = $json['error'] ?? null;
             if (is_array($error)) {
@@ -214,7 +214,7 @@ class FirebaseService
         }
 
         if ($message === '') {
-            $message = trim((string) $response->body());
+            $message = trim($this->responseBody($response));
         }
         if ($message === '') {
             $message = 'FCM request failed';
@@ -342,20 +342,14 @@ class FirebaseService
     private function sendFcmRequest(string $url, array $payload, string &$accessToken)
     {
         $accessToken = trim($accessToken);
+        $body = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if ($body === false) {
+            $body = '{}';
+        }
 
-        $response = Http::timeout(10)
-            ->withHeaders([
-                'Authorization' => 'Bearer '.$accessToken,
-                'Accept' => 'application/json',
-                'Content-Type' => 'application/json; charset=UTF-8',
-            ])
-            ->withOptions([
-                'connect_timeout' => 5,
-                'version' => 1.1,
-            ])
-            ->post($url, $payload);
+        $response = $this->performFcmHttpRequest($url, $body, $accessToken);
 
-        if ($response->status() !== 401) {
+        if ($this->responseStatus($response) !== 401) {
             return $response;
         }
 
@@ -367,6 +361,43 @@ class FirebaseService
         }
 
         $accessToken = trim($freshToken);
+        return $this->performFcmHttpRequest($url, $body, $accessToken);
+    }
+
+    private function performFcmHttpRequest(string $url, string $body, string $accessToken)
+    {
+        if (function_exists('curl_init')) {
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_POST => true,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 10,
+                CURLOPT_CONNECTTIMEOUT => 5,
+                CURLOPT_HTTPHEADER => [
+                    'Authorization: Bearer '.$accessToken,
+                    'Accept: application/json',
+                    'Content-Type: application/json; charset=UTF-8',
+                    'Expect:',
+                ],
+                CURLOPT_POSTFIELDS => $body,
+            ]);
+
+            $rawBody = curl_exec($ch);
+            $curlError = curl_error($ch);
+            $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+            curl_close($ch);
+
+            if ($rawBody === false) {
+                $rawBody = '';
+            }
+
+            return [
+                'status' => $status,
+                'body' => $curlError !== '' && $rawBody === '' ? $curlError : (string) $rawBody,
+                'json' => json_decode((string) $rawBody, true),
+            ];
+        }
+
         return Http::timeout(10)
             ->withHeaders([
                 'Authorization' => 'Bearer '.$accessToken,
@@ -375,9 +406,43 @@ class FirebaseService
             ])
             ->withOptions([
                 'connect_timeout' => 5,
-                'version' => 1.1,
             ])
-            ->post($url, $payload);
+            ->withBody($body, 'application/json; charset=UTF-8')
+            ->post($url);
+    }
+
+    private function responseStatus($response): int
+    {
+        if (is_array($response)) {
+            return (int) ($response['status'] ?? 0);
+        }
+
+        return (int) $response->status();
+    }
+
+    private function responseOk($response): bool
+    {
+        $status = $this->responseStatus($response);
+        return $status >= 200 && $status < 300;
+    }
+
+    private function responseJson($response): ?array
+    {
+        if (is_array($response)) {
+            return is_array($response['json'] ?? null) ? $response['json'] : null;
+        }
+
+        $json = $response->json();
+        return is_array($json) ? $json : null;
+    }
+
+    private function responseBody($response): string
+    {
+        if (is_array($response)) {
+            return (string) ($response['body'] ?? '');
+        }
+
+        return (string) $response->body();
     }
 
     private function safeLogWarning(string $message, array $context = []): void
