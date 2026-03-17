@@ -370,6 +370,8 @@ export default function ProjectFlow({ auth, projectId }) {
     const [flow, setFlow] = useState(null);
     const [loading, setLoading] = useState(true);
     const [activeHint, setActiveHint] = useState(null);
+    const [viewport, setViewport] = useState({ x: 0, y: 0, zoom: 1 });
+    const [surfaceSize, setSurfaceSize] = useState({ width: 0, height: 0 });
     const flowSurfaceRef = useRef(null);
 
     const fetchData = async () => {
@@ -404,6 +406,31 @@ export default function ProjectFlow({ auth, projectId }) {
         window.addEventListener('keydown', onKeyDown);
         return () => window.removeEventListener('keydown', onKeyDown);
     }, [activeHint]);
+
+    useEffect(() => {
+        const el = flowSurfaceRef.current;
+        if (!el) {
+            return undefined;
+        }
+
+        const updateSize = () => {
+            setSurfaceSize({
+                width: el.clientWidth || 0,
+                height: el.clientHeight || 0,
+            });
+        };
+
+        updateSize();
+
+        if (typeof ResizeObserver !== 'undefined') {
+            const observer = new ResizeObserver(updateSize);
+            observer.observe(el);
+            return () => observer.disconnect();
+        }
+
+        window.addEventListener('resize', updateSize);
+        return () => window.removeEventListener('resize', updateSize);
+    }, [flow?.project]);
 
     const { nodes, edges } = useMemo(() => {
         if (!flow?.project) {
@@ -729,9 +756,7 @@ export default function ProjectFlow({ auth, projectId }) {
             setActiveHint({
                 id: node.id,
                 detail,
-                position: { x: 24, y: 24 },
-                width: HINT_CARD_WIDTH,
-                arrowLeft: 36,
+                anchorFlow: { x: 0, y: 0 },
             });
             return;
         }
@@ -739,10 +764,11 @@ export default function ProjectFlow({ auth, projectId }) {
         const rect = flowSurfaceRef.current.getBoundingClientRect();
         const rawX = event.clientX - rect.left;
         const rawY = event.clientY - rect.top;
-        const width = Math.min(HINT_CARD_WIDTH, Math.max(280, rect.width - 32));
-        const x = Math.min(Math.max(rawX + 20, 16), Math.max(16, rect.width - width - 16));
-        const y = Math.min(Math.max(rawY + 18, 16), Math.max(16, rect.height - HINT_CARD_MAX_HEIGHT - 16));
-        const arrowLeft = Math.min(Math.max(rawX - x, 28), width - 28);
+        const safeZoom = viewport.zoom || 1;
+        const anchorFlow = {
+            x: (rawX - viewport.x) / safeZoom,
+            y: (rawY - viewport.y) / safeZoom,
+        };
 
         setActiveHint((current) => {
             if (current?.id === node.id) {
@@ -752,12 +778,48 @@ export default function ProjectFlow({ auth, projectId }) {
             return {
                 id: node.id,
                 detail,
-                position: { x, y },
-                width,
-                arrowLeft,
+                anchorFlow,
             };
         });
     };
+
+    const positionedHint = useMemo(() => {
+        if (!activeHint?.detail) {
+            return null;
+        }
+        if (surfaceSize.width <= 0 || surfaceSize.height <= 0) {
+            return null;
+        }
+
+        const margin = 12;
+        const width = Math.min(HINT_CARD_WIDTH, Math.max(280, surfaceSize.width - margin * 2));
+        const maxHeight = Math.min(HINT_CARD_MAX_HEIGHT, Math.max(280, surfaceSize.height - margin * 2));
+        const zoom = viewport.zoom || 1;
+        const anchorX = (activeHint.anchorFlow?.x || 0) * zoom + viewport.x;
+        const anchorY = (activeHint.anchorFlow?.y || 0) * zoom + viewport.y;
+
+        const rightSpace = surfaceSize.width - anchorX;
+        const leftSpace = anchorX;
+        const placeLeft = rightSpace < width + 20 && leftSpace > rightSpace;
+
+        let x = placeLeft ? anchorX - width - 18 : anchorX + 18;
+        x = Math.min(Math.max(x, margin), Math.max(margin, surfaceSize.width - width - margin));
+
+        let y = anchorY + 18;
+        if (y + maxHeight > surfaceSize.height - margin) {
+            y = anchorY - maxHeight - 18;
+        }
+        y = Math.min(Math.max(y, margin), Math.max(margin, surfaceSize.height - maxHeight - margin));
+
+        const arrowLeft = Math.min(Math.max(anchorX - x, 28), width - 28);
+
+        return {
+            ...activeHint,
+            position: { x, y },
+            width,
+            arrowLeft,
+        };
+    }, [activeHint, surfaceSize, viewport]);
 
     const legendItems = [
         { label: 'Đang chạy', tone: colorByStatus('doing') },
@@ -787,6 +849,8 @@ export default function ProjectFlow({ auth, projectId }) {
                             maxZoom={100}
                             onNodeClick={openHintAtCursor}
                             onPaneClick={() => setActiveHint(null)}
+                            onMove={(_, nextViewport) => setViewport(nextViewport)}
+                            onInit={(instance) => setViewport(instance.getViewport())}
                             defaultEdgeOptions={{ animated: false, type: 'smoothstep' }}
                             zoomOnDoubleClick={false}
                             proOptions={{ hideAttribution: true }}
@@ -832,9 +896,9 @@ export default function ProjectFlow({ auth, projectId }) {
                         </div>
                     </div>
 
-                    {activeHint && flow?.project && (
+                    {positionedHint && flow?.project && (
                         <div className="pointer-events-none absolute inset-0 z-20">
-                            <FloatingDetailHint hint={activeHint} onClose={() => setActiveHint(null)} />
+                            <FloatingDetailHint hint={positionedHint} onClose={() => setActiveHint(null)} />
                         </div>
                     )}
 
