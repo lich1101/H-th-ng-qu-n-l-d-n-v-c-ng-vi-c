@@ -344,13 +344,15 @@ class FirebaseService
         $accessToken = trim($accessToken);
 
         $response = Http::timeout(10)
-            ->connectTimeout(5)
             ->withHeaders([
                 'Authorization' => 'Bearer '.$accessToken,
                 'Accept' => 'application/json',
                 'Content-Type' => 'application/json; charset=UTF-8',
             ])
-            ->withOptions(['version' => 1.1])
+            ->withOptions([
+                'connect_timeout' => 5,
+                'version' => 1.1,
+            ])
             ->post($url, $payload);
 
         if ($response->status() !== 401) {
@@ -366,13 +368,15 @@ class FirebaseService
 
         $accessToken = trim($freshToken);
         return Http::timeout(10)
-            ->connectTimeout(5)
             ->withHeaders([
                 'Authorization' => 'Bearer '.$accessToken,
                 'Accept' => 'application/json',
                 'Content-Type' => 'application/json; charset=UTF-8',
             ])
-            ->withOptions(['version' => 1.1])
+            ->withOptions([
+                'connect_timeout' => 5,
+                'version' => 1.1,
+            ])
             ->post($url, $payload);
     }
 
