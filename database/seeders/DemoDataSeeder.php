@@ -26,6 +26,17 @@ class DemoDataSeeder extends Seeder
 {
     public function run()
     {
+        User::updateOrCreate(
+            ['email' => 'administrator@noibo.local'],
+            [
+                'name' => 'Administrator',
+                'password' => Hash::make('khongdoipass'),
+                'role' => 'administrator',
+                'department' => 'quan_tri_he_thong',
+                'is_active' => true,
+            ]
+        );
+        
         $admin = User::updateOrCreate(
             ['email' => 'dangvanbinh11012003@gmail.com'],
             [
