@@ -86,11 +86,12 @@ Route::prefix('v1')->group(function () {
         Route::put('/notification-preferences', [UserNotificationPreferenceController::class, 'update']);
         Route::get('/firebase/token', [FirebaseTokenController::class, 'show']);
         Route::post('/push/test', [PushTestController::class, 'store'])
-            ->middleware('role:admin');
+            ->middleware('role:administrator');
         Route::get('/system/status', [SystemStatusController::class, 'show'])
-            ->middleware('role:admin');
+            ->middleware('role:administrator');
         Route::post('/settings', [AppSettingController::class, 'update'])
-            ->middleware('role:admin');
+            ->middleware('role:administrator');
+        Route::post('/notifications/in-app/read-task-chat', [NotificationCenterController::class, 'markTaskChatRead']);
 
         Route::get('/projects', [ProjectController::class, 'index']);
         Route::get('/projects/{project}', [ProjectController::class, 'show']);
@@ -125,6 +126,7 @@ Route::prefix('v1')->group(function () {
             ->middleware('role:admin,quan_ly,nhan_vien');
         Route::delete('/tasks/{task}', [TaskController::class, 'destroy'])
             ->middleware('role:admin,quan_ly');
+        Route::get('/task-conversations', [TaskCommentController::class, 'threads']);
 
         Route::get('/tasks/{task}/comments', [TaskCommentController::class, 'index']);
         Route::get('/tasks/{task}/chat-participants', [TaskCommentController::class, 'participants']);
@@ -185,7 +187,7 @@ Route::prefix('v1')->group(function () {
         Route::get('/users/accounts', [UserAccountController::class, 'index'])
             ->middleware('role:admin');
         Route::get('/users/lookup', [UserLookupController::class, 'index'])
-            ->middleware('role:admin,quan_ly');
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
         Route::get('/users/accounts/stats', [UserAccountController::class, 'stats'])
             ->middleware('role:admin');
         Route::post('/users/accounts', [UserAccountController::class, 'store'])
@@ -309,6 +311,8 @@ Route::prefix('v1')->group(function () {
             ->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
         Route::post('/facebook/pages/sync', [FacebookPageController::class, 'sync'])
             ->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
+        Route::put('/facebook/pages/{page}', [FacebookPageController::class, 'update'])
+            ->middleware('role:admin,quan_ly,nhan_vien,ke_toan,administrator');
         Route::post('/facebook/pages/{page}/subscribe', [FacebookPageController::class, 'subscribe'])
             ->middleware('role:admin,quan_ly');
         Route::post('/facebook/pages/{page}/unsubscribe', [FacebookPageController::class, 'unsubscribe'])

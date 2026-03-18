@@ -3,6 +3,8 @@ import axios from 'axios';
 import { Link } from '@inertiajs/inertia-react';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
+import Dropdown from '@/Components/Dropdown';
+import AppIcon from '@/Components/AppIcon';
 import { useToast } from '@/Contexts/ToastContext';
 
 const badgeStyle = (hex) => ({
@@ -11,14 +13,29 @@ const badgeStyle = (hex) => ({
     backgroundColor: `${hex}20`,
 });
 
+function LabeledField({ label, required = false, hint = '', className = '', children }) {
+    return (
+        <div className={className}>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-text-subtle">
+                {label}{required ? ' *' : ''}
+            </label>
+            {children}
+            {hint ? <p className="mt-1 text-xs text-text-muted">{hint}</p> : null}
+        </div>
+    );
+}
+
 export default function CRM(props) {
     const toast = useToast();
     const userRole = props?.auth?.user?.role || '';
     const userId = props?.auth?.user?.id;
+    const isManager = userRole === 'quan_ly';
+    const isAdminRole = userRole === 'admin';
     const canManageClients = ['admin', 'quan_ly', 'nhan_vien'].includes(userRole);
     const canManagePayments = ['admin', 'ke_toan'].includes(userRole);
     const canDeleteClients = userRole === 'admin';
     const canDeletePayments = userRole === 'admin';
+    const canAssignClientOwner = ['admin', 'quan_ly'].includes(userRole);
 
     const [activeTab, setActiveTab] = useState('clients');
     const [clients, setClients] = useState([]);
@@ -79,10 +96,10 @@ export default function CRM(props) {
     };
 
     const fetchStaffUsers = async () => {
-        if (userRole !== 'admin') return;
+        if (!canManageClients) return;
         try {
-            const res = await axios.get('/api/v1/users/accounts', { params: { per_page: 200 } });
-            setStaffUsers(res.data?.users?.data || []);
+            const res = await axios.get('/api/v1/users/lookup');
+            setStaffUsers(res.data?.data || []);
         } catch {
             setStaffUsers([]);
         }
@@ -367,6 +384,27 @@ export default function CRM(props) {
         ];
     }, [payments, paymentMeta, userRole]);
 
+    const visibleDepartmentOptions = useMemo(() => {
+        if (isAdminRole) {
+            return departments;
+        }
+        if (!isManager) {
+            return [];
+        }
+
+        const scopedDepartmentIds = new Set(
+            staffUsers
+                .map((user) => Number(user.department_id || 0))
+                .filter((id) => id > 0)
+        );
+
+        return departments.filter((dept) => {
+            const deptId = Number(dept.id || 0);
+            const managerId = Number(dept.manager_id || 0);
+            return (deptId > 0 && scopedDepartmentIds.has(deptId)) || managerId === Number(userId || 0);
+        });
+    }, [departments, staffUsers, isAdminRole, isManager, userId]);
+
     return (
         <PageContainer
             auth={props.auth}
@@ -455,6 +493,13 @@ export default function CRM(props) {
                                 </button>
                             </div>
                         </div>
+                        <div className="mb-4 rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3 text-xs text-slate-600">
+                            {isAdminRole
+                                ? 'Bạn đang ở chế độ xem toàn bộ khách hàng. Có thể phân công khách cho mọi phòng ban và nhân sự.'
+                                : isManager
+                                    ? 'Bạn chỉ nhìn thấy khách hàng của nhân sự trong phòng ban mình quản lý, và có thể giao lại trong phạm vi phòng ban đó.'
+                                    : 'Bạn chỉ nhìn thấy khách hàng do chính mình phụ trách. Khi thêm khách mới, hệ thống sẽ tự gắn khách cho bạn.'}
+                        </div>
                         <div className="overflow-x-auto">
                             <table className="min-w-full text-sm">
                                 <thead>
@@ -519,35 +564,65 @@ export default function CRM(props) {
                                                     <div className="text-[11px] text-text-subtle">Page: {client.facebook_page.name}</div>
                                                 )}
                                             </td>
-                                            <td className="py-2 text-right space-x-2">
-                                                {client.has_purchased || Number(client.total_revenue || 0) > 0 ? (
-                                                    <Link
-                                                        href={route('crm.flow', client.id)}
-                                                        className="text-xs font-semibold text-emerald-600"
-                                                    >
-                                                        Luồng
-                                                    </Link>
-                                                ) : (
-                                                    <span className="text-xs text-text-subtle">Chưa kích hoạt</span>
-                                                )}
-                                                {canManageClients && (
-                                                    <button
-                                                        type="button"
-                                                        className="text-xs font-semibold text-primary"
-                                                        onClick={() => editClient(client)}
-                                                    >
-                                                        Sửa
-                                                    </button>
-                                                )}
-                                                {canDeleteClients && (
-                                                    <button
-                                                        type="button"
-                                                        className="text-xs font-semibold text-rose-500"
-                                                        onClick={() => deleteClient(client.id)}
-                                                    >
-                                                        Xóa
-                                                    </button>
-                                                )}
+                                            <td className="py-2 text-right">
+                                                <div className="flex items-center justify-end gap-2">
+                                                    {client.has_purchased || Number(client.total_revenue || 0) > 0 ? (
+                                                        <Link
+                                                            href={route('crm.flow', client.id)}
+                                                            className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700"
+                                                        >
+                                                            Xem luồng
+                                                        </Link>
+                                                    ) : (
+                                                        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-500">
+                                                            Lead mới
+                                                        </span>
+                                                    )}
+                                                    {(canManageClients || canDeleteClients) && (
+                                                        <Dropdown>
+                                                            <Dropdown.Trigger>
+                                                                <button
+                                                                    type="button"
+                                                                    className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+                                                                    aria-label="Thao tác khách hàng"
+                                                                >
+                                                                    <AppIcon name="ellipsis-horizontal" className="h-4 w-4" />
+                                                                </button>
+                                                            </Dropdown.Trigger>
+                                                            <Dropdown.Content align="right" width="48" contentClasses="py-2 bg-white rounded-2xl border border-slate-200 shadow-xl">
+                                                                {canManageClients && (
+                                                                    <button
+                                                                        type="button"
+                                                                        className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                                                                        onClick={() => editClient(client)}
+                                                                    >
+                                                                        <AppIcon name="pencil" className="h-4 w-4 text-slate-400" />
+                                                                        Sửa khách hàng
+                                                                    </button>
+                                                                )}
+                                                                {client.has_purchased || Number(client.total_revenue || 0) > 0 ? (
+                                                                    <Link
+                                                                        href={route('crm.flow', client.id)}
+                                                                        className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                                                                    >
+                                                                        <AppIcon name="eye" className="h-4 w-4 text-slate-400" />
+                                                                        Mở luồng khách hàng
+                                                                    </Link>
+                                                                ) : null}
+                                                                {canDeleteClients && (
+                                                                    <button
+                                                                        type="button"
+                                                                        className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-rose-600 hover:bg-rose-50"
+                                                                        onClick={() => deleteClient(client.id)}
+                                                                    >
+                                                                        <AppIcon name="trash" className="h-4 w-4" />
+                                                                        Xóa khách hàng
+                                                                    </button>
+                                                                )}
+                                                            </Dropdown.Content>
+                                                        </Dropdown>
+                                                    )}
+                                                </div>
                                             </td>
                                         </tr>
                                     ))}
@@ -571,99 +646,170 @@ export default function CRM(props) {
                         size="lg"
                     >
                         <form className="space-y-3 text-sm" onSubmit={submitClient}>
-                            <input
-                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                                placeholder="Tên khách hàng *"
-                                value={clientForm.name}
-                                onChange={(e) => setClientForm((s) => ({ ...s, name: e.target.value }))}
-                            />
-                            <input
-                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                                placeholder="Công ty"
-                                value={clientForm.company}
-                                onChange={(e) => setClientForm((s) => ({ ...s, company: e.target.value }))}
-                            />
-                            <div className="grid grid-cols-2 gap-2">
-                                <input
-                                    className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                                    placeholder="Email"
-                                    value={clientForm.email}
-                                    onChange={(e) => setClientForm((s) => ({ ...s, email: e.target.value }))}
-                                />
-                                <input
-                                    className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                                    placeholder="Số điện thoại"
-                                    value={clientForm.phone}
-                                    onChange={(e) => setClientForm((s) => ({ ...s, phone: e.target.value }))}
-                                />
+                            <div className="rounded-2xl border border-slate-200/80 bg-slate-50 p-4">
+                                <div className="mb-3">
+                                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-subtle">
+                                        Thông tin khách hàng
+                                    </p>
+                                    <p className="mt-1 text-xs text-text-muted">
+                                        Điền thông tin cơ bản để CRM dễ lọc, tìm kiếm và lên hợp đồng.
+                                    </p>
+                                </div>
+                                <div className="grid gap-3 md:grid-cols-2">
+                                    <LabeledField label="Tên khách hàng" required className="md:col-span-2">
+                                        <input
+                                            className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
+                                            placeholder="Ví dụ: Nguyễn Văn A"
+                                            value={clientForm.name}
+                                            onChange={(e) => setClientForm((s) => ({ ...s, name: e.target.value }))}
+                                        />
+                                    </LabeledField>
+                                    <LabeledField label="Công ty">
+                                        <input
+                                            className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
+                                            placeholder="Ví dụ: Công ty ABC"
+                                            value={clientForm.company}
+                                            onChange={(e) => setClientForm((s) => ({ ...s, company: e.target.value }))}
+                                        />
+                                    </LabeledField>
+                                    <LabeledField label="Trạng thái lead">
+                                        <select
+                                            className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
+                                            value={clientForm.lead_type_id}
+                                            onChange={(e) => setClientForm((s) => ({ ...s, lead_type_id: e.target.value }))}
+                                        >
+                                            {leadTypes.map((type) => (
+                                                <option key={type.id} value={type.id}>
+                                                    {type.name}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </LabeledField>
+                                    <LabeledField label="Email">
+                                        <input
+                                            className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
+                                            placeholder="contact@company.com"
+                                            value={clientForm.email}
+                                            onChange={(e) => setClientForm((s) => ({ ...s, email: e.target.value }))}
+                                        />
+                                    </LabeledField>
+                                    <LabeledField label="Số điện thoại">
+                                        <input
+                                            className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
+                                            placeholder="09xxxxxxxx"
+                                            value={clientForm.phone}
+                                            onChange={(e) => setClientForm((s) => ({ ...s, phone: e.target.value }))}
+                                        />
+                                    </LabeledField>
+                                </div>
                             </div>
-                            <select
-                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                                value={clientForm.lead_type_id}
-                                onChange={(e) => setClientForm((s) => ({ ...s, lead_type_id: e.target.value }))}
-                            >
-                                {leadTypes.map((type) => (
-                                    <option key={type.id} value={type.id}>
-                                        {type.name}
-                                    </option>
-                                ))}
-                            </select>
-                            {userRole === 'admin' && (
-                                <div className="grid grid-cols-2 gap-2">
-                                    <select
-                                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                                        value={clientForm.assigned_department_id}
-                                        onChange={(e) => setClientForm((s) => ({ ...s, assigned_department_id: e.target.value }))}
-                                    >
-                                        <option value="">Chọn phòng ban phụ trách</option>
-                                        {departments.map((dept) => (
-                                            <option key={dept.id} value={dept.id}>
-                                                {dept.name}
+                            {canAssignClientOwner && (
+                                <div className="rounded-2xl border border-slate-200/80 bg-slate-50 p-4 space-y-3">
+                                    <div>
+                                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-subtle">
+                                            Phân công khách hàng
+                                        </p>
+                                        <p className="mt-1 text-xs text-text-muted">
+                                            {isAdminRole
+                                                ? 'Admin có thể giao khách cho bất kỳ nhân sự nào. Nếu chỉ chọn phòng ban mà chưa chọn người, khách vẫn nằm trong phòng ban đó.'
+                                                : 'Trưởng phòng có thể giao khách cho chính mình hoặc nhân sự thuộc phòng ban mình quản lý.'}
+                                        </p>
+                                    </div>
+                                    <div className={`grid gap-2 ${isAdminRole ? 'md:grid-cols-2' : ''}`}>
+                                        {isAdminRole && (
+                                            <select
+                                                className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
+                                                value={clientForm.assigned_department_id}
+                                                onChange={(e) => setClientForm((s) => ({ ...s, assigned_department_id: e.target.value }))}
+                                            >
+                                                <option value="">Chọn phòng ban phụ trách</option>
+                                                {visibleDepartmentOptions.map((dept) => (
+                                                    <option key={dept.id} value={dept.id}>
+                                                        {dept.name}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        )}
+                                        <select
+                                            className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
+                                            value={clientForm.assigned_staff_id}
+                                            onChange={(e) => {
+                                                const selectedUser = staffUsers.find((user) => String(user.id) === e.target.value);
+                                                setClientForm((s) => ({
+                                                    ...s,
+                                                    assigned_staff_id: e.target.value,
+                                                    assigned_department_id: selectedUser?.department_id
+                                                        ? String(selectedUser.department_id)
+                                                        : (isAdminRole ? s.assigned_department_id : ''),
+                                                }));
+                                            }}
+                                        >
+                                            <option value="">
+                                                {isAdminRole ? 'Chọn nhân sự phụ trách (tuỳ chọn)' : 'Chọn nhân sự phụ trách'}
                                             </option>
-                                        ))}
-                                    </select>
-                                    <select
-                                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                                        value={clientForm.assigned_staff_id}
-                                        onChange={(e) => setClientForm((s) => ({ ...s, assigned_staff_id: e.target.value }))}
-                                    >
-                                        <option value="">Chọn nhân sự phụ trách</option>
-                                        {staffUsers.map((user) => (
-                                            <option key={user.id} value={user.id}>
-                                                {user.name} • {user.role}
-                                            </option>
-                                        ))}
-                                    </select>
+                                            {staffUsers.map((user) => (
+                                                <option key={user.id} value={user.id}>
+                                                    {user.name}
+                                                    {user.department_id
+                                                        ? ` • ${visibleDepartmentOptions.find((dept) => Number(dept.id) === Number(user.department_id))?.name || user.role}`
+                                                        : ` • ${user.role}`}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
                                 </div>
                             )}
-                            <div className="grid grid-cols-2 gap-2">
-                                <input
-                                    className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                                    placeholder="Nguồn khách hàng tiềm năng"
-                                    value={clientForm.lead_source}
-                                    onChange={(e) => setClientForm((s) => ({ ...s, lead_source: e.target.value }))}
-                                />
-                                <input
-                                    className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                                    placeholder="Kênh"
-                                    value={clientForm.lead_channel}
-                                    onChange={(e) => setClientForm((s) => ({ ...s, lead_channel: e.target.value }))}
-                                />
+                            {!canAssignClientOwner && (
+                                <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-xs text-emerald-700">
+                                    Khách hàng này sẽ tự gắn cho bạn phụ trách. Khi có lead mới hệ thống cũng sẽ dùng người phụ trách này để gửi thông báo.
+                                </div>
+                            )}
+                            <div className="rounded-2xl border border-slate-200/80 bg-white p-4">
+                                <div className="mb-3">
+                                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-subtle">
+                                        Nguồn & nội dung lead
+                                    </p>
+                                    <p className="mt-1 text-xs text-text-muted">
+                                        Ghi rõ nguồn khách, kênh tiếp cận và nội dung trao đổi để đội sales bám theo dễ hơn.
+                                    </p>
+                                </div>
+                                <div className="grid gap-3 md:grid-cols-2">
+                                    <LabeledField label="Nguồn khách hàng">
+                                        <input
+                                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                            placeholder="Ví dụ: Website, fanpage, referral"
+                                            value={clientForm.lead_source}
+                                            onChange={(e) => setClientForm((s) => ({ ...s, lead_source: e.target.value }))}
+                                        />
+                                    </LabeledField>
+                                    <LabeledField label="Kênh tiếp cận">
+                                        <input
+                                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                            placeholder="Ví dụ: Form, inbox, gọi điện"
+                                            value={clientForm.lead_channel}
+                                            onChange={(e) => setClientForm((s) => ({ ...s, lead_channel: e.target.value }))}
+                                        />
+                                    </LabeledField>
+                                    <LabeledField label="Nội dung khách để lại" className="md:col-span-2">
+                                        <textarea
+                                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                            rows={3}
+                                            placeholder="Ví dụ: Khách cần báo giá gói dịch vụ SEO tổng thể"
+                                            value={clientForm.lead_message}
+                                            onChange={(e) => setClientForm((s) => ({ ...s, lead_message: e.target.value }))}
+                                        />
+                                    </LabeledField>
+                                    <LabeledField label="Ghi chú nội bộ" className="md:col-span-2">
+                                        <textarea
+                                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                            rows={3}
+                                            placeholder="Ghi chú riêng cho đội phụ trách"
+                                            value={clientForm.notes}
+                                            onChange={(e) => setClientForm((s) => ({ ...s, notes: e.target.value }))}
+                                        />
+                                    </LabeledField>
+                                </div>
                             </div>
-                            <textarea
-                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                                rows={3}
-                                placeholder="Tin nhắn/ghi chú khách hàng tiềm năng"
-                                value={clientForm.lead_message}
-                                onChange={(e) => setClientForm((s) => ({ ...s, lead_message: e.target.value }))}
-                            />
-                            <textarea
-                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                                rows={3}
-                                placeholder="Ghi chú nội bộ"
-                                value={clientForm.notes}
-                                onChange={(e) => setClientForm((s) => ({ ...s, notes: e.target.value }))}
-                            />
                             {!canManageClients && (
                                 <p className="text-xs text-text-muted">
                                     Chỉ Admin/Quản lý/Nhân sự được quản lý khách hàng.
@@ -749,24 +895,43 @@ export default function CRM(props) {
                                                     {payment.status}
                                                 </span>
                                             </td>
-                                            <td className="py-2 text-right space-x-2">
-                                                {canManagePayments && (
-                                                    <button
-                                                        type="button"
-                                                        className="text-xs font-semibold text-primary"
-                                                        onClick={() => editPayment(payment)}
-                                                    >
-                                                        Sửa
-                                                    </button>
-                                                )}
-                                                {canDeletePayments && (
-                                                    <button
-                                                        type="button"
-                                                        className="text-xs font-semibold text-rose-500"
-                                                        onClick={() => deletePayment(payment.id)}
-                                                    >
-                                                        Xóa
-                                                    </button>
+                                            <td className="py-2 text-right">
+                                                {(canManagePayments || canDeletePayments) ? (
+                                                    <Dropdown>
+                                                        <Dropdown.Trigger>
+                                                            <button
+                                                                type="button"
+                                                                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+                                                                aria-label="Thao tác thanh toán"
+                                                            >
+                                                                <AppIcon name="ellipsis-horizontal" className="h-4 w-4" />
+                                                            </button>
+                                                        </Dropdown.Trigger>
+                                                        <Dropdown.Content align="right" width="48" contentClasses="py-2 bg-white rounded-2xl border border-slate-200 shadow-xl">
+                                                            {canManagePayments && (
+                                                                <button
+                                                                    type="button"
+                                                                    className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                                                                    onClick={() => editPayment(payment)}
+                                                                >
+                                                                    <AppIcon name="pencil" className="h-4 w-4 text-slate-400" />
+                                                                    Sửa thanh toán
+                                                                </button>
+                                                            )}
+                                                            {canDeletePayments && (
+                                                                <button
+                                                                    type="button"
+                                                                    className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-rose-600 hover:bg-rose-50"
+                                                                    onClick={() => deletePayment(payment.id)}
+                                                                >
+                                                                    <AppIcon name="trash" className="h-4 w-4" />
+                                                                    Xóa thanh toán
+                                                                </button>
+                                                            )}
+                                                        </Dropdown.Content>
+                                                    </Dropdown>
+                                                ) : (
+                                                    <span className="text-xs text-text-muted">—</span>
                                                 )}
                                             </td>
                                         </tr>

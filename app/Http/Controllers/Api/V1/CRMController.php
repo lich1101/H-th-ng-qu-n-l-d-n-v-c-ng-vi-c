@@ -8,6 +8,7 @@ use App\Models\Client;
 use App\Models\CustomerPayment;
 use App\Models\LeadType;
 use App\Models\User;
+use App\Services\LeadNotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -77,29 +78,17 @@ class CRMController extends Controller
         }
 
         $user = $request->user();
-        if ($user->role !== 'admin') {
-            $validated['assigned_department_id'] = $validated['assigned_department_id'] ?? $user->department_id;
-            $validated['assigned_staff_id'] = $validated['assigned_staff_id'] ?? $user->id;
-        }
-
-        if ($user->role === 'admin') {
-            if (empty($validated['assigned_staff_id']) && ! empty($validated['sales_owner_id'])) {
-                $validated['assigned_staff_id'] = $validated['sales_owner_id'];
-            }
-
-            if (empty($validated['assigned_department_id']) && ! empty($validated['assigned_staff_id'])) {
-                $deptId = User::query()->where('id', $validated['assigned_staff_id'])->value('department_id');
-                if ($deptId) {
-                    $validated['assigned_department_id'] = $deptId;
-                }
-            }
-        }
+        $validated = $this->resolveClientAssignment($user, $validated);
 
         if (! empty($validated['assigned_staff_id']) && empty($validated['sales_owner_id'])) {
             $validated['sales_owner_id'] = $validated['assigned_staff_id'];
         }
 
         $client = Client::create($validated);
+        app(LeadNotificationService::class)->notifyNewLead(
+            $client,
+            $this->resolveSourceLabel($client)
+        );
 
         return response()->json($client->load(['leadType', 'salesOwner', 'revenueTier', 'assignedDepartment', 'assignedStaff']), 201);
     }
@@ -124,22 +113,7 @@ class CRMController extends Controller
             'lead_message' => ['nullable', 'string'],
         ]);
         $user = $request->user();
-        if ($user->role !== 'admin') {
-            unset($validated['assigned_department_id'], $validated['assigned_staff_id']);
-        }
-
-        if ($user->role === 'admin') {
-            if (empty($validated['assigned_staff_id']) && ! empty($validated['sales_owner_id'])) {
-                $validated['assigned_staff_id'] = $validated['sales_owner_id'];
-            }
-
-            if (empty($validated['assigned_department_id']) && ! empty($validated['assigned_staff_id'])) {
-                $deptId = User::query()->where('id', $validated['assigned_staff_id'])->value('department_id');
-                if ($deptId) {
-                    $validated['assigned_department_id'] = $deptId;
-                }
-            }
-        }
+        $validated = $this->resolveClientAssignment($user, $validated, $client);
 
         if (! empty($validated['assigned_staff_id']) && empty($validated['sales_owner_id'])) {
             $validated['sales_owner_id'] = $validated['assigned_staff_id'];
@@ -228,5 +202,79 @@ class CRMController extends Controller
         }
 
         return (int) $client->assigned_staff_id === (int) $user->id;
+    }
+
+    private function resolveClientAssignment(User $user, array $validated, ?Client $client = null): array
+    {
+        $requestedStaffId = ! empty($validated['assigned_staff_id'])
+            ? (int) $validated['assigned_staff_id']
+            : null;
+        $requestedDepartmentId = ! empty($validated['assigned_department_id'])
+            ? (int) $validated['assigned_department_id']
+            : null;
+
+        if (! empty($validated['sales_owner_id']) && ! $requestedStaffId) {
+            $requestedStaffId = (int) $validated['sales_owner_id'];
+        }
+
+        if ($user->role === 'nhan_vien') {
+            $validated['assigned_staff_id'] = (int) $user->id;
+            $validated['assigned_department_id'] = (int) ($user->department_id ?: $requestedDepartmentId);
+            return $validated;
+        }
+
+        if ($user->role === 'quan_ly') {
+            $allowedUsers = User::query()
+                ->where('is_active', true)
+                ->where(function ($builder) use ($user) {
+                    $builder->whereIn('department_id', $user->managedDepartments()->pluck('id'))
+                        ->orWhere('id', $user->id);
+                })
+                ->get(['id', 'department_id'])
+                ->keyBy('id');
+
+            if (! $requestedStaffId || ! $allowedUsers->has($requestedStaffId)) {
+                $existingStaffId = $client ? (int) $client->assigned_staff_id : null;
+                if ($existingStaffId && $allowedUsers->has($existingStaffId)) {
+                    $requestedStaffId = $existingStaffId;
+                } else {
+                    $requestedStaffId = (int) $user->id;
+                }
+            }
+
+            $validated['assigned_staff_id'] = $requestedStaffId;
+            $resolvedDepartmentId = optional($allowedUsers->get($requestedStaffId))->department_id;
+            $validated['assigned_department_id'] = $resolvedDepartmentId ? (int) $resolvedDepartmentId : null;
+            return $validated;
+        }
+
+        if ($user->role === 'admin') {
+            if ($requestedStaffId) {
+                $validated['assigned_staff_id'] = $requestedStaffId;
+                $validated['assigned_department_id'] = (int) User::query()
+                    ->where('id', $requestedStaffId)
+                    ->value('department_id');
+            } else {
+                $validated['assigned_staff_id'] = null;
+                $validated['assigned_department_id'] = $requestedDepartmentId;
+            }
+
+            return $validated;
+        }
+
+        return $validated;
+    }
+
+    private function resolveSourceLabel(Client $client): string
+    {
+        if ((string) $client->lead_source === 'manual_entry' || ! $client->lead_source) {
+            return 'Nhân viên thêm thủ công';
+        }
+
+        if ($client->lead_source && $client->lead_channel) {
+            return (string) $client->lead_source.' / '.$client->lead_channel;
+        }
+
+        return (string) ($client->lead_source ?: 'CRM');
     }
 }

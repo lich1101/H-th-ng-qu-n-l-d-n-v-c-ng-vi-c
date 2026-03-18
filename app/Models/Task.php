@@ -61,6 +61,11 @@ class Task extends Model
         return $this->hasMany(TaskComment::class);
     }
 
+    public function latestComment()
+    {
+        return $this->hasOne(TaskComment::class)->latestOfMany();
+    }
+
     public function attachments()
     {
         return $this->hasMany(TaskAttachment::class);

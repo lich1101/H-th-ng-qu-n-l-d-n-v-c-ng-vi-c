@@ -3,6 +3,7 @@ import axios from 'axios';
 import { Head, Link } from '@inertiajs/inertia-react';
 import ReactFlow, { Background, Controls } from 'reactflow';
 import 'reactflow/dist/style.css';
+import AppIcon from '@/Components/AppIcon';
 import Authenticated from '@/Layouts/Authenticated';
 import { useToast } from '@/Contexts/ToastContext';
 
@@ -57,6 +58,8 @@ const ROLE_LABELS = {
 const NODE_WIDTH = 276;
 const HINT_CARD_WIDTH = 360;
 const HINT_CARD_MAX_HEIGHT = 440;
+const LEGEND_CARD_WIDTH = 210;
+const LEGEND_CARD_HEIGHT = 148;
 const LEVEL_Y = {
     contract: 0,
     project: 360,
@@ -262,14 +265,9 @@ function FloatingDetailHint({ hint, onClose }) {
 
     return (
         <div
-            className="pointer-events-auto absolute z-20"
-            style={{ left: hint.position.x, top: hint.position.y, width: hint.width }}
+            className="pointer-events-auto"
+            style={{ width: hint.width, maxHeight: hint.maxHeight }}
         >
-            <div
-                className="absolute -top-2 h-4 w-4 rotate-45 rounded-[4px] border-l border-t border-slate-200/80 bg-white"
-                style={{ left: hint.arrowLeft - 8 }}
-            />
-
             <div className="relative overflow-hidden rounded-[28px] border border-slate-200/90 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.18)]">
                 <div
                     className="absolute inset-x-0 top-0 h-24"
@@ -308,13 +306,7 @@ function FloatingDetailHint({ hint, onClose }) {
                                 className="rounded-full border border-slate-200 bg-white p-1 text-slate-400 transition hover:text-slate-600"
                                 onClick={onClose}
                             >
-                                <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor" aria-hidden="true">
-                                    <path
-                                        fillRule="evenodd"
-                                        d="M4.22 4.22a.75.75 0 0 1 1.06 0L10 8.94l4.72-4.72a.75.75 0 1 1 1.06 1.06L11.06 10l4.72 4.72a.75.75 0 1 1-1.06 1.06L10 11.06l-4.72 4.72a.75.75 0 0 1-1.06-1.06L8.94 10 4.22 5.28a.75.75 0 0 1 0-1.06Z"
-                                        clipRule="evenodd"
-                                    />
-                                </svg>
+                                <AppIcon name="x-mark" className="h-4 w-4" strokeWidth={2.1} />
                             </button>
                         </div>
                     </div>
@@ -335,7 +327,10 @@ function FloatingDetailHint({ hint, onClose }) {
 
                     <div className="space-y-3">
                         <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Ghi chú nhanh</div>
-                        <div className="max-h-[220px] overflow-y-auto pr-1">
+                        <div
+                            className="overflow-y-auto pr-1"
+                            style={{ maxHeight: Math.max(128, (hint.maxHeight || HINT_CARD_MAX_HEIGHT) - 230) }}
+                        >
                             <DetailList rows={rows} />
                         </div>
                     </div>
@@ -360,6 +355,30 @@ function FloatingDetailHint({ hint, onClose }) {
                         )}
                     </div>
                 </div>
+            </div>
+        </div>
+    );
+}
+
+function FlowLegendCard({ items, width }) {
+    return (
+        <div
+            className="pointer-events-auto rounded-2xl border border-slate-200/80 bg-white/94 px-4 py-3 shadow-[0_14px_34px_rgba(15,23,42,0.14)] backdrop-blur"
+            style={{ width }}
+        >
+            <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+                Chú thích màu
+            </div>
+            <div className="mt-2 space-y-1.5">
+                {items.map((item) => (
+                    <div key={item.label} className="flex items-center gap-2 text-xs text-slate-700">
+                        <span
+                            className="h-2.5 w-2.5 rounded-full"
+                            style={{ backgroundColor: item.tone }}
+                        />
+                        <span>{item.label}</span>
+                    </div>
+                ))}
             </div>
         </div>
     );
@@ -783,7 +802,7 @@ export default function ProjectFlow({ auth, projectId }) {
         });
     };
 
-    const positionedHint = useMemo(() => {
+    const canvasHint = useMemo(() => {
         if (!activeHint?.detail) {
             return null;
         }
@@ -792,34 +811,61 @@ export default function ProjectFlow({ auth, projectId }) {
         }
 
         const margin = 12;
-        const width = Math.min(HINT_CARD_WIDTH, Math.max(280, surfaceSize.width - margin * 2));
-        const maxHeight = Math.min(HINT_CARD_MAX_HEIGHT, Math.max(280, surfaceSize.height - margin * 2));
         const zoom = viewport.zoom || 1;
+        const width = Math.min(HINT_CARD_WIDTH, Math.max(280, (surfaceSize.width - margin * 2) / zoom));
+        const maxHeight = Math.min(HINT_CARD_MAX_HEIGHT, Math.max(280, (surfaceSize.height - margin * 2) / zoom));
+        const screenWidth = width * zoom;
+        const screenHeight = maxHeight * zoom;
         const anchorX = (activeHint.anchorFlow?.x || 0) * zoom + viewport.x;
         const anchorY = (activeHint.anchorFlow?.y || 0) * zoom + viewport.y;
 
         const rightSpace = surfaceSize.width - anchorX;
         const leftSpace = anchorX;
-        const placeLeft = rightSpace < width + 20 && leftSpace > rightSpace;
+        const placeLeft = rightSpace < screenWidth + 20 && leftSpace > rightSpace;
 
-        let x = placeLeft ? anchorX - width - 18 : anchorX + 18;
-        x = Math.min(Math.max(x, margin), Math.max(margin, surfaceSize.width - width - margin));
+        let screenX = placeLeft ? anchorX - screenWidth - 18 : anchorX + 18;
+        screenX = Math.min(Math.max(screenX, margin), Math.max(margin, surfaceSize.width - screenWidth - margin));
 
-        let y = anchorY + 18;
-        if (y + maxHeight > surfaceSize.height - margin) {
-            y = anchorY - maxHeight - 18;
+        let screenY = anchorY + 18;
+        if (screenY + screenHeight > surfaceSize.height - margin) {
+            screenY = anchorY - screenHeight - 18;
         }
-        y = Math.min(Math.max(y, margin), Math.max(margin, surfaceSize.height - maxHeight - margin));
-
-        const arrowLeft = Math.min(Math.max(anchorX - x, 28), width - 28);
+        screenY = Math.min(Math.max(screenY, margin), Math.max(margin, surfaceSize.height - screenHeight - margin));
 
         return {
             ...activeHint,
-            position: { x, y },
+            position: {
+                x: (screenX - viewport.x) / zoom,
+                y: (screenY - viewport.y) / zoom,
+            },
             width,
-            arrowLeft,
+            maxHeight,
         };
     }, [activeHint, surfaceSize, viewport]);
+
+    const canvasLegend = useMemo(() => {
+        if (!flow?.project) {
+            return null;
+        }
+        if (surfaceSize.width <= 0 || surfaceSize.height <= 0) {
+            return null;
+        }
+
+        const zoom = viewport.zoom || 1;
+        const margin = 16;
+        const width = Math.min(LEGEND_CARD_WIDTH, Math.max(176, (surfaceSize.width - margin * 2) / zoom));
+        const height = Math.min(LEGEND_CARD_HEIGHT, Math.max(120, (surfaceSize.height - margin * 2) / zoom));
+        const screenX = Math.max(margin, surfaceSize.width - width * zoom - margin);
+        const screenY = Math.max(margin, surfaceSize.height - height * zoom - margin);
+
+        return {
+            position: {
+                x: (screenX - viewport.x) / zoom,
+                y: (screenY - viewport.y) / zoom,
+            },
+            width,
+        };
+    }, [flow?.project, surfaceSize, viewport]);
 
     const legendItems = [
         { label: 'Đang chạy', tone: colorByStatus('doing') },
@@ -896,29 +942,31 @@ export default function ProjectFlow({ auth, projectId }) {
                         </div>
                     </div>
 
-                    {positionedHint && flow?.project && (
-                        <div className="pointer-events-none absolute inset-0 z-20">
-                            <FloatingDetailHint hint={positionedHint} onClose={() => setActiveHint(null)} />
-                        </div>
-                    )}
-
-                    {flow?.project && (
-                        <div className="pointer-events-none absolute bottom-4 right-4 z-20">
-                            <div className="pointer-events-auto rounded-2xl border border-slate-200/80 bg-white/94 px-4 py-3 shadow-[0_14px_34px_rgba(15,23,42,0.14)] backdrop-blur">
-                                <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
-                                    Chú thích màu
-                                </div>
-                                <div className="mt-2 space-y-1.5">
-                                    {legendItems.map((item) => (
-                                        <div key={item.label} className="flex items-center gap-2 text-xs text-slate-700">
-                                            <span
-                                                className="h-2.5 w-2.5 rounded-full"
-                                                style={{ backgroundColor: item.tone }}
-                                            />
-                                            <span>{item.label}</span>
-                                        </div>
-                                    ))}
-                                </div>
+                    {flow?.project && (canvasHint || canvasLegend) && (
+                        <div className="pointer-events-none absolute inset-0 z-20 overflow-hidden">
+                            <div
+                                className="absolute left-0 top-0"
+                                style={{
+                                    transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom || 1})`,
+                                    transformOrigin: '0 0',
+                                }}
+                            >
+                                {canvasHint && (
+                                    <div
+                                        className="absolute"
+                                        style={{ left: canvasHint.position.x, top: canvasHint.position.y }}
+                                    >
+                                        <FloatingDetailHint hint={canvasHint} onClose={() => setActiveHint(null)} />
+                                    </div>
+                                )}
+                                {canvasLegend && (
+                                    <div
+                                        className="absolute"
+                                        style={{ left: canvasLegend.position.x, top: canvasLegend.position.y }}
+                                    >
+                                        <FlowLegendCard items={legendItems} width={canvasLegend.width} />
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}

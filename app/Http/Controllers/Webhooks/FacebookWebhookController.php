@@ -8,7 +8,7 @@ use App\Models\FacebookMessage;
 use App\Models\FacebookPage;
 use App\Models\LeadType;
 use App\Models\User;
-use App\Services\NotificationService;
+use App\Services\LeadNotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
@@ -47,10 +47,10 @@ class FacebookWebhookController extends Controller
                 continue;
             }
 
-            $page = FacebookPage::query()->where('page_id', $pageId)->first();
-            if (! $page) {
-                continue;
-            }
+                $page = FacebookPage::query()->with('assignedStaff')->where('page_id', $pageId)->first();
+                if (! $page) {
+                    continue;
+                }
 
             foreach (($entry['messaging'] ?? []) as $event) {
                 $message = $event['message'] ?? null;
@@ -76,34 +76,31 @@ class FacebookWebhookController extends Controller
                     $profile = $this->fetchProfile($senderId, $page->getRawOriginal('access_token'));
                     $existingByPhone = $this->findClientByPhone($primaryPhone);
                     if (! $existingByPhone) {
+                        $assignedStaffId = $page->assigned_staff_id ? (int) $page->assigned_staff_id : null;
+                        $assignedDepartmentId = null;
+                        if ($assignedStaffId) {
+                            $assignedDepartmentId = User::query()
+                                ->where('id', $assignedStaffId)
+                                ->value('department_id');
+                        }
+
                         $client = Client::create([
                             'name' => $profile['name'] ?? "Facebook User {$senderId}",
                             'phone' => $primaryPhone,
                             'lead_type_id' => $leadTypeId,
                             'lead_source' => 'page_message',
-                            'lead_channel' => 'facebook',
+                            'lead_channel' => $page->name,
                             'lead_message' => $text,
                             'facebook_psid' => $senderId,
                             'facebook_page_id' => $pageId,
                             'notes' => $text,
+                            'assigned_department_id' => $assignedDepartmentId,
+                            'assigned_staff_id' => $assignedStaffId,
                         ]);
-
-                        $adminIds = User::query()
-                            ->where('role', 'admin')
-                            ->pluck('id')
-                            ->all();
-                        if (! empty($adminIds)) {
-                            app(NotificationService::class)->notifyUsers(
-                                $adminIds,
-                                'Khách hàng mới từ Facebook',
-                                'Page: '.$page->name,
-                                [
-                                    'type' => 'facebook_lead',
-                                    'client_id' => $client->id,
-                                    'facebook_page_id' => $page->id,
-                                ]
-                            );
-                        }
+                        app(LeadNotificationService::class)->notifyNewLead(
+                            $client,
+                            'Page Facebook: '.$page->name
+                        );
                     } else {
                         $client = $existingByPhone;
                         $shouldUpdateName = empty($client->name)

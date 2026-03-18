@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\Project;
+use App\Models\ContractItem;
 use App\Models\ServiceBacklinkItem;
 use App\Models\ServiceAuditItem;
 use App\Models\ServiceContentItem;
@@ -252,18 +253,18 @@ class ReportController extends Controller
     {
         $approved = Contract::query()->where('approval_status', 'approved');
 
-        $totalRevenue = (float) $approved->sum('value');
-        $contractsTotal = (int) $approved->count();
-        $totalPaid = (float) ContractPayment::query()
+        $lifetimeRevenue = (float) (clone $approved)->sum('value');
+        $lifetimeContractsTotal = (int) (clone $approved)->count();
+        $lifetimePaid = (float) ContractPayment::query()
             ->join('contracts', 'contract_payments.contract_id', '=', 'contracts.id')
             ->where('contracts.approval_status', 'approved')
             ->sum('contract_payments.amount');
-        $totalCosts = (float) ContractCost::query()
+        $lifetimeCosts = (float) ContractCost::query()
             ->join('contracts', 'contract_costs.contract_id', '=', 'contracts.id')
             ->where('contracts.approval_status', 'approved')
             ->sum('contract_costs.amount');
-        $totalDebt = max(0, $totalRevenue - $totalPaid);
-        $netRevenue = $totalRevenue - $totalCosts;
+        $lifetimeDebt = max(0, $lifetimeRevenue - $lifetimePaid);
+        $lifetimeNetRevenue = $lifetimeRevenue - $lifetimeCosts;
 
         $monthlyRows = Contract::query()
             ->where('approval_status', 'approved')
@@ -305,15 +306,44 @@ class ReportController extends Controller
         $toInput = $request->query('to');
         $targetRevenue = (float) $request->query('target_revenue', 0);
 
+        $contractDateExpr = "DATE(COALESCE(contracts.signed_at, contracts.approved_at, contracts.created_at))";
+        $earliestContractDate = Contract::query()
+            ->where('approval_status', 'approved')
+            ->selectRaw("MIN($contractDateExpr) as aggregate_date")
+            ->value('aggregate_date');
+        $latestContractDate = Contract::query()
+            ->where('approval_status', 'approved')
+            ->selectRaw("MAX($contractDateExpr) as aggregate_date")
+            ->value('aggregate_date');
+        $latestPaymentDate = ContractPayment::query()
+            ->join('contracts', 'contract_payments.contract_id', '=', 'contracts.id')
+            ->where('contracts.approval_status', 'approved')
+            ->whereNotNull('contract_payments.paid_at')
+            ->max('contract_payments.paid_at');
+
+        $availableStart = $earliestContractDate
+            ? Carbon::parse($earliestContractDate)
+            : now()->startOfMonth();
+        $availableEndCandidate = collect([$latestContractDate, $latestPaymentDate])
+            ->filter()
+            ->map(function ($value) {
+                return Carbon::parse($value);
+            })
+            ->sortBy(function (Carbon $value) {
+                return $value->timestamp;
+            })
+            ->last();
+        $availableEnd = $availableEndCandidate ?: now();
+
         try {
-            $start = $fromInput ? Carbon::parse($fromInput) : now()->startOfMonth();
+            $start = $fromInput ? Carbon::parse($fromInput) : $availableStart->copy();
         } catch (\Throwable $e) {
-            $start = now()->startOfMonth();
+            $start = $availableStart->copy();
         }
         try {
-            $end = $toInput ? Carbon::parse($toInput) : now();
+            $end = $toInput ? Carbon::parse($toInput) : $availableEnd->copy();
         } catch (\Throwable $e) {
-            $end = now();
+            $end = $availableEnd->copy();
         }
 
         $start = $start->startOfDay();
@@ -325,7 +355,12 @@ class ReportController extends Controller
         $startDate = $start->toDateString();
         $endDate = $end->toDateString();
 
-        $contractDateExpr = "DATE(COALESCE(contracts.signed_at, contracts.approved_at, contracts.created_at))";
+        $periodApproved = Contract::query()
+            ->where('approval_status', 'approved')
+            ->whereBetween(DB::raw($contractDateExpr), [$startDate, $endDate]);
+        $periodContractIds = (clone $periodApproved)->pluck('contracts.id');
+        $periodRevenueTotal = (float) (clone $periodApproved)->sum('contracts.value');
+        $periodContractsTotal = (int) (clone $periodApproved)->count();
 
         $dailyRevenueRows = Contract::query()
             ->where('approval_status', 'approved')
@@ -467,19 +502,110 @@ class ReportController extends Controller
             $cursor->addDay();
         }
 
+        $periodCostsTotal = 0.0;
+        if ($periodContractIds->isNotEmpty()) {
+            $periodCostsTotal = (float) ContractCost::query()
+                ->whereIn('contract_id', $periodContractIds)
+                ->sum('amount');
+        }
+        $periodPaidTotal = (float) collect($paymentsAllMap)->sum();
+        $periodDebtTotal = max(0, $periodRevenueTotal - $cumCollected);
+
+        $productRows = ContractItem::query()
+            ->join('contracts', 'contract_items.contract_id', '=', 'contracts.id')
+            ->leftJoin('products', 'contract_items.product_id', '=', 'products.id')
+            ->where('contracts.approval_status', 'approved')
+            ->whereBetween(DB::raw($contractDateExpr), [$startDate, $endDate])
+            ->selectRaw('COALESCE(products.name, contract_items.product_name, ?) as product_name, SUM(contract_items.total_price) as revenue', ['Chưa gắn sản phẩm'])
+            ->groupBy('product_name')
+            ->orderByDesc('revenue')
+            ->get()
+            ->map(function ($item) {
+                return [
+                    'label' => (string) $item->product_name,
+                    'value' => round((float) $item->revenue, 2),
+                ];
+            })
+            ->values();
+
+        $productCoveredRevenue = (float) $productRows->sum('value');
+        $unmappedProductRevenue = round(max(0, $periodRevenueTotal - $productCoveredRevenue), 2);
+        if ($unmappedProductRevenue > 0) {
+            $productRows->push([
+                'label' => 'Chưa gắn sản phẩm',
+                'value' => $unmappedProductRevenue,
+            ]);
+        }
+
+        $paymentSubquery = ContractPayment::query()
+            ->selectRaw('contract_id, SUM(amount) as payments_total')
+            ->groupBy('contract_id');
+        $costSubquery = ContractCost::query()
+            ->selectRaw('contract_id, SUM(amount) as costs_total')
+            ->groupBy('contract_id');
+
+        $staffRevenueRows = Contract::query()
+            ->join('clients', 'contracts.client_id', '=', 'clients.id')
+            ->leftJoinSub($paymentSubquery, 'payment_totals', function ($join) {
+                $join->on('payment_totals.contract_id', '=', 'contracts.id');
+            })
+            ->leftJoinSub($costSubquery, 'cost_totals', function ($join) {
+                $join->on('cost_totals.contract_id', '=', 'contracts.id');
+            })
+            ->where('contracts.approval_status', 'approved')
+            ->whereBetween(DB::raw($contractDateExpr), [$startDate, $endDate])
+            ->selectRaw('COALESCE(contracts.collector_user_id, contracts.created_by, clients.assigned_staff_id) as staff_id')
+            ->selectRaw('SUM(contracts.value) as signed_revenue')
+            ->selectRaw('SUM(GREATEST(contracts.value - COALESCE(cost_totals.costs_total, 0), 0)) as settled_revenue')
+            ->selectRaw('SUM(COALESCE(payment_totals.payments_total, 0)) as collected_revenue')
+            ->selectRaw('COUNT(contracts.id) as contracts_count')
+            ->groupBy('staff_id')
+            ->orderByDesc('signed_revenue')
+            ->get();
+        $staffMap = User::query()
+            ->whereIn('id', $staffRevenueRows->pluck('staff_id')->filter()->all())
+            ->get()
+            ->keyBy('id');
+        $staffBreakdown = $staffRevenueRows
+            ->map(function ($item) use ($staffMap) {
+                $staff = $item->staff_id ? $staffMap->get((int) $item->staff_id) : null;
+                return [
+                    'staff_id' => $item->staff_id ? (int) $item->staff_id : null,
+                    'staff_name' => $staff ? ($staff->name ?: 'Chưa gán nhân viên') : 'Chưa gán nhân viên',
+                    'avatar_url' => $staff ? $staff->avatar_url : null,
+                    'signed_revenue' => round((float) $item->signed_revenue, 2),
+                    'settled_revenue' => round((float) $item->settled_revenue, 2),
+                    'collected_revenue' => round((float) $item->collected_revenue, 2),
+                    'contracts_count' => (int) $item->contracts_count,
+                ];
+            })
+            ->values();
+
         return response()->json([
-            'total_revenue' => round($totalRevenue, 2),
-            'total_paid' => round($totalPaid, 2),
-            'total_debt' => round($totalDebt, 2),
-            'total_costs' => round($totalCosts, 2),
-            'net_revenue' => round($netRevenue, 2),
-            'contracts_total' => $contractsTotal,
+            'total_revenue' => round($lifetimeRevenue, 2),
+            'total_paid' => round($lifetimePaid, 2),
+            'total_debt' => round($lifetimeDebt, 2),
+            'total_costs' => round($lifetimeCosts, 2),
+            'net_revenue' => round($lifetimeNetRevenue, 2),
+            'contracts_total' => $lifetimeContractsTotal,
+            'period_totals' => [
+                'revenue' => round($periodRevenueTotal, 2),
+                'paid' => round($periodPaidTotal, 2),
+                'debt' => round($periodDebtTotal, 2),
+                'costs' => round($periodCostsTotal, 2),
+                'net_revenue' => round($periodRevenueTotal - $periodCostsTotal, 2),
+                'contracts_total' => $periodContractsTotal,
+            ],
             'monthly' => $monthlyRows,
             'top_customers' => $topCustomers,
+            'product_breakdown' => $productRows,
+            'staff_breakdown' => $staffBreakdown,
             'daily_rows' => $rows,
             'period' => [
                 'from' => $startDate,
                 'to' => $endDate,
+                'available_from' => $availableStart->toDateString(),
+                'available_to' => $availableEnd->toDateString(),
             ],
         ]);
     }

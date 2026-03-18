@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
+import Dropdown from '@/Components/Dropdown';
+import AppIcon from '@/Components/AppIcon';
 import { useToast } from '@/Contexts/ToastContext';
 
 const STATUS_OPTIONS = [
@@ -20,28 +22,79 @@ const APPROVAL_LABELS = {
 };
 
 const approvalLabel = (value) => APPROVAL_LABELS[value] || APPROVAL_LABELS.pending;
+const formatCurrency = (value) => Number(value || 0).toLocaleString('vi-VN');
+const formatDateDisplay = (value) => (value ? new Date(value).toLocaleDateString('vi-VN') : '—');
+const statusBadgeClass = (value) => ({
+    active: 'bg-emerald-100 text-emerald-700',
+    signed: 'bg-sky-100 text-sky-700',
+    success: 'bg-emerald-100 text-emerald-700',
+    expired: 'bg-rose-100 text-rose-700',
+    cancelled: 'bg-rose-100 text-rose-700',
+    draft: 'bg-slate-100 text-slate-600',
+}[value] || 'bg-slate-100 text-slate-600');
+const approvalBadgeClass = (value) => ({
+    approved: 'bg-emerald-100 text-emerald-700',
+    rejected: 'bg-rose-100 text-rose-700',
+    pending: 'bg-amber-100 text-amber-700',
+}[value] || 'bg-amber-100 text-amber-700');
+
+function LabeledField({ label, required = false, hint = '', className = '', children }) {
+    return (
+        <div className={className}>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-text-subtle">
+                {label}{required ? ' *' : ''}
+            </label>
+            {children}
+            {hint ? <p className="mt-1 text-xs text-text-muted">{hint}</p> : null}
+        </div>
+    );
+}
+
+function DetailMetric({ label, value, tone = 'slate' }) {
+    const toneClass = {
+        slate: 'bg-slate-50',
+        emerald: 'bg-emerald-50',
+        amber: 'bg-amber-50',
+        sky: 'bg-sky-50',
+    };
+
+    return (
+        <div className={`rounded-2xl border border-slate-200/80 px-4 py-3 ${toneClass[tone] || toneClass.slate}`}>
+            <div className="text-xs uppercase tracking-[0.16em] text-text-subtle">{label}</div>
+            <div className="mt-1 text-sm font-semibold text-slate-900">{value}</div>
+        </div>
+    );
+}
 
 export default function Contracts(props) {
     const toast = useToast();
     const userRole = props?.auth?.user?.role || '';
+    const currentUserId = Number(props?.auth?.user?.id || 0) || null;
     const canManage = ['admin', 'quan_ly', 'nhan_vien', 'ke_toan'].includes(userRole);
     const canDelete = userRole === 'admin';
     const canApprove = ['admin', 'ke_toan'].includes(userRole);
     const canFinance = ['admin', 'ke_toan'].includes(userRole);
+    const isEmployee = userRole === 'nhan_vien';
+    const canChooseCollector = ['admin', 'quan_ly', 'ke_toan'].includes(userRole);
 
     const [contracts, setContracts] = useState([]);
     const [clients, setClients] = useState([]);
     const [projects, setProjects] = useState([]);
     const [products, setProducts] = useState([]);
+    const [collectors, setCollectors] = useState([]);
     const [loading, setLoading] = useState(false);
     const [editingId, setEditingId] = useState(null);
     const [showForm, setShowForm] = useState(false);
+    const [showDetail, setShowDetail] = useState(false);
+    const [detailLoading, setDetailLoading] = useState(false);
+    const [detailContract, setDetailContract] = useState(null);
     const [filters, setFilters] = useState({ search: '', status: '', client_id: '', approval_status: '' });
     const [form, setForm] = useState({
         code: '',
         title: '',
         client_id: '',
         project_id: '',
+        collector_user_id: currentUserId ? String(currentUserId) : '',
         value: '',
         payment_times: '1',
         status: 'draft',
@@ -100,6 +153,15 @@ export default function Contracts(props) {
         }
     };
 
+    const fetchCollectors = async () => {
+        try {
+            const res = await axios.get('/api/v1/users/lookup');
+            setCollectors(res.data?.data || []);
+        } catch {
+            setCollectors([]);
+        }
+    };
+
     const fetchContracts = async (nextFilters = filters) => {
         setLoading(true);
         try {
@@ -125,6 +187,7 @@ export default function Contracts(props) {
         fetchClients();
         fetchProjects();
         fetchProducts();
+        fetchCollectors();
         fetchContracts();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -149,6 +212,7 @@ export default function Contracts(props) {
             title: '',
             client_id: '',
             project_id: '',
+            collector_user_id: currentUserId ? String(currentUserId) : '',
             value: '',
             payment_times: '1',
             status: 'draft',
@@ -172,6 +236,7 @@ export default function Contracts(props) {
                 title: detail.title || '',
                 client_id: detail.client_id || '',
                 project_id: detail.project_id || '',
+                collector_user_id: detail.collector_user_id ? String(detail.collector_user_id) : (currentUserId ? String(currentUserId) : ''),
                 value: detail.value ?? '',
                 payment_times: String(detail.payment_times ?? 1),
                 status: detail.status || 'draft',
@@ -206,6 +271,26 @@ export default function Contracts(props) {
     const closeForm = () => {
         setShowForm(false);
         resetForm();
+    };
+
+    const openDetail = async (contractId) => {
+        setDetailLoading(true);
+        setShowDetail(true);
+        try {
+            const res = await axios.get(`/api/v1/contracts/${contractId}`);
+            setDetailContract(res.data || null);
+        } catch (e) {
+            setDetailContract(null);
+            toast.error(e?.response?.data?.message || 'Không tải được chi tiết hợp đồng.');
+        } finally {
+            setDetailLoading(false);
+        }
+    };
+
+    const closeDetail = () => {
+        setShowDetail(false);
+        setDetailContract(null);
+        setDetailLoading(false);
     };
 
     const addItem = () => {
@@ -399,7 +484,7 @@ export default function Contracts(props) {
         }
     };
 
-    const save = async () => {
+    const save = async (createAndApprove = false) => {
         if (!canManage) return toast.error('Bạn không có quyền quản lý hợp đồng.');
         if (!form.title?.trim() || !form.client_id) {
             return toast.error('Vui lòng chọn khách hàng và nhập tiêu đề hợp đồng.');
@@ -409,6 +494,7 @@ export default function Contracts(props) {
             title: form.title,
             client_id: Number(form.client_id),
             project_id: form.project_id ? Number(form.project_id) : null,
+            collector_user_id: form.collector_user_id ? Number(form.collector_user_id) : null,
             value: items.length ? itemsTotal : form.value === '' ? null : Number(form.value),
             payment_times: form.payment_times === '' ? 1 : Number(form.payment_times),
             status: form.status,
@@ -430,8 +516,11 @@ export default function Contracts(props) {
                 await axios.put(`/api/v1/contracts/${editingId}`, payload);
                 toast.success('Đã cập nhật hợp đồng.');
             } else {
-                await axios.post('/api/v1/contracts', payload);
-                toast.success('Đã tạo hợp đồng.');
+                await axios.post('/api/v1/contracts', {
+                    ...payload,
+                    create_and_approve: createAndApprove,
+                });
+                toast.success(createAndApprove ? 'Đã tạo và duyệt hợp đồng.' : 'Đã tạo hợp đồng.');
             }
             closeForm();
             await fetchContracts();
@@ -510,12 +599,22 @@ export default function Contracts(props) {
                         <button type="button" className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700" onClick={applyFilters}>Lọc</button>
                     </div>
                 </div>
+                <div className="mb-4 rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3 text-xs text-slate-600">
+                    {isEmployee
+                        ? 'Bạn chỉ được tạo hợp đồng cho khách hàng mình phụ trách và hệ thống sẽ tự gắn bạn là nhân viên thu theo hợp đồng.'
+                        : userRole === 'quan_ly'
+                            ? 'Trưởng phòng được thao tác trong phạm vi phòng ban, đồng thời có thể chọn nhân viên trong phòng làm người thu hợp đồng.'
+                            : canApprove
+                                ? 'Admin và Kế toán có thể theo dõi toàn bộ hợp đồng, duyệt nhanh và quản lý công nợ trên cùng một màn.'
+                                : 'Theo dõi hợp đồng theo phạm vi khách hàng bạn đang quản lý.'}
+                </div>
                 <div className="overflow-x-auto">
                     <table className="min-w-full text-sm">
                             <thead>
                                 <tr className="text-left text-xs uppercase tracking-wider text-text-subtle border-b border-slate-200">
                                     <th className="py-2">Hợp đồng</th>
                                     <th className="py-2">Khách hàng</th>
+                                    <th className="py-2">Nhân viên thu</th>
                                     <th className="py-2">Giá trị</th>
                                     <th className="py-2">Đã thu</th>
                                     <th className="py-2">Công nợ</th>
@@ -530,43 +629,97 @@ export default function Contracts(props) {
                                 {contracts.map((c) => (
                                     <tr key={c.id} className="border-b border-slate-100">
                                         <td className="py-2">
-                                            <div className="font-medium text-slate-900">{c.code || `CTR-${c.id}`}</div>
-                                            <div className="text-xs text-text-muted">{c.title}</div>
+                                            <button
+                                                type="button"
+                                                className="group text-left"
+                                                onClick={() => openDetail(c.id)}
+                                            >
+                                                <div className="font-medium text-slate-900 group-hover:text-primary">
+                                                    {c.code || `CTR-${c.id}`}
+                                                </div>
+                                                <div className="text-xs text-text-muted">{c.title}</div>
+                                                <div className="mt-1 text-[11px] font-medium text-primary/80">
+                                                    Xem chi tiết hợp đồng
+                                                </div>
+                                            </button>
                                         </td>
                                         <td className="py-2 text-slate-700">{c.client?.name || '—'}</td>
-                                        <td className="py-2 text-slate-700">{Number(c.value || 0).toLocaleString('vi-VN')}</td>
-                                        <td className="py-2 text-slate-700">{Number(c.payments_total || 0).toLocaleString('vi-VN')}</td>
-                                        <td className="py-2 text-slate-700">{Number(c.debt_outstanding || 0).toLocaleString('vi-VN')}</td>
-                                        <td className="py-2 text-slate-700">{Number(c.costs_total || 0).toLocaleString('vi-VN')}</td>
+                                        <td className="py-2 text-slate-700">{c.collector?.name || '—'}</td>
+                                        <td className="py-2 text-slate-700">{formatCurrency(c.value || 0)}</td>
+                                        <td className="py-2 text-slate-700">{formatCurrency(c.payments_total || 0)}</td>
+                                        <td className="py-2 text-slate-700">{formatCurrency(c.debt_outstanding || 0)}</td>
+                                        <td className="py-2 text-slate-700">{formatCurrency(c.costs_total || 0)}</td>
                                         <td className="py-2 text-slate-700">
                                             {(c.payments_count ?? 0)}/{c.payment_times ?? 1}
                                         </td>
                                         <td className="py-2">
-                                            <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">
+                                            <span className={`rounded-full px-2 py-1 text-xs font-semibold ${statusBadgeClass(c.status)}`}>
                                                 {STATUS_OPTIONS.find((s) => s.value === c.status)?.label || c.status}
                                             </span>
                                         </td>
                                         <td className="py-2">
-                                            <span className={`rounded-full px-2 py-1 text-xs font-semibold ${c.approval_status === 'approved' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                                            <span className={`rounded-full px-2 py-1 text-xs font-semibold ${approvalBadgeClass(c.approval_status)}`}>
                                                 {approvalLabel(c.approval_status)}
                                             </span>
                                         </td>
-                                        <td className="py-2 text-right space-x-2">
-                                            {canManage && (
-                                                <button type="button" className="text-xs font-semibold text-primary" onClick={() => startEdit(c)}>Sửa</button>
-                                            )}
-                                            {canApprove && c.approval_status !== 'approved' && (
-                                                <button type="button" className="text-xs font-semibold text-emerald-600" onClick={() => approve(c)}>Duyệt</button>
-                                            )}
-                                            {canDelete && (
-                                                <button type="button" className="text-xs font-semibold text-rose-500" onClick={() => remove(c.id)}>Xóa</button>
-                                            )}
+                                        <td className="py-2 text-right">
+                                            <Dropdown>
+                                                <Dropdown.Trigger>
+                                                    <button
+                                                        type="button"
+                                                        className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+                                                        aria-label="Thao tác hợp đồng"
+                                                    >
+                                                        <AppIcon name="ellipsis-horizontal" className="h-4 w-4" />
+                                                    </button>
+                                                </Dropdown.Trigger>
+                                                <Dropdown.Content align="right" width="48" contentClasses="py-2 bg-white rounded-2xl border border-slate-200 shadow-xl">
+                                                    <button
+                                                        type="button"
+                                                        className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                                                        onClick={() => openDetail(c.id)}
+                                                    >
+                                                        <AppIcon name="eye" className="h-4 w-4 text-slate-400" />
+                                                        Xem chi tiết
+                                                    </button>
+                                                    {canManage && (
+                                                        <button
+                                                            type="button"
+                                                            className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                                                            onClick={() => startEdit(c)}
+                                                        >
+                                                            <AppIcon name="pencil" className="h-4 w-4 text-slate-400" />
+                                                            Sửa hợp đồng
+                                                        </button>
+                                                    )}
+                                                    {canApprove && c.approval_status !== 'approved' && (
+                                                        <button
+                                                            type="button"
+                                                            className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-emerald-700 hover:bg-emerald-50"
+                                                            onClick={() => approve(c)}
+                                                        >
+                                                            <AppIcon name="check" className="h-4 w-4" />
+                                                            Duyệt hợp đồng
+                                                        </button>
+                                                    )}
+                                                    {canDelete && (
+                                                        <button
+                                                            type="button"
+                                                            className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-rose-600 hover:bg-rose-50"
+                                                            onClick={() => remove(c.id)}
+                                                        >
+                                                            <AppIcon name="trash" className="h-4 w-4" />
+                                                            Xóa hợp đồng
+                                                        </button>
+                                                    )}
+                                                </Dropdown.Content>
+                                            </Dropdown>
                                         </td>
                                     </tr>
                                 ))}
                                 {contracts.length === 0 && (
                                     <tr>
-                                        <td className="py-6 text-center text-sm text-text-muted" colSpan={10}>
+                                        <td className="py-6 text-center text-sm text-text-muted" colSpan={11}>
                                             Chưa có hợp đồng nào.
                                         </td>
                                     </tr>
@@ -583,32 +736,150 @@ export default function Contracts(props) {
                 description="Thiết lập thông tin hợp đồng và danh sách sản phẩm."
                 size="xl"
             >
-                <div className="space-y-3 text-sm">
-                    <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" placeholder="Mã hợp đồng (tự sinh nếu để trống)" value={form.code} onChange={(e) => setForm((s) => ({ ...s, code: e.target.value }))} />
-                    <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" placeholder="Tiêu đề hợp đồng *" value={form.title} onChange={(e) => setForm((s) => ({ ...s, title: e.target.value }))} />
-                    <select className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" value={form.client_id} onChange={(e) => setForm((s) => ({ ...s, client_id: e.target.value }))}>
-                        <option value="">Chọn khách hàng *</option>
-                        {clients.map((c) => <option key={c.id} value={c.id}>{c.name} {c.company ? `(${c.company})` : ''}</option>)}
-                    </select>
-                    <select className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" value={form.project_id} onChange={(e) => setForm((s) => ({ ...s, project_id: e.target.value }))}>
-                        <option value="">Liên kết dự án (tuỳ chọn)</option>
-                        {projects.map((p) => <option key={p.id} value={p.id}>{p.code} - {p.name}</option>)}
-                    </select>
-                    <div className="grid grid-cols-3 gap-2">
-                        <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" type="number" placeholder="Giá trị (VNĐ)" value={items.length ? itemsTotal : form.value} onChange={(e) => setForm((s) => ({ ...s, value: e.target.value }))} disabled={items.length > 0} />
-                        <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" type="number" placeholder="Số lần thanh toán" value={form.payment_times} onChange={(e) => setForm((s) => ({ ...s, payment_times: e.target.value }))} />
-                        <select className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" value={form.status} onChange={(e) => setForm((s) => ({ ...s, status: e.target.value }))}>
-                            {STATUS_OPTIONS.map((opt) => (
-                                <option key={opt.value} value={opt.value}>{opt.label}</option>
-                            ))}
-                        </select>
+                <div className="space-y-4 text-sm">
+                    <div className="rounded-2xl border border-slate-200/80 bg-slate-50 p-4">
+                        <div className="grid gap-4 md:grid-cols-2">
+                            <LabeledField
+                                label="Mã hợp đồng"
+                                hint="Có thể để trống để hệ thống tự sinh mã."
+                                className="md:col-span-2"
+                            >
+                                <input
+                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
+                                    placeholder="Ví dụ: CTR-20260318-ABCD"
+                                    value={form.code}
+                                    onChange={(e) => setForm((s) => ({ ...s, code: e.target.value }))}
+                                />
+                            </LabeledField>
+                            <LabeledField label="Tiêu đề hợp đồng" required className="md:col-span-2">
+                                <input
+                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
+                                    placeholder="Ví dụ: Hợp đồng SEO Tổng Thể Q2"
+                                    value={form.title}
+                                    onChange={(e) => setForm((s) => ({ ...s, title: e.target.value }))}
+                                />
+                            </LabeledField>
+                            <LabeledField label="Khách hàng" required className="md:col-span-2">
+                                <select
+                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
+                                    value={form.client_id}
+                                    onChange={(e) => setForm((s) => ({ ...s, client_id: e.target.value }))}
+                                >
+                                    <option value="">Chọn khách hàng do bạn đang quản lý</option>
+                                    {clients.map((c) => <option key={c.id} value={c.id}>{c.name} {c.company ? `(${c.company})` : ''}</option>)}
+                                </select>
+                            </LabeledField>
+                            <LabeledField label="Liên kết dự án" className="md:col-span-2">
+                                <select
+                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
+                                    value={form.project_id}
+                                    onChange={(e) => setForm((s) => ({ ...s, project_id: e.target.value }))}
+                                >
+                                    <option value="">Chưa liên kết dự án</option>
+                                    {projects.map((p) => <option key={p.id} value={p.id}>{p.code} - {p.name}</option>)}
+                                </select>
+                            </LabeledField>
+                        </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
-                        <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" type="date" value={form.signed_at} onChange={(e) => setForm((s) => ({ ...s, signed_at: e.target.value }))} />
-                        <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" type="date" value={form.start_date} onChange={(e) => setForm((s) => ({ ...s, start_date: e.target.value }))} />
+                    <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">
+                        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                            <div>
+                                <p className="text-xs uppercase tracking-[0.16em] text-text-subtle">Nhân viên thu theo hợp đồng</p>
+                                <p className="mt-1 text-xs text-text-muted">
+                                    {isEmployee
+                                        ? 'Nhân viên tạo hợp đồng sẽ tự gắn chính mình và không thể đổi sang người khác.'
+                                        : userRole === 'quan_ly'
+                                            ? 'Trưởng phòng mặc định là chính mình nhưng có thể chọn nhân sự trong phòng để đứng tên hợp đồng.'
+                                            : canApprove
+                                                ? 'Admin/Kế toán có thể tạo hợp đồng cho mọi nhân sự và dùng thêm nút tạo & duyệt.'
+                                                : 'Chọn nhân sự thu theo hợp đồng.'}
+                                </p>
+                            </div>
+                            <select
+                                className="min-w-[260px] rounded-xl border border-slate-200/80 bg-white px-3 py-2 text-sm"
+                                value={form.collector_user_id}
+                                disabled={!canChooseCollector}
+                                onChange={(e) => setForm((s) => ({ ...s, collector_user_id: e.target.value }))}
+                            >
+                                <option value="">Chọn nhân viên thu</option>
+                                {collectors.map((collector) => (
+                                    <option key={collector.id} value={collector.id}>
+                                        {collector.name}{collector.email ? ` • ${collector.email}` : ''}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
                     </div>
-                    <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" type="date" value={form.end_date} onChange={(e) => setForm((s) => ({ ...s, end_date: e.target.value }))} />
-                    <textarea className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" rows={3} placeholder="Ghi chú" value={form.notes} onChange={(e) => setForm((s) => ({ ...s, notes: e.target.value }))} />
+                    <div className="rounded-2xl border border-slate-200/80 bg-slate-50 p-4">
+                        <div className="grid gap-4 md:grid-cols-3">
+                            <LabeledField
+                                label="Giá trị hợp đồng (VNĐ)"
+                                hint={items.length ? 'Đang được tự tính từ danh sách sản phẩm phía dưới.' : ''}
+                            >
+                                <input
+                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
+                                    type="number"
+                                    placeholder="0"
+                                    value={items.length ? itemsTotal : form.value}
+                                    onChange={(e) => setForm((s) => ({ ...s, value: e.target.value }))}
+                                    disabled={items.length > 0}
+                                />
+                            </LabeledField>
+                            <LabeledField label="Số lần thanh toán">
+                                <input
+                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
+                                    type="number"
+                                    placeholder="1"
+                                    value={form.payment_times}
+                                    onChange={(e) => setForm((s) => ({ ...s, payment_times: e.target.value }))}
+                                />
+                            </LabeledField>
+                            <LabeledField label="Trạng thái hợp đồng">
+                                <select
+                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
+                                    value={form.status}
+                                    onChange={(e) => setForm((s) => ({ ...s, status: e.target.value }))}
+                                >
+                                    {STATUS_OPTIONS.map((opt) => (
+                                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                    ))}
+                                </select>
+                            </LabeledField>
+                            <LabeledField label="Ngày ký">
+                                <input
+                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
+                                    type="date"
+                                    value={form.signed_at}
+                                    onChange={(e) => setForm((s) => ({ ...s, signed_at: e.target.value }))}
+                                />
+                            </LabeledField>
+                            <LabeledField label="Ngày bắt đầu hiệu lực">
+                                <input
+                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
+                                    type="date"
+                                    value={form.start_date}
+                                    onChange={(e) => setForm((s) => ({ ...s, start_date: e.target.value }))}
+                                />
+                            </LabeledField>
+                            <LabeledField label="Ngày kết thúc / gia hạn">
+                                <input
+                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
+                                    type="date"
+                                    value={form.end_date}
+                                    onChange={(e) => setForm((s) => ({ ...s, end_date: e.target.value }))}
+                                />
+                            </LabeledField>
+                            <LabeledField label="Ghi chú hợp đồng" className="md:col-span-3">
+                                <textarea
+                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
+                                    rows={3}
+                                    placeholder="Ghi chú thêm về hợp đồng, điều khoản hoặc thông tin nội bộ"
+                                    value={form.notes}
+                                    onChange={(e) => setForm((s) => ({ ...s, notes: e.target.value }))}
+                                />
+                            </LabeledField>
+                        </div>
+                    </div>
 
                     <div className="rounded-2xl border border-slate-200/80 bg-slate-50 p-3">
                         <div className="flex items-center justify-between mb-2">
@@ -710,12 +981,37 @@ export default function Contracts(props) {
                                             <td className="py-2">{Number(p.amount || 0).toLocaleString('vi-VN')}</td>
                                             <td className="py-2">{p.method || '—'}</td>
                                             <td className="py-2">{p.note || '—'}</td>
-                                            <td className="py-2 text-right space-x-2">
+                                            <td className="py-2 text-right">
                                                 {canFinance ? (
-                                                    <>
-                                                        <button type="button" className="text-xs text-primary" onClick={() => editPayment(p)}>Sửa</button>
-                                                        <button type="button" className="text-xs text-rose-500" onClick={() => removePayment(p.id)}>Xóa</button>
-                                                    </>
+                                                    <Dropdown>
+                                                        <Dropdown.Trigger>
+                                                            <button
+                                                                type="button"
+                                                                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+                                                                aria-label="Thao tác thanh toán hợp đồng"
+                                                            >
+                                                                <AppIcon name="ellipsis-horizontal" className="h-4 w-4" />
+                                                            </button>
+                                                        </Dropdown.Trigger>
+                                                        <Dropdown.Content align="right" width="48" contentClasses="py-2 bg-white rounded-2xl border border-slate-200 shadow-xl">
+                                                            <button
+                                                                type="button"
+                                                                className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                                                                onClick={() => editPayment(p)}
+                                                            >
+                                                                <AppIcon name="pencil" className="h-4 w-4 text-slate-400" />
+                                                                Sửa thanh toán
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-rose-600 hover:bg-rose-50"
+                                                                onClick={() => removePayment(p.id)}
+                                                            >
+                                                                <AppIcon name="trash" className="h-4 w-4" />
+                                                                Xóa thanh toán
+                                                            </button>
+                                                        </Dropdown.Content>
+                                                    </Dropdown>
                                                 ) : (
                                                     <span className="text-xs text-text-muted">—</span>
                                                 )}
@@ -764,12 +1060,37 @@ export default function Contracts(props) {
                                             <td className="py-2">{c.cost_type || '—'}</td>
                                             <td className="py-2">{Number(c.amount || 0).toLocaleString('vi-VN')}</td>
                                             <td className="py-2">{c.note || '—'}</td>
-                                            <td className="py-2 text-right space-x-2">
+                                            <td className="py-2 text-right">
                                                 {canFinance ? (
-                                                    <>
-                                                        <button type="button" className="text-xs text-primary" onClick={() => editCost(c)}>Sửa</button>
-                                                        <button type="button" className="text-xs text-rose-500" onClick={() => removeCost(c.id)}>Xóa</button>
-                                                    </>
+                                                    <Dropdown>
+                                                        <Dropdown.Trigger>
+                                                            <button
+                                                                type="button"
+                                                                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+                                                                aria-label="Thao tác chi phí hợp đồng"
+                                                            >
+                                                                <AppIcon name="ellipsis-horizontal" className="h-4 w-4" />
+                                                            </button>
+                                                        </Dropdown.Trigger>
+                                                        <Dropdown.Content align="right" width="48" contentClasses="py-2 bg-white rounded-2xl border border-slate-200 shadow-xl">
+                                                            <button
+                                                                type="button"
+                                                                className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                                                                onClick={() => editCost(c)}
+                                                            >
+                                                                <AppIcon name="pencil" className="h-4 w-4 text-slate-400" />
+                                                                Sửa chi phí
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-rose-600 hover:bg-rose-50"
+                                                                onClick={() => removeCost(c.id)}
+                                                            >
+                                                                <AppIcon name="trash" className="h-4 w-4" />
+                                                                Xóa chi phí
+                                                            </button>
+                                                        </Dropdown.Content>
+                                                    </Dropdown>
                                                 ) : (
                                                     <span className="text-xs text-text-muted">—</span>
                                                 )}
@@ -788,15 +1109,228 @@ export default function Contracts(props) {
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-3">
-                        <button type="button" className="flex-1 rounded-2xl px-3 py-2.5 bg-primary text-white text-sm font-semibold" onClick={save}>
+                    <div className="flex flex-col gap-3 md:flex-row">
+                        <button type="button" className="flex-1 rounded-2xl px-3 py-2.5 bg-primary text-white text-sm font-semibold" onClick={() => save(false)}>
                             {editingId ? 'Cập nhật hợp đồng' : 'Tạo hợp đồng'}
                         </button>
+                        {!editingId && canApprove && (
+                            <button
+                                type="button"
+                                className="flex-1 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm font-semibold text-emerald-700"
+                                onClick={() => save(true)}
+                            >
+                                Tạo và duyệt
+                            </button>
+                        )}
                         <button type="button" className="flex-1 rounded-2xl px-3 py-2.5 border border-slate-200 text-sm font-semibold" onClick={closeForm}>
                             Hủy
                         </button>
                     </div>
                 </div>
+            </Modal>
+
+            <Modal
+                open={showDetail}
+                onClose={closeDetail}
+                title={detailContract ? `Chi tiết ${detailContract.code || `CTR-${detailContract.id}`}` : 'Chi tiết hợp đồng'}
+                description="Xem nhanh toàn bộ thông tin, sản phẩm, thanh toán và chi phí của hợp đồng."
+                size="xl"
+            >
+                {detailLoading ? (
+                    <div className="py-8 text-center text-sm text-text-muted">Đang tải chi tiết hợp đồng...</div>
+                ) : detailContract ? (
+                    <div className="space-y-4 text-sm">
+                        <div className="rounded-2xl border border-slate-200/80 bg-slate-50 p-4">
+                            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                                <div>
+                                    <div className="text-xs uppercase tracking-[0.16em] text-text-subtle">Hợp đồng</div>
+                                    <h3 className="mt-1 text-xl font-semibold text-slate-900">{detailContract.title}</h3>
+                                    <p className="mt-1 text-sm text-text-muted">
+                                        Khách hàng: <span className="font-semibold text-slate-700">{detailContract.client?.name || '—'}</span>
+                                        {' • '}
+                                        Nhân viên thu: <span className="font-semibold text-slate-700">{detailContract.collector?.name || '—'}</span>
+                                    </p>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusBadgeClass(detailContract.status)}`}>
+                                        {STATUS_OPTIONS.find((item) => item.value === detailContract.status)?.label || detailContract.status}
+                                    </span>
+                                    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${approvalBadgeClass(detailContract.approval_status)}`}>
+                                        {approvalLabel(detailContract.approval_status)}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                            <DetailMetric label="Giá trị hợp đồng" value={`${formatCurrency(detailContract.value || 0)} VNĐ`} tone="sky" />
+                            <DetailMetric label="Đã thu" value={`${formatCurrency(detailContract.payments_total || 0)} VNĐ`} tone="emerald" />
+                            <DetailMetric label="Còn phải thu" value={`${formatCurrency(detailContract.debt_outstanding || 0)} VNĐ`} tone="amber" />
+                            <DetailMetric label="Chi phí đã ghi nhận" value={`${formatCurrency(detailContract.costs_total || 0)} VNĐ`} />
+                        </div>
+
+                        <div className="grid gap-4 lg:grid-cols-2">
+                            <div className="rounded-2xl border border-slate-200/80 bg-white p-4">
+                                <h4 className="text-sm font-semibold text-slate-900">Thông tin chính</h4>
+                                <div className="mt-3 space-y-2">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <span className="text-text-muted">Mã hợp đồng</span>
+                                        <span className="font-semibold text-slate-900">{detailContract.code || `CTR-${detailContract.id}`}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-3">
+                                        <span className="text-text-muted">Dự án liên kết</span>
+                                        <span className="font-semibold text-slate-900">{detailContract.project?.name || '—'}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-3">
+                                        <span className="text-text-muted">Ngày ký</span>
+                                        <span className="font-semibold text-slate-900">{formatDateDisplay(detailContract.signed_at)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-3">
+                                        <span className="text-text-muted">Ngày bắt đầu</span>
+                                        <span className="font-semibold text-slate-900">{formatDateDisplay(detailContract.start_date)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-3">
+                                        <span className="text-text-muted">Ngày kết thúc</span>
+                                        <span className="font-semibold text-slate-900">{formatDateDisplay(detailContract.end_date)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-3">
+                                        <span className="text-text-muted">Số kỳ thanh toán</span>
+                                        <span className="font-semibold text-slate-900">{detailContract.payments_count || 0}/{detailContract.payment_times || 1}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="rounded-2xl border border-slate-200/80 bg-white p-4">
+                                <h4 className="text-sm font-semibold text-slate-900">Ghi chú & phê duyệt</h4>
+                                <div className="mt-3 space-y-3">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <span className="text-text-muted">Người tạo</span>
+                                        <span className="font-semibold text-slate-900">{detailContract.creator?.name || '—'}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-3">
+                                        <span className="text-text-muted">Người duyệt</span>
+                                        <span className="font-semibold text-slate-900">{detailContract.approver?.name || '—'}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-3">
+                                        <span className="text-text-muted">Ngày duyệt</span>
+                                        <span className="font-semibold text-slate-900">{formatDateDisplay(detailContract.approved_at)}</span>
+                                    </div>
+                                    <div className="rounded-2xl bg-slate-50 px-3 py-3">
+                                        <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text-subtle">
+                                            Ghi chú hợp đồng
+                                        </div>
+                                        <div className="mt-1 text-slate-700">
+                                            {detailContract.notes || 'Chưa có ghi chú hợp đồng.'}
+                                        </div>
+                                    </div>
+                                    <div className="rounded-2xl bg-slate-50 px-3 py-3">
+                                        <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text-subtle">
+                                            Ghi chú duyệt
+                                        </div>
+                                        <div className="mt-1 text-slate-700">
+                                            {detailContract.approval_note || 'Chưa có ghi chú duyệt.'}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="rounded-2xl border border-slate-200/80 bg-white p-4">
+                            <h4 className="text-sm font-semibold text-slate-900">Sản phẩm trong hợp đồng</h4>
+                            <div className="mt-3 overflow-x-auto">
+                                <table className="min-w-full text-xs">
+                                    <thead>
+                                        <tr className="border-b border-slate-200 text-left uppercase tracking-[0.14em] text-text-subtle">
+                                            <th className="py-2">Sản phẩm</th>
+                                            <th className="py-2">Đơn vị</th>
+                                            <th className="py-2">Đơn giá</th>
+                                            <th className="py-2">Số lượng</th>
+                                            <th className="py-2">Thành tiền</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {(detailContract.items || []).map((item) => (
+                                            <tr key={item.id || `${item.product_name}-${item.quantity}`} className="border-b border-slate-100">
+                                                <td className="py-2 font-medium text-slate-900">{item.product_name || '—'}</td>
+                                                <td className="py-2">{item.unit || '—'}</td>
+                                                <td className="py-2">{formatCurrency(item.unit_price || 0)}</td>
+                                                <td className="py-2">{item.quantity || 0}</td>
+                                                <td className="py-2">{formatCurrency(item.total_price || 0)}</td>
+                                            </tr>
+                                        ))}
+                                        {(detailContract.items || []).length === 0 && (
+                                            <tr>
+                                                <td className="py-3 text-center text-text-muted" colSpan={5}>Chưa có sản phẩm nào.</td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div className="grid gap-4 lg:grid-cols-2">
+                            <div className="rounded-2xl border border-slate-200/80 bg-white p-4">
+                                <h4 className="text-sm font-semibold text-slate-900">Lịch sử thanh toán</h4>
+                                <div className="mt-3 overflow-x-auto">
+                                    <table className="min-w-full text-xs">
+                                        <thead>
+                                            <tr className="border-b border-slate-200 text-left uppercase tracking-[0.14em] text-text-subtle">
+                                                <th className="py-2">Ngày thu</th>
+                                                <th className="py-2">Số tiền</th>
+                                                <th className="py-2">Phương thức</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {(detailContract.payments || []).map((payment) => (
+                                                <tr key={payment.id} className="border-b border-slate-100">
+                                                    <td className="py-2">{formatDateDisplay(payment.paid_at)}</td>
+                                                    <td className="py-2">{formatCurrency(payment.amount || 0)}</td>
+                                                    <td className="py-2">{payment.method || '—'}</td>
+                                                </tr>
+                                            ))}
+                                            {(detailContract.payments || []).length === 0 && (
+                                                <tr>
+                                                    <td className="py-3 text-center text-text-muted" colSpan={3}>Chưa có lần thanh toán nào.</td>
+                                                </tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <div className="rounded-2xl border border-slate-200/80 bg-white p-4">
+                                <h4 className="text-sm font-semibold text-slate-900">Chi phí hợp đồng</h4>
+                                <div className="mt-3 overflow-x-auto">
+                                    <table className="min-w-full text-xs">
+                                        <thead>
+                                            <tr className="border-b border-slate-200 text-left uppercase tracking-[0.14em] text-text-subtle">
+                                                <th className="py-2">Ngày chi</th>
+                                                <th className="py-2">Loại chi phí</th>
+                                                <th className="py-2">Số tiền</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {(detailContract.costs || []).map((cost) => (
+                                                <tr key={cost.id} className="border-b border-slate-100">
+                                                    <td className="py-2">{formatDateDisplay(cost.cost_date)}</td>
+                                                    <td className="py-2">{cost.cost_type || '—'}</td>
+                                                    <td className="py-2">{formatCurrency(cost.amount || 0)}</td>
+                                                </tr>
+                                            ))}
+                                            {(detailContract.costs || []).length === 0 && (
+                                                <tr>
+                                                    <td className="py-3 text-center text-text-muted" colSpan={3}>Chưa có chi phí nào.</td>
+                                                </tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="py-8 text-center text-sm text-text-muted">Chưa có dữ liệu chi tiết.</div>
+                )}
             </Modal>
 
             <Modal

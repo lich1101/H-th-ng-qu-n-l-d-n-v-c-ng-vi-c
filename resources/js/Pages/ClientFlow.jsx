@@ -3,6 +3,7 @@ import axios from 'axios';
 import { Link } from '@inertiajs/inertia-react';
 import ReactFlow, { Background, Controls } from 'reactflow';
 import 'reactflow/dist/style.css';
+import AppIcon from '@/Components/AppIcon';
 import PageContainer from '@/Components/PageContainer';
 import { useToast } from '@/Contexts/ToastContext';
 
@@ -248,13 +249,7 @@ function FloatingDetailHint({ hint, onClose }) {
                                 className="rounded-full border border-slate-200 bg-white p-1 text-slate-400 transition hover:text-slate-600"
                                 onClick={onClose}
                             >
-                                <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor" aria-hidden="true">
-                                    <path
-                                        fillRule="evenodd"
-                                        d="M4.22 4.22a.75.75 0 0 1 1.06 0L10 8.94l4.72-4.72a.75.75 0 1 1 1.06 1.06L11.06 10l4.72 4.72a.75.75 0 1 1-1.06 1.06L10 11.06l-4.72 4.72a.75.75 0 0 1-1.06-1.06L8.94 10 4.22 5.28a.75.75 0 0 1 0-1.06Z"
-                                        clipRule="evenodd"
-                                    />
-                                </svg>
+                                <AppIcon name="x-mark" className="h-4 w-4" strokeWidth={2.1} />
                             </button>
                         </div>
                     </div>

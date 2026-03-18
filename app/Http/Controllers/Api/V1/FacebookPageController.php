@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\FacebookPage;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -14,6 +15,7 @@ class FacebookPageController extends Controller
     public function index(Request $request): JsonResponse
     {
         $pages = FacebookPage::query()
+            ->with('assignedStaff:id,name,email,department_id')
             ->where('user_id', $request->user()->id)
             ->orderBy('name')
             ->get();
@@ -125,5 +127,52 @@ class FacebookPageController extends Controller
             'message' => 'Đã hủy kích hoạt webhook cho Page.',
             'page' => $page,
         ]);
+    }
+
+    public function update(Request $request, FacebookPage $page): JsonResponse
+    {
+        if ((int) $page->user_id !== (int) $request->user()->id && ! in_array($request->user()->role, ['admin', 'administrator'], true)) {
+            return response()->json(['message' => 'Không có quyền thao tác Page này.'], 403);
+        }
+
+        $validated = $request->validate([
+            'assigned_staff_id' => ['nullable', 'integer', 'exists:users,id'],
+        ]);
+
+        $assignedStaffId = ! empty($validated['assigned_staff_id'])
+            ? (int) $validated['assigned_staff_id']
+            : null;
+        if ($assignedStaffId && ! $this->canAssignStaff($request->user(), $assignedStaffId)) {
+            return response()->json(['message' => 'Không thể giao lead của Page cho nhân viên này.'], 422);
+        }
+
+        $page->update([
+            'assigned_staff_id' => $assignedStaffId,
+        ]);
+
+        return response()->json([
+            'message' => 'Đã cập nhật nhân viên phụ trách cho Page.',
+            'page' => $page->fresh('assignedStaff:id,name,email,department_id'),
+        ]);
+    }
+
+    private function canAssignStaff($user, int $staffId): bool
+    {
+        if (in_array($user->role, ['admin', 'administrator', 'ke_toan'], true)) {
+            return User::query()->where('id', $staffId)->where('is_active', true)->exists();
+        }
+
+        if ($user->role === 'quan_ly') {
+            return User::query()
+                ->where('id', $staffId)
+                ->where('is_active', true)
+                ->where(function ($builder) use ($user) {
+                    $builder->whereIn('department_id', $user->managedDepartments()->pluck('id'))
+                        ->orWhere('id', $user->id);
+                })
+                ->exists();
+        }
+
+        return (int) $user->id === $staffId;
     }
 }

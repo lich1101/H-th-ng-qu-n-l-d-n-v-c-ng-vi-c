@@ -28,6 +28,10 @@ class UserLookupController extends Controller
             });
         }
 
+        if ($user && $user->role === 'nhan_vien') {
+            $query->where('id', $user->id);
+        }
+
         if ($request->filled('search')) {
             $search = trim((string) $request->input('search'));
             $query->where(function ($builder) use ($search) {

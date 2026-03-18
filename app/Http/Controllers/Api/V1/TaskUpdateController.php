@@ -31,7 +31,7 @@ class TaskUpdateController extends Controller
         if (! $this->canAccessTask($request->user(), $task)) {
             return response()->json(['message' => 'Không có quyền gửi báo cáo tiến độ.'], 403);
         }
-        if ($request->user()?->role === 'nhan_vien') {
+        if ($request->user() && $request->user()->role === 'nhan_vien') {
             return response()->json([
                 'message' => 'Nhân sự chỉ gửi báo cáo trên đầu việc được giao.',
             ], 403);

@@ -11,6 +11,7 @@ class SystemMetaController extends Controller
     {
         return response()->json([
             'roles' => [
+                'administrator',
                 'admin',
                 'quan_ly',
                 'nhan_vien',

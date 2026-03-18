@@ -163,11 +163,11 @@ class UserAccountController extends Controller
             ], 422);
         }
 
-        if ($user->role === 'admin') {
-            $admins = User::where('role', 'admin')->count();
-            if ($admins <= 1) {
+        if (in_array($user->role, ['admin', 'administrator'], true)) {
+            $remaining = User::where('role', $user->role)->count();
+            if ($remaining <= 1) {
                 return response()->json([
-                    'message' => 'Không thể xóa admin cuối cùng.',
+                    'message' => sprintf('Không thể xóa %s cuối cùng.', $user->role),
                 ], 422);
             }
         }
@@ -197,6 +197,7 @@ class UserAccountController extends Controller
                 'min:8',
             ],
             'role' => ['required', 'string', Rule::in([
+                'administrator',
                 'admin',
                 'quan_ly',
                 'nhan_vien',

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
+import AppIcon from '@/Components/AppIcon';
 import Dropdown from '@/Components/Dropdown';
 import { Link, usePage } from '@inertiajs/inertia-react';
 
@@ -25,6 +26,7 @@ export default function Authenticated({ auth, header, children }) {
     const [chatTab, setChatTab] = useState('all');
     const [chatSearch, setChatSearch] = useState('');
     const [chatItems, setChatItems] = useState([]);
+    const [chatLoading, setChatLoading] = useState(false);
     const [chatUnread, setChatUnread] = useState(0);
     const CHAT_NOTIFICATION_TYPES = useMemo(
         () => new Set(['task_chat_message', 'task_comment_tag']),
@@ -88,15 +90,6 @@ export default function Authenticated({ auth, header, children }) {
             };
         });
 
-        const chatRows = inAppRows
-            .filter((item) => CHAT_NOTIFICATION_TYPES.has(item.notification_type))
-            .map((item) => ({
-                ...item,
-                kind: 'Tin nhắn',
-            }))
-            .sort((a, b) => toTimestamp(b.created_at) - toTimestamp(a.created_at))
-            .slice(0, 40);
-
         const notifyRows = inAppRows.filter((item) => !CHAT_NOTIFICATION_TYPES.has(item.notification_type));
 
         const reminderRows = (payload?.reminders || []).map((item) => ({
@@ -130,9 +123,10 @@ export default function Authenticated({ auth, header, children }) {
 
         return {
             notificationRows,
-            chatRows,
             unreadNotificationCount: notificationRows.filter((item) => !item.is_read).length,
-            unreadChatCount: chatRows.filter((item) => !item.is_read).length,
+            unreadChatCount: inAppRows.filter((item) => (
+                CHAT_NOTIFICATION_TYPES.has(item.notification_type) && !item.is_read
+            )).length,
         };
     };
 
@@ -144,7 +138,6 @@ export default function Authenticated({ auth, header, children }) {
             });
             const collections = buildNotificationCollections(response.data || {});
             setNotificationItems(collections.notificationRows);
-            setChatItems(collections.chatRows);
             const unreadNotificationFromApi = parseCount(response.data?.unread_notification);
             const unreadChatFromApi = parseCount(response.data?.unread_chat);
             setNotificationUnread(
@@ -158,10 +151,26 @@ export default function Authenticated({ auth, header, children }) {
         }
     };
 
+    const fetchChatConversations = async ({ silent = false } = {}) => {
+        if (!silent) setChatLoading(true);
+        try {
+            const response = await axios.get('/api/v1/task-conversations', {
+                params: { limit: 500 },
+            });
+            setChatItems(response.data?.data || []);
+        } catch (error) {
+            console.error(error);
+        } finally {
+            if (!silent) setChatLoading(false);
+        }
+    };
+
     useEffect(() => {
         fetchNotifications();
+        fetchChatConversations();
         const timer = setInterval(() => {
             fetchNotifications({ silent: true });
+            fetchChatConversations({ silent: true });
         }, 30000);
         return () => clearInterval(timer);
     }, []);
@@ -189,6 +198,7 @@ export default function Authenticated({ auth, header, children }) {
 
     const roleLabels = {
         admin: 'Quản trị',
+        administrator: 'Administrator',
         quan_ly: 'Quản lý',
         nhan_vien: 'Nhân sự',
         ke_toan: 'Kế toán',
@@ -231,7 +241,7 @@ export default function Authenticated({ auth, header, children }) {
                         icon: 'dashboard',
                         routeName: 'dashboard',
                         href: route('dashboard'),
-                        roles: ['admin', 'quan_ly', 'nhan_vien', 'ke_toan'],
+                        roles: ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'],
                     },
                 ],
             },
@@ -282,7 +292,7 @@ export default function Authenticated({ auth, header, children }) {
                     { label: 'Nhật ký hệ thống', icon: 'history', routeName: 'activity.logs', href: route('activity.logs'), roles: ['admin', 'quan_ly'] },
                     { label: 'Tài khoản người dùng', icon: 'users', routeName: 'accounts.dashboard', href: route('accounts.dashboard'), roles: ['admin'] },
                     { label: 'Phân quyền', icon: 'shield', routeName: 'roles.permissions', href: route('roles.permissions'), roles: ['admin'] },
-                    { label: 'Cài đặt hệ thống', icon: 'settings', routeName: 'settings.system', href: route('settings.system'), roles: ['admin'] },
+                    { label: 'Cài đặt hệ thống', icon: 'settings', routeName: 'settings.system', href: route('settings.system'), roles: ['administrator'] },
                 ],
             },
         ],
@@ -314,157 +324,6 @@ export default function Authenticated({ auth, header, children }) {
         setCollapsedGroups(next);
     }, [currentRole]);
 
-    const iconMap = {
-        dashboard: (
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M3 12l9-9 9 9" />
-                <path d="M9 21V9h6v12" />
-            </svg>
-        ),
-        users: (
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M16 11a4 4 0 10-8 0 4 4 0 008 0z" />
-                <path d="M3 21a9 9 0 0118 0" />
-            </svg>
-        ),
-        trend: (
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M3 17l6-6 4 4 7-7" />
-                <path d="M14 8h7v7" />
-            </svg>
-        ),
-        form: (
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <rect x="4" y="3" width="16" height="18" rx="2" />
-                <path d="M8 7h8M8 11h8M8 15h6" />
-            </svg>
-        ),
-        facebook: (
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M13 10h4V7h-4V5a2 2 0 012-2h2" />
-                <path d="M13 21v-11H9V7h4" />
-            </svg>
-        ),
-        file: (
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9z" />
-                <path d="M14 3v6h6" />
-            </svg>
-        ),
-        box: (
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M3 7l9 5 9-5" />
-                <path d="M12 12v9" />
-                <path d="M3 7v10l9 5 9-5V7" />
-            </svg>
-        ),
-        project: (
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <circle cx="6" cy="6" r="2" />
-                <circle cx="18" cy="6" r="2" />
-                <circle cx="6" cy="18" r="2" />
-                <path d="M8 6h8M6 8v8M8 18h8" />
-            </svg>
-        ),
-        tasks: (
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M9 11l2 2 4-4" />
-                <path d="M4 6h16M4 12h16M4 18h10" />
-            </svg>
-        ),
-        alarm: (
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <circle cx="12" cy="13" r="7" />
-                <path d="M12 10v4l3 2" />
-                <path d="M5 3l-2 2M19 3l2 2" />
-            </svg>
-        ),
-        handover: (
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M7 7h6a2 2 0 012 2v8H7a2 2 0 01-2-2V9a2 2 0 012-2z" />
-                <path d="M7 7V5a2 2 0 012-2h6" />
-                <path d="M17 13h2a2 2 0 012 2v2" />
-            </svg>
-        ),
-        route: (
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <circle cx="6" cy="6" r="2" />
-                <circle cx="18" cy="18" r="2" />
-                <path d="M6 8c0 6 6 4 6 8" />
-            </svg>
-        ),
-        calendar: (
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <rect x="3" y="4" width="18" height="18" rx="2" />
-                <path d="M16 2v4M8 2v4M3 10h18" />
-            </svg>
-        ),
-        chat: (
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M21 15a4 4 0 01-4 4H7l-4 3V7a4 4 0 014-4h10a4 4 0 014 4z" />
-            </svg>
-        ),
-        chart: (
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M4 20V4" />
-                <path d="M4 20h16" />
-                <path d="M8 16v-4M12 16V8M16 16v-6" />
-            </svg>
-        ),
-        department: (
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <rect x="3" y="3" width="7" height="7" rx="1" />
-                <rect x="14" y="3" width="7" height="7" rx="1" />
-                <rect x="3" y="14" width="7" height="7" rx="1" />
-                <rect x="14" y="14" width="7" height="7" rx="1" />
-            </svg>
-        ),
-        tag: (
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M20 12l-8 8-8-8V4h8l8 8z" />
-                <circle cx="10" cy="6" r="1.5" />
-            </svg>
-        ),
-        award: (
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <circle cx="12" cy="8" r="4" />
-                <path d="M8 14l-2 8 6-3 6 3-2-8" />
-            </svg>
-        ),
-        workflow: (
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <circle cx="6" cy="6" r="2" />
-                <circle cx="18" cy="6" r="2" />
-                <circle cx="12" cy="18" r="2" />
-                <path d="M8 6h8M6 8v6m12-6v6" />
-            </svg>
-        ),
-        bell: (
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M18 8a6 6 0 10-12 0c0 7-3 7-3 7h18s-3 0-3-7" />
-                <path d="M13.73 21a2 2 0 01-3.46 0" />
-            </svg>
-        ),
-        history: (
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M3 12a9 9 0 109-9" />
-                <path d="M3 4v5h5" />
-                <path d="M12 7v5l3 2" />
-            </svg>
-        ),
-        shield: (
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M12 3l7 4v5c0 5-3.5 9-7 9s-7-4-7-9V7l7-4z" />
-            </svg>
-        ),
-        settings: (
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <circle cx="12" cy="12" r="3" />
-                <path d="M19.4 15a1 1 0 00.2 1.1l1 1.7-2 3.4-2-1a1 1 0 00-1.1 0l-1.6.9a1 1 0 00-.6.9V22h-4v-1.9a1 1 0 00-.6-.9l-1.6-.9a1 1 0 00-1.1 0l-2 1-2-3.4 1-1.7a1 1 0 00.2-1.1l-.4-1.8a1 1 0 00-.9-.7H2V8h1.9a1 1 0 00.9-.7l.4-1.8a1 1 0 00-.2-1.1l-1-1.7 2-3.4 2 1a1 1 0 001.1 0l1.6-.9A1 1 0 0010.3 0H14v1.9a1 1 0 00.6.9l1.6.9a1 1 0 001.1 0l2-1 2 3.4-1 1.7a1 1 0 00-.2 1.1l.4 1.8a1 1 0 00.9.7H22v4h-1.9a1 1 0 00-.9.7l-.4 1.8z" />
-            </svg>
-        ),
-    };
-
     const toggleGroup = (label) => {
         setCollapsedGroups((prev) => ({ ...prev, [label]: !prev[label] }));
     };
@@ -480,12 +339,24 @@ export default function Authenticated({ auth, header, children }) {
 
     const filteredChatItems = useMemo(() => {
         const source = chatTab === 'unread'
-            ? chatItems.filter((item) => !item.is_read)
+            ? chatItems.filter((item) => Number(item?.unread_count || 0) > 0)
             : chatItems;
         const keyword = chatSearch.trim().toLowerCase();
         if (!keyword) return source;
         return source.filter((item) => (
-            `${item.title || ''} ${item.body || ''}`.toLowerCase().includes(keyword)
+            [
+                item.title,
+                item.body,
+                item.project_name,
+                item.project_code,
+                item.department_name,
+                item.assignee_name,
+                item.last_actor_name,
+            ]
+                .filter(Boolean)
+                .join(' ')
+                .toLowerCase()
+                .includes(keyword)
         ));
     }, [chatItems, chatSearch, chatTab]);
 
@@ -535,6 +406,25 @@ export default function Authenticated({ auth, header, children }) {
         }
     };
 
+    const markTaskConversationRead = async (item) => {
+        const taskId = extractTaskId(item);
+        if (!taskId || Number(item?.unread_count || 0) <= 0) {
+            return;
+        }
+        try {
+            await axios.post('/api/v1/notifications/in-app/read-task-chat', {
+                task_id: taskId,
+            });
+        } catch (error) {
+            console.error(error);
+        }
+    };
+
+    const handleChatItemClick = async (item) => {
+        await markTaskConversationRead(item);
+        openTaskChatFromItem(item);
+    };
+
     const markAllNotificationsRead = async () => {
         try {
             if (notificationUnread <= 0) return;
@@ -553,7 +443,10 @@ export default function Authenticated({ auth, header, children }) {
         try {
             if (chatUnread <= 0) return;
             await axios.post('/api/v1/notifications/in-app/read-all', { source_type: 'chat_in_app' });
-            await fetchNotifications({ silent: true });
+            await Promise.all([
+                fetchNotifications({ silent: true }),
+                fetchChatConversations({ silent: true }),
+            ]);
         } catch (error) {
             console.error(error);
         }
@@ -597,18 +490,7 @@ export default function Authenticated({ auth, header, children }) {
                                                 collapsedGroups[group.label] ? 'rotate-180' : ''
                                             }`}
                                         >
-                                            <svg
-                                                xmlns="http://www.w3.org/2000/svg"
-                                                viewBox="0 0 20 20"
-                                                fill="currentColor"
-                                                className="h-3 w-3"
-                                            >
-                                                <path
-                                                    fillRule="evenodd"
-                                                    d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
-                                                    clipRule="evenodd"
-                                                />
-                                            </svg>
+                                            <AppIcon name="chevron-down" className="h-3 w-3" strokeWidth={2} />
                                         </span>
                                     </button>
                                     <div
@@ -632,7 +514,9 @@ export default function Authenticated({ auth, header, children }) {
                                                     onClick={() => setShowSidebar(false)}
                                                 >
                                                     <span className="flex items-center gap-2">
-                                                        <span className="text-slate-500">{iconMap[menu.icon] || iconMap.dashboard}</span>
+                                                        <span className="text-slate-500">
+                                                            <AppIcon name={menu.icon} className="h-4 w-4" />
+                                                        </span>
                                                         <span>{menu.label}</span>
                                                     </span>
                                                 </Link>
@@ -684,10 +568,7 @@ export default function Authenticated({ auth, header, children }) {
                                         }}
                                         aria-label="Mở thông báo"
                                     >
-                                        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
-                                            <path d="M18 8a6 6 0 10-12 0c0 7-3 7-3 7h18s-3 0-3-7" />
-                                            <path d="M13.73 21a2 2 0 01-3.46 0" />
-                                        </svg>
+                                        <AppIcon name="bell" className="h-5 w-5" />
                                         {notificationUnread > 0 && (
                                             <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-semibold flex items-center justify-center">
                                                 {notificationUnread > 99 ? '99+' : notificationUnread}
@@ -810,13 +691,12 @@ export default function Authenticated({ auth, header, children }) {
                                             setChatOpen((prev) => !prev);
                                             if (!chatOpen) {
                                                 fetchNotifications({ silent: true });
+                                                fetchChatConversations({ silent: true });
                                             }
                                         }}
                                         aria-label="Mở đoạn chat"
                                     >
-                                        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
-                                            <path d="M21 15a4 4 0 01-4 4H7l-4 3V7a4 4 0 014-4h10a4 4 0 014 4z" />
-                                        </svg>
+                                        <AppIcon name="chat" className="h-5 w-5" />
                                         {chatUnread > 0 && (
                                             <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-semibold flex items-center justify-center">
                                                 {chatUnread > 99 ? '99+' : chatUnread}
@@ -845,7 +725,7 @@ export default function Authenticated({ auth, header, children }) {
                                                         value={chatSearch}
                                                         onChange={(e) => setChatSearch(e.target.value)}
                                                         className="w-full rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-sm"
-                                                        placeholder="Tìm trong đoạn chat..."
+                                                        placeholder="Tìm theo công việc, dự án, nội dung..."
                                                     />
                                                 </div>
                                                 <div className="mt-3 flex items-center gap-2">
@@ -881,58 +761,64 @@ export default function Authenticated({ auth, header, children }) {
                                             </div>
 
                                             <div className="max-h-[440px] overflow-y-auto p-2">
-                                                {notificationLoading && (
+                                                {chatLoading && (
                                                     <div className="px-3 py-8 text-sm text-center text-slate-500">
                                                         Đang tải đoạn chat...
                                                     </div>
                                                 )}
 
-                                                {!notificationLoading && filteredChatItems.map((item) => (
+                                                {!chatLoading && filteredChatItems.map((item) => (
                                                     <button
                                                         key={item.key}
                                                         type="button"
                                                         className={`w-full text-left flex items-start gap-3 rounded-xl px-3 py-3 transition ${
-                                                            item.is_read
+                                                            Number(item.unread_count || 0) <= 0
                                                                 ? 'hover:bg-slate-50'
                                                                 : 'bg-blue-50/60 hover:bg-blue-50'
                                                         }`}
-                                                        onClick={() => handleNotificationItemClick(item)}
+                                                        onClick={() => handleChatItemClick(item)}
                                                     >
                                                         <span className="mt-0.5 h-10 w-10 shrink-0 rounded-full bg-indigo-100 text-indigo-700 text-[11px] font-semibold flex items-center justify-center">
-                                                            {item.kind.slice(0, 1)}
+                                                            {(item.title || 'C').slice(0, 1).toUpperCase()}
                                                         </span>
                                                         <span className="min-w-0 flex-1">
                                                             <span className="block text-sm font-semibold text-slate-900 line-clamp-2">
                                                                 {item.title}
                                                             </span>
-                                                            {item.body && (
-                                                                <span className="mt-0.5 block text-xs text-slate-600 line-clamp-2">
-                                                                    {item.body}
+                                                            <span className="mt-0.5 block text-[11px] text-slate-500 line-clamp-1">
+                                                                {[item.project_name, item.department_name, item.assignee_name].filter(Boolean).join(' • ') || 'Công việc nội bộ'}
+                                                            </span>
+                                                            <span className="mt-1 block text-xs text-slate-600 line-clamp-2">
+                                                                {item.body}
+                                                            </span>
+                                                            <span className="mt-1 flex items-center justify-between gap-3 text-[11px]">
+                                                                <span className="font-semibold text-primary">
+                                                                    {relativeTime(item.activity_at)}
                                                                 </span>
-                                                            )}
-                                                            <span className="mt-1 block text-[11px] font-semibold text-primary">
-                                                                {relativeTime(item.created_at)}
+                                                                <span className="truncate text-slate-400">
+                                                                    {item.last_actor_name ? `${item.last_actor_name} • ` : ''}{item.comment_count || 0} tin
+                                                                </span>
                                                             </span>
                                                         </span>
-                                                        {!item.is_read && (
+                                                        {Number(item.unread_count || 0) > 0 && (
                                                             <span className="mt-1 inline-flex h-5 min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-semibold text-white shrink-0">
-                                                                1
+                                                                {item.unread_count > 99 ? '99+' : item.unread_count}
                                                             </span>
                                                         )}
                                                     </button>
                                                 ))}
 
-                                                {!notificationLoading && filteredChatItems.length === 0 && (
+                                                {!chatLoading && filteredChatItems.length === 0 && (
                                                     <div className="px-3 py-8 text-sm text-center text-slate-500">
                                                         {chatTab === 'unread'
-                                                            ? 'Không có đoạn chat chưa đọc.'
-                                                            : 'Chưa có đoạn chat mới.'}
+                                                            ? 'Không có hội thoại công việc nào chưa đọc.'
+                                                            : 'Chưa có hội thoại công việc nào.'}
                                                     </div>
                                                 )}
                                             </div>
 
                                             <div className="px-4 py-3 border-t border-slate-100 text-xs text-slate-500">
-                                                Tin chưa đọc: <span className="font-semibold text-slate-700">{quickChatUnreadCount}</span>
+                                                Đoạn chat chưa đọc: <span className="font-semibold text-slate-700">{quickChatUnreadCount}</span>
                                             </div>
                                         </div>
                                     )}

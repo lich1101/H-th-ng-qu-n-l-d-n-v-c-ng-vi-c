@@ -19,6 +19,12 @@ class AppSetting extends Model
         'notifications_dedupe_seconds',
         'meeting_reminder_minutes_before',
         'task_item_progress_reminder_enabled',
+        'lead_capture_notification_enabled',
+        'contract_unpaid_reminder_enabled',
+        'contract_unpaid_reminder_time',
+        'contract_expiry_reminder_enabled',
+        'contract_expiry_reminder_time',
+        'contract_expiry_reminder_days_before',
         'updated_by',
     ];
 
@@ -29,6 +35,10 @@ class AppSetting extends Model
         'notifications_dedupe_seconds' => 'integer',
         'meeting_reminder_minutes_before' => 'integer',
         'task_item_progress_reminder_enabled' => 'boolean',
+        'lead_capture_notification_enabled' => 'boolean',
+        'contract_unpaid_reminder_enabled' => 'boolean',
+        'contract_expiry_reminder_enabled' => 'boolean',
+        'contract_expiry_reminder_days_before' => 'integer',
     ];
 
     public static function defaults(): array
@@ -46,6 +56,12 @@ class AppSetting extends Model
             'notifications_dedupe_seconds' => 45,
             'meeting_reminder_minutes_before' => 60,
             'task_item_progress_reminder_enabled' => true,
+            'lead_capture_notification_enabled' => true,
+            'contract_unpaid_reminder_enabled' => true,
+            'contract_unpaid_reminder_time' => '08:00',
+            'contract_expiry_reminder_enabled' => true,
+            'contract_expiry_reminder_time' => '09:00',
+            'contract_expiry_reminder_days_before' => 3,
         ];
     }
 }

@@ -85,7 +85,7 @@ class FacebookAuthController extends Controller
 
         $expiresAt = $expiresIn > 0 ? Carbon::now()->addSeconds($expiresIn) : null;
         $request->session()->put('facebook_user_access_token', $token);
-        $request->session()->put('facebook_user_token_expires_at', $expiresAt?->toDateTimeString());
+        $request->session()->put('facebook_user_token_expires_at', $expiresAt ? $expiresAt->toDateTimeString() : null);
 
         $request->user()->forceFill([
             'facebook_user_access_token' => $token,

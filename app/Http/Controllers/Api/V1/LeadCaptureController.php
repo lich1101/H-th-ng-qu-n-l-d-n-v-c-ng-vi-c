@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Models\Client;
 use App\Models\LeadType;
+use App\Models\User;
+use App\Services\LeadNotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -39,7 +41,7 @@ class LeadCaptureController extends Controller
 
         $assignedDepartmentId = $validated['assigned_department_id'] ?? null;
         if (! $assignedDepartmentId && ! empty($validated['assigned_staff_id'])) {
-            $assignedDepartmentId = \App\Models\User::query()
+            $assignedDepartmentId = User::query()
                 ->where('id', $validated['assigned_staff_id'])
                 ->value('department_id');
         }
@@ -57,6 +59,11 @@ class LeadCaptureController extends Controller
             'assigned_department_id' => $assignedDepartmentId,
             'assigned_staff_id' => $validated['assigned_staff_id'] ?? null,
         ]);
+
+        app(LeadNotificationService::class)->notifyNewLead(
+            $client,
+            $validated['source'] ?? 'Page / webhook'
+        );
 
         return response()->json([
             'message' => 'Lead captured.',

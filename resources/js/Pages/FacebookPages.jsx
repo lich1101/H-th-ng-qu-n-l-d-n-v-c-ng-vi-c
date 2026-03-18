@@ -6,19 +6,38 @@ export default function FacebookPages(props) {
     const connected = Boolean(props.facebookConnected);
     const expiresAt = props.facebookTokenExpiresAt;
     const [pages, setPages] = useState([]);
+    const [staffUsers, setStaffUsers] = useState([]);
+    const [assignedStaffDraft, setAssignedStaffDraft] = useState({});
     const [message, setMessage] = useState('');
     const [loading, setLoading] = useState(false);
     const [syncing, setSyncing] = useState(false);
+    const [savingPageId, setSavingPageId] = useState(null);
 
     const fetchPages = async () => {
         setLoading(true);
         try {
             const res = await axios.get('/api/v1/facebook/pages');
-            setPages(res.data || []);
+            const rows = res.data || [];
+            setPages(rows);
+            setAssignedStaffDraft(
+                rows.reduce((carry, page) => {
+                    carry[page.id] = page.assigned_staff_id ? String(page.assigned_staff_id) : '';
+                    return carry;
+                }, {})
+            );
         } catch (e) {
             setMessage(e?.response?.data?.message || 'Không tải được danh sách Page.');
         } finally {
             setLoading(false);
+        }
+    };
+
+    const fetchStaffUsers = async () => {
+        try {
+            const res = await axios.get('/api/v1/users/lookup');
+            setStaffUsers(res.data?.data || []);
+        } catch {
+            setStaffUsers([]);
         }
     };
 
@@ -38,12 +57,30 @@ export default function FacebookPages(props) {
     };
 
     useEffect(() => {
+        fetchStaffUsers();
         fetchPages();
         if (connected) {
             autoSyncPages();
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [connected]);
+
+    const saveAssignedStaff = async (pageId) => {
+        setSavingPageId(pageId);
+        setMessage('');
+        try {
+            const payload = {
+                assigned_staff_id: assignedStaffDraft[pageId] ? Number(assignedStaffDraft[pageId]) : null,
+            };
+            const res = await axios.put(`/api/v1/facebook/pages/${pageId}`, payload);
+            setMessage(res.data?.message || 'Đã cập nhật nhân viên phụ trách.');
+            await fetchPages();
+        } catch (e) {
+            setMessage(e?.response?.data?.message || 'Không lưu được nhân viên phụ trách cho Page.');
+        } finally {
+            setSavingPageId(null);
+        }
+    };
 
     const subscribePage = async (pageId) => {
         setMessage('');
@@ -145,12 +182,44 @@ export default function FacebookPages(props) {
                         <div className="space-y-3">
                             {pages.map((page) => (
                                 <div key={page.id} className="rounded-2xl border border-slate-200/80 p-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                                    <div>
+                                    <div className="min-w-0 flex-1">
                                         <p className="font-semibold text-slate-900">{page.name}</p>
                                         <p className="text-xs text-text-muted">Page ID: {page.page_id}</p>
                                         {page.category && (
                                             <p className="text-xs text-text-muted">Category: {page.category}</p>
                                         )}
+                                        <div className="mt-3 max-w-xl">
+                                            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-text-subtle">
+                                                Nhân viên phụ trách khách từ Page này
+                                            </label>
+                                            <div className="flex flex-col gap-2 md:flex-row">
+                                                <select
+                                                    className="flex-1 rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                                    value={assignedStaffDraft[page.id] || ''}
+                                                    onChange={(e) =>
+                                                        setAssignedStaffDraft((current) => ({
+                                                            ...current,
+                                                            [page.id]: e.target.value,
+                                                        }))
+                                                    }
+                                                >
+                                                    <option value="">-- Chưa chỉ định nhân viên phụ trách --</option>
+                                                    {staffUsers.map((user) => (
+                                                        <option key={user.id} value={user.id}>
+                                                            {user.name}{user.email ? ` • ${user.email}` : ''}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                                <button
+                                                    type="button"
+                                                    className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700"
+                                                    onClick={() => saveAssignedStaff(page.id)}
+                                                    disabled={savingPageId === page.id}
+                                                >
+                                                    {savingPageId === page.id ? 'Đang lưu...' : 'Lưu phụ trách'}
+                                                </button>
+                                            </div>
+                                        </div>
                                     </div>
                                     <div className="flex items-center gap-3">
                                         <span className={`text-xs font-semibold px-3 py-1 rounded-full ${page.is_subscribed ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>

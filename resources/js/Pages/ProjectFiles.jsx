@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
+import AppIcon from '@/Components/AppIcon';
 import PageContainer from '@/Components/PageContainer';
 import { useToast } from '@/Contexts/ToastContext';
 
@@ -39,19 +40,17 @@ const kindLabel = (item) => {
 
 function FolderIcon({ muted = false }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={`h-5 w-5 ${muted ? 'text-slate-500' : 'text-sky-600'}`}>
-      <path d="M3 7.75A2.75 2.75 0 0 1 5.75 5h3.17c.6 0 1.18.24 1.6.66l1.02 1.02c.42.42 1 .66 1.6.66h5.11A2.75 2.75 0 0 1 21 10.09v6.16A2.75 2.75 0 0 1 18.25 19H5.75A2.75 2.75 0 0 1 3 16.25V7.75Z" stroke="currentColor" strokeWidth="1.6" />
-      <path d="M3.75 9.5h16.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-    </svg>
+    <AppIcon
+      name="folder"
+      className={`h-5 w-5 ${muted ? 'text-slate-500' : 'text-sky-600'}`}
+      strokeWidth={1.7}
+    />
   );
 }
 
 function FileIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5 text-slate-500">
-      <path d="M8 3.75h5.68c.53 0 1.04.21 1.41.59l3.57 3.57c.38.37.59.88.59 1.41V19A1.75 1.75 0 0 1 17.5 20.75h-9A1.75 1.75 0 0 1 6.75 19V5.5A1.75 1.75 0 0 1 8.5 3.75Z" stroke="currentColor" strokeWidth="1.6" />
-      <path d="M14 3.75V8a1 1 0 0 0 1 1h4.25" stroke="currentColor" strokeWidth="1.6" />
-    </svg>
+    <AppIcon name="document" className="h-5 w-5 text-slate-500" strokeWidth={1.7} />
   );
 }
 

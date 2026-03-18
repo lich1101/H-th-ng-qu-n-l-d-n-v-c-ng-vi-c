@@ -192,7 +192,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('/cai-dat-he-thong', function () {
         return Inertia::render('SystemSettings');
-    })->name('settings.system')->middleware('role:admin');
+    })->name('settings.system')->middleware('role:administrator');
 });
 
 require __DIR__.'/auth.php';

@@ -6,6 +6,7 @@ import RoleBarChart from '@/Components/RoleBarChart';
 
 const roleLabels = {
     admin: 'Quản trị',
+    administrator: 'Administrator',
     quan_ly: 'Quản lý',
     nhan_vien: 'Nhân sự',
     ke_toan: 'Kế toán',
@@ -236,6 +237,7 @@ export default function UserAccountsDashboard(props) {
                     >
                         <option value="">Tất cả vai trò</option>
                         <option value="admin">Admin</option>
+                        <option value="administrator">Administrator</option>
                         <option value="quan_ly">Quản lý</option>
                         <option value="nhan_vien">Nhân sự</option>
                         <option value="ke_toan">Kế toán</option>
@@ -295,6 +297,7 @@ export default function UserAccountsDashboard(props) {
                         className="rounded-lg border-slate-300 text-sm"
                     >
                         <option value="admin">Admin</option>
+                        <option value="administrator">Administrator</option>
                         <option value="quan_ly">Quản lý</option>
                         <option value="nhan_vien">Nhân sự</option>
                         <option value="ke_toan">Kế toán</option>

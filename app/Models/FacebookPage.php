@@ -15,6 +15,7 @@ class FacebookPage extends Model
         'category',
         'access_token',
         'user_id',
+        'assigned_staff_id',
         'is_active',
         'is_subscribed',
         'connected_at',
@@ -38,5 +39,10 @@ class FacebookPage extends Model
     public function messages()
     {
         return $this->hasMany(FacebookMessage::class);
+    }
+
+    public function assignedStaff()
+    {
+        return $this->belongsTo(User::class, 'assigned_staff_id');
     }
 }

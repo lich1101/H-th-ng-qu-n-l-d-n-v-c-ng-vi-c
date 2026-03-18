@@ -4,18 +4,26 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\Department;
+use App\Models\InAppNotification;
 use App\Models\Task;
 use App\Models\TaskComment;
 use App\Models\User;
 use App\Services\FirebaseService;
 use App\Services\NotificationService;
 use App\Services\ProjectFileService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
 class TaskCommentController extends Controller
 {
+    private const CHAT_NOTIFICATION_TYPES = [
+        'task_chat_message',
+        'task_comment_tag',
+    ];
+
     public function index(Task $task, Request $request): JsonResponse
     {
         if (! $this->canAccessTask($request->user(), $task)) {
@@ -204,6 +212,102 @@ class TaskCommentController extends Controller
         return response()->json(['data' => $participants]);
     }
 
+    public function threads(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $limit = max(10, min(500, (int) $request->input('limit', 500)));
+
+        $query = Task::query()
+            ->with([
+                'project:id,name,code',
+                'department:id,name',
+                'assignee:id,name,email,avatar_url',
+                'latestComment.user:id,name,email,avatar_url',
+            ])
+            ->withCount('comments')
+            ->withMax('comments', 'created_at');
+
+        $this->applyChatScope($query, $user);
+
+        if ($request->filled('search')) {
+            $keyword = trim((string) $request->input('search'));
+            $query->where(function (Builder $builder) use ($keyword) {
+                $builder->where('title', 'like', "%{$keyword}%")
+                    ->orWhere('description', 'like', "%{$keyword}%")
+                    ->orWhereHas('project', function (Builder $projectQuery) use ($keyword) {
+                        $projectQuery->where('name', 'like', "%{$keyword}%")
+                            ->orWhere('code', 'like', "%{$keyword}%");
+                    })
+                    ->orWhereHas('assignee', function (Builder $assigneeQuery) use ($keyword) {
+                        $assigneeQuery->where('name', 'like', "%{$keyword}%")
+                            ->orWhere('email', 'like', "%{$keyword}%");
+                    })
+                    ->orWhereHas('comments', function (Builder $commentQuery) use ($keyword) {
+                        $commentQuery->where('content', 'like', "%{$keyword}%");
+                    });
+            });
+        }
+
+        $tasks = $query
+            ->orderByRaw('COALESCE(comments_max_created_at, updated_at, created_at) DESC')
+            ->limit($limit)
+            ->get();
+
+        $unreadByTask = InAppNotification::query()
+            ->where('user_id', $user->id)
+            ->whereNull('read_at')
+            ->whereIn('type', self::CHAT_NOTIFICATION_TYPES)
+            ->whereRaw("JSON_EXTRACT(data, '$.task_id') IS NOT NULL")
+            ->selectRaw("CAST(JSON_UNQUOTE(JSON_EXTRACT(data, '$.task_id')) AS UNSIGNED) as task_id, COUNT(*) as unread_count")
+            ->groupBy(DB::raw("CAST(JSON_UNQUOTE(JSON_EXTRACT(data, '$.task_id')) AS UNSIGNED)"))
+            ->get()
+            ->keyBy(function ($row) {
+                return (int) $row->task_id;
+            });
+
+        $threads = $tasks->map(function (Task $task) use ($unreadByTask) {
+            $latestComment = $task->latestComment;
+            $activityAt = optional($latestComment)->created_at ?: $task->updated_at ?: $task->created_at;
+            $unreadCount = (int) ($unreadByTask->get((int) $task->id)->unread_count ?? 0);
+
+            $preview = 'Chưa có tin nhắn nào.';
+            if ($latestComment) {
+                if ($latestComment->is_recalled) {
+                    $preview = 'Tin nhắn đã được thu hồi.';
+                } elseif (! empty(trim((string) $latestComment->content))) {
+                    $preview = $latestComment->content;
+                } elseif (! empty($latestComment->attachment_path)) {
+                    $preview = 'Đã gửi tệp đính kèm.';
+                }
+            }
+
+            return [
+                'key' => 'task:'.$task->id,
+                'task_id' => (int) $task->id,
+                'title' => $task->title,
+                'body' => $preview,
+                'project_name' => optional($task->project)->name,
+                'project_code' => optional($task->project)->code,
+                'department_name' => optional($task->department)->name,
+                'assignee_name' => optional($task->assignee)->name,
+                'last_actor_name' => optional(optional($latestComment)->user)->name,
+                'last_comment_id' => $latestComment ? (int) $latestComment->id : null,
+                'comment_count' => (int) ($task->comments_count ?? 0),
+                'unread_count' => $unreadCount,
+                'is_read' => $unreadCount <= 0,
+                'activity_at' => optional($activityAt)->toIso8601String(),
+            ];
+        })->values();
+
+        return response()->json([
+            'data' => $threads,
+            'meta' => [
+                'limit' => $limit,
+                'total' => $threads->count(),
+            ],
+        ]);
+    }
+
     private function canMutate(Request $request, TaskComment $comment): bool
     {
         $user = $request->user();
@@ -272,6 +376,41 @@ class TaskCommentController extends Controller
 
         $participants = $this->resolveChatParticipantIds($task);
         return $participants->contains($user->id);
+    }
+
+    private function applyChatScope(Builder $query, $user): void
+    {
+        if (! $user) {
+            $query->whereRaw('1 = 0');
+            return;
+        }
+
+        if ($user->role === 'admin') {
+            return;
+        }
+
+        if ($user->role === 'ke_toan') {
+            $query->whereRaw('1 = 0');
+            return;
+        }
+
+        $managedDepartmentIds = $user->managedDepartments()->pluck('id');
+        $query->where(function (Builder $builder) use ($user, $managedDepartmentIds) {
+            $builder->where('assignee_id', $user->id)
+                ->orWhere('reviewer_id', $user->id)
+                ->orWhere('created_by', $user->id)
+                ->orWhere('assigned_by', $user->id)
+                ->orWhereHas('items', function (Builder $itemQuery) use ($user) {
+                    $itemQuery->where('assignee_id', $user->id);
+                })
+                ->orWhereHas('comments', function (Builder $commentQuery) use ($user) {
+                    $commentQuery->where('user_id', $user->id);
+                });
+
+            if ($managedDepartmentIds->isNotEmpty()) {
+                $builder->orWhereIn('department_id', $managedDepartmentIds);
+            }
+        });
     }
 
     private function resolveChatParticipants(Task $task)

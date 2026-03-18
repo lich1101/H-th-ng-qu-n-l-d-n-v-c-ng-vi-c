@@ -30,6 +30,7 @@ class Contract extends Model
         'end_date',
         'notes',
         'created_by',
+        'collector_user_id',
     ];
 
     protected $casts = [
@@ -76,6 +77,11 @@ class Contract extends Model
     public function approver()
     {
         return $this->belongsTo(User::class, 'approved_by');
+    }
+
+    public function collector()
+    {
+        return $this->belongsTo(User::class, 'collector_user_id');
     }
 
     public function items()

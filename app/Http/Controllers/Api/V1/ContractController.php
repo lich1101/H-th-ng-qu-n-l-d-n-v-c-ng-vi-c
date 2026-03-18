@@ -12,6 +12,7 @@ use App\Models\Project;
 use App\Models\RevenueTier;
 use App\Models\User;
 use App\Services\NotificationService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -22,7 +23,7 @@ class ContractController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = Contract::query()
-            ->with(['client', 'project', 'opportunity', 'creator', 'approver'])
+            ->with(['client', 'project', 'opportunity', 'creator', 'approver', 'collector'])
             ->withCount('payments')
             ->withSum('payments as payments_total', 'amount')
             ->withSum('costs as costs_total', 'amount');
@@ -74,13 +75,17 @@ class ContractController extends Controller
             return response()->json(['message' => 'Không có quyền xem hợp đồng.'], 403);
         }
         return response()->json(
-            $contract->load(['client', 'project', 'opportunity', 'creator', 'approver', 'items', 'payments', 'costs'])
+            $contract->load(['client', 'project', 'opportunity', 'creator', 'approver', 'collector', 'items', 'payments', 'costs'])
         );
     }
 
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate($this->rules(null, true));
+        $client = $this->resolveAccessibleClient($request, (int) $validated['client_id']);
+        if (! $client) {
+            return response()->json(['message' => 'Bạn chỉ được chọn khách hàng mà mình đang quản lý.'], 403);
+        }
         if (empty($validated['code'])) {
             $validated['code'] = $this->generateContractCode();
         }
@@ -98,12 +103,13 @@ class ContractController extends Controller
             if (! $project) {
                 return response()->json(['message' => 'Project không tồn tại.'], 422);
             }
-            if ((int) $project->client_id !== (int) $validated['client_id']) {
+            if ((int) $project->client_id !== (int) $client->id) {
                 return response()->json(['message' => 'Project không thuộc khách hàng này.'], 422);
             }
         }
 
-        $validated = array_merge($validated, $this->resolveApproval($request->user()));
+        $validated['collector_user_id'] = $this->resolveCollectorUserId($request, $validated);
+        $validated = array_merge($validated, $this->resolveApproval($request));
 
         $contract = Contract::create($validated);
 
@@ -125,8 +131,11 @@ class ContractController extends Controller
 
         if (($contract->approval_status ?? '') === 'pending') {
             $accountantIds = User::query()
-                ->where('role', 'ke_toan')
+                ->whereIn('role', ['admin', 'ke_toan'])
                 ->pluck('id')
+                ->reject(function ($id) use ($request) {
+                    return (int) $id === (int) $request->user()->id;
+                })
                 ->all();
             if (! empty($accountantIds)) {
                 try {
@@ -145,7 +154,7 @@ class ContractController extends Controller
             }
         }
 
-        return response()->json($contract->load(['client', 'project', 'opportunity', 'creator', 'approver', 'items']), 201);
+        return response()->json($contract->load(['client', 'project', 'opportunity', 'creator', 'approver', 'collector', 'items']), 201);
     }
 
     public function update(Request $request, Contract $contract): JsonResponse
@@ -154,6 +163,10 @@ class ContractController extends Controller
             return response()->json(['message' => 'Không có quyền cập nhật hợp đồng.'], 403);
         }
         $validated = $request->validate($this->rules($contract->id, true));
+        $client = $this->resolveAccessibleClient($request, (int) $validated['client_id']);
+        if (! $client) {
+            return response()->json(['message' => 'Bạn chỉ được chọn khách hàng mà mình đang quản lý.'], 403);
+        }
         $oldProjectId = $contract->project_id;
 
         $items = $this->normalizeItems($request->input('items', []));
@@ -161,12 +174,14 @@ class ContractController extends Controller
             $validated['value'] = $this->sumItems($items);
         }
 
+        $validated['collector_user_id'] = $this->resolveCollectorUserId($request, $validated, $contract);
+
         if (! empty($validated['project_id'])) {
             $project = Project::find($validated['project_id']);
             if (! $project) {
                 return response()->json(['message' => 'Project không tồn tại.'], 422);
             }
-            if ((int) $project->client_id !== (int) $validated['client_id']) {
+            if ((int) $project->client_id !== (int) $client->id) {
                 return response()->json(['message' => 'Project không thuộc khách hàng này.'], 422);
             }
         }
@@ -208,7 +223,7 @@ class ContractController extends Controller
             $this->syncClientRevenue($contract->client);
         }
 
-        return response()->json($contract->load(['client', 'project', 'opportunity', 'creator', 'approver', 'items']));
+        return response()->json($contract->load(['client', 'project', 'opportunity', 'creator', 'approver', 'collector', 'items']));
     }
 
     public function approve(Request $request, Contract $contract): JsonResponse
@@ -232,7 +247,7 @@ class ContractController extends Controller
             $this->syncClientRevenue($contract->client);
         }
 
-        return response()->json($contract->load(['client', 'project', 'opportunity', 'creator', 'approver', 'items']));
+        return response()->json($contract->load(['client', 'project', 'opportunity', 'creator', 'approver', 'collector', 'items']));
     }
 
     public function destroy(Contract $contract): JsonResponse
@@ -281,6 +296,8 @@ class ContractController extends Controller
             'end_date' => ['nullable', 'date'],
             'notes' => ['nullable', 'string'],
             'approval_note' => ['nullable', 'string'],
+            'collector_user_id' => ['nullable', 'integer', 'exists:users,id'],
+            'create_and_approve' => ['nullable', 'boolean'],
         ];
         return $rules;
     }
@@ -290,9 +307,10 @@ class ContractController extends Controller
         return $user && in_array($user->role, ['admin', 'ke_toan'], true);
     }
 
-    private function resolveApproval($user): array
+    private function resolveApproval(Request $request): array
     {
-        if ($this->canApprove($user)) {
+        $user = $request->user();
+        if ($this->canApprove($user) && $request->boolean('create_and_approve')) {
             return [
                 'approval_status' => 'approved',
                 'approved_by' => $user->id,
@@ -305,6 +323,66 @@ class ContractController extends Controller
             'approved_by' => null,
             'approved_at' => null,
         ];
+    }
+
+    private function resolveCollectorUserId(Request $request, array $validated, ?Contract $contract = null): ?int
+    {
+        $user = $request->user();
+        $requestedCollectorId = isset($validated['collector_user_id'])
+            ? (int) $validated['collector_user_id']
+            : null;
+
+        if (! $user) {
+            return $requestedCollectorId;
+        }
+
+        if ($user->role === 'nhan_vien') {
+            return (int) $user->id;
+        }
+
+        if ($user->role === 'quan_ly') {
+            $allowedIds = User::query()
+                ->where('is_active', true)
+                ->where(function (Builder $builder) use ($user) {
+                    $builder->whereIn('department_id', $user->managedDepartments()->pluck('id'))
+                        ->orWhere('id', $user->id);
+                })
+                ->pluck('id')
+                ->map(function ($id) {
+                    return (int) $id;
+                })
+                ->all();
+
+            if ($requestedCollectorId && in_array($requestedCollectorId, $allowedIds, true)) {
+                return $requestedCollectorId;
+            }
+
+            if ($contract && $contract->collector_user_id && in_array((int) $contract->collector_user_id, $allowedIds, true)) {
+                return (int) $contract->collector_user_id;
+            }
+
+            return (int) $user->id;
+        }
+
+        if (in_array($user->role, ['admin', 'ke_toan'], true)) {
+            if ($requestedCollectorId) {
+                $exists = User::query()
+                    ->where('id', $requestedCollectorId)
+                    ->where('is_active', true)
+                    ->exists();
+                if ($exists) {
+                    return $requestedCollectorId;
+                }
+            }
+
+            if ($contract && $contract->collector_user_id) {
+                return (int) $contract->collector_user_id;
+            }
+
+            return (int) $user->id;
+        }
+
+        return $requestedCollectorId ?: ($contract ? (int) $contract->collector_user_id : null);
     }
 
     private function normalizeItems(array $items): array
@@ -430,5 +508,13 @@ class ContractController extends Controller
         }
 
         return $contract->client && (int) $contract->client->assigned_staff_id === (int) $user->id;
+    }
+
+    private function resolveAccessibleClient(Request $request, int $clientId): ?Client
+    {
+        $query = Client::query()->where('id', $clientId);
+        CrmScope::applyClientScope($query, $request->user());
+
+        return $query->first();
     }
 }

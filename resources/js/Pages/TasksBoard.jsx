@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
+import AppIcon from '@/Components/AppIcon';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import { useToast } from '@/Contexts/ToastContext';
@@ -1504,9 +1505,7 @@ export default function TasksBoard(props) {
                                                             Đầu việc
                                                         </button>
                                                         <button className="text-xs font-semibold text-emerald-600 inline-flex items-center gap-1" onClick={(e) => { e.stopPropagation(); openTaskChat(t); }} type="button" title="Mở chat công việc">
-                                                            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">
-                                                                <path d="M21 15a4 4 0 01-4 4H7l-4 3V7a4 4 0 014-4h10a4 4 0 014 4z" />
-                                                            </svg>
+                                                            <AppIcon name="chat" className="h-3.5 w-3.5" />
                                                             Chat
                                                         </button>
                                                         {canAck && (
@@ -1569,9 +1568,7 @@ export default function TasksBoard(props) {
                                                             )}
                                                             <button className="hover:text-sky-600" onClick={(e) => { e.stopPropagation(); openItemsModal(t); }} type="button">Đầu việc</button>
                                                             <button className="hover:text-emerald-600 inline-flex items-center gap-1" onClick={(e) => { e.stopPropagation(); openTaskChat(t); }} type="button" title="Mở chat công việc">
-                                                                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">
-                                                                    <path d="M21 15a4 4 0 01-4 4H7l-4 3V7a4 4 0 014-4h10a4 4 0 014 4z" />
-                                                                </svg>
+                                                                <AppIcon name="chat" className="h-3.5 w-3.5" />
                                                                 Chat
                                                             </button>
                                                         </div>

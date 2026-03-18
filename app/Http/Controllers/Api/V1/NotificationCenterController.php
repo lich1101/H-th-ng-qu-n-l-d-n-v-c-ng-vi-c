@@ -178,6 +178,22 @@ class NotificationCenterController extends Controller
         return response()->json(['message' => 'Đã đánh dấu đã đọc.']);
     }
 
+    public function markTaskChatRead(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'task_id' => ['required', 'integer', 'min:1'],
+        ]);
+
+        InAppNotification::query()
+            ->where('user_id', $request->user()->id)
+            ->whereNull('read_at')
+            ->whereIn('type', self::CHAT_NOTIFICATION_TYPES)
+            ->where('data->task_id', $validated['task_id'])
+            ->update(['read_at' => now()]);
+
+        return response()->json(['message' => 'Đã đánh dấu hội thoại là đã đọc.']);
+    }
+
     public function markAllRead(Request $request): JsonResponse
     {
         $validated = $request->validate([

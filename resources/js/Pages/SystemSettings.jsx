@@ -8,6 +8,7 @@ const TABS = [
     { key: 'branding', label: 'Thương hiệu' },
     { key: 'contact', label: 'Liên hệ & pháp lý' },
     { key: 'notifications', label: 'Thông báo thiết bị' },
+    { key: 'diagnostics', label: 'Kết nối & thiết bị' },
 ];
 
 const initialSettings = (settings) => ({
@@ -23,6 +24,12 @@ const initialSettings = (settings) => ({
     notifications_dedupe_seconds: settings?.notifications_dedupe_seconds ?? 45,
     meeting_reminder_minutes_before: settings?.meeting_reminder_minutes_before ?? 60,
     task_item_progress_reminder_enabled: settings?.task_item_progress_reminder_enabled ?? true,
+    lead_capture_notification_enabled: settings?.lead_capture_notification_enabled ?? true,
+    contract_unpaid_reminder_enabled: settings?.contract_unpaid_reminder_enabled ?? true,
+    contract_unpaid_reminder_time: settings?.contract_unpaid_reminder_time || '08:00',
+    contract_expiry_reminder_enabled: settings?.contract_expiry_reminder_enabled ?? true,
+    contract_expiry_reminder_time: settings?.contract_expiry_reminder_time || '09:00',
+    contract_expiry_reminder_days_before: settings?.contract_expiry_reminder_days_before ?? 3,
 });
 
 export default function SystemSettings(props) {
@@ -122,6 +129,12 @@ export default function SystemSettings(props) {
             formData.append('notifications_dedupe_seconds', String(form.notifications_dedupe_seconds ?? 45));
             formData.append('meeting_reminder_minutes_before', String(form.meeting_reminder_minutes_before ?? 60));
             formData.append('task_item_progress_reminder_enabled', form.task_item_progress_reminder_enabled ? '1' : '0');
+            formData.append('lead_capture_notification_enabled', form.lead_capture_notification_enabled ? '1' : '0');
+            formData.append('contract_unpaid_reminder_enabled', form.contract_unpaid_reminder_enabled ? '1' : '0');
+            formData.append('contract_unpaid_reminder_time', form.contract_unpaid_reminder_time || '08:00');
+            formData.append('contract_expiry_reminder_enabled', form.contract_expiry_reminder_enabled ? '1' : '0');
+            formData.append('contract_expiry_reminder_time', form.contract_expiry_reminder_time || '09:00');
+            formData.append('contract_expiry_reminder_days_before', String(form.contract_expiry_reminder_days_before ?? 3));
             if (logoFile) {
                 formData.append('logo', logoFile);
             }
@@ -216,6 +229,9 @@ export default function SystemSettings(props) {
         rows.push({ key: 'Dedupe seconds', value: String(notificationConfig?.dedupe_seconds ?? form.notifications_dedupe_seconds ?? 45) });
         rows.push({ key: 'Meeting reminder', value: `${notificationConfig?.meeting_reminder_minutes_before ?? form.meeting_reminder_minutes_before ?? 60} phút trước giờ họp` });
         rows.push({ key: 'Task item late reminder', value: notificationConfig?.task_item_progress_reminder_enabled ? 'Bật' : 'Tắt' });
+        rows.push({ key: 'Lead mới -> push phụ trách/admin', value: notificationConfig?.lead_capture_notification_enabled ? 'Bật' : 'Tắt' });
+        rows.push({ key: 'Nhắc công nợ hợp đồng', value: notificationConfig?.contract_unpaid_reminder_enabled ? `${notificationConfig?.contract_unpaid_reminder_time || '08:00'} mỗi ngày` : 'Tắt' });
+        rows.push({ key: 'Nhắc hết hạn hợp đồng', value: notificationConfig?.contract_expiry_reminder_enabled ? `${notificationConfig?.contract_expiry_reminder_time || '09:00'} mỗi ngày, trước ${notificationConfig?.contract_expiry_reminder_days_before ?? 3} ngày` : 'Tắt' });
         rows.push({ key: 'Mail configured', value: notificationConfig?.mail_configured ? 'Có' : 'Chưa' });
         rows.push({ key: 'Device tokens total', value: String(pushTokens.total ?? 0) });
         rows.push({ key: 'Tokens iOS', value: String(pushTokens?.by_platform?.ios ?? 0) });
@@ -230,11 +246,16 @@ export default function SystemSettings(props) {
         return rows;
     }, [systemStatus, form.notifications_dedupe_seconds, form.meeting_reminder_minutes_before]);
 
+    const firebaseStatus = systemStatus?.firebase || {};
+    const pushTokens = systemStatus?.push_tokens || {};
+    const pushPlatforms = pushTokens?.by_platform || {};
+    const apnsEnvironment = pushTokens?.ios_apns_environment || {};
+
     return (
         <PageContainer
             auth={props.auth}
             title="Cài đặt hệ thống"
-            description="Trang cấu hình dành cho admin. Quản lý thương hiệu, thông tin pháp lý và thông báo thiết bị."
+            description="Trang cấu hình dành cho administrator. Quản lý thương hiệu, pháp lý, thông báo và kết nối hệ thống."
             stats={[]}
         >
             <div className="lg:col-span-2 space-y-4">
@@ -404,6 +425,30 @@ export default function SystemSettings(props) {
                                         onChange={(e) => setForm((s) => ({ ...s, task_item_progress_reminder_enabled: e.target.checked }))}
                                     />
                                 </label>
+                                <label className="flex items-center justify-between rounded-2xl border border-slate-200/80 px-4 py-3 text-sm">
+                                    <span>Bật thông báo khách hàng mới từ form/page/CRM</span>
+                                    <input
+                                        type="checkbox"
+                                        checked={!!form.lead_capture_notification_enabled}
+                                        onChange={(e) => setForm((s) => ({ ...s, lead_capture_notification_enabled: e.target.checked }))}
+                                    />
+                                </label>
+                                <label className="flex items-center justify-between rounded-2xl border border-slate-200/80 px-4 py-3 text-sm">
+                                    <span>Bật nhắc công nợ hợp đồng</span>
+                                    <input
+                                        type="checkbox"
+                                        checked={!!form.contract_unpaid_reminder_enabled}
+                                        onChange={(e) => setForm((s) => ({ ...s, contract_unpaid_reminder_enabled: e.target.checked }))}
+                                    />
+                                </label>
+                                <label className="flex items-center justify-between rounded-2xl border border-slate-200/80 px-4 py-3 text-sm">
+                                    <span>Bật nhắc hợp đồng sắp hết hạn</span>
+                                    <input
+                                        type="checkbox"
+                                        checked={!!form.contract_expiry_reminder_enabled}
+                                        onChange={(e) => setForm((s) => ({ ...s, contract_expiry_reminder_enabled: e.target.checked }))}
+                                    />
+                                </label>
                             </div>
 
                             <div className="mt-4 grid gap-4 md:grid-cols-2">
@@ -427,6 +472,35 @@ export default function SystemSettings(props) {
                                         className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
                                         value={form.meeting_reminder_minutes_before}
                                         onChange={(e) => setForm((s) => ({ ...s, meeting_reminder_minutes_before: Number(e.target.value || 60) }))}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs text-text-muted">Giờ nhắc công nợ hợp đồng</label>
+                                    <input
+                                        type="time"
+                                        className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                        value={form.contract_unpaid_reminder_time}
+                                        onChange={(e) => setForm((s) => ({ ...s, contract_unpaid_reminder_time: e.target.value }))}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs text-text-muted">Giờ nhắc hợp đồng sắp hết hạn</label>
+                                    <input
+                                        type="time"
+                                        className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                        value={form.contract_expiry_reminder_time}
+                                        onChange={(e) => setForm((s) => ({ ...s, contract_expiry_reminder_time: e.target.value }))}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs text-text-muted">Số ngày báo trước khi hợp đồng hết hạn</label>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        max="30"
+                                        className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                        value={form.contract_expiry_reminder_days_before}
+                                        onChange={(e) => setForm((s) => ({ ...s, contract_expiry_reminder_days_before: Number(e.target.value || 3) }))}
                                     />
                                 </div>
                             </div>
@@ -544,19 +618,112 @@ export default function SystemSettings(props) {
                                     )}
                                 </div>
                             )}
+                        </div>
+                    </div>
+                )}
 
-                            <div className="mt-5 rounded-2xl border border-slate-200/80">
-                                <div className="border-b border-slate-200/80 px-4 py-3 text-sm font-semibold text-slate-900">
-                                    Danh sách config thông báo toàn hệ thống
+                {activeTab === 'diagnostics' && (
+                    <div className="space-y-4">
+                        <div className="grid gap-4 xl:grid-cols-3">
+                            <div className="xl:col-span-2 rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card">
+                                <div className="flex items-center justify-between gap-3">
+                                    <div>
+                                        <h3 className="text-sm font-semibold text-slate-900">Trạng thái kết nối hệ thống</h3>
+                                        <p className="mt-1 text-xs text-text-muted">Di chuyển từ dashboard sang đây để administrator kiểm tra tập trung.</p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600"
+                                        onClick={reloadSystemStatus}
+                                        disabled={statusLoading}
+                                    >
+                                        {statusLoading ? 'Đang tải...' : 'Làm mới'}
+                                    </button>
                                 </div>
-                                <div className="divide-y divide-slate-100">
-                                    {configRows.map((row) => (
-                                        <div key={row.key} className="flex items-center justify-between px-4 py-2.5 text-sm">
-                                            <span className="text-slate-500">{row.key}</span>
-                                            <span className="font-semibold text-slate-900">{row.value || '—'}</span>
+
+                                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                                    <div className="rounded-2xl border border-slate-200/80 p-4">
+                                        <div className="mb-3 flex items-center justify-between">
+                                            <h4 className="text-sm font-semibold text-slate-900">Firebase server</h4>
+                                            <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${firebaseStatus.enabled ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                                                {firebaseStatus.enabled ? 'Sẵn sàng' : 'Chưa cấu hình'}
+                                            </span>
                                         </div>
-                                    ))}
+                                        <div className="space-y-2 text-sm">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-slate-500">Realtime DB</span>
+                                                <span className="font-semibold text-slate-900">{firebaseStatus.database_enabled ? 'OK' : 'Thiếu DB URL'}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-slate-500">Access token push</span>
+                                                <span className="font-semibold text-slate-900">{firebaseStatus.access_token ? 'OK' : 'Chưa lấy được'}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-slate-500">Project</span>
+                                                <span className="font-semibold text-slate-900">{firebaseStatus.project_id || '—'}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="rounded-2xl border border-slate-200/80 p-4">
+                                        <div className="mb-3 flex items-center justify-between">
+                                            <h4 className="text-sm font-semibold text-slate-900">Thiết bị nhận thông báo</h4>
+                                            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                                                {pushTokens.total ?? 0} token
+                                            </span>
+                                        </div>
+                                        <div className="space-y-2 text-sm">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-slate-500">iOS</span>
+                                                <span className="font-semibold text-slate-900">{pushPlatforms.ios ?? 0}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-slate-500">Android</span>
+                                                <span className="font-semibold text-slate-900">{pushPlatforms.android ?? 0}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-slate-500">Web</span>
+                                                <span className="font-semibold text-slate-900">{pushPlatforms.web ?? 0}</span>
+                                            </div>
+                                            <div className="pt-2 text-xs text-text-muted">
+                                                Cập nhật gần nhất: {pushTokens.last_updated_at || '—'}
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
+                            </div>
+
+                            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card">
+                                <h3 className="text-sm font-semibold text-slate-900">Môi trường APNs iOS</h3>
+                                <p className="mt-1 text-xs text-text-muted">Đối chiếu token production/development khi test TestFlight và máy dev.</p>
+                                <div className="mt-4 space-y-3">
+                                    <div className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2">
+                                        <span className="text-sm text-slate-600">Production</span>
+                                        <span className="text-sm font-semibold text-slate-900">{apnsEnvironment.production ?? 0}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2">
+                                        <span className="text-sm text-slate-600">Development</span>
+                                        <span className="text-sm font-semibold text-slate-900">{apnsEnvironment.development ?? 0}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2">
+                                        <span className="text-sm text-slate-600">Chưa xác định</span>
+                                        <span className="text-sm font-semibold text-slate-900">{apnsEnvironment.unknown ?? 0}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="rounded-2xl border border-slate-200/80 bg-white shadow-card">
+                            <div className="border-b border-slate-200/80 px-4 py-3">
+                                <h3 className="text-sm font-semibold text-slate-900">Danh sách config kỹ thuật & thông báo</h3>
+                            </div>
+                            <div className="divide-y divide-slate-100">
+                                {configRows.map((row) => (
+                                    <div key={row.key} className="flex items-center justify-between gap-4 px-4 py-2.5 text-sm">
+                                        <span className="text-slate-500">{row.key}</span>
+                                        <span className="text-right font-semibold text-slate-900">{row.value || '—'}</span>
+                                    </div>
+                                ))}
                             </div>
                         </div>
                     </div>
