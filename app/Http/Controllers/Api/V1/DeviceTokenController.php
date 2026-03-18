@@ -11,6 +11,49 @@ use Illuminate\Support\Facades\Schema;
 
 class DeviceTokenController extends Controller
 {
+    public function index(Request $request): JsonResponse
+    {
+        $query = UserDeviceToken::query()
+            ->with(['user:id,name,email,phone,role,department_id'])
+            ->orderByDesc('last_seen_at')
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id');
+
+        if ($request->filled('platform')) {
+            $query->where('platform', (string) $request->input('platform'));
+        }
+
+        if ($request->filled('apns_environment')) {
+            $query->where('apns_environment', (string) $request->input('apns_environment'));
+        }
+
+        if ($request->filled('notifications_enabled')) {
+            $flag = filter_var($request->input('notifications_enabled'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+            if ($flag === null) {
+                $query->whereNull('notifications_enabled');
+            } else {
+                $query->where('notifications_enabled', $flag);
+            }
+        }
+
+        if ($request->filled('search')) {
+            $search = trim((string) $request->input('search'));
+            $query->where(function ($builder) use ($search) {
+                $builder->where('token', 'like', "%{$search}%")
+                    ->orWhere('device_name', 'like', "%{$search}%")
+                    ->orWhereHas('user', function ($userQuery) use ($search) {
+                        $userQuery->where('name', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%")
+                            ->orWhere('phone', 'like', "%{$search}%");
+                    });
+            });
+        }
+
+        return response()->json(
+            $query->paginate((int) $request->input('per_page', 20))
+        );
+    }
+
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([

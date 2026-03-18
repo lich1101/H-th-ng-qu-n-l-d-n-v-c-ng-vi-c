@@ -21,7 +21,15 @@ class SendTaskItemProgressReminders extends Command
             return self::SUCCESS;
         }
 
-        $today = Carbon::now('Asia/Ho_Chi_Minh')->startOfDay();
+        $now = Carbon::now('Asia/Ho_Chi_Minh');
+        $reminderTime = $setting && $setting->task_item_progress_reminder_time
+            ? (string) $setting->task_item_progress_reminder_time
+            : '09:00';
+        if (! $this->matchesTime($now, $reminderTime)) {
+            return self::SUCCESS;
+        }
+
+        $today = $now->copy()->startOfDay();
         $items = TaskItem::query()
             ->whereNotNull('assignee_id')
             ->where('status', '!=', 'done')
@@ -109,5 +117,19 @@ class SendTaskItemProgressReminders extends Command
         }
 
         return self::SUCCESS;
+    }
+
+    private function matchesTime(Carbon $now, string $expectedTime): bool
+    {
+        $parts = explode(':', $expectedTime);
+        if (count($parts) !== 2) {
+            return false;
+        }
+
+        return sprintf('%02d:%02d', $now->hour, $now->minute) === sprintf(
+            '%02d:%02d',
+            (int) $parts[0],
+            (int) $parts[1]
+        );
     }
 }

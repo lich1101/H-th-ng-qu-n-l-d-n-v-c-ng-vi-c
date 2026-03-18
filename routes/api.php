@@ -81,7 +81,11 @@ Route::prefix('v1')->group(function () {
         Route::get('/me', [AuthController::class, 'me']);
         Route::post('/logout', [AuthController::class, 'logout']);
         Route::post('/profile/avatar', [ProfileController::class, 'updateAvatar']);
+        Route::get('/device-tokens', [DeviceTokenController::class, 'index'])
+            ->middleware('role:administrator');
         Route::post('/device-tokens', [DeviceTokenController::class, 'store']);
+        Route::get('/settings/admin', [AppSettingController::class, 'adminShow'])
+            ->middleware('role:administrator');
         Route::get('/notification-preferences', [UserNotificationPreferenceController::class, 'show']);
         Route::put('/notification-preferences', [UserNotificationPreferenceController::class, 'update']);
         Route::get('/firebase/token', [FirebaseTokenController::class, 'show']);
@@ -167,11 +171,13 @@ Route::prefix('v1')->group(function () {
         Route::post('/tasks/{task}/items/{item}/updates', [TaskItemUpdateController::class, 'store'])
             ->middleware('role:admin,quan_ly,nhan_vien');
         Route::put('/tasks/{task}/items/{item}/updates/{update}', [TaskItemUpdateController::class, 'update'])
-            ->middleware('role:admin,quan_ly');
+            ->middleware('role:admin,quan_ly,nhan_vien');
         Route::post('/tasks/{task}/items/{item}/updates/{update}/approve', [TaskItemUpdateController::class, 'approve'])
-            ->middleware('role:admin,quan_ly');
+            ->middleware('role:admin,quan_ly,nhan_vien');
         Route::post('/tasks/{task}/items/{item}/updates/{update}/reject', [TaskItemUpdateController::class, 'reject'])
-            ->middleware('role:admin,quan_ly');
+            ->middleware('role:admin,quan_ly,nhan_vien');
+        Route::delete('/tasks/{task}/items/{item}/updates/{update}', [TaskItemUpdateController::class, 'destroy'])
+            ->middleware('role:admin,quan_ly,nhan_vien');
 
         Route::get('/tasks/{task}/reminders', [DeadlineReminderController::class, 'index']);
         Route::post('/tasks/{task}/reminders', [DeadlineReminderController::class, 'store'])

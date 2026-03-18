@@ -18,6 +18,11 @@ class SendMeetingReminders extends Command
     public function handle(): int
     {
         $setting = AppSetting::query()->first();
+        if ($setting && ! (bool) ($setting->meeting_reminder_enabled ?? true)) {
+            $this->info('Nhắc lịch họp đang tắt trong cài đặt hệ thống.');
+            return self::SUCCESS;
+        }
+
         $minutesBefore = max(1, (int) ($setting->meeting_reminder_minutes_before ?? 60));
         $timezone = config('app.timezone', 'Asia/Ho_Chi_Minh');
         $windowStart = now()->addMinutes($minutesBefore)->subMinute();

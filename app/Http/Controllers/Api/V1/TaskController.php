@@ -17,7 +17,7 @@ class TaskController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = Task::query()
-            ->with(['project', 'assignee', 'reviewer', 'department'])
+            ->with(['project', 'project.owner', 'assignee', 'reviewer', 'department'])
             ->withCount(['comments', 'attachments', 'items'])
             ->withCount([
                 'updates as pending_updates_count' => function ($builder) {
@@ -115,7 +115,7 @@ class TaskController extends Controller
         }
 
         return response()->json(
-            $task->load(['project', 'assignee', 'reviewer', 'department'])->loadCount(['comments', 'attachments']),
+            $task->load(['project', 'project.owner', 'assignee', 'reviewer', 'department'])->loadCount(['comments', 'attachments']),
             201
         );
     }
@@ -126,7 +126,7 @@ class TaskController extends Controller
             return response()->json(['message' => 'Không có quyền xem công việc.'], 403);
         }
         return response()->json(
-            $task->load(['project', 'assignee', 'reviewer', 'department'])->loadCount(['comments', 'attachments'])
+            $task->load(['project', 'project.owner', 'assignee', 'reviewer', 'department'])->loadCount(['comments', 'attachments'])
         );
     }
 
@@ -164,7 +164,7 @@ class TaskController extends Controller
         $task->update($validated);
 
         return response()->json(
-            $task->load(['project', 'assignee', 'reviewer', 'department'])->loadCount(['comments', 'attachments'])
+            $task->load(['project', 'project.owner', 'assignee', 'reviewer', 'department'])->loadCount(['comments', 'attachments'])
         );
     }
 
@@ -219,6 +219,9 @@ class TaskController extends Controller
                 $builder->whereHas('assignee', function ($assigneeQuery) use ($deptIds) {
                     $assigneeQuery->whereIn('department_id', $deptIds);
                 })->orWhereIn('department_id', $deptIds)
+                    ->orWhereHas('project', function ($projectQuery) use ($user) {
+                        $projectQuery->where('owner_id', $user->id);
+                    })
                     ->orWhere('assigned_by', $user->id)
                     ->orWhere('created_by', $user->id);
             });
@@ -227,6 +230,9 @@ class TaskController extends Controller
 
         $query->where(function ($builder) use ($user) {
             $builder->where('assignee_id', $user->id)
+                ->orWhereHas('project', function ($projectQuery) use ($user) {
+                    $projectQuery->where('owner_id', $user->id);
+                })
                 ->orWhereHas('items', function ($itemQuery) use ($user) {
                     $itemQuery->where('assignee_id', $user->id);
                 });
@@ -240,6 +246,9 @@ class TaskController extends Controller
         }
         if ($user->role === 'ke_toan') {
             return false;
+        }
+        if ($task->project && (int) $task->project->owner_id === (int) $user->id) {
+            return true;
         }
         if ($user->role === 'quan_ly') {
             $deptIds = $user->managedDepartments()->pluck('id');

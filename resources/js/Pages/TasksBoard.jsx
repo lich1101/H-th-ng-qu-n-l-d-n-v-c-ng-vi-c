@@ -40,9 +40,22 @@ const PRIORITY_STYLES = {
     urgent: 'bg-rose-50 text-rose-700 border-rose-200',
 };
 
+const REVIEW_STATUS_LABELS = {
+    pending: 'Chờ duyệt',
+    approved: 'Đã duyệt',
+    rejected: 'Từ chối',
+};
+
+const REVIEW_STATUS_STYLES = {
+    pending: 'bg-amber-50 text-amber-700 border-amber-200',
+    approved: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    rejected: 'bg-rose-50 text-rose-700 border-rose-200',
+};
+
 export default function TasksBoard(props) {
     const toast = useToast();
     const userRole = props?.auth?.user?.role || '';
+    const currentUserId = Number(props?.auth?.user?.id || 0);
     const canCreate = ['admin', 'quan_ly'].includes(userRole);
     const canEdit = ['admin', 'quan_ly'].includes(userRole);
     const canDelete = ['admin', 'quan_ly'].includes(userRole);
@@ -139,6 +152,7 @@ export default function TasksBoard(props) {
     const [editingItemId, setEditingItemId] = useState(null);
     const [showItemReport, setShowItemReport] = useState(false);
     const [reportItem, setReportItem] = useState(null);
+    const [editingItemUpdate, setEditingItemUpdate] = useState(null);
     const [itemReportForm, setItemReportForm] = useState({
         status: '',
         progress_percent: '',
@@ -176,6 +190,25 @@ export default function TasksBoard(props) {
         }
         return values;
     }, [meta]);
+
+    const canApproveItemReports = (taskRecord = itemsTask) => {
+        if (!taskRecord) return false;
+        return userRole === 'admin'
+            || Number(taskRecord?.project?.owner_id || 0) === currentUserId
+            || Number(taskRecord?.department?.manager_id || 0) === currentUserId;
+    };
+
+    const canSubmitItemReport = (item, taskRecord = itemsTask) => {
+        if (!item) return false;
+        return canApproveItemReports(taskRecord) || Number(item.assignee_id || 0) === currentUserId;
+    };
+
+    const canEditPendingItemUpdate = (item, update, taskRecord = itemsTask) => {
+        if (!item || !update || update.review_status !== 'pending') return false;
+        if (canApproveItemReports(taskRecord)) return true;
+        return Number(item.assignee_id || 0) === currentUserId
+            || Number(update?.submitter?.id || update?.submitted_by || 0) === currentUserId;
+    };
 
     const fetchMeta = async () => {
         try {
@@ -283,6 +316,19 @@ export default function TasksBoard(props) {
             minute: '2-digit',
             day: '2-digit',
             month: '2-digit',
+        });
+    };
+
+    const formatDateTime = (raw) => {
+        if (!raw) return '—';
+        const date = new Date(raw);
+        if (Number.isNaN(date.getTime())) return String(raw);
+        return date.toLocaleString('vi-VN', {
+            hour: '2-digit',
+            minute: '2-digit',
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
         });
     };
 
@@ -831,9 +877,15 @@ export default function TasksBoard(props) {
         }
     };
 
-    const openItemReportModal = (item) => {
+    const openItemReportModal = (item, update = null) => {
         setReportItem(item);
-        setItemReportForm({ status: '', progress_percent: '', note: '', attachment: null });
+        setEditingItemUpdate(update);
+        setItemReportForm({
+            status: update?.status || '',
+            progress_percent: update?.progress_percent ?? '',
+            note: update?.note || '',
+            attachment: null,
+        });
         setShowItemReport(true);
     };
 
@@ -845,15 +897,31 @@ export default function TasksBoard(props) {
         if (itemReportForm.note) formData.append('note', itemReportForm.note);
         if (itemReportForm.attachment) formData.append('attachment', itemReportForm.attachment);
         try {
-            await axios.post(
-                `/api/v1/tasks/${itemsTask.id}/items/${reportItem.id}/updates`,
-                formData,
-                { headers: { 'Content-Type': 'multipart/form-data' } },
-            );
-            toast.success('Đã gửi báo cáo đầu việc.');
+            if (editingItemUpdate) {
+                formData.append('_method', 'PUT');
+                await axios.post(
+                    `/api/v1/tasks/${itemsTask.id}/items/${reportItem.id}/updates/${editingItemUpdate.id}`,
+                    formData,
+                    { headers: { 'Content-Type': 'multipart/form-data' } },
+                );
+                toast.success('Đã cập nhật phiếu duyệt đầu việc.');
+            } else {
+                await axios.post(
+                    `/api/v1/tasks/${itemsTask.id}/items/${reportItem.id}/updates`,
+                    formData,
+                    { headers: { 'Content-Type': 'multipart/form-data' } },
+                );
+                toast.success('Đã gửi phiếu duyệt đầu việc.');
+            }
             setShowItemReport(false);
+            setEditingItemUpdate(null);
+            if (showItemReview && reviewItem?.id === reportItem.id) {
+                await openItemReviewModal(reportItem);
+            }
+            await fetchTaskItems(itemsTask.id);
+            await fetchTasks(filters.page, filters);
         } catch (e) {
-            toast.error(e?.response?.data?.message || 'Gửi báo cáo thất bại.');
+            toast.error(e?.response?.data?.message || 'Lưu phiếu duyệt thất bại.');
         }
     };
 
@@ -865,7 +933,14 @@ export default function TasksBoard(props) {
         setReviewForm({ status: '', progress_percent: '', note: '', review_note: '' });
         try {
             const res = await axios.get(`/api/v1/tasks/${itemsTask.id}/items/${item.id}/updates`, { params: { per_page: 30 } });
-            setItemUpdates(res.data?.data || []);
+            const rows = res.data?.data || [];
+            setItemUpdates(rows);
+            if (rows.length > 0) {
+                selectItemUpdate(rows[0]);
+            } else {
+                setReviewingUpdate(null);
+                setReviewForm({ status: '', progress_percent: '', note: '', review_note: '' });
+            }
         } catch (e) {
             toast.error(e?.response?.data?.message || 'Không tải được báo cáo.');
             setItemUpdates([]);
@@ -894,6 +969,18 @@ export default function TasksBoard(props) {
             await openItemReviewModal(reviewItem);
         } catch (e) {
             toast.error(e?.response?.data?.message || 'Từ chối báo cáo thất bại.');
+        }
+    };
+
+    const deleteItemUpdate = async (update) => {
+        if (!itemsTask || !reviewItem) return;
+        if (!confirm('Xóa phiếu duyệt này?')) return;
+        try {
+            await axios.delete(`/api/v1/tasks/${itemsTask.id}/items/${reviewItem.id}/updates/${update.id}`);
+            toast.success('Đã xóa phiếu duyệt.');
+            await openItemReviewModal(reviewItem);
+        } catch (e) {
+            toast.error(e?.response?.data?.message || 'Xóa phiếu duyệt thất bại.');
         }
     };
 
@@ -1986,7 +2073,11 @@ export default function TasksBoard(props) {
                             <p className="text-sm text-text-muted">Chưa có đầu việc nào.</p>
                         )}
                         {taskItems.map((item) => (
-                            <div key={item.id} className="rounded-2xl border border-slate-200/80 p-4 bg-white">
+                            <div
+                                key={item.id}
+                                className="rounded-2xl border border-slate-200/80 p-4 bg-white transition hover:border-primary/30 hover:bg-primary/5 cursor-pointer"
+                                onClick={() => openItemReviewModal(item)}
+                            >
                                 <div className="flex items-center justify-between">
                                     <div>
                                         <p className="font-semibold text-slate-900">{item.title}</p>
@@ -2006,27 +2097,58 @@ export default function TasksBoard(props) {
                                     <span>Bắt đầu: {item.start_date ? String(item.start_date).slice(0, 10) : '—'}</span>
                                     <span>Hạn: {item.deadline ? String(item.deadline).slice(0, 10) : '—'}</span>
                                 </div>
-                                <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                                    {item.assignee_id === props?.auth?.user?.id && (
-                                        <button className="rounded-xl bg-primary text-white px-3 py-2 font-semibold" onClick={() => openItemReportModal(item)} type="button">
-                                            Báo cáo
+                                <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                                    <div className="text-xs font-semibold text-primary">
+                                        Bấm vào đầu việc để mở danh sách phiếu duyệt
+                                    </div>
+                                    <div className="flex flex-wrap gap-2 text-xs">
+                                        {canSubmitItemReport(item) && (
+                                            <button
+                                                className="rounded-xl bg-primary text-white px-3 py-2 font-semibold"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    openItemReportModal(item);
+                                                }}
+                                                type="button"
+                                            >
+                                                Tạo phiếu
+                                            </button>
+                                        )}
+                                        <button
+                                            className="rounded-xl border border-slate-200 px-3 py-2 font-semibold text-slate-700"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                openItemReviewModal(item);
+                                            }}
+                                            type="button"
+                                        >
+                                            Phiếu duyệt
                                         </button>
-                                    )}
-                                    {['admin', 'quan_ly'].includes(userRole) && (
-                                        <button className="rounded-xl border border-slate-200 px-3 py-2 font-semibold text-slate-700" onClick={() => openItemReviewModal(item)} type="button">
-                                            Duyệt báo cáo
-                                        </button>
-                                    )}
-                                    {['admin', 'quan_ly'].includes(userRole) && (
-                                        <button className="text-primary font-semibold" onClick={() => startEditItem(item)} type="button">
-                                            Sửa
-                                        </button>
-                                    )}
-                                    {['admin', 'quan_ly'].includes(userRole) && (
-                                        <button className="text-rose-600 font-semibold" onClick={() => removeItem(item.id)} type="button">
-                                            Xóa
-                                        </button>
-                                    )}
+                                        {['admin', 'quan_ly'].includes(userRole) && (
+                                            <button
+                                                className="text-primary font-semibold"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    startEditItem(item);
+                                                }}
+                                                type="button"
+                                            >
+                                                Sửa đầu việc
+                                            </button>
+                                        )}
+                                        {['admin', 'quan_ly'].includes(userRole) && (
+                                            <button
+                                                className="text-rose-600 font-semibold"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    removeItem(item.id);
+                                                }}
+                                                type="button"
+                                            >
+                                                Xóa đầu việc
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         ))}
@@ -2133,11 +2255,13 @@ export default function TasksBoard(props) {
             <Modal
                 open={showItemReport}
                 onClose={() => setShowItemReport(false)}
-                title={`Báo cáo đầu việc${reportItem ? ` • ${reportItem.title}` : ''}`}
-                description="Gửi cập nhật tiến độ đầu việc cho trưởng phòng."
+                title={`${editingItemUpdate ? 'Sửa phiếu duyệt đầu việc' : 'Tạo phiếu duyệt đầu việc'}${reportItem ? ` • ${reportItem.title}` : ''}`}
+                description="Tạo hoặc chỉnh sửa phiếu báo cáo tiến độ đầu việc để quản lý phản hồi."
                 size="md"
             >
                 <div className="space-y-3 text-sm">
+                    <div>
+                        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Trạng thái báo cáo</label>
                     <select
                         className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
                         value={itemReportForm.status}
@@ -2148,6 +2272,9 @@ export default function TasksBoard(props) {
                             <option key={s} value={s}>{LABELS[s] || s}</option>
                         ))}
                     </select>
+                    </div>
+                    <div>
+                        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Tiến độ đề xuất (%)</label>
                     <input
                         className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
                         type="number"
@@ -2157,6 +2284,9 @@ export default function TasksBoard(props) {
                         value={itemReportForm.progress_percent}
                         onChange={(e) => setItemReportForm((s) => ({ ...s, progress_percent: e.target.value }))}
                     />
+                    </div>
+                    <div>
+                        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Nội dung phiếu duyệt</label>
                     <textarea
                         className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
                         rows={3}
@@ -2164,7 +2294,9 @@ export default function TasksBoard(props) {
                         value={itemReportForm.note}
                         onChange={(e) => setItemReportForm((s) => ({ ...s, note: e.target.value }))}
                     />
+                    </div>
                     <div className="rounded-2xl border border-dashed border-slate-200/80 p-4 text-center">
+                        <div className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">File đính kèm</div>
                         <input
                             id="task-item-report-file"
                             type="file"
@@ -2187,7 +2319,7 @@ export default function TasksBoard(props) {
                             className="flex-1 rounded-2xl px-3 py-2.5 bg-primary text-white text-sm font-semibold"
                             onClick={submitItemReport}
                         >
-                            Gửi báo cáo
+                            {editingItemUpdate ? 'Cập nhật phiếu' : 'Gửi phiếu'}
                         </button>
                         <button
                             type="button"
@@ -2203,107 +2335,214 @@ export default function TasksBoard(props) {
             <Modal
                 open={showItemReview}
                 onClose={() => setShowItemReview(false)}
-                title={`Duyệt báo cáo đầu việc${reviewItem ? ` • ${reviewItem.title}` : ''}`}
-                description="Chọn báo cáo để duyệt, chỉnh sửa hoặc từ chối."
+                title={`Phiếu duyệt đầu việc${reviewItem ? ` • ${reviewItem.title}` : ''}`}
+                description="Danh sách phiếu ở bên trái, chi tiết và thao tác phản hồi ở bên phải."
                 size="lg"
             >
-                <div className="space-y-4 text-sm">
-                    {itemUpdates.length === 0 && (
-                        <p className="text-text-muted">Chưa có báo cáo chờ duyệt.</p>
-                    )}
-                    {itemUpdates.map((u) => (
-                        <div key={u.id} className="rounded-2xl border border-slate-200/80 p-4 bg-white">
-                            <div className="flex items-center justify-between gap-2">
-                                <div>
-                                    <p className="text-xs text-text-muted">#{u.id} • {u.submitter?.name || 'Nhân sự'}</p>
-                                    <p className="font-semibold text-slate-900">{u.note || 'Không có ghi chú'}</p>
-                                </div>
+                <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)] text-sm">
+                    <div className="space-y-3 rounded-2xl border border-slate-200/80 bg-slate-50 p-3">
+                        <div className="flex items-center justify-between gap-3">
+                            <div className="text-sm font-semibold text-slate-900">Danh sách phiếu</div>
+                            {canSubmitItemReport(reviewItem) && (
                                 <button
                                     type="button"
-                                    className="text-xs font-semibold text-primary"
-                                    onClick={() => selectItemUpdate(u)}
+                                    className="rounded-xl bg-primary px-3 py-2 text-xs font-semibold text-white"
+                                    onClick={() => openItemReportModal(reviewItem)}
                                 >
-                                    Xem & duyệt
+                                    Tạo phiếu
                                 </button>
-                            </div>
-                            <div className="mt-2 flex flex-wrap gap-2 text-xs text-text-muted">
-                                <span>Trạng thái: {u.status ? (LABELS[u.status] || u.status) : '—'}</span>
-                                <span>Tiến độ: {u.progress_percent ?? '—'}%</span>
-                            </div>
-                            {u.attachment_path && (
-                                <a className="text-xs text-primary mt-2 inline-block" href={u.attachment_path} target="_blank" rel="noreferrer">
-                                    Xem file đính kèm
-                                </a>
                             )}
                         </div>
-                    ))}
+                        {itemUpdates.length === 0 && (
+                            <p className="rounded-2xl border border-slate-200/80 bg-white px-4 py-6 text-sm text-text-muted">
+                                Chưa có phiếu duyệt nào cho đầu việc này.
+                            </p>
+                        )}
+                        {itemUpdates.map((u) => (
+                            <button
+                                key={u.id}
+                                type="button"
+                                className={`w-full rounded-2xl border p-3 text-left transition ${
+                                    reviewingUpdate?.id === u.id
+                                        ? 'border-primary bg-primary/5'
+                                        : 'border-slate-200/80 bg-white hover:border-primary/30'
+                                }`}
+                                onClick={() => selectItemUpdate(u)}
+                            >
+                                <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                        <p className="text-xs text-text-muted">Phiếu #{u.id} • {u.submitter?.name || 'Nhân sự'}</p>
+                                        <p className="mt-1 font-semibold text-slate-900">{REVIEW_STATUS_LABELS[u.review_status] || 'Chờ duyệt'}</p>
+                                    </div>
+                                    <span className={`rounded-full border px-2 py-1 text-[11px] font-semibold ${
+                                        REVIEW_STATUS_STYLES[u.review_status] || REVIEW_STATUS_STYLES.pending
+                                    }`}>
+                                        {u.progress_percent ?? '—'}%
+                                    </span>
+                                </div>
+                                <div className="mt-2 text-xs text-text-muted line-clamp-2">
+                                    {u.note || 'Không có ghi chú'}
+                                </div>
+                            </button>
+                        ))}
+                    </div>
 
-                    {reviewingUpdate && (
-                        <div className="rounded-2xl border border-slate-200/80 p-4 bg-slate-50">
-                            <h4 className="font-semibold text-slate-900 mb-3">Duyệt báo cáo #{reviewingUpdate.id}</h4>
-                            <div className="grid grid-cols-2 gap-3">
-                                <select
-                                    className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                                    value={reviewForm.status}
-                                    onChange={(e) => setReviewForm((s) => ({ ...s, status: e.target.value }))}
-                                >
-                                    <option value="">-- Trạng thái --</option>
-                                    {statusOptions.map((s) => (
-                                        <option key={s} value={s}>{LABELS[s] || s}</option>
-                                    ))}
-                                </select>
-                                <input
-                                    className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                                    type="number"
-                                    min="0"
-                                    max="100"
-                                    placeholder="Tiến độ (%)"
-                                    value={reviewForm.progress_percent}
-                                    onChange={(e) => setReviewForm((s) => ({ ...s, progress_percent: e.target.value }))}
-                                />
+                    <div className="rounded-2xl border border-slate-200/80 bg-white p-5">
+                        {!reviewingUpdate && (
+                            <div className="flex min-h-[260px] items-center justify-center text-sm text-text-muted">
+                                Chọn một phiếu duyệt để xem chi tiết.
                             </div>
-                            <textarea
-                                className="mt-3 w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                                rows={3}
-                                placeholder="Ghi chú sau chỉnh sửa (tuỳ chọn)"
-                                value={reviewForm.note}
-                                onChange={(e) => setReviewForm((s) => ({ ...s, note: e.target.value }))}
-                            />
-                            <textarea
-                                className="mt-3 w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                                rows={2}
-                                placeholder="Lý do từ chối (nếu không duyệt)"
-                                value={reviewForm.review_note}
-                                onChange={(e) => setReviewForm((s) => ({ ...s, review_note: e.target.value }))}
-                            />
-                            <div className="mt-3 flex flex-wrap gap-2">
-                                <button
-                                    type="button"
-                                    className="rounded-2xl bg-primary text-white px-4 py-2 text-sm font-semibold"
-                                    onClick={() => approveItemUpdate(reviewingUpdate, {
-                                        status: reviewForm.status || undefined,
-                                        progress_percent: reviewForm.progress_percent === '' ? undefined : Number(reviewForm.progress_percent),
-                                        note: reviewForm.note || undefined,
-                                    })}
-                                >
-                                    Duyệt
-                                </button>
-                                <button
-                                    type="button"
-                                    className="rounded-2xl border border-rose-200 text-rose-600 px-4 py-2 text-sm font-semibold"
-                                    onClick={() => {
-                                        if (!reviewForm.review_note) {
-                                            toast.error('Vui lòng nhập lý do từ chối.');
-                                            return;
-                                        }
-                                        rejectItemUpdate(reviewingUpdate, reviewForm.review_note);
-                                    }}
-                                >
-                                    Từ chối
-                                </button>
+                        )}
+                        {reviewingUpdate && (
+                            <div className="space-y-4">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                        <div className="text-xs uppercase tracking-[0.14em] text-text-subtle">
+                                            Phiếu duyệt #{reviewingUpdate.id}
+                                        </div>
+                                        <h4 className="mt-1 text-lg font-semibold text-slate-900">
+                                            {REVIEW_STATUS_LABELS[reviewingUpdate.review_status] || 'Chờ duyệt'}
+                                        </h4>
+                                    </div>
+                                    <div className="text-right text-xs text-text-muted">
+                                        <div>Người gửi: {reviewingUpdate.submitter?.name || '—'}</div>
+                                        <div className="mt-1">Lúc gửi: {formatDateTime(reviewingUpdate.created_at)}</div>
+                                    </div>
+                                </div>
+
+                                <div className="grid gap-3 md:grid-cols-2">
+                                    <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                                        <div className="text-xs text-text-muted">Trạng thái báo cáo</div>
+                                        <div className="mt-1 font-semibold text-slate-900">
+                                            {reviewingUpdate.status ? (LABELS[reviewingUpdate.status] || reviewingUpdate.status) : '—'}
+                                        </div>
+                                    </div>
+                                    <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                                        <div className="text-xs text-text-muted">Tiến độ đề xuất</div>
+                                        <div className="mt-1 font-semibold text-slate-900">{reviewingUpdate.progress_percent ?? '—'}%</div>
+                                    </div>
+                                    <div className="rounded-2xl bg-slate-50 px-4 py-3 md:col-span-2">
+                                        <div className="text-xs text-text-muted">Ghi chú của người gửi</div>
+                                        <div className="mt-1 text-sm text-slate-900">{reviewingUpdate.note || 'Không có ghi chú.'}</div>
+                                    </div>
+                                    {reviewingUpdate.review_note && (
+                                        <div className="rounded-2xl bg-amber-50 px-4 py-3 md:col-span-2">
+                                            <div className="text-xs text-amber-700">Phản hồi của người duyệt</div>
+                                            <div className="mt-1 text-sm text-amber-900">{reviewingUpdate.review_note}</div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {reviewingUpdate.attachment_path && (
+                                    <a
+                                        className="inline-flex rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-primary"
+                                        href={reviewingUpdate.attachment_path}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                    >
+                                        Xem file đính kèm
+                                    </a>
+                                )}
+
+                                {canEditPendingItemUpdate(reviewItem, reviewingUpdate) && (
+                                    <div className="flex flex-wrap gap-2">
+                                        <button
+                                            type="button"
+                                            className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
+                                            onClick={() => openItemReportModal(reviewItem, reviewingUpdate)}
+                                        >
+                                            Sửa phiếu
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="rounded-2xl border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-600"
+                                            onClick={() => deleteItemUpdate(reviewingUpdate)}
+                                        >
+                                            Xóa phiếu
+                                        </button>
+                                    </div>
+                                )}
+
+                                {canApproveItemReports(itemsTask) && reviewingUpdate.review_status === 'pending' && (
+                                    <div className="rounded-2xl border border-slate-200/80 bg-slate-50 p-4">
+                                        <div className="text-sm font-semibold text-slate-900">Phản hồi phiếu duyệt</div>
+                                        <div className="mt-3 grid gap-3 md:grid-cols-2">
+                                            <div>
+                                                <label className="text-xs text-text-muted">Trạng thái sau duyệt</label>
+                                                <select
+                                                    className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                                    value={reviewForm.status}
+                                                    onChange={(e) => setReviewForm((s) => ({ ...s, status: e.target.value }))}
+                                                >
+                                                    <option value="">-- Giữ nguyên theo phiếu --</option>
+                                                    {statusOptions.map((s) => (
+                                                        <option key={s} value={s}>{LABELS[s] || s}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="text-xs text-text-muted">Tiến độ sau duyệt (%)</label>
+                                                <input
+                                                    className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                                    type="number"
+                                                    min="0"
+                                                    max="100"
+                                                    placeholder="Tiến độ (%)"
+                                                    value={reviewForm.progress_percent}
+                                                    onChange={(e) => setReviewForm((s) => ({ ...s, progress_percent: e.target.value }))}
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="mt-3">
+                                            <label className="text-xs text-text-muted">Ghi chú sau duyệt</label>
+                                            <textarea
+                                                className="mt-2 min-h-[90px] w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                                placeholder="Có thể chỉnh nội dung cuối cùng trước khi duyệt."
+                                                value={reviewForm.note}
+                                                onChange={(e) => setReviewForm((s) => ({ ...s, note: e.target.value }))}
+                                            />
+                                        </div>
+                                        <div className="mt-3">
+                                            <label className="text-xs text-text-muted">Lý do từ chối</label>
+                                            <textarea
+                                                className="mt-2 min-h-[80px] w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                                rows={2}
+                                                placeholder="Chỉ bắt buộc khi từ chối."
+                                                value={reviewForm.review_note}
+                                                onChange={(e) => setReviewForm((s) => ({ ...s, review_note: e.target.value }))}
+                                            />
+                                        </div>
+                                        <div className="mt-4 flex flex-wrap gap-2">
+                                            <button
+                                                type="button"
+                                                className="rounded-2xl bg-primary text-white px-4 py-2 text-sm font-semibold"
+                                                onClick={() => approveItemUpdate(reviewingUpdate, {
+                                                    status: reviewForm.status || undefined,
+                                                    progress_percent: reviewForm.progress_percent === '' ? undefined : Number(reviewForm.progress_percent),
+                                                    note: reviewForm.note || undefined,
+                                                })}
+                                            >
+                                                Duyệt phiếu
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="rounded-2xl border border-rose-200 text-rose-600 px-4 py-2 text-sm font-semibold"
+                                                onClick={() => {
+                                                    if (!reviewForm.review_note) {
+                                                        toast.error('Vui lòng nhập lý do từ chối.');
+                                                        return;
+                                                    }
+                                                    rejectItemUpdate(reviewingUpdate, reviewForm.review_note);
+                                                }}
+                                            >
+                                                Từ chối phiếu
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
-                        </div>
-                    )}
+                        )}
+                    </div>
                 </div>
             </Modal>
         </PageContainer>

@@ -117,19 +117,44 @@ class SystemStatusController extends Controller
                     'in_app_enabled' => $setting ? (bool) $setting->notifications_in_app_enabled : true,
                     'email_fallback_enabled' => $setting ? (bool) $setting->notifications_email_fallback_enabled : true,
                 ],
+                'meeting_reminder_enabled' => $setting ? (bool) ($setting->meeting_reminder_enabled ?? true) : true,
                 'dedupe_seconds' => $setting ? (int) $setting->notifications_dedupe_seconds : 45,
                 'meeting_reminder_minutes_before' => $setting ? (int) $setting->meeting_reminder_minutes_before : 60,
                 'task_item_progress_reminder_enabled' => $setting ? (bool) $setting->task_item_progress_reminder_enabled : true,
+                'task_item_progress_reminder_time' => $setting ? (string) ($setting->task_item_progress_reminder_time ?: '09:00') : '09:00',
+                'task_item_update_submission_notification_enabled' => $setting ? (bool) ($setting->task_item_update_submission_notification_enabled ?? true) : true,
+                'task_item_update_feedback_notification_enabled' => $setting ? (bool) ($setting->task_item_update_feedback_notification_enabled ?? true) : true,
                 'lead_capture_notification_enabled' => $setting ? (bool) $setting->lead_capture_notification_enabled : true,
                 'contract_unpaid_reminder_enabled' => $setting ? (bool) $setting->contract_unpaid_reminder_enabled : true,
                 'contract_unpaid_reminder_time' => $setting ? (string) ($setting->contract_unpaid_reminder_time ?: '08:00') : '08:00',
                 'contract_expiry_reminder_enabled' => $setting ? (bool) $setting->contract_expiry_reminder_enabled : true,
                 'contract_expiry_reminder_time' => $setting ? (string) ($setting->contract_expiry_reminder_time ?: '09:00') : '09:00',
                 'contract_expiry_reminder_days_before' => $setting ? (int) ($setting->contract_expiry_reminder_days_before ?? 3) : 3,
-                'mail_configured' => (string) config('mail.default') !== '',
+                'mail_configured' => $setting
+                    ? ((bool) ($setting->smtp_custom_enabled ?? false)
+                        ? (trim((string) $setting->smtp_host) !== '' && trim((string) $setting->smtp_from_address) !== '')
+                        : ((string) config('mail.default') !== ''))
+                    : ((string) config('mail.default') !== ''),
+                'smtp' => [
+                    'custom_enabled' => $setting ? (bool) ($setting->smtp_custom_enabled ?? false) : false,
+                    'mailer' => $setting && $setting->smtp_mailer ? (string) $setting->smtp_mailer : (string) config('mail.default'),
+                    'host' => $setting ? (string) ($setting->smtp_host ?: '') : '',
+                    'port' => $setting ? (int) ($setting->smtp_port ?: 0) : (int) config('mail.mailers.smtp.port', 0),
+                    'encryption' => $setting ? (string) ($setting->smtp_encryption ?: '') : (string) config('mail.mailers.smtp.encryption', ''),
+                    'username' => $setting ? (string) ($setting->smtp_username ?: '') : '',
+                    'from_address' => $setting ? (string) ($setting->smtp_from_address ?: '') : (string) config('mail.from.address'),
+                    'from_name' => $setting ? (string) ($setting->smtp_from_name ?: '') : (string) config('mail.from.name'),
+                ],
                 'schedule' => [
-                    'meetings_send_reminders' => '* * * * *',
-                    'task_items_remind_progress' => 'daily 08:00',
+                    'meetings_send_reminders' => ($setting ? (bool) ($setting->meeting_reminder_enabled ?? true) : true)
+                        ? '* * * * * (khớp giờ họp theo cấu hình)'
+                        : 'đang tắt',
+                    'task_items_remind_progress' => sprintf(
+                        'every minute (gửi lúc %s)',
+                        $setting && $setting->task_item_progress_reminder_time
+                            ? (string) $setting->task_item_progress_reminder_time
+                            : '09:00'
+                    ),
                     'contracts_send_reminders' => '* * * * *',
                 ],
                 'app_settings_exists' => ! is_null($setting),

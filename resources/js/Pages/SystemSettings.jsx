@@ -9,6 +9,7 @@ const TABS = [
     { key: 'contact', label: 'Liên hệ & pháp lý' },
     { key: 'notifications', label: 'Thông báo thiết bị' },
     { key: 'diagnostics', label: 'Kết nối & thiết bị' },
+    { key: 'mobile_devices', label: 'Thiết bị di động người dùng' },
 ];
 
 const initialSettings = (settings) => ({
@@ -21,27 +22,119 @@ const initialSettings = (settings) => ({
     notifications_push_enabled: settings?.notifications_push_enabled ?? true,
     notifications_in_app_enabled: settings?.notifications_in_app_enabled ?? true,
     notifications_email_fallback_enabled: settings?.notifications_email_fallback_enabled ?? true,
+    meeting_reminder_enabled: settings?.meeting_reminder_enabled ?? true,
     notifications_dedupe_seconds: settings?.notifications_dedupe_seconds ?? 45,
     meeting_reminder_minutes_before: settings?.meeting_reminder_minutes_before ?? 60,
     task_item_progress_reminder_enabled: settings?.task_item_progress_reminder_enabled ?? true,
+    task_item_progress_reminder_time: settings?.task_item_progress_reminder_time || '09:00',
+    task_item_update_submission_notification_enabled:
+        settings?.task_item_update_submission_notification_enabled ?? true,
+    task_item_update_feedback_notification_enabled:
+        settings?.task_item_update_feedback_notification_enabled ?? true,
     lead_capture_notification_enabled: settings?.lead_capture_notification_enabled ?? true,
     contract_unpaid_reminder_enabled: settings?.contract_unpaid_reminder_enabled ?? true,
     contract_unpaid_reminder_time: settings?.contract_unpaid_reminder_time || '08:00',
     contract_expiry_reminder_enabled: settings?.contract_expiry_reminder_enabled ?? true,
     contract_expiry_reminder_time: settings?.contract_expiry_reminder_time || '09:00',
     contract_expiry_reminder_days_before: settings?.contract_expiry_reminder_days_before ?? 3,
+    smtp_custom_enabled: settings?.smtp_custom_enabled ?? false,
+    smtp_mailer: settings?.smtp_mailer || 'smtp',
+    smtp_host: settings?.smtp_host || '',
+    smtp_port: settings?.smtp_port ?? 587,
+    smtp_encryption: settings?.smtp_encryption || 'tls',
+    smtp_username: settings?.smtp_username || '',
+    smtp_password: settings?.smtp_password || '',
+    smtp_from_address: settings?.smtp_from_address || '',
+    smtp_from_name: settings?.smtp_from_name || '',
 });
+
+function ToggleSwitch({ checked, onChange, label, description = '' }) {
+    return (
+        <button
+            type="button"
+            role="switch"
+            aria-checked={checked}
+            onClick={() => onChange(!checked)}
+            className={`inline-flex w-full items-center justify-between gap-4 rounded-2xl border px-4 py-3 text-left transition ${
+                checked
+                    ? 'border-primary/25 bg-primary/5'
+                    : 'border-slate-200/80 bg-white hover:bg-slate-50'
+            }`}
+        >
+            <div>
+                <div className="text-sm font-semibold text-slate-900">{label}</div>
+                {description ? <div className="mt-1 text-xs text-text-muted">{description}</div> : null}
+            </div>
+            <span
+                className={`relative inline-flex h-7 w-12 items-center rounded-full transition ${
+                    checked ? 'bg-primary' : 'bg-slate-200'
+                }`}
+            >
+                <span
+                    className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+                        checked ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                />
+            </span>
+        </button>
+    );
+}
+
+function NotificationCard({ title, subtitle, enabled, onToggle, audience, message, children }) {
+    return (
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div className="max-w-2xl">
+                    <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
+                    <p className="mt-1 text-xs text-text-muted">{subtitle}</p>
+                </div>
+                <div className="w-full max-w-[280px] lg:w-auto">
+                    <ToggleSwitch
+                        checked={enabled}
+                        onChange={onToggle}
+                        label={enabled ? 'Đang bật' : 'Đang tắt'}
+                        description={enabled ? 'Thông báo này đang hoạt động theo cấu hình bên dưới.' : 'Thông báo này sẽ không được gửi khi đang tắt.'}
+                    />
+                </div>
+            </div>
+
+            <div className="mt-4 grid gap-4 xl:grid-cols-2">
+                <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-subtle">Gửi cho ai</div>
+                    <div className="mt-1 text-sm text-slate-700">{audience}</div>
+                </div>
+                <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-subtle">Nội dung thông báo</div>
+                    <div className="mt-1 text-sm text-slate-700">{message}</div>
+                </div>
+            </div>
+
+            {children ? <div className="mt-4 grid gap-4 md:grid-cols-2">{children}</div> : null}
+        </div>
+    );
+}
 
 export default function SystemSettings(props) {
     const toast = useToast();
     const [activeTab, setActiveTab] = useState('branding');
     const [loading, setLoading] = useState(false);
+    const [baseSettings, setBaseSettings] = useState(initialSettings(props.settings));
     const [form, setForm] = useState(initialSettings(props.settings));
     const [logoFile, setLogoFile] = useState(null);
     const [preview, setPreview] = useState(props.settings?.logo_url || '');
     const [showPreview, setShowPreview] = useState(false);
     const [statusLoading, setStatusLoading] = useState(false);
+    const [settingsLoading, setSettingsLoading] = useState(false);
     const [systemStatus, setSystemStatus] = useState(null);
+    const [deviceLoading, setDeviceLoading] = useState(false);
+    const [deviceRows, setDeviceRows] = useState([]);
+    const [deviceMeta, setDeviceMeta] = useState({ current_page: 1, last_page: 1, total: 0 });
+    const [deviceFilters, setDeviceFilters] = useState({
+        search: '',
+        platform: '',
+        apns_environment: '',
+        notifications_enabled: '',
+    });
     const [users, setUsers] = useState([]);
     const [testingPush, setTestingPush] = useState(false);
     const [lastTestResult, setLastTestResult] = useState(null);
@@ -87,6 +180,47 @@ export default function SystemSettings(props) {
         }
     };
 
+    const loadAdminSettings = async () => {
+        setSettingsLoading(true);
+        try {
+            const res = await axios.get('/api/v1/settings/admin');
+            const next = initialSettings(res.data || {});
+            setBaseSettings(next);
+            setForm(next);
+            setPreview(res.data?.logo_url || '');
+        } catch (e) {
+            toast.error(e?.response?.data?.message || 'Không tải được cấu hình hệ thống chi tiết.');
+        } finally {
+            setSettingsLoading(false);
+        }
+    };
+
+    const fetchDevices = async (page = 1, nextFilters = deviceFilters) => {
+        setDeviceLoading(true);
+        try {
+            const res = await axios.get('/api/v1/device-tokens', {
+                params: {
+                    page,
+                    per_page: 20,
+                    ...(nextFilters.search ? { search: nextFilters.search } : {}),
+                    ...(nextFilters.platform ? { platform: nextFilters.platform } : {}),
+                    ...(nextFilters.apns_environment ? { apns_environment: nextFilters.apns_environment } : {}),
+                    ...(nextFilters.notifications_enabled !== '' ? { notifications_enabled: nextFilters.notifications_enabled } : {}),
+                },
+            });
+            setDeviceRows(res.data?.data || []);
+            setDeviceMeta({
+                current_page: res.data?.current_page || 1,
+                last_page: res.data?.last_page || 1,
+                total: res.data?.total || 0,
+            });
+        } catch (e) {
+            toast.error(e?.response?.data?.message || 'Không tải được danh sách thiết bị mobile.');
+        } finally {
+            setDeviceLoading(false);
+        }
+    };
+
     useEffect(() => {
         if (!logoFile) return undefined;
         const url = URL.createObjectURL(logoFile);
@@ -95,13 +229,17 @@ export default function SystemSettings(props) {
     }, [logoFile]);
 
     useEffect(() => {
-        setForm(initialSettings(props.settings));
+        const next = initialSettings(props.settings);
+        setBaseSettings(next);
+        setForm(next);
         setPreview(props.settings?.logo_url || '');
     }, [props.settings]);
 
     useEffect(() => {
         reloadSystemStatus();
         fetchUsers();
+        loadAdminSettings();
+        fetchDevices();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -126,15 +264,34 @@ export default function SystemSettings(props) {
             formData.append('notifications_push_enabled', form.notifications_push_enabled ? '1' : '0');
             formData.append('notifications_in_app_enabled', form.notifications_in_app_enabled ? '1' : '0');
             formData.append('notifications_email_fallback_enabled', form.notifications_email_fallback_enabled ? '1' : '0');
+            formData.append('meeting_reminder_enabled', form.meeting_reminder_enabled ? '1' : '0');
             formData.append('notifications_dedupe_seconds', String(form.notifications_dedupe_seconds ?? 45));
             formData.append('meeting_reminder_minutes_before', String(form.meeting_reminder_minutes_before ?? 60));
             formData.append('task_item_progress_reminder_enabled', form.task_item_progress_reminder_enabled ? '1' : '0');
+            formData.append('task_item_progress_reminder_time', form.task_item_progress_reminder_time || '09:00');
+            formData.append(
+                'task_item_update_submission_notification_enabled',
+                form.task_item_update_submission_notification_enabled ? '1' : '0'
+            );
+            formData.append(
+                'task_item_update_feedback_notification_enabled',
+                form.task_item_update_feedback_notification_enabled ? '1' : '0'
+            );
             formData.append('lead_capture_notification_enabled', form.lead_capture_notification_enabled ? '1' : '0');
             formData.append('contract_unpaid_reminder_enabled', form.contract_unpaid_reminder_enabled ? '1' : '0');
             formData.append('contract_unpaid_reminder_time', form.contract_unpaid_reminder_time || '08:00');
             formData.append('contract_expiry_reminder_enabled', form.contract_expiry_reminder_enabled ? '1' : '0');
             formData.append('contract_expiry_reminder_time', form.contract_expiry_reminder_time || '09:00');
             formData.append('contract_expiry_reminder_days_before', String(form.contract_expiry_reminder_days_before ?? 3));
+            formData.append('smtp_custom_enabled', form.smtp_custom_enabled ? '1' : '0');
+            formData.append('smtp_mailer', form.smtp_mailer || 'smtp');
+            formData.append('smtp_host', form.smtp_host || '');
+            formData.append('smtp_port', String(form.smtp_port ?? 587));
+            formData.append('smtp_encryption', form.smtp_encryption || 'none');
+            formData.append('smtp_username', form.smtp_username || '');
+            formData.append('smtp_password', form.smtp_password || '');
+            formData.append('smtp_from_address', form.smtp_from_address || '');
+            formData.append('smtp_from_name', form.smtp_from_name || '');
             if (logoFile) {
                 formData.append('logo', logoFile);
             }
@@ -143,7 +300,9 @@ export default function SystemSettings(props) {
                 headers: { 'Content-Type': 'multipart/form-data' },
             });
             const data = res.data || {};
-            setForm(initialSettings(data));
+            const next = initialSettings(data);
+            setBaseSettings(next);
+            setForm(next);
             if (data.primary_color) applyPrimary(data.primary_color);
             if (data.logo_url) setPreview(data.logo_url);
             setLogoFile(null);
@@ -227,8 +386,26 @@ export default function SystemSettings(props) {
         rows.push({ key: 'In-app channel', value: notificationConfig?.channels?.in_app_enabled ? 'Bật' : 'Tắt' });
         rows.push({ key: 'Email fallback', value: notificationConfig?.channels?.email_fallback_enabled ? 'Bật' : 'Tắt' });
         rows.push({ key: 'Dedupe seconds', value: String(notificationConfig?.dedupe_seconds ?? form.notifications_dedupe_seconds ?? 45) });
-        rows.push({ key: 'Meeting reminder', value: `${notificationConfig?.meeting_reminder_minutes_before ?? form.meeting_reminder_minutes_before ?? 60} phút trước giờ họp` });
-        rows.push({ key: 'Task item late reminder', value: notificationConfig?.task_item_progress_reminder_enabled ? 'Bật' : 'Tắt' });
+        rows.push({
+            key: 'Meeting reminder',
+            value: notificationConfig?.meeting_reminder_enabled
+                ? `${notificationConfig?.meeting_reminder_minutes_before ?? form.meeting_reminder_minutes_before ?? 60} phút trước giờ họp`
+                : 'Tắt',
+        });
+        rows.push({
+            key: 'Task item late reminder',
+            value: notificationConfig?.task_item_progress_reminder_enabled
+                ? `Bật lúc ${notificationConfig?.task_item_progress_reminder_time ?? form.task_item_progress_reminder_time ?? '09:00'}`
+                : 'Tắt',
+        });
+        rows.push({
+            key: 'Phiếu duyệt đầu việc mới',
+            value: notificationConfig?.task_item_update_submission_notification_enabled ? 'Bật' : 'Tắt',
+        });
+        rows.push({
+            key: 'Phản hồi phiếu duyệt đầu việc',
+            value: notificationConfig?.task_item_update_feedback_notification_enabled ? 'Bật' : 'Tắt',
+        });
         rows.push({ key: 'Lead mới -> push phụ trách/admin', value: notificationConfig?.lead_capture_notification_enabled ? 'Bật' : 'Tắt' });
         rows.push({ key: 'Nhắc công nợ hợp đồng', value: notificationConfig?.contract_unpaid_reminder_enabled ? `${notificationConfig?.contract_unpaid_reminder_time || '08:00'} mỗi ngày` : 'Tắt' });
         rows.push({ key: 'Nhắc hết hạn hợp đồng', value: notificationConfig?.contract_expiry_reminder_enabled ? `${notificationConfig?.contract_expiry_reminder_time || '09:00'} mỗi ngày, trước ${notificationConfig?.contract_expiry_reminder_days_before ?? 3} ngày` : 'Tắt' });
@@ -244,12 +421,24 @@ export default function SystemSettings(props) {
         rows.push({ key: 'Token update gần nhất', value: pushTokens.last_updated_at || '—' });
 
         return rows;
-    }, [systemStatus, form.notifications_dedupe_seconds, form.meeting_reminder_minutes_before]);
+    }, [systemStatus, form.notifications_dedupe_seconds, form.meeting_reminder_minutes_before, form.task_item_progress_reminder_time]);
 
     const firebaseStatus = systemStatus?.firebase || {};
     const pushTokens = systemStatus?.push_tokens || {};
     const pushPlatforms = pushTokens?.by_platform || {};
     const apnsEnvironment = pushTokens?.ios_apns_environment || {};
+    const formatDateTime = (value) => {
+        if (!value) return '—';
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return String(value);
+        return date.toLocaleString('vi-VN');
+    };
+    const compactToken = (value) => {
+        const token = String(value || '');
+        if (!token) return '—';
+        if (token.length <= 24) return token;
+        return `${token.slice(0, 10)}...${token.slice(-10)}`;
+    };
 
     return (
         <PageContainer
@@ -389,118 +578,313 @@ export default function SystemSettings(props) {
                 {activeTab === 'notifications' && (
                     <div className="space-y-4">
                         <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
-                            <h3 className="text-sm font-semibold text-slate-900">Cài đặt thông báo thiết bị</h3>
-                            <p className="text-xs text-text-muted mt-1">Bật/tắt kênh gửi, chống trùng và lịch nhắc tự động.</p>
-
-                            <div className="mt-4 grid gap-4 md:grid-cols-2">
-                                <label className="flex items-center justify-between rounded-2xl border border-slate-200/80 px-4 py-3 text-sm">
-                                    <span>Bật push notification</span>
-                                    <input
-                                        type="checkbox"
-                                        checked={!!form.notifications_push_enabled}
-                                        onChange={(e) => setForm((s) => ({ ...s, notifications_push_enabled: e.target.checked }))}
-                                    />
-                                </label>
-                                <label className="flex items-center justify-between rounded-2xl border border-slate-200/80 px-4 py-3 text-sm">
-                                    <span>Bật thông báo trong app/web</span>
-                                    <input
-                                        type="checkbox"
-                                        checked={!!form.notifications_in_app_enabled}
-                                        onChange={(e) => setForm((s) => ({ ...s, notifications_in_app_enabled: e.target.checked }))}
-                                    />
-                                </label>
-                                <label className="flex items-center justify-between rounded-2xl border border-slate-200/80 px-4 py-3 text-sm">
-                                    <span>Bật email fallback</span>
-                                    <input
-                                        type="checkbox"
-                                        checked={!!form.notifications_email_fallback_enabled}
-                                        onChange={(e) => setForm((s) => ({ ...s, notifications_email_fallback_enabled: e.target.checked }))}
-                                    />
-                                </label>
-                                <label className="flex items-center justify-between rounded-2xl border border-slate-200/80 px-4 py-3 text-sm">
-                                    <span>Bật nhắc đầu việc chậm tiến độ</span>
-                                    <input
-                                        type="checkbox"
-                                        checked={!!form.task_item_progress_reminder_enabled}
-                                        onChange={(e) => setForm((s) => ({ ...s, task_item_progress_reminder_enabled: e.target.checked }))}
-                                    />
-                                </label>
-                                <label className="flex items-center justify-between rounded-2xl border border-slate-200/80 px-4 py-3 text-sm">
-                                    <span>Bật thông báo khách hàng mới từ form/page/CRM</span>
-                                    <input
-                                        type="checkbox"
-                                        checked={!!form.lead_capture_notification_enabled}
-                                        onChange={(e) => setForm((s) => ({ ...s, lead_capture_notification_enabled: e.target.checked }))}
-                                    />
-                                </label>
-                                <label className="flex items-center justify-between rounded-2xl border border-slate-200/80 px-4 py-3 text-sm">
-                                    <span>Bật nhắc công nợ hợp đồng</span>
-                                    <input
-                                        type="checkbox"
-                                        checked={!!form.contract_unpaid_reminder_enabled}
-                                        onChange={(e) => setForm((s) => ({ ...s, contract_unpaid_reminder_enabled: e.target.checked }))}
-                                    />
-                                </label>
-                                <label className="flex items-center justify-between rounded-2xl border border-slate-200/80 px-4 py-3 text-sm">
-                                    <span>Bật nhắc hợp đồng sắp hết hạn</span>
-                                    <input
-                                        type="checkbox"
-                                        checked={!!form.contract_expiry_reminder_enabled}
-                                        onChange={(e) => setForm((s) => ({ ...s, contract_expiry_reminder_enabled: e.target.checked }))}
-                                    />
-                                </label>
+                            <div className="flex items-center justify-between gap-3">
+                                <div>
+                                    <h3 className="text-sm font-semibold text-slate-900">Cấu hình thông báo & lịch gửi</h3>
+                                    <p className="text-xs text-text-muted mt-1">
+                                        Mỗi loại thông báo được mô tả rõ gửi cho ai, nội dung gì và thời gian chạy để administrator dễ kiểm soát.
+                                    </p>
+                                </div>
+                                <div className="text-xs text-text-muted">
+                                    {settingsLoading ? 'Đang đồng bộ cài đặt...' : 'Đang dùng cấu hình lưu trong hệ thống'}
+                                </div>
                             </div>
 
-                            <div className="mt-4 grid gap-4 md:grid-cols-2">
-                                <div>
-                                    <label className="text-xs text-text-muted">Khoảng chống trùng thông báo (giây)</label>
+                            <div className="mt-4 grid gap-4 xl:grid-cols-2">
+                                <ToggleSwitch
+                                    checked={!!form.notifications_push_enabled}
+                                    onChange={(value) => setForm((s) => ({ ...s, notifications_push_enabled: value }))}
+                                    label="Kênh push notification"
+                                    description="Gửi thông báo đẩy tới thiết bị mobile/web đã đăng ký token."
+                                />
+                                <ToggleSwitch
+                                    checked={!!form.notifications_in_app_enabled}
+                                    onChange={(value) => setForm((s) => ({ ...s, notifications_in_app_enabled: value }))}
+                                    label="Kênh thông báo trong app/web"
+                                    description="Ghi nhận thông báo vào trung tâm thông báo và badge trong hệ thống."
+                                />
+                                <ToggleSwitch
+                                    checked={!!form.notifications_email_fallback_enabled}
+                                    onChange={(value) => setForm((s) => ({ ...s, notifications_email_fallback_enabled: value }))}
+                                    label="Email fallback"
+                                    description="Nếu push thất bại thì hệ thống sẽ thử gửi email bằng cấu hình SMTP bên dưới."
+                                />
+                                <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">
+                                    <div className="text-sm font-semibold text-slate-900">Khoảng chống trùng thông báo</div>
+                                    <div className="mt-1 text-xs text-text-muted">
+                                        Dùng để chặn việc bắn lặp cùng một thông báo trong thời gian quá ngắn.
+                                    </div>
                                     <input
                                         type="number"
                                         min="0"
                                         max="3600"
-                                        className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                        className="mt-3 w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2 text-sm"
                                         value={form.notifications_dedupe_seconds}
                                         onChange={(e) => setForm((s) => ({ ...s, notifications_dedupe_seconds: Number(e.target.value || 0) }))}
                                     />
                                 </div>
+                            </div>
+                        </div>
+
+                        <NotificationCard
+                            title="Nhắc đầu việc chậm tiến độ"
+                            subtitle="Cron kiểm tra đầu việc đang chậm so với tiến độ kỳ vọng và bắn nhắc đúng theo giờ bạn cấu hình."
+                            enabled={!!form.task_item_progress_reminder_enabled}
+                            onToggle={(value) => setForm((s) => ({ ...s, task_item_progress_reminder_enabled: value }))}
+                            audience="Nhân sự đang được giao đầu việc bị chậm tiến độ."
+                            message='Tiêu đề: "Đầu việc chậm tiến độ". Nội dung liệt kê các đầu việc bị chậm và % đang bị thiếu so với kỳ vọng.'
+                        >
+                            <div>
+                                <label className="text-xs text-text-muted">Giờ bắn push mỗi ngày</label>
+                                <input
+                                    type="time"
+                                    className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                    value={form.task_item_progress_reminder_time}
+                                    onChange={(e) => setForm((s) => ({ ...s, task_item_progress_reminder_time: e.target.value }))}
+                                />
+                            </div>
+                            <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-subtle">Logic gửi</div>
+                                <div className="mt-1 text-sm text-slate-700">
+                                    Mỗi ngày chỉ nhắc 1 lần cho mỗi đầu việc/người phụ trách, không gửi lặp trong cùng ngày.
+                                </div>
+                            </div>
+                        </NotificationCard>
+
+                        <NotificationCard
+                            title="Phiếu duyệt đầu việc mới"
+                            subtitle="Gửi ngay khi nhân viên hoặc người phụ trách tạo một phiếu báo cáo tiến độ đầu việc mới."
+                            enabled={!!form.task_item_update_submission_notification_enabled}
+                            onToggle={(value) => setForm((s) => ({ ...s, task_item_update_submission_notification_enabled: value }))}
+                            audience="Quản lý dự án, quản lý phòng ban và toàn bộ admin liên quan tới công việc đó."
+                            message='Tiêu đề: "Có phiếu duyệt đầu việc mới". Nội dung gồm tên đầu việc và người vừa gửi phiếu.'
+                        >
+                            <div className="rounded-2xl bg-slate-50 px-4 py-3 md:col-span-2">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-subtle">Thời điểm gửi</div>
+                                <div className="mt-1 text-sm text-slate-700">
+                                    Gửi ngay sau khi phiếu được tạo thành công, không chờ cron và không đợi nhân viên cập nhật lại công việc.
+                                </div>
+                            </div>
+                        </NotificationCard>
+
+                        <NotificationCard
+                            title="Phản hồi phiếu duyệt đầu việc"
+                            subtitle="Gửi khi phiếu duyệt được duyệt, bị từ chối hoặc bị xóa để nhân viên biết trạng thái xử lý."
+                            enabled={!!form.task_item_update_feedback_notification_enabled}
+                            onToggle={(value) => setForm((s) => ({ ...s, task_item_update_feedback_notification_enabled: value }))}
+                            audience="Nhân viên đã gửi phiếu và nhân sự phụ trách đầu việc nếu khác người gửi."
+                            message='Ví dụ: "Phiếu duyệt đầu việc đã được duyệt / không được duyệt / đã bị xóa" kèm tên đầu việc và người phản hồi.'
+                        >
+                            <div className="rounded-2xl bg-slate-50 px-4 py-3 md:col-span-2">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-subtle">Cách hoạt động</div>
+                                <div className="mt-1 text-sm text-slate-700">
+                                    Thông báo được bắn ngay sau khi quản lý phản hồi phiếu, nên nhân viên không cần mở lại đầu việc để kiểm tra thủ công.
+                                </div>
+                            </div>
+                        </NotificationCard>
+
+                        <NotificationCard
+                            title="Nhắc lịch họp"
+                            subtitle="Thông báo tự động cho các thành viên cuộc họp trước giờ bắt đầu."
+                            enabled={!!form.meeting_reminder_enabled}
+                            onToggle={(value) => setForm((s) => ({ ...s, meeting_reminder_enabled: value }))}
+                            audience="Những thành viên được chọn trong lịch họp."
+                            message='Thông báo gồm tên cuộc họp, thời gian bắt đầu, ghi chú và link họp nếu có.'
+                        >
+                            <div>
+                                <label className="text-xs text-text-muted">Nhắc trước bao nhiêu phút</label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    max="1440"
+                                    className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                    value={form.meeting_reminder_minutes_before}
+                                    onChange={(e) => setForm((s) => ({ ...s, meeting_reminder_minutes_before: Number(e.target.value || 60) }))}
+                                />
+                            </div>
+                            <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-subtle">Cách hoạt động</div>
+                                <div className="mt-1 text-sm text-slate-700">
+                                    Command chạy mỗi phút và tự so khớp với thời gian họp, nên không cần nhập giờ cố định.
+                                </div>
+                            </div>
+                        </NotificationCard>
+
+                        <NotificationCard
+                            title="Thông báo khách hàng mới"
+                            subtitle="Áp dụng cho khách vào từ Form tư vấn, Facebook Page hoặc CRM do nhân viên nhập tay."
+                            enabled={!!form.lead_capture_notification_enabled}
+                            onToggle={(value) => setForm((s) => ({ ...s, lead_capture_notification_enabled: value }))}
+                            audience="Nhân viên phụ trách lead và toàn bộ admin."
+                            message='Nội dung gồm: họ tên khách, số điện thoại, nguồn khách vào từ đâu và ai là người phụ trách lead.'
+                        >
+                            <div className="rounded-2xl bg-slate-50 px-4 py-3 md:col-span-2">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-subtle">Thời điểm gửi</div>
+                                <div className="mt-1 text-sm text-slate-700">
+                                    Gửi ngay sau khi lead được ghi nhận thành công vào CRM, không đợi cron.
+                                </div>
+                            </div>
+                        </NotificationCard>
+
+                        <NotificationCard
+                            title="Nhắc công nợ hợp đồng"
+                            subtitle="Cron kiểm tra các hợp đồng đã duyệt nhưng vẫn còn công nợ chưa thu đủ."
+                            enabled={!!form.contract_unpaid_reminder_enabled}
+                            onToggle={(value) => setForm((s) => ({ ...s, contract_unpaid_reminder_enabled: value }))}
+                            audience="Admin và nhân viên phụ trách hợp đồng."
+                            message='Nội dung gồm: tên hợp đồng, còn phải thanh toán bao nhiêu và ai là người phụ trách hợp đồng.'
+                        >
+                            <div>
+                                <label className="text-xs text-text-muted">Giờ bắn push mỗi ngày</label>
+                                <input
+                                    type="time"
+                                    className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                    value={form.contract_unpaid_reminder_time}
+                                    onChange={(e) => setForm((s) => ({ ...s, contract_unpaid_reminder_time: e.target.value }))}
+                                />
+                            </div>
+                            <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-subtle">Điều kiện</div>
+                                <div className="mt-1 text-sm text-slate-700">
+                                    Chỉ nhắc với hợp đồng đã duyệt và còn công nợ lớn hơn 0 tại thời điểm chạy cron.
+                                </div>
+                            </div>
+                        </NotificationCard>
+
+                        <NotificationCard
+                            title="Nhắc hợp đồng sắp hết hạn"
+                            subtitle="Cron bắn thông báo lặp hằng ngày trước ngày hết hạn hợp đồng để đội phụ trách xử lý gia hạn kịp."
+                            enabled={!!form.contract_expiry_reminder_enabled}
+                            onToggle={(value) => setForm((s) => ({ ...s, contract_expiry_reminder_enabled: value }))}
+                            audience="Admin và nhân viên phụ trách hợp đồng."
+                            message='Nội dung gồm: tên hợp đồng, còn công nợ bao nhiêu (nếu có) và nhân viên đang phụ trách hợp đồng.'
+                        >
+                            <div>
+                                <label className="text-xs text-text-muted">Giờ bắn push mỗi ngày</label>
+                                <input
+                                    type="time"
+                                    className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                    value={form.contract_expiry_reminder_time}
+                                    onChange={(e) => setForm((s) => ({ ...s, contract_expiry_reminder_time: e.target.value }))}
+                                />
+                            </div>
+                            <div>
+                                <label className="text-xs text-text-muted">Báo trước bao nhiêu ngày</label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    max="30"
+                                    className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                    value={form.contract_expiry_reminder_days_before}
+                                    onChange={(e) => setForm((s) => ({ ...s, contract_expiry_reminder_days_before: Number(e.target.value || 3) }))}
+                                />
+                            </div>
+                        </NotificationCard>
+
+                        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
+                            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                <div className="max-w-2xl">
+                                    <h3 className="text-sm font-semibold text-slate-900">Cấu hình SMTP</h3>
+                                    <p className="mt-1 text-xs text-text-muted">
+                                        Dùng cho email fallback khi push thất bại. Có thể dùng cấu hình riêng của hệ thống hoặc giữ theo file `.env`.
+                                    </p>
+                                </div>
+                                <div className="w-full max-w-[280px] lg:w-auto">
+                                    <ToggleSwitch
+                                        checked={!!form.smtp_custom_enabled}
+                                        onChange={(value) => setForm((s) => ({ ...s, smtp_custom_enabled: value }))}
+                                        label={form.smtp_custom_enabled ? 'Đang dùng SMTP riêng' : 'Đang dùng SMTP từ .env'}
+                                        description="Bật để dùng cấu hình bên dưới thay cho mail config mặc định của server."
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="mt-4 grid gap-4 md:grid-cols-2">
                                 <div>
-                                    <label className="text-xs text-text-muted">Nhắc lịch họp trước (phút)</label>
+                                    <label className="text-xs text-text-muted">Mailer</label>
+                                    <select
+                                        className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                        value={form.smtp_mailer}
+                                        onChange={(e) => setForm((s) => ({ ...s, smtp_mailer: e.target.value }))}
+                                        disabled={!form.smtp_custom_enabled}
+                                    >
+                                        <option value="smtp">SMTP</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-xs text-text-muted">Encryption</label>
+                                    <select
+                                        className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                        value={form.smtp_encryption}
+                                        onChange={(e) => setForm((s) => ({ ...s, smtp_encryption: e.target.value }))}
+                                        disabled={!form.smtp_custom_enabled}
+                                    >
+                                        <option value="tls">TLS</option>
+                                        <option value="ssl">SSL</option>
+                                        <option value="none">Không dùng</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-xs text-text-muted">SMTP host</label>
+                                    <input
+                                        className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                        value={form.smtp_host}
+                                        onChange={(e) => setForm((s) => ({ ...s, smtp_host: e.target.value }))}
+                                        placeholder="smtp.gmail.com"
+                                        disabled={!form.smtp_custom_enabled}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs text-text-muted">SMTP port</label>
                                     <input
                                         type="number"
                                         min="1"
-                                        max="1440"
+                                        max="65535"
                                         className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                                        value={form.meeting_reminder_minutes_before}
-                                        onChange={(e) => setForm((s) => ({ ...s, meeting_reminder_minutes_before: Number(e.target.value || 60) }))}
+                                        value={form.smtp_port}
+                                        onChange={(e) => setForm((s) => ({ ...s, smtp_port: Number(e.target.value || 587) }))}
+                                        disabled={!form.smtp_custom_enabled}
                                     />
                                 </div>
                                 <div>
-                                    <label className="text-xs text-text-muted">Giờ nhắc công nợ hợp đồng</label>
+                                    <label className="text-xs text-text-muted">Username</label>
                                     <input
-                                        type="time"
                                         className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                                        value={form.contract_unpaid_reminder_time}
-                                        onChange={(e) => setForm((s) => ({ ...s, contract_unpaid_reminder_time: e.target.value }))}
+                                        value={form.smtp_username}
+                                        onChange={(e) => setForm((s) => ({ ...s, smtp_username: e.target.value }))}
+                                        placeholder="your@email.com"
+                                        disabled={!form.smtp_custom_enabled}
                                     />
                                 </div>
                                 <div>
-                                    <label className="text-xs text-text-muted">Giờ nhắc hợp đồng sắp hết hạn</label>
+                                    <label className="text-xs text-text-muted">Password / App password</label>
                                     <input
-                                        type="time"
+                                        type="password"
                                         className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                                        value={form.contract_expiry_reminder_time}
-                                        onChange={(e) => setForm((s) => ({ ...s, contract_expiry_reminder_time: e.target.value }))}
+                                        value={form.smtp_password}
+                                        onChange={(e) => setForm((s) => ({ ...s, smtp_password: e.target.value }))}
+                                        placeholder="••••••••"
+                                        disabled={!form.smtp_custom_enabled}
                                     />
                                 </div>
                                 <div>
-                                    <label className="text-xs text-text-muted">Số ngày báo trước khi hợp đồng hết hạn</label>
+                                    <label className="text-xs text-text-muted">From email</label>
                                     <input
-                                        type="number"
-                                        min="1"
-                                        max="30"
                                         className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                                        value={form.contract_expiry_reminder_days_before}
-                                        onChange={(e) => setForm((s) => ({ ...s, contract_expiry_reminder_days_before: Number(e.target.value || 3) }))}
+                                        value={form.smtp_from_address}
+                                        onChange={(e) => setForm((s) => ({ ...s, smtp_from_address: e.target.value }))}
+                                        placeholder="no-reply@yourdomain.com"
+                                        disabled={!form.smtp_custom_enabled}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs text-text-muted">From name</label>
+                                    <input
+                                        className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                        value={form.smtp_from_name}
+                                        onChange={(e) => setForm((s) => ({ ...s, smtp_from_name: e.target.value }))}
+                                        placeholder="Job ClickOn"
+                                        disabled={!form.smtp_custom_enabled}
                                     />
                                 </div>
                             </div>
@@ -729,6 +1113,207 @@ export default function SystemSettings(props) {
                     </div>
                 )}
 
+                {activeTab === 'mobile_devices' && (
+                    <div className="space-y-4">
+                        <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card">
+                            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                                <div>
+                                    <h3 className="text-sm font-semibold text-slate-900">Thiết bị di động người dùng</h3>
+                                    <p className="mt-1 text-xs text-text-muted">
+                                        Theo dõi token push, môi trường iOS, trạng thái quyền thông báo và thiết bị đang gắn với từng tài khoản.
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600"
+                                    onClick={() => fetchDevices(1)}
+                                    disabled={deviceLoading}
+                                >
+                                    {deviceLoading ? 'Đang tải...' : 'Làm mới'}
+                                </button>
+                            </div>
+
+                            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                                <input
+                                    className="w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                    value={deviceFilters.search}
+                                    onChange={(e) => setDeviceFilters((s) => ({ ...s, search: e.target.value }))}
+                                    placeholder="Tìm theo user, email, điện thoại, token"
+                                />
+                                <select
+                                    className="w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                    value={deviceFilters.platform}
+                                    onChange={(e) => setDeviceFilters((s) => ({ ...s, platform: e.target.value }))}
+                                >
+                                    <option value="">Tất cả nền tảng</option>
+                                    <option value="ios">iOS</option>
+                                    <option value="android">Android</option>
+                                    <option value="web">Web</option>
+                                </select>
+                                <select
+                                    className="w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                    value={deviceFilters.apns_environment}
+                                    onChange={(e) => setDeviceFilters((s) => ({ ...s, apns_environment: e.target.value }))}
+                                >
+                                    <option value="">Tất cả môi trường APNs</option>
+                                    <option value="production">production</option>
+                                    <option value="development">development</option>
+                                </select>
+                                <select
+                                    className="w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                    value={deviceFilters.notifications_enabled}
+                                    onChange={(e) => setDeviceFilters((s) => ({ ...s, notifications_enabled: e.target.value }))}
+                                >
+                                    <option value="">Tất cả quyền thông báo</option>
+                                    <option value="true">Đang bật</option>
+                                    <option value="false">Đang tắt</option>
+                                    <option value="null">Chưa xác định</option>
+                                </select>
+                            </div>
+
+                            <div className="mt-3 flex flex-wrap gap-2">
+                                <button
+                                    type="button"
+                                    className="rounded-2xl bg-primary px-4 py-2 text-sm font-semibold text-white"
+                                    onClick={() => fetchDevices(1)}
+                                >
+                                    Lọc danh sách
+                                </button>
+                                <button
+                                    type="button"
+                                    className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
+                                    onClick={() => {
+                                        const next = {
+                                            search: '',
+                                            platform: '',
+                                            apns_environment: '',
+                                            notifications_enabled: '',
+                                        };
+                                        setDeviceFilters(next);
+                                        fetchDevices(1, next);
+                                    }}
+                                >
+                                    Xóa bộ lọc
+                                </button>
+                                <div className="ml-auto text-xs text-text-muted">
+                                    Tổng thiết bị: <span className="font-semibold text-slate-900">{deviceMeta.total || 0}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-card">
+                            <div className="overflow-x-auto">
+                                <table className="min-w-full text-sm">
+                                    <thead className="bg-slate-50 text-left text-xs uppercase tracking-[0.14em] text-text-subtle">
+                                        <tr>
+                                            <th className="px-4 py-3">Người dùng</th>
+                                            <th className="px-4 py-3">Thiết bị</th>
+                                            <th className="px-4 py-3">Nền tảng</th>
+                                            <th className="px-4 py-3">Token push</th>
+                                            <th className="px-4 py-3">Quyền thông báo</th>
+                                            <th className="px-4 py-3">Hoạt động gần nhất</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {deviceLoading && (
+                                            <tr>
+                                                <td className="px-4 py-6 text-center text-text-muted" colSpan={6}>
+                                                    Đang tải danh sách thiết bị...
+                                                </td>
+                                            </tr>
+                                        )}
+                                        {!deviceLoading && deviceRows.length === 0 && (
+                                            <tr>
+                                                <td className="px-4 py-6 text-center text-text-muted" colSpan={6}>
+                                                    Chưa có thiết bị nào khớp điều kiện lọc.
+                                                </td>
+                                            </tr>
+                                        )}
+                                        {!deviceLoading && deviceRows.map((row) => (
+                                            <tr key={row.id}>
+                                                <td className="px-4 py-3 align-top">
+                                                    <div className="font-semibold text-slate-900">{row.user?.name || 'Không rõ user'}</div>
+                                                    <div className="mt-1 text-xs text-text-muted">{row.user?.email || '—'}</div>
+                                                    <div className="mt-1 text-xs text-text-muted">
+                                                        Vai trò: {row.user?.role || '—'} • SĐT: {row.user?.phone || '—'}
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-3 align-top">
+                                                    <div className="font-semibold text-slate-900">{row.device_name || 'Chưa gửi tên thiết bị'}</div>
+                                                    <div className="mt-1 text-xs text-text-muted">ID thiết bị: #{row.id}</div>
+                                                    <div className="mt-1 text-xs text-text-muted">Cập nhật: {formatDateTime(row.updated_at)}</div>
+                                                </td>
+                                                <td className="px-4 py-3 align-top">
+                                                    <div className="font-semibold text-slate-900">{row.platform || 'unknown'}</div>
+                                                    <div className="mt-1 text-xs text-text-muted">
+                                                        APNs: {row.apns_environment || '—'}
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-3 align-top">
+                                                    <div className="font-mono text-xs text-slate-700">{compactToken(row.token)}</div>
+                                                    <div className="mt-2">
+                                                        <button
+                                                            type="button"
+                                                            className="text-xs font-semibold text-primary"
+                                                            onClick={() => {
+                                                                navigator.clipboard.writeText(String(row.token || ''));
+                                                                toast.success('Đã copy token thiết bị.');
+                                                            }}
+                                                        >
+                                                            Copy token
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-3 align-top">
+                                                    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+                                                        row.notifications_enabled === true
+                                                            ? 'bg-emerald-100 text-emerald-700'
+                                                            : row.notifications_enabled === false
+                                                                ? 'bg-rose-100 text-rose-700'
+                                                                : 'bg-slate-100 text-slate-700'
+                                                    }`}>
+                                                        {row.notifications_enabled === true
+                                                            ? 'Đang bật'
+                                                            : row.notifications_enabled === false
+                                                                ? 'Đang tắt'
+                                                                : 'Chưa xác định'}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-3 align-top text-xs text-text-muted">
+                                                    <div>Seen: {formatDateTime(row.last_seen_at)}</div>
+                                                    <div className="mt-1">Updated: {formatDateTime(row.updated_at)}</div>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 text-xs text-text-muted">
+                                <span>Trang {deviceMeta.current_page || 1}/{deviceMeta.last_page || 1}</span>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        className="rounded-lg border border-slate-200 px-3 py-1 font-semibold text-slate-700 disabled:opacity-40"
+                                        disabled={(deviceMeta.current_page || 1) <= 1 || deviceLoading}
+                                        onClick={() => fetchDevices((deviceMeta.current_page || 1) - 1)}
+                                    >
+                                        Trước
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="rounded-lg border border-slate-200 px-3 py-1 font-semibold text-slate-700 disabled:opacity-40"
+                                        disabled={(deviceMeta.current_page || 1) >= (deviceMeta.last_page || 1) || deviceLoading}
+                                        onClick={() => fetchDevices((deviceMeta.current_page || 1) + 1)}
+                                    >
+                                        Sau
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
                     <div className="flex flex-wrap gap-3">
                         <button
@@ -743,9 +1328,9 @@ export default function SystemSettings(props) {
                             type="button"
                             className="rounded-2xl border border-slate-200/80 px-4 py-2 text-sm font-semibold text-slate-700"
                             onClick={() => {
-                                setForm(initialSettings(props.settings));
+                                setForm(baseSettings);
                                 setLogoFile(null);
-                                setPreview(props.settings?.logo_url || '');
+                                setPreview(baseSettings?.logo_url || '');
                             }}
                         >
                             Hoàn tác

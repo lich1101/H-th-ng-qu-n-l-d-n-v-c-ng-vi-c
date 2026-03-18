@@ -240,6 +240,9 @@ class TaskItemController extends Controller
         if ($user->role === 'ke_toan') {
             return false;
         }
+        if ($task->project && (int) $task->project->owner_id === (int) $user->id) {
+            return true;
+        }
         if ($user->role === 'quan_ly') {
             $deptIds = $user->managedDepartments()->pluck('id');
             if ($task->department_id && $deptIds->contains($task->department_id)) {
@@ -297,6 +300,9 @@ class TaskItemController extends Controller
             $query->where(function ($builder) use ($deptIds, $user) {
                 $builder->whereHas('task', function ($taskQuery) use ($deptIds, $user) {
                     $taskQuery->whereIn('department_id', $deptIds)
+                        ->orWhereHas('project', function ($projectQuery) use ($user) {
+                            $projectQuery->where('owner_id', $user->id);
+                        })
                         ->orWhereHas('assignee', function ($assigneeQuery) use ($deptIds) {
                             $assigneeQuery->whereIn('department_id', $deptIds);
                         })
@@ -309,6 +315,9 @@ class TaskItemController extends Controller
 
         $query->where(function ($builder) use ($user) {
             $builder->where('assignee_id', $user->id)
+                ->orWhereHas('task.project', function ($projectQuery) use ($user) {
+                    $projectQuery->where('owner_id', $user->id);
+                })
                 ->orWhereHas('task', function ($taskQuery) use ($user) {
                     $taskQuery->where('assignee_id', $user->id);
                 });

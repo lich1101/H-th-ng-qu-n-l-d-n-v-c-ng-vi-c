@@ -473,6 +473,16 @@ class NotificationService
             'in_app_enabled' => (bool) ($setting->notifications_in_app_enabled ?? $defaults['in_app_enabled']),
             'email_fallback_enabled' => (bool) ($setting->notifications_email_fallback_enabled ?? $defaults['email_fallback_enabled']),
             'dedupe_seconds' => (int) ($setting->notifications_dedupe_seconds ?? $defaults['dedupe_seconds']),
+            'smtp_custom_enabled' => (bool) ($setting->smtp_custom_enabled ?? false),
+            'smtp_mailer' => (string) ($setting->smtp_mailer ?: 'smtp'),
+            'smtp_host' => $setting->smtp_host,
+            'smtp_port' => (int) ($setting->smtp_port ?: 587),
+            'smtp_encryption' => $setting->smtp_encryption,
+            'smtp_username' => $setting->smtp_username,
+            'smtp_password' => $setting->smtp_password,
+            'smtp_from_address' => $setting->smtp_from_address,
+            'smtp_from_name' => $setting->smtp_from_name,
+            'brand_name' => $setting->brand_name ?: config('app.name', 'Job ClickOn'),
         ];
 
         return $this->cachedSettings;
@@ -483,6 +493,8 @@ class NotificationService
         if (! $user->email) {
             return false;
         }
+
+        $this->applyMailConfiguration($this->notificationSettings());
         try {
             Mail::raw($body, function ($mail) use ($user, $title) {
                 $mail->to($user->email)->subject($title);
@@ -495,6 +507,34 @@ class NotificationService
                 'error' => $e->getMessage(),
             ]);
             return false;
+        }
+    }
+
+    private function applyMailConfiguration(array $settings): void
+    {
+        if (! ($settings['smtp_custom_enabled'] ?? false)) {
+            return;
+        }
+
+        config([
+            'mail.default' => $settings['smtp_mailer'] ?: 'smtp',
+            'mail.mailers.smtp.transport' => 'smtp',
+            'mail.mailers.smtp.host' => $settings['smtp_host'] ?: config('mail.mailers.smtp.host'),
+            'mail.mailers.smtp.port' => (int) ($settings['smtp_port'] ?: config('mail.mailers.smtp.port', 587)),
+            'mail.mailers.smtp.encryption' => $settings['smtp_encryption'] ?: null,
+            'mail.mailers.smtp.username' => $settings['smtp_username'] ?: null,
+            'mail.mailers.smtp.password' => $settings['smtp_password'] ?: null,
+            'mail.from.address' => $settings['smtp_from_address'] ?: config('mail.from.address'),
+            'mail.from.name' => $settings['smtp_from_name']
+                ?: ($settings['brand_name'] ?: config('mail.from.name')),
+        ]);
+
+        $app = app();
+        if ($app->resolved('mail.manager')) {
+            $app->forgetInstance('mail.manager');
+        }
+        if ($app->resolved('mailer')) {
+            $app->forgetInstance('mailer');
         }
     }
 }

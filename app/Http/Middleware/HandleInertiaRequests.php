@@ -47,9 +47,17 @@ class HandleInertiaRequests extends Middleware
                 'notifications_push_enabled' => (bool) ($setting->notifications_push_enabled ?? true),
                 'notifications_in_app_enabled' => (bool) ($setting->notifications_in_app_enabled ?? true),
                 'notifications_email_fallback_enabled' => (bool) ($setting->notifications_email_fallback_enabled ?? true),
+                'meeting_reminder_enabled' => (bool) ($setting->meeting_reminder_enabled ?? true),
                 'notifications_dedupe_seconds' => (int) ($setting->notifications_dedupe_seconds ?? 45),
                 'meeting_reminder_minutes_before' => (int) ($setting->meeting_reminder_minutes_before ?? 60),
                 'task_item_progress_reminder_enabled' => (bool) ($setting->task_item_progress_reminder_enabled ?? true),
+                'task_item_progress_reminder_time' => (string) ($setting->task_item_progress_reminder_time ?: '09:00'),
+                'lead_capture_notification_enabled' => (bool) ($setting->lead_capture_notification_enabled ?? true),
+                'contract_unpaid_reminder_enabled' => (bool) ($setting->contract_unpaid_reminder_enabled ?? true),
+                'contract_unpaid_reminder_time' => (string) ($setting->contract_unpaid_reminder_time ?: '08:00'),
+                'contract_expiry_reminder_enabled' => (bool) ($setting->contract_expiry_reminder_enabled ?? true),
+                'contract_expiry_reminder_time' => (string) ($setting->contract_expiry_reminder_time ?: '09:00'),
+                'contract_expiry_reminder_days_before' => (int) ($setting->contract_expiry_reminder_days_before ?? 3),
             ]
             : AppSetting::defaults();
 
