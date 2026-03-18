@@ -41,6 +41,9 @@ class PushTestController extends Controller
 
         try {
             $tokenColumns = ['token', 'platform', 'last_seen_at', 'updated_at'];
+            if (Schema::hasColumn('user_device_tokens', 'apns_environment')) {
+                $tokenColumns[] = 'apns_environment';
+            }
             if (Schema::hasColumn('user_device_tokens', 'notifications_enabled')) {
                 $tokenColumns[] = 'notifications_enabled';
             }
@@ -54,6 +57,24 @@ class PushTestController extends Controller
                 'ios' => (int) $tokens->where('platform', 'ios')->count(),
                 'android' => (int) $tokens->where('platform', 'android')->count(),
                 'web' => (int) $tokens->where('platform', 'web')->count(),
+            ];
+            $tokensByApnsEnvironment = [
+                'production' => (int) $tokens
+                    ->where('platform', 'ios')
+                    ->where('apns_environment', 'production')
+                    ->count(),
+                'development' => (int) $tokens
+                    ->where('platform', 'ios')
+                    ->where('apns_environment', 'development')
+                    ->count(),
+                'unknown' => (int) $tokens
+                    ->where('platform', 'ios')
+                    ->filter(function ($item) {
+                        return ! array_key_exists('apns_environment', $item->getAttributes())
+                            || $item->apns_environment === null
+                            || $item->apns_environment === '';
+                    })
+                    ->count(),
             ];
             $tokensEnabled = (int) $tokens
                 ->filter(function ($item) {
@@ -85,9 +106,11 @@ class PushTestController extends Controller
             );
 
             return response()->json([
+                'apns_environment_column' => Schema::hasColumn('user_device_tokens', 'apns_environment'),
                 'ok' => (bool) ($result['push_sent'] ?? false),
                 'token_count' => $tokenCount,
                 'token_by_platform' => $tokensByPlatform,
+                'token_by_apns_environment' => $tokensByApnsEnvironment,
                 'token_notifications_enabled' => $tokensEnabled,
                 'token_notifications_disabled' => $tokensDisabled,
                 'push_sent' => $result['push_sent'] ?? false,
@@ -107,7 +130,11 @@ class PushTestController extends Controller
                     'db_database' => (string) config('database.connections.'.config('database.default').'.database'),
                     'db_host' => (string) config('database.connections.'.config('database.default').'.host'),
                     'recent_token_users' => UserDeviceToken::query()
-                        ->select(['user_id', 'platform', 'updated_at'])
+                        ->select(
+                            Schema::hasColumn('user_device_tokens', 'apns_environment')
+                                ? ['user_id', 'platform', 'apns_environment', 'updated_at']
+                                : ['user_id', 'platform', 'updated_at']
+                        )
                         ->orderByDesc('updated_at')
                         ->limit(5)
                         ->get()
@@ -115,6 +142,7 @@ class PushTestController extends Controller
                             return [
                                 'user_id' => (int) $item->user_id,
                                 'platform' => $item->platform,
+                                'apns_environment' => $item->apns_environment,
                                 'updated_at' => $item->updated_at,
                             ];
                         })
@@ -123,6 +151,7 @@ class PushTestController extends Controller
                 'token_samples' => $tokens->map(function ($item) {
                     return [
                         'platform' => $item->platform,
+                        'apns_environment' => $item->apns_environment,
                         'notifications_enabled' => $item->notifications_enabled,
                         'token_suffix' => substr((string) $item->token, -14),
                         'last_seen_at' => $item->last_seen_at,

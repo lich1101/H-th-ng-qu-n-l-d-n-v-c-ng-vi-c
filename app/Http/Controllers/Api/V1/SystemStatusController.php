@@ -26,6 +26,11 @@ class SystemStatusController extends Controller
             'android' => ['enabled' => 0, 'disabled' => 0, 'unknown' => 0],
             'web' => ['enabled' => 0, 'disabled' => 0, 'unknown' => 0],
         ];
+        $apnsEnvironment = [
+            'production' => 0,
+            'development' => 0,
+            'unknown' => 0,
+        ];
         $permissionsEnabledTotal = 0;
         $permissionsDisabledTotal = 0;
         $permissionsUnknownTotal = $totalTokens;
@@ -61,6 +66,23 @@ class SystemStatusController extends Controller
                 ->whereNull('notifications_enabled')
                 ->count();
         }
+        if (Schema::hasColumn('user_device_tokens', 'apns_environment')) {
+            $apnsEnvironment['production'] = (int) UserDeviceToken::query()
+                ->where('platform', 'ios')
+                ->where('apns_environment', 'production')
+                ->count();
+            $apnsEnvironment['development'] = (int) UserDeviceToken::query()
+                ->where('platform', 'ios')
+                ->where('apns_environment', 'development')
+                ->count();
+            $apnsEnvironment['unknown'] = (int) UserDeviceToken::query()
+                ->where('platform', 'ios')
+                ->where(function ($query) {
+                    $query->whereNull('apns_environment')
+                        ->orWhere('apns_environment', '');
+                })
+                ->count();
+        }
         $lastSeen = UserDeviceToken::query()->max('last_seen_at');
         $lastUpdated = UserDeviceToken::query()->max('updated_at');
 
@@ -79,6 +101,7 @@ class SystemStatusController extends Controller
                     'android' => (int) ($byPlatform['android'] ?? 0),
                     'web' => (int) ($byPlatform['web'] ?? 0),
                 ],
+                'ios_apns_environment' => $apnsEnvironment,
                 'permissions' => [
                     'enabled_total' => $permissionsEnabledTotal,
                     'disabled_total' => $permissionsDisabledTotal,

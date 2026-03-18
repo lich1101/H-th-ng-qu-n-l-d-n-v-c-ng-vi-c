@@ -9,6 +9,7 @@ use App\Models\InAppNotification;
 use App\Models\UserNotificationPreference;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class NotificationService
 {
@@ -75,14 +76,7 @@ class NotificationService
         $pushAttempted = false;
         if ($settings['push_enabled']) {
             $pushAttempted = true;
-            $tokens = UserDeviceToken::query()
-                ->where('user_id', $user->id)
-                ->where(function ($query) {
-                    $query->whereNull('notifications_enabled')
-                        ->orWhere('notifications_enabled', true);
-                })
-                ->pluck('token')
-                ->all();
+            $tokens = $this->collectPushTokensForUser($user);
         }
 
         $result = $pushAttempted
@@ -148,14 +142,7 @@ class NotificationService
         $pushAttempted = false;
         if ($settings['push_enabled']) {
             $pushAttempted = true;
-            $tokens = UserDeviceToken::query()
-                ->where('user_id', $user->id)
-                ->where(function ($query) {
-                    $query->whereNull('notifications_enabled')
-                        ->orWhere('notifications_enabled', true);
-                })
-                ->pluck('token')
-                ->all();
+            $tokens = $this->collectPushTokensForUser($user);
         }
 
         $result = $pushAttempted
@@ -220,6 +207,27 @@ class NotificationService
                 'error' => $e->getMessage(),
             ];
         }
+    }
+
+    private function collectPushTokensForUser(User $user): array
+    {
+        $query = UserDeviceToken::query()
+            ->where('user_id', $user->id)
+            ->where(function ($query) {
+                $query->whereNull('notifications_enabled')
+                    ->orWhere('notifications_enabled', true);
+            });
+
+        if (app()->environment('production') && Schema::hasColumn('user_device_tokens', 'apns_environment')) {
+            $query->where(function ($query) {
+                $query->whereNull('platform')
+                    ->orWhere('platform', '!=', 'ios')
+                    ->orWhereNull('apns_environment')
+                    ->orWhere('apns_environment', 'production');
+            });
+        }
+
+        return $query->pluck('token')->all();
     }
 
     private function recordInAppNotification(User $user, string $title, string $body, array $data = []): void

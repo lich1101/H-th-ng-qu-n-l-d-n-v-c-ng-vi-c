@@ -16,6 +16,7 @@ class DeviceTokenController extends Controller
         $validated = $request->validate([
             'token' => ['required', 'string', 'max:512'],
             'platform' => ['nullable', 'string', 'max:32'],
+            'apns_environment' => ['nullable', 'string', 'in:development,production'],
             'device_name' => ['nullable', 'string', 'max:120'],
             'notifications_enabled' => ['nullable', 'boolean'],
         ]);
@@ -26,6 +27,15 @@ class DeviceTokenController extends Controller
             : null;
         if ($platform === '') {
             $platform = null;
+        }
+        $apnsEnvironment = isset($validated['apns_environment'])
+            ? strtolower(trim((string) $validated['apns_environment']))
+            : null;
+        if ($apnsEnvironment === '') {
+            $apnsEnvironment = null;
+        }
+        if ($platform !== 'ios') {
+            $apnsEnvironment = null;
         }
         $deviceName = isset($validated['device_name'])
             ? trim((string) $validated['device_name'])
@@ -40,6 +50,9 @@ class DeviceTokenController extends Controller
             'device_name' => $deviceName,
             'last_seen_at' => now(),
         ];
+        if (Schema::hasColumn('user_device_tokens', 'apns_environment')) {
+            $payload['apns_environment'] = $apnsEnvironment;
+        }
         if (Schema::hasColumn('user_device_tokens', 'notifications_enabled')) {
             $payload['notifications_enabled'] = array_key_exists('notifications_enabled', $validated)
                 ? (bool) $validated['notifications_enabled']

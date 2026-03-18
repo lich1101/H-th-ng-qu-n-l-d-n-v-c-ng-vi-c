@@ -200,6 +200,7 @@ class FirebaseService
         $status = '';
         $message = '';
         $code = $this->responseStatus($response);
+        $errorCode = '';
 
         $json = $this->responseJson($response);
         if (is_array($json)) {
@@ -210,6 +211,19 @@ class FirebaseService
                 if (isset($error['code']) && is_numeric($error['code'])) {
                     $code = (int) $error['code'];
                 }
+                $details = $error['details'] ?? null;
+                if (is_array($details)) {
+                    foreach ($details as $detail) {
+                        if (! is_array($detail)) {
+                            continue;
+                        }
+                        $candidate = trim((string) ($detail['errorCode'] ?? ''));
+                        if ($candidate !== '') {
+                            $errorCode = $candidate;
+                            break;
+                        }
+                    }
+                }
             }
         }
 
@@ -219,10 +233,14 @@ class FirebaseService
         if ($message === '') {
             $message = 'FCM request failed';
         }
+        if ($errorCode !== '' && ! str_contains($message, $errorCode)) {
+            $message .= ' [FCM: '.$errorCode.']';
+        }
 
         return [
             'code' => $code,
             'status' => $status,
+            'error_code' => $errorCode,
             'message' => substr($message, 0, 300),
         ];
     }

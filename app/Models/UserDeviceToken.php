@@ -10,6 +10,7 @@ class UserDeviceToken extends Model
         'user_id',
         'token',
         'platform',
+        'apns_environment',
         'device_name',
         'notifications_enabled',
         'last_seen_at',
