@@ -21,6 +21,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class ReportController extends Controller
 {
@@ -252,26 +253,63 @@ class ReportController extends Controller
     public function companyRevenue(Request $request): JsonResponse
     {
         $targetRevenue = (float) $request->query('target_revenue', 0);
-        $contractDateExpr = "DATE(COALESCE(contracts.signed_at, contracts.approved_at, contracts.created_at))";
+        $contractsTable = 'contracts';
+        $contractItemsTable = 'contract_items';
+        $contractPaymentsTable = 'contract_payments';
+        $contractCostsTable = 'contract_costs';
+        $usersTable = 'users';
 
-        $earliestContractDate = Contract::query()
-            ->where('approval_status', 'approved')
+        $hasContractSignedAt = Schema::hasColumn($contractsTable, 'signed_at');
+        $hasContractApprovedAt = Schema::hasColumn($contractsTable, 'approved_at');
+        $hasContractCollector = Schema::hasColumn($contractsTable, 'collector_user_id');
+        $hasContractCreatedBy = Schema::hasColumn($contractsTable, 'created_by');
+        $hasContractApprovalStatus = Schema::hasColumn($contractsTable, 'approval_status');
+        $hasContractValue = Schema::hasColumn($contractsTable, 'value');
+        $hasPaymentsTable = Schema::hasTable($contractPaymentsTable);
+        $hasCostsTable = Schema::hasTable($contractCostsTable);
+        $hasItemsTable = Schema::hasTable($contractItemsTable);
+        $hasItemTotalPrice = $hasItemsTable && Schema::hasColumn($contractItemsTable, 'total_price');
+        $hasUserAvatar = Schema::hasColumn($usersTable, 'avatar_url');
+
+        $dateParts = [];
+        if ($hasContractSignedAt) {
+            $dateParts[] = 'contracts.signed_at';
+        }
+        if ($hasContractApprovedAt) {
+            $dateParts[] = 'contracts.approved_at';
+        }
+        $dateParts[] = 'contracts.created_at';
+        $contractDateExpr = 'DATE(COALESCE(' . implode(', ', $dateParts) . '))';
+
+        $approvedContractsQuery = Contract::query();
+        if ($hasContractApprovalStatus) {
+            $approvedContractsQuery->where('approval_status', 'approved');
+        }
+
+        $earliestContractDate = (clone $approvedContractsQuery)
             ->selectRaw("MIN($contractDateExpr) as aggregate_date")
             ->value('aggregate_date');
-        $latestContractDate = Contract::query()
-            ->where('approval_status', 'approved')
+        $latestContractDate = (clone $approvedContractsQuery)
             ->selectRaw("MAX($contractDateExpr) as aggregate_date")
             ->value('aggregate_date');
-        $latestPaymentDate = ContractPayment::query()
-            ->join('contracts', 'contract_payments.contract_id', '=', 'contracts.id')
-            ->where('contracts.approval_status', 'approved')
-            ->whereNotNull('contract_payments.paid_at')
-            ->max('contract_payments.paid_at');
-        $latestCostDate = ContractCost::query()
-            ->join('contracts', 'contract_costs.contract_id', '=', 'contracts.id')
-            ->where('contracts.approval_status', 'approved')
-            ->whereNotNull('contract_costs.cost_date')
-            ->max('contract_costs.cost_date');
+        $latestPaymentDate = $hasPaymentsTable
+            ? ContractPayment::query()
+                ->join('contracts', 'contract_payments.contract_id', '=', 'contracts.id')
+                ->when($hasContractApprovalStatus, function ($query) {
+                    $query->where('contracts.approval_status', 'approved');
+                })
+                ->whereNotNull('contract_payments.paid_at')
+                ->max('contract_payments.paid_at')
+            : null;
+        $latestCostDate = $hasCostsTable
+            ? ContractCost::query()
+                ->join('contracts', 'contract_costs.contract_id', '=', 'contracts.id')
+                ->when($hasContractApprovalStatus, function ($query) {
+                    $query->where('contracts.approval_status', 'approved');
+                })
+                ->whereNotNull('contract_costs.cost_date')
+                ->max('contract_costs.cost_date')
+            : null;
 
         $availableStart = $earliestContractDate
             ? Carbon::parse($earliestContractDate)
@@ -309,30 +347,37 @@ class ReportController extends Controller
         $startDate = $start->toDateString();
         $endDate = $end->toDateString();
 
-        $paymentTotalsSubquery = ContractPayment::query()
-            ->selectRaw('contract_id, SUM(amount) as payments_total')
-            ->groupBy('contract_id');
-        $costTotalsSubquery = ContractCost::query()
-            ->selectRaw('contract_id, SUM(amount) as costs_total')
-            ->groupBy('contract_id');
-
         $baseContractsQuery = Contract::query()
-            ->leftJoinSub($paymentTotalsSubquery, 'payment_totals', function ($join) {
-                $join->on('payment_totals.contract_id', '=', 'contracts.id');
+            ->when($hasContractApprovalStatus, function ($query) {
+                $query->where('contracts.approval_status', 'approved');
             })
-            ->leftJoinSub($costTotalsSubquery, 'cost_totals', function ($join) {
-                $join->on('cost_totals.contract_id', '=', 'contracts.id');
-            })
-            ->where('contracts.approval_status', 'approved')
-            ->select(
-                'contracts.id',
-                'contracts.collector_user_id',
-                'contracts.created_by'
-            )
+            ->select('contracts.id')
             ->selectRaw("$contractDateExpr as contract_date")
-            ->selectRaw('COALESCE(contracts.value, 0) as contract_value')
-            ->selectRaw('COALESCE(payment_totals.payments_total, 0) as payments_total')
-            ->selectRaw('COALESCE(cost_totals.costs_total, 0) as costs_total');
+            ->selectRaw($hasContractValue ? 'COALESCE(contracts.value, 0) as contract_value' : '0 as contract_value')
+            ->selectRaw($hasContractCollector ? 'contracts.collector_user_id as collector_user_id' : 'NULL as collector_user_id')
+            ->selectRaw($hasContractCreatedBy ? 'contracts.created_by as created_by' : 'NULL as created_by');
+
+        if ($hasPaymentsTable) {
+            $paymentTotalsSubquery = ContractPayment::query()
+                ->selectRaw('contract_id, SUM(amount) as payments_total')
+                ->groupBy('contract_id');
+            $baseContractsQuery->leftJoinSub($paymentTotalsSubquery, 'payment_totals', function ($join) {
+                $join->on('payment_totals.contract_id', '=', 'contracts.id');
+            })->selectRaw('COALESCE(payment_totals.payments_total, 0) as payments_total');
+        } else {
+            $baseContractsQuery->selectRaw('0 as payments_total');
+        }
+
+        if ($hasCostsTable) {
+            $costTotalsSubquery = ContractCost::query()
+                ->selectRaw('contract_id, SUM(amount) as costs_total')
+                ->groupBy('contract_id');
+            $baseContractsQuery->leftJoinSub($costTotalsSubquery, 'cost_totals', function ($join) {
+                $join->on('cost_totals.contract_id', '=', 'contracts.id');
+            })->selectRaw('COALESCE(cost_totals.costs_total, 0) as costs_total');
+        } else {
+            $baseContractsQuery->selectRaw('0 as costs_total');
+        }
 
         $lifetimeContracts = (clone $baseContractsQuery)->get();
         $filteredContracts = (clone $baseContractsQuery)
@@ -405,7 +450,7 @@ class ReportController extends Controller
         }
 
         $productBreakdown = collect();
-        if (! empty($periodContractIds)) {
+        if ($hasItemsTable && $hasItemTotalPrice && ! empty($periodContractIds)) {
             $productBreakdown = ContractItem::query()
                 ->leftJoin('products', 'contract_items.product_id', '=', 'products.id')
                 ->whereIn('contract_items.contract_id', $periodContractIds)
@@ -435,10 +480,15 @@ class ReportController extends Controller
             ]);
         }
 
+        $staffUserColumns = ['id', 'name', 'role'];
+        if ($hasUserAvatar) {
+            $staffUserColumns[] = 'avatar_url';
+        }
+
         $staffUsers = User::query()
             ->whereIn('role', ['admin', 'quan_ly', 'nhan_vien', 'ke_toan'])
             ->orderBy('name')
-            ->get();
+            ->get($staffUserColumns);
         $staffMetrics = [];
         foreach ($filteredContracts as $contract) {
             $staffId = (int) ($contract->collector_user_id ?: $contract->created_by ?: 0);
