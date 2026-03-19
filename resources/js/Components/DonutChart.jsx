@@ -2,6 +2,52 @@ import React, { useMemo, useState } from 'react';
 
 const palette = ['#10B981', '#F59E0B', '#3B82F6', '#F97316', '#8B5CF6', '#EF4444', '#14B8A6'];
 
+const polarToCartesian = (cx, cy, radius, angleInDegrees) => {
+    const angleInRadians = (angleInDegrees * Math.PI) / 180;
+    return {
+        x: cx + radius * Math.cos(angleInRadians),
+        y: cy + radius * Math.sin(angleInRadians),
+    };
+};
+
+const describeFullDonutRing = (cx, cy, outerRadius, innerRadius) => {
+    const outerStart = polarToCartesian(cx, cy, outerRadius, -90);
+    const outerMid = polarToCartesian(cx, cy, outerRadius, 90);
+    const innerStart = polarToCartesian(cx, cy, innerRadius, -90);
+    const innerMid = polarToCartesian(cx, cy, innerRadius, 90);
+
+    return [
+        `M ${outerStart.x} ${outerStart.y}`,
+        `A ${outerRadius} ${outerRadius} 0 1 1 ${outerMid.x} ${outerMid.y}`,
+        `A ${outerRadius} ${outerRadius} 0 1 1 ${outerStart.x} ${outerStart.y}`,
+        `L ${innerStart.x} ${innerStart.y}`,
+        `A ${innerRadius} ${innerRadius} 0 1 0 ${innerMid.x} ${innerMid.y}`,
+        `A ${innerRadius} ${innerRadius} 0 1 0 ${innerStart.x} ${innerStart.y}`,
+        'Z',
+    ].join(' ');
+};
+
+const describeDonutSegment = (cx, cy, outerRadius, innerRadius, startAngle, endAngle) => {
+    const sweep = endAngle - startAngle;
+    if (sweep >= 359.999) {
+        return describeFullDonutRing(cx, cy, outerRadius, innerRadius);
+    }
+
+    const outerStart = polarToCartesian(cx, cy, outerRadius, startAngle);
+    const outerEnd = polarToCartesian(cx, cy, outerRadius, endAngle);
+    const innerEnd = polarToCartesian(cx, cy, innerRadius, endAngle);
+    const innerStart = polarToCartesian(cx, cy, innerRadius, startAngle);
+    const largeArcFlag = sweep > 180 ? 1 : 0;
+
+    return [
+        `M ${outerStart.x} ${outerStart.y}`,
+        `A ${outerRadius} ${outerRadius} 0 ${largeArcFlag} 1 ${outerEnd.x} ${outerEnd.y}`,
+        `L ${innerEnd.x} ${innerEnd.y}`,
+        `A ${innerRadius} ${innerRadius} 0 ${largeArcFlag} 0 ${innerStart.x} ${innerStart.y}`,
+        'Z',
+    ].join(' ');
+};
+
 export default function DonutChart({
     data = [],
     size = 160,
@@ -17,24 +63,27 @@ export default function DonutChart({
     }));
     const total = normalized.reduce((sum, item) => sum + item.value, 0);
     const innerSize = size - thickness * 2;
-    const radius = (size - thickness) / 2;
-    const circumference = 2 * Math.PI * radius;
+    const outerRadius = size / 2;
+    const innerRadius = Math.max(outerRadius - thickness, 0);
 
     const segments = useMemo(() => {
-        let offset = 0;
+        let accumulatedAngle = -90;
         return normalized.map((item) => {
             const percent = total > 0 ? (item.value / total) * 100 : 0;
-            const length = (percent / 100) * circumference;
+            const sweepAngle = total > 0 ? (item.value / total) * 360 : 0;
+            const startAngle = accumulatedAngle;
+            const endAngle = accumulatedAngle + sweepAngle;
             const segment = {
                 ...item,
                 percent,
-                length,
-                dashOffset: -offset,
+                startAngle,
+                endAngle,
+                path: describeDonutSegment(size / 2, size / 2, outerRadius, innerRadius, startAngle, endAngle),
             };
-            offset += length;
+            accumulatedAngle = endAngle;
             return segment;
         });
-    }, [circumference, normalized, total]);
+    }, [normalized, total, size, outerRadius, innerRadius]);
 
     const isHorizontal = layout === 'horizontal';
 
@@ -57,28 +106,17 @@ export default function DonutChart({
                     width={size}
                     height={size}
                     viewBox={`0 0 ${size} ${size}`}
-                    className="-rotate-90"
                 >
-                    <circle
-                        cx={size / 2}
-                        cy={size / 2}
-                        r={radius}
-                        fill="none"
-                        stroke="#e2e8f0"
-                        strokeWidth={thickness}
+                    <path
+                        d={describeFullDonutRing(size / 2, size / 2, outerRadius, innerRadius)}
+                        fill="#e2e8f0"
                     />
                     {total > 0 ? segments.map((seg) => (
-                        <circle
+                        <path
                             key={seg.label}
-                            cx={size / 2}
-                            cy={size / 2}
-                            r={radius}
-                            fill="none"
-                            stroke={seg.color}
-                            strokeWidth={thickness}
-                            strokeDasharray={`${seg.length} ${circumference - seg.length}`}
-                            strokeDashoffset={seg.dashOffset}
-                            className="cursor-pointer transition-opacity hover:opacity-90"
+                            d={seg.path}
+                            fill={seg.color}
+                            className="cursor-pointer transition-opacity duration-150 hover:opacity-90"
                             onMouseEnter={() => setHoveredSegment(seg)}
                             onMouseLeave={() => setHoveredSegment((current) => (current?.label === seg.label ? null : current))}
                         />

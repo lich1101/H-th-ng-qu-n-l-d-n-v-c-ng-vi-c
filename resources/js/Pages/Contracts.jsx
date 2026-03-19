@@ -3,7 +3,6 @@ import axios from 'axios';
 import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
-import Dropdown from '@/Components/Dropdown';
 import AppIcon from '@/Components/AppIcon';
 import { useToast } from '@/Contexts/ToastContext';
 
@@ -757,57 +756,50 @@ export default function Contracts(props) {
                                             </span>
                                         </td>
                                         <td className="py-2 text-right">
-                                            <Dropdown>
-                                                <Dropdown.Trigger>
+                                            <div className="flex items-center justify-end gap-2">
+                                                <button
+                                                    type="button"
+                                                    className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:border-cyan-300 hover:bg-cyan-50 hover:text-cyan-700"
+                                                    aria-label="Xem chi tiết hợp đồng"
+                                                    title="Xem chi tiết hợp đồng"
+                                                    onClick={() => openDetail(c.id)}
+                                                >
+                                                    <AppIcon name="eye" className="h-4 w-4" />
+                                                </button>
+                                                {canManage && (
                                                     <button
                                                         type="button"
-                                                        className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700"
-                                                        aria-label="Thao tác hợp đồng"
+                                                        className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:border-sky-300 hover:bg-sky-50 hover:text-sky-700"
+                                                        aria-label="Sửa hợp đồng"
+                                                        title="Sửa hợp đồng"
+                                                        onClick={() => startEdit(c)}
                                                     >
-                                                        <AppIcon name="ellipsis-horizontal" className="h-4 w-4" />
+                                                        <AppIcon name="pencil" className="h-4 w-4" />
                                                     </button>
-                                                </Dropdown.Trigger>
-                                                <Dropdown.Content align="right" width="48" contentClasses="py-2 bg-white rounded-2xl border border-slate-200 shadow-xl">
+                                                )}
+                                                {canApprove && c.approval_status !== 'approved' && (
                                                     <button
                                                         type="button"
-                                                        className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
-                                                        onClick={() => openDetail(c.id)}
+                                                        className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 text-emerald-600 transition hover:border-emerald-300 hover:bg-emerald-100 hover:text-emerald-700"
+                                                        aria-label="Duyệt hợp đồng"
+                                                        title="Duyệt hợp đồng"
+                                                        onClick={() => approve(c)}
                                                     >
-                                                        <AppIcon name="eye" className="h-4 w-4 text-slate-400" />
-                                                        Xem chi tiết
+                                                        <AppIcon name="check" className="h-4 w-4" />
                                                     </button>
-                                                    {canManage && (
-                                                        <button
-                                                            type="button"
-                                                            className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
-                                                            onClick={() => startEdit(c)}
-                                                        >
-                                                            <AppIcon name="pencil" className="h-4 w-4 text-slate-400" />
-                                                            Sửa hợp đồng
-                                                        </button>
-                                                    )}
-                                                    {canApprove && c.approval_status !== 'approved' && (
-                                                        <button
-                                                            type="button"
-                                                            className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-emerald-700 hover:bg-emerald-50"
-                                                            onClick={() => approve(c)}
-                                                        >
-                                                            <AppIcon name="check" className="h-4 w-4" />
-                                                            Duyệt hợp đồng
-                                                        </button>
-                                                    )}
-                                                    {canDelete && (
-                                                        <button
-                                                            type="button"
-                                                            className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-rose-600 hover:bg-rose-50"
-                                                            onClick={() => remove(c.id)}
-                                                        >
-                                                            <AppIcon name="trash" className="h-4 w-4" />
-                                                            Xóa hợp đồng
-                                                        </button>
-                                                    )}
-                                                </Dropdown.Content>
-                                            </Dropdown>
+                                                )}
+                                                {canDelete && (
+                                                    <button
+                                                        type="button"
+                                                        className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-rose-200 bg-rose-50 text-rose-600 transition hover:border-rose-300 hover:bg-rose-100 hover:text-rose-700"
+                                                        aria-label="Xóa hợp đồng"
+                                                        title="Xóa hợp đồng"
+                                                        onClick={() => remove(c.id)}
+                                                    >
+                                                        <AppIcon name="trash" className="h-4 w-4" />
+                                                    </button>
+                                                )}
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}
