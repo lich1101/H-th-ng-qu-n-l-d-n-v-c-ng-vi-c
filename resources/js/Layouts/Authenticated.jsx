@@ -269,7 +269,7 @@ export default function Authenticated({ auth, header, children }) {
                     { label: 'Công việc theo nhân sự', icon: 'users', routeName: 'tasks.by-staff', href: route('tasks.by-staff'), roles: ['admin', 'quan_ly', 'nhan_vien'] },
                     { label: 'Đầu việc', icon: 'tasks', routeName: 'task-items.board', href: route('task-items.board'), roles: ['admin', 'quan_ly', 'nhan_vien'] },
                     { label: 'Nhắc hạn', icon: 'alarm', routeName: 'deadlines.index', href: route('deadlines.index'), roles: ['admin', 'quan_ly', 'nhan_vien'] },
-                    { label: 'Bàn giao dự án', icon: 'handover', routeName: 'handover.index', href: route('handover.index'), roles: ['admin', 'quan_ly', 'nhan_vien'] },
+                    { label: 'Bàn giao dự án', icon: 'handover', routeName: 'handover.index', href: route('handover.index'), roles: ['admin', 'nhan_vien'] },
                     { label: 'Lịch họp', icon: 'calendar', routeName: 'meetings.index', href: route('meetings.index'), roles: ['admin', 'quan_ly'] },
                 ],
             },

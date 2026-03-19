@@ -183,6 +183,10 @@ class ProjectScope
             return false;
         }
 
+        if ($user->role !== 'nhan_vien') {
+            return false;
+        }
+
         if ((int) $project->owner_id !== (int) $user->id) {
             return false;
         }

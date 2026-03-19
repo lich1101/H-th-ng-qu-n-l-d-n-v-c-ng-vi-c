@@ -88,7 +88,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('/ban-giao', function () {
         return Inertia::render('HandoverCenter');
-    })->name('handover.index')->middleware('role:admin,quan_ly,nhan_vien');
+    })->name('handover.index')->middleware('role:admin,nhan_vien');
 
     Route::get('/bao-cao-kpi', function () {
         return Inertia::render('ReportsKPI');

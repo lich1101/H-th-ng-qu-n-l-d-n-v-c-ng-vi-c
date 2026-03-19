@@ -197,7 +197,7 @@ class NotificationCenterController extends Controller
     public function markAllRead(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'source_type' => ['nullable', 'in:deadline_reminder,activity_log,in_app,chat_in_app,non_chat_in_app'],
+            'source_type' => ['nullable', 'in:all,deadline_reminder,activity_log,in_app,chat_in_app,non_chat_in_app'],
         ]);
 
         $sourceType = $validated['source_type'] ?? 'all';

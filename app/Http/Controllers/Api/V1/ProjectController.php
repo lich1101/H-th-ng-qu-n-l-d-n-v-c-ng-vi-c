@@ -204,11 +204,8 @@ class ProjectController extends Controller
             ->where('handover_status', 'pending');
 
         if ($user->role !== 'admin') {
-            $query->where(function ($builder) use ($user) {
-                $builder->where('owner_id', $user->id)
-                    ->orWhereHas('contract', function ($contractQuery) use ($user) {
-                        $contractQuery->where('collector_user_id', $user->id);
-                    });
+            $query->whereHas('contract', function ($contractQuery) use ($user) {
+                $contractQuery->where('collector_user_id', $user->id);
             });
         }
 
