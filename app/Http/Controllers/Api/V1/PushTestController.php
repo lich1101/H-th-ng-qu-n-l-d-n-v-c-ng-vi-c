@@ -32,7 +32,7 @@ class PushTestController extends Controller
 
         $targetUser = $user;
         $requestedUserId = ! empty($validated['user_id']) ? (int) $validated['user_id'] : null;
-        if (! empty($validated['user_id']) && $user->role === 'admin') {
+        if (! empty($validated['user_id']) && in_array($user->role, ['admin', 'administrator'], true)) {
             $selected = User::query()->find((int) $validated['user_id']);
             if ($selected) {
                 $targetUser = $selected;
