@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
-use App\Models\Department;
+use App\Http\Helpers\ProjectScope;
 use App\Models\InAppNotification;
 use App\Models\Task;
 use App\Models\TaskComment;
@@ -364,53 +364,12 @@ class TaskCommentController extends Controller
 
     private function canAccessTask($user, Task $task): bool
     {
-        if (! $user) {
-            return false;
-        }
-        if ($user->role === 'admin') {
-            return true;
-        }
-        if ($user->role === 'ke_toan') {
-            return false;
-        }
-
-        $participants = $this->resolveChatParticipantIds($task);
-        return $participants->contains($user->id);
+        return ProjectScope::canAccessTask($user, $task);
     }
 
     private function applyChatScope(Builder $query, $user): void
     {
-        if (! $user) {
-            $query->whereRaw('1 = 0');
-            return;
-        }
-
-        if ($user->role === 'admin') {
-            return;
-        }
-
-        if ($user->role === 'ke_toan') {
-            $query->whereRaw('1 = 0');
-            return;
-        }
-
-        $managedDepartmentIds = $user->managedDepartments()->pluck('id');
-        $query->where(function (Builder $builder) use ($user, $managedDepartmentIds) {
-            $builder->where('assignee_id', $user->id)
-                ->orWhere('reviewer_id', $user->id)
-                ->orWhere('created_by', $user->id)
-                ->orWhere('assigned_by', $user->id)
-                ->orWhereHas('items', function (Builder $itemQuery) use ($user) {
-                    $itemQuery->where('assignee_id', $user->id);
-                })
-                ->orWhereHas('comments', function (Builder $commentQuery) use ($user) {
-                    $commentQuery->where('user_id', $user->id);
-                });
-
-            if ($managedDepartmentIds->isNotEmpty()) {
-                $builder->orWhereIn('department_id', $managedDepartmentIds);
-            }
-        });
+        ProjectScope::applyTaskScope($query, $user);
     }
 
     private function resolveChatParticipants(Task $task)
@@ -423,46 +382,7 @@ class TaskCommentController extends Controller
 
     private function resolveChatParticipantIds(Task $task)
     {
-        $ids = collect();
-        $adminIds = User::query()->where('role', 'admin')->pluck('id');
-        $ids = $ids->merge($adminIds);
-
-        if ($task->department_id) {
-            $managerId = Department::query()
-                ->where('id', $task->department_id)
-                ->value('manager_id');
-            if ($managerId) {
-                $ids->push($managerId);
-            }
-        }
-
-        $itemAssignees = $task->items()
-            ->whereNotNull('assignee_id')
-            ->pluck('assignee_id');
-        $ids = $ids->merge($itemAssignees);
-
-        if ($task->assignee_id) {
-            $ids->push($task->assignee_id);
-        }
-
-        if ($task->reviewer_id) {
-            $ids->push($task->reviewer_id);
-        }
-
-        if ($task->created_by) {
-            $ids->push($task->created_by);
-        }
-
-        if ($task->assigned_by) {
-            $ids->push($task->assigned_by);
-        }
-
-        $commenterIds = $task->comments()
-            ->whereNotNull('user_id')
-            ->pluck('user_id');
-        $ids = $ids->merge($commenterIds);
-
-        return $ids->filter()->unique()->values();
+        return ProjectScope::resolveChatParticipantIds($task);
     }
 
     private function attachTaggedUsers($comments)

@@ -40,7 +40,6 @@ class SendTaskItemProgressReminders extends Command
             return self::SUCCESS;
         }
 
-        $grouped = [];
         foreach ($items as $item) {
             $start = $item->start_date ? Carbon::parse($item->start_date) : $item->created_at;
             $deadline = $item->deadline ? Carbon::parse($item->deadline) : null;
@@ -76,44 +75,28 @@ class SendTaskItemProgressReminders extends Command
                 continue;
             }
 
-            $grouped[$assigneeId][] = [
-                'item_id' => $item->id,
-                'title' => $item->title,
-                'lag' => $lag,
-            ];
-        }
-
-        if (empty($grouped)) {
-            return self::SUCCESS;
-        }
-
-        $notifier = app(NotificationService::class);
-        foreach ($grouped as $userId => $list) {
-            $lines = collect($list)
-                ->take(5)
-                ->map(function ($row) {
-                    return "• {$row['title']} (chậm {$row['lag']}%)";
-                })
-                ->implode("\n");
-            $extra = count($list) > 5 ? "\n+".(count($list) - 5)." đầu việc khác" : '';
-
-            $notifier->notifyUsers(
-                [(int) $userId],
+            app(NotificationService::class)->notifyUsers(
+                [$assigneeId],
                 'Đầu việc chậm tiến độ',
-                $lines.$extra,
+                sprintf(
+                    'Đầu việc %s của công việc %s đang chậm tiến độ %s%%',
+                    (string) $item->title,
+                    (string) optional($item->task)->title,
+                    $lag
+                ),
                 [
                     'type' => 'task_item_progress_late',
-                    'count' => count($list),
+                    'task_id' => optional($item->task)->id,
+                    'task_item_id' => $item->id,
+                    'lag_percent' => $lag,
                 ]
             );
 
-            foreach ($list as $row) {
-                TaskItemReminderLog::create([
-                    'task_item_id' => $row['item_id'],
-                    'user_id' => (int) $userId,
-                    'reminder_date' => $today->toDateString(),
-                ]);
-            }
+            TaskItemReminderLog::create([
+                'task_item_id' => $item->id,
+                'user_id' => $assigneeId,
+                'reminder_date' => $today->toDateString(),
+            ]);
         }
 
         return self::SUCCESS;

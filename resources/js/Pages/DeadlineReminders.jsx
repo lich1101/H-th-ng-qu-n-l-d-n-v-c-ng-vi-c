@@ -19,6 +19,17 @@ const TRIGGERS = [
     { value: 'custom', label: 'Tùy chọn' },
 ];
 
+function FormField({ label, required = false, children, className = '' }) {
+    return (
+        <div className={className}>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-text-subtle">
+                {label}{required ? ' *' : ''}
+            </label>
+            {children}
+        </div>
+    );
+}
+
 export default function DeadlineReminders(props) {
     const toast = useToast();
     const userRole = props?.auth?.user?.role || '';
@@ -215,46 +226,54 @@ export default function DeadlineReminders(props) {
                 size="md"
             >
                 <div className="space-y-3 text-sm">
-                    <select
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        value={selectedTaskId}
-                        onChange={(e) => {
-                            const value = e.target.value;
-                            setSelectedTaskId(value);
-                            fetchReminders(value);
-                        }}
-                    >
-                        <option value="">-- Chọn công việc --</option>
-                        {tasks.map((t) => (
-                            <option key={t.id} value={t.id}>
-                                #{t.id} • {t.title}
-                            </option>
-                        ))}
-                    </select>
-                    <select
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        value={form.channel}
-                        onChange={(e) => setForm((s) => ({ ...s, channel: e.target.value }))}
-                    >
-                        {CHANNELS.map((c) => (
-                            <option key={c.value} value={c.value}>{c.label}</option>
-                        ))}
-                    </select>
-                    <select
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        value={form.trigger_type}
-                        onChange={(e) => setForm((s) => ({ ...s, trigger_type: e.target.value }))}
-                    >
-                        {TRIGGERS.map((t) => (
-                            <option key={t.value} value={t.value}>{t.label}</option>
-                        ))}
-                    </select>
-                    <input
-                        type="datetime-local"
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        value={form.scheduled_at}
-                        onChange={(e) => setForm((s) => ({ ...s, scheduled_at: e.target.value }))}
-                    />
+                    <FormField label="Công việc áp dụng" required>
+                        <select
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            value={selectedTaskId}
+                            onChange={(e) => {
+                                const value = e.target.value;
+                                setSelectedTaskId(value);
+                                fetchReminders(value);
+                            }}
+                        >
+                            <option value="">-- Chọn công việc --</option>
+                            {tasks.map((t) => (
+                                <option key={t.id} value={t.id}>
+                                    #{t.id} • {t.title}
+                                </option>
+                            ))}
+                        </select>
+                    </FormField>
+                    <FormField label="Kênh gửi nhắc">
+                        <select
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            value={form.channel}
+                            onChange={(e) => setForm((s) => ({ ...s, channel: e.target.value }))}
+                        >
+                            {CHANNELS.map((c) => (
+                                <option key={c.value} value={c.value}>{c.label}</option>
+                            ))}
+                        </select>
+                    </FormField>
+                    <FormField label="Mốc kích hoạt">
+                        <select
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            value={form.trigger_type}
+                            onChange={(e) => setForm((s) => ({ ...s, trigger_type: e.target.value }))}
+                        >
+                            {TRIGGERS.map((t) => (
+                                <option key={t.value} value={t.value}>{t.label}</option>
+                            ))}
+                        </select>
+                    </FormField>
+                    <FormField label="Thời gian gửi" required>
+                        <input
+                            type="datetime-local"
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            value={form.scheduled_at}
+                            onChange={(e) => setForm((s) => ({ ...s, scheduled_at: e.target.value }))}
+                        />
+                    </FormField>
                     <div className="flex items-center gap-3">
                         <button
                             type="button"

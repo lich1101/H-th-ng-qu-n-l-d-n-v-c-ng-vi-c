@@ -99,6 +99,12 @@ Route::prefix('v1')->group(function () {
 
         Route::get('/projects', [ProjectController::class, 'index']);
         Route::get('/projects/{project}', [ProjectController::class, 'show']);
+        Route::get('/project-handovers', [ProjectController::class, 'handoverQueue'])
+            ->middleware('role:admin,quan_ly,nhan_vien');
+        Route::post('/projects/{project}/handover-submit', [ProjectController::class, 'submitHandover'])
+            ->middleware('role:admin,quan_ly,nhan_vien');
+        Route::post('/projects/{project}/handover-review', [ProjectController::class, 'reviewHandover'])
+            ->middleware('role:admin,quan_ly,nhan_vien');
         Route::post('/projects', [ProjectController::class, 'store'])
             ->middleware('role:admin,quan_ly');
         Route::put('/projects/{project}', [ProjectController::class, 'update'])
@@ -168,6 +174,8 @@ Route::prefix('v1')->group(function () {
             ->middleware('role:admin,quan_ly');
 
         Route::get('/tasks/{task}/items/{item}/updates', [TaskItemUpdateController::class, 'index']);
+        Route::get('/tasks/{task}/items/{item}/progress-insight', [TaskItemUpdateController::class, 'insight'])
+            ->middleware('role:admin,quan_ly,nhan_vien');
         Route::post('/tasks/{task}/items/{item}/updates', [TaskItemUpdateController::class, 'store'])
             ->middleware('role:admin,quan_ly,nhan_vien');
         Route::put('/tasks/{task}/items/{item}/updates/{update}', [TaskItemUpdateController::class, 'update'])

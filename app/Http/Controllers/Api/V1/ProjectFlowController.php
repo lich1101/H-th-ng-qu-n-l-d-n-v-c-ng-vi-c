@@ -3,10 +3,10 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Http\Helpers\ProjectScope;
 use App\Models\Project;
 use App\Models\Task;
 use App\Models\TaskItem;
-use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -15,7 +15,7 @@ class ProjectFlowController extends Controller
     public function show(Project $project, Request $request): JsonResponse
     {
         $user = $request->user();
-        if (! $this->canAccessProject($user, $project)) {
+        if (! ProjectScope::canAccessProject($user, $project)) {
             return response()->json(['message' => 'Không có quyền xem luồng dự án.'], 403);
         }
 
@@ -95,28 +95,5 @@ class ProjectFlowController extends Controller
             'tasks' => $tasks,
             'items' => $items,
         ]);
-    }
-
-    private function canAccessProject(?User $user, Project $project): bool
-    {
-        if (! $user) {
-            return false;
-        }
-        if (in_array($user->role, ['admin', 'ke_toan'], true)) {
-            return true;
-        }
-        if ($user->role === 'quan_ly') {
-            $deptIds = $user->managedDepartments()->pluck('id');
-            return Task::query()
-                ->where('project_id', $project->id)
-                ->whereIn('department_id', $deptIds)
-                ->exists();
-        }
-        return TaskItem::query()
-            ->whereHas('task', function ($builder) use ($project) {
-                $builder->where('project_id', $project->id);
-            })
-            ->where('assignee_id', $user->id)
-            ->exists();
     }
 }

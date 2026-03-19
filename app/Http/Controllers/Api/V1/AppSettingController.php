@@ -56,6 +56,7 @@ class AppSettingController extends Controller
             'contract_expiry_reminder_enabled' => ['nullable', 'boolean'],
             'contract_expiry_reminder_time' => ['nullable', 'regex:/^\d{2}:\d{2}$/'],
             'contract_expiry_reminder_days_before' => ['nullable', 'integer', 'min:1', 'max:30'],
+            'project_handover_min_progress_percent' => ['nullable', 'integer', 'min:1', 'max:100'],
             'smtp_custom_enabled' => ['nullable', 'boolean'],
             'smtp_mailer' => ['nullable', 'string', 'in:smtp'],
             'smtp_host' => ['nullable', 'string', 'max:120'],
@@ -134,6 +135,9 @@ class AppSettingController extends Controller
             'contract_expiry_reminder_days_before' => array_key_exists('contract_expiry_reminder_days_before', $validated)
                 ? (int) $validated['contract_expiry_reminder_days_before']
                 : $setting->contract_expiry_reminder_days_before,
+            'project_handover_min_progress_percent' => array_key_exists('project_handover_min_progress_percent', $validated)
+                ? (int) $validated['project_handover_min_progress_percent']
+                : $setting->project_handover_min_progress_percent,
             'smtp_custom_enabled' => array_key_exists('smtp_custom_enabled', $validated)
                 ? (bool) $validated['smtp_custom_enabled']
                 : $setting->smtp_custom_enabled,
@@ -193,6 +197,7 @@ class AppSettingController extends Controller
             'contract_expiry_reminder_enabled' => $setting ? (bool) ($setting->contract_expiry_reminder_enabled ?? true) : true,
             'contract_expiry_reminder_time' => $setting && $setting->contract_expiry_reminder_time ? (string) $setting->contract_expiry_reminder_time : '09:00',
             'contract_expiry_reminder_days_before' => $setting ? (int) ($setting->contract_expiry_reminder_days_before ?? 3) : 3,
+            'project_handover_min_progress_percent' => $setting ? (int) ($setting->project_handover_min_progress_percent ?? 90) : 90,
         ];
     }
 

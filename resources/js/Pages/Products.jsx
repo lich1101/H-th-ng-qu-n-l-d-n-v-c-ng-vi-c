@@ -4,6 +4,17 @@ import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import { useToast } from '@/Contexts/ToastContext';
 
+function FormField({ label, required = false, children, className = '' }) {
+    return (
+        <div className={className}>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-text-subtle">
+                {label}{required ? ' *' : ''}
+            </label>
+            {children}
+        </div>
+    );
+}
+
 export default function Products(props) {
     const toast = useToast();
     const userRole = props?.auth?.user?.role || '';
@@ -423,52 +434,64 @@ export default function Products(props) {
                 size="lg"
             >
                 <div className="space-y-3 text-sm">
-                    <input
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        placeholder="Mã sản phẩm"
-                        value={form.code}
-                        onChange={(e) => setForm((s) => ({ ...s, code: e.target.value }))}
-                    />
-                    <input
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        placeholder="Tên sản phẩm *"
-                        value={form.name}
-                        onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))}
-                    />
-                    <select
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        value={form.category_id}
-                        onChange={(e) => setForm((s) => ({ ...s, category_id: e.target.value }))}
-                    >
-                        <option value="">Chọn danh mục</option>
-                        {categories.map((c) => (
-                            <option key={c.id} value={c.id}>
-                                {c.name}
-                            </option>
-                        ))}
-                    </select>
+                    <FormField label="Mã sản phẩm">
+                        <input
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            placeholder="Nhập mã nội bộ nếu cần"
+                            value={form.code}
+                            onChange={(e) => setForm((s) => ({ ...s, code: e.target.value }))}
+                        />
+                    </FormField>
+                    <FormField label="Tên sản phẩm" required>
+                        <input
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            placeholder="Ví dụ: Gói SEO tổng thể"
+                            value={form.name}
+                            onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))}
+                        />
+                    </FormField>
+                    <FormField label="Danh mục sản phẩm">
+                        <select
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            value={form.category_id}
+                            onChange={(e) => setForm((s) => ({ ...s, category_id: e.target.value }))}
+                        >
+                            <option value="">Chọn danh mục</option>
+                            {categories.map((c) => (
+                                <option key={c.id} value={c.id}>
+                                    {c.name}
+                                </option>
+                            ))}
+                        </select>
+                    </FormField>
                     <div className="grid grid-cols-2 gap-2">
-                        <input
-                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                            placeholder="Đơn vị"
-                            value={form.unit}
-                            onChange={(e) => setForm((s) => ({ ...s, unit: e.target.value }))}
-                        />
-                        <input
-                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                            placeholder="Đơn giá"
-                            type="number"
-                            value={form.unit_price}
-                            onChange={(e) => setForm((s) => ({ ...s, unit_price: e.target.value }))}
-                        />
+                        <FormField label="Đơn vị">
+                            <input
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                placeholder="Ví dụ: bài, tháng, gói"
+                                value={form.unit}
+                                onChange={(e) => setForm((s) => ({ ...s, unit: e.target.value }))}
+                            />
+                        </FormField>
+                        <FormField label="Đơn giá (VNĐ)">
+                            <input
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                placeholder="Nhập giá bán"
+                                type="number"
+                                value={form.unit_price}
+                                onChange={(e) => setForm((s) => ({ ...s, unit_price: e.target.value }))}
+                            />
+                        </FormField>
                     </div>
-                    <textarea
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        rows={3}
-                        placeholder="Mô tả"
-                        value={form.description}
-                        onChange={(e) => setForm((s) => ({ ...s, description: e.target.value }))}
-                    />
+                    <FormField label="Mô tả">
+                        <textarea
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            rows={3}
+                            placeholder="Mô tả ngắn về phạm vi hoặc cách dùng sản phẩm"
+                            value={form.description}
+                            onChange={(e) => setForm((s) => ({ ...s, description: e.target.value }))}
+                        />
+                    </FormField>
                     <label className="flex items-center gap-2 text-xs text-text-muted">
                         <input
                             type="checkbox"
@@ -509,25 +532,31 @@ export default function Products(props) {
                 size="md"
             >
                 <div className="space-y-3 text-sm">
-                    <input
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        placeholder="Mã danh mục"
-                        value={categoryForm.code}
-                        onChange={(e) => setCategoryForm((s) => ({ ...s, code: e.target.value }))}
-                    />
-                    <input
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        placeholder="Tên danh mục *"
-                        value={categoryForm.name}
-                        onChange={(e) => setCategoryForm((s) => ({ ...s, name: e.target.value }))}
-                    />
-                    <textarea
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        rows={3}
-                        placeholder="Mô tả"
-                        value={categoryForm.description}
-                        onChange={(e) => setCategoryForm((s) => ({ ...s, description: e.target.value }))}
-                    />
+                    <FormField label="Mã danh mục">
+                        <input
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            placeholder="Ví dụ: backlink, content"
+                            value={categoryForm.code}
+                            onChange={(e) => setCategoryForm((s) => ({ ...s, code: e.target.value }))}
+                        />
+                    </FormField>
+                    <FormField label="Tên danh mục" required>
+                        <input
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            placeholder="Tên hiển thị cho người dùng"
+                            value={categoryForm.name}
+                            onChange={(e) => setCategoryForm((s) => ({ ...s, name: e.target.value }))}
+                        />
+                    </FormField>
+                    <FormField label="Mô tả">
+                        <textarea
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            rows={3}
+                            placeholder="Mô tả ngắn về nhóm sản phẩm"
+                            value={categoryForm.description}
+                            onChange={(e) => setCategoryForm((s) => ({ ...s, description: e.target.value }))}
+                        />
+                    </FormField>
                     <label className="flex items-center gap-2 text-xs text-text-muted">
                         <input
                             type="checkbox"

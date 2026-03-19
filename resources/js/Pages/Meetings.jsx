@@ -68,6 +68,17 @@ const buildCalendarCells = (monthDate) => {
 const defaultDateTimeByDate = (date) =>
     `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T09:00`;
 
+function FormField({ label, required = false, children, className = '' }) {
+    return (
+        <div className={className}>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-text-subtle">
+                {label}{required ? ' *' : ''}
+            </label>
+            {children}
+        </div>
+    );
+}
+
 export default function Meetings(props) {
     const toast = useToast();
     const userRole = props?.auth?.user?.role || '';
@@ -504,42 +515,52 @@ export default function Meetings(props) {
                 size="lg"
             >
                 <form onSubmit={saveMeeting} className="space-y-3 text-sm">
-                    <input
-                        type="text"
-                        value={form.title}
-                        onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))}
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        placeholder="Tiêu đề lịch họp"
-                        required
-                    />
-                    <input
-                        type="datetime-local"
-                        value={form.scheduled_at}
-                        onChange={(e) => setForm((prev) => ({ ...prev, scheduled_at: e.target.value }))}
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        required
-                    />
-                    <input
-                        type="text"
-                        value={form.meeting_link}
-                        onChange={(e) => setForm((prev) => ({ ...prev, meeting_link: e.target.value }))}
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        placeholder="Liên kết họp (Google Meet/Zoom...)"
-                    />
-                    <textarea
-                        value={form.description}
-                        onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        rows={3}
-                        placeholder="Ghi chú cuộc họp"
-                    />
-                    <textarea
-                        value={form.minutes}
-                        onChange={(e) => setForm((prev) => ({ ...prev, minutes: e.target.value }))}
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        rows={3}
-                        placeholder="Biên bản cuộc họp"
-                    />
+                    <FormField label="Tiêu đề cuộc họp" required>
+                        <input
+                            type="text"
+                            value={form.title}
+                            onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))}
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            placeholder="Ví dụ: Họp chốt tiến độ dự án"
+                            required
+                        />
+                    </FormField>
+                    <FormField label="Thời gian bắt đầu" required>
+                        <input
+                            type="datetime-local"
+                            value={form.scheduled_at}
+                            onChange={(e) => setForm((prev) => ({ ...prev, scheduled_at: e.target.value }))}
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            required
+                        />
+                    </FormField>
+                    <FormField label="Liên kết họp">
+                        <input
+                            type="text"
+                            value={form.meeting_link}
+                            onChange={(e) => setForm((prev) => ({ ...prev, meeting_link: e.target.value }))}
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            placeholder="Google Meet, Zoom hoặc tài liệu chung"
+                        />
+                    </FormField>
+                    <FormField label="Ghi chú cuộc họp">
+                        <textarea
+                            value={form.description}
+                            onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            rows={3}
+                            placeholder="Nêu mục tiêu, đầu việc cần trao đổi"
+                        />
+                    </FormField>
+                    <FormField label="Biên bản cuộc họp">
+                        <textarea
+                            value={form.minutes}
+                            onChange={(e) => setForm((prev) => ({ ...prev, minutes: e.target.value }))}
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            rows={3}
+                            placeholder="Dùng khi cần lưu kết quả họp hoặc quyết định cuối cùng"
+                        />
+                    </FormField>
                     <div className="rounded-2xl border border-slate-200/80 p-3">
                         <p className="text-xs font-semibold text-slate-900 mb-2">Thành viên tham gia (multi select)</p>
                         <div className="max-h-44 overflow-y-auto space-y-2 pr-1">

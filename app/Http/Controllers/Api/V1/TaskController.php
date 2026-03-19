@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Http\Helpers\ProjectScope;
 use App\Models\Project;
 use App\Models\Task;
 use App\Models\User;
@@ -10,7 +11,6 @@ use App\Models\Department;
 use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Database\Eloquent\Builder;
 
 class TaskController extends Controller
 {
@@ -25,7 +25,7 @@ class TaskController extends Controller
                 },
             ]);
 
-        $this->applyScope($query, $request->user());
+        ProjectScope::applyTaskScope($query, $request->user());
 
         if ($request->filled('project_id')) {
             $query->where('project_id', (int) $request->input('project_id'));
@@ -122,7 +122,7 @@ class TaskController extends Controller
 
     public function show(Request $request, Task $task): JsonResponse
     {
-        if (! $this->canAccess($request->user(), $task)) {
+        if (! ProjectScope::canAccessTask($request->user(), $task)) {
             return response()->json(['message' => 'Không có quyền xem công việc.'], 403);
         }
         return response()->json(
@@ -132,7 +132,7 @@ class TaskController extends Controller
 
     public function update(Request $request, Task $task): JsonResponse
     {
-        if (! $this->canAccess($request->user(), $task)) {
+        if (! ProjectScope::canAccessTask($request->user(), $task)) {
             return response()->json(['message' => 'Không có quyền cập nhật công việc.'], 403);
         }
         $validated = $request->validate($this->rules(true));
@@ -173,7 +173,7 @@ class TaskController extends Controller
         if (! in_array($request->user()->role, ['admin', 'quan_ly'], true)) {
             return response()->json(['message' => 'Không có quyền xóa công việc.'], 403);
         }
-        if (! $this->canAccess($request->user(), $task)) {
+        if (! ProjectScope::canAccessTask($request->user(), $task)) {
             return response()->json(['message' => 'Không có quyền xóa công việc.'], 403);
         }
         $task->delete();
@@ -202,68 +202,6 @@ class TaskController extends Controller
             'require_acknowledgement' => ['nullable', 'boolean'],
             'acknowledged_at' => ['nullable', 'date'],
         ];
-    }
-
-    private function applyScope(Builder $query, User $user): void
-    {
-        if (in_array($user->role, ['admin'], true)) {
-            return;
-        }
-        if ($user->role === 'ke_toan') {
-            $query->whereRaw('1 = 0');
-            return;
-        }
-        if ($user->role === 'quan_ly') {
-            $deptIds = $user->managedDepartments()->pluck('id');
-            $query->where(function ($builder) use ($deptIds, $user) {
-                $builder->whereHas('assignee', function ($assigneeQuery) use ($deptIds) {
-                    $assigneeQuery->whereIn('department_id', $deptIds);
-                })->orWhereIn('department_id', $deptIds)
-                    ->orWhereHas('project', function ($projectQuery) use ($user) {
-                        $projectQuery->where('owner_id', $user->id);
-                    })
-                    ->orWhere('assigned_by', $user->id)
-                    ->orWhere('created_by', $user->id);
-            });
-            return;
-        }
-
-        $query->where(function ($builder) use ($user) {
-            $builder->where('assignee_id', $user->id)
-                ->orWhereHas('project', function ($projectQuery) use ($user) {
-                    $projectQuery->where('owner_id', $user->id);
-                })
-                ->orWhereHas('items', function ($itemQuery) use ($user) {
-                    $itemQuery->where('assignee_id', $user->id);
-                });
-        });
-    }
-
-    private function canAccess(User $user, Task $task): bool
-    {
-        if ($user->role === 'admin') {
-            return true;
-        }
-        if ($user->role === 'ke_toan') {
-            return false;
-        }
-        if ($task->project && (int) $task->project->owner_id === (int) $user->id) {
-            return true;
-        }
-        if ($user->role === 'quan_ly') {
-            $deptIds = $user->managedDepartments()->pluck('id');
-            if ($task->department_id && $deptIds->contains($task->department_id)) {
-                return true;
-            }
-            if ($task->assignee && $deptIds->contains($task->assignee->department_id)) {
-                return true;
-            }
-            return (int) $task->created_by === (int) $user->id
-                || (int) $task->assigned_by === (int) $user->id;
-        }
-
-        return $task->items()->where('assignee_id', $user->id)->exists()
-            || (int) $task->assignee_id === (int) $user->id;
     }
 
     private function applyDepartmentRules(Request $request, array &$validated, ?Task $task = null): void

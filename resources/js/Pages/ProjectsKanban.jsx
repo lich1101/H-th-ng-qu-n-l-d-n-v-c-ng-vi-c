@@ -89,7 +89,6 @@ export default function ProjectsKanban(props) {
         deadline: '',
         budget: '',
         status: DEFAULT_STATUSES[0].value,
-        handover_status: '',
         customer_requirement: '',
         owner_id: '',
         repo_url: '',
@@ -265,7 +264,6 @@ export default function ProjectsKanban(props) {
             deadline: '',
             budget: '',
             status: statusOptions[0]?.value || DEFAULT_STATUSES[0].value,
-            handover_status: '',
             customer_requirement: '',
             owner_id: '',
             repo_url: '',
@@ -296,7 +294,6 @@ export default function ProjectsKanban(props) {
             deadline: p.deadline || '',
             budget: p.budget ?? '',
             status: p.status || statusOptions[0]?.value || DEFAULT_STATUSES[0].value,
-            handover_status: p.handover_status || '',
             customer_requirement: p.customer_requirement || '',
             owner_id: p.owner_id || '',
             repo_url: p.repo_url || '',
@@ -327,7 +324,6 @@ export default function ProjectsKanban(props) {
                 start_date: form.start_date || null,
                 deadline: form.deadline || null,
                 service_type_other: form.service_type === 'khac' ? form.service_type_other : null,
-                handover_status: form.handover_status || null,
                 owner_id: form.owner_id ? Number(form.owner_id) : null,
                 repo_url: form.repo_url?.trim() ? form.repo_url.trim() : null,
             };
@@ -374,7 +370,6 @@ export default function ProjectsKanban(props) {
                 deadline: p.deadline,
                 budget: p.budget,
                 status: nextStatus,
-                handover_status: p.handover_status || null,
                 customer_requirement: p.customer_requirement,
                 owner_id: p.owner_id,
                 repo_url: p.repo_url,
@@ -386,35 +381,31 @@ export default function ProjectsKanban(props) {
         }
     };
 
-    const updateHandover = async (project, nextHandoverStatus) => {
-        if (!canUpdate) return toast.error('Bạn không có quyền cập nhật bàn giao.');
+    const submitHandover = async (project) => {
+        if (!project?.permissions?.can_submit_handover) {
+            toast.error('Bạn chưa đủ điều kiện gửi duyệt bàn giao dự án.');
+            return;
+        }
         const shouldComplete =
-            nextHandoverStatus === 'approved' &&
             projectProgress(project) >= 100 &&
             project.status !== 'hoan_thanh';
         try {
-            await axios.put(`/api/v1/projects/${project.id}`, {
-                code: project.code,
-                name: project.name,
-                client_id: project.client_id,
-                contract_id: project.contract_id,
-                service_type: project.service_type,
-                service_type_other: project.service_type_other || null,
-                start_date: project.start_date,
-                deadline: project.deadline,
-                budget: project.budget,
-                status: shouldComplete ? 'hoan_thanh' : project.status,
-                handover_status: nextHandoverStatus,
-                customer_requirement: project.customer_requirement,
-                owner_id: project.owner_id,
-                repo_url: project.repo_url,
-            });
-            toast.success('Đã cập nhật trạng thái bàn giao.');
+            await axios.post(`/api/v1/projects/${project.id}/handover-submit`, {});
+            toast.success(
+                shouldComplete
+                    ? 'Đã gửi duyệt bàn giao dự án. Dự án sẽ được hoàn thành sau khi được duyệt.'
+                    : 'Đã gửi duyệt bàn giao dự án.'
+            );
             await fetchProjects();
         } catch (e) {
-            toast.error(e?.response?.data?.message || 'Cập nhật bàn giao thất bại.');
+            toast.error(e?.response?.data?.message || 'Gửi duyệt bàn giao thất bại.');
         }
     };
+
+    const canEditProject = (project) => !!project?.permissions?.can_edit;
+    const canDeleteProject = (project) => !!project?.permissions?.can_delete;
+    const canSubmitProjectHandover = (project) => !!project?.permissions?.can_submit_handover;
+    const canReviewProjectHandover = (project) => !!project?.permissions?.can_review_handover;
 
     return (
         <PageContainer
@@ -582,30 +573,30 @@ export default function ProjectsKanban(props) {
                                                     >
                                                         Kho
                                                     </a>
-                                                    {canUpdate && p.handover_status !== 'pending' && p.handover_status !== 'approved' && (
+                                                    {canSubmitProjectHandover(p) && (
                                                         <button
                                                             className="text-xs font-semibold text-amber-700"
-                                                            onClick={(e) => { e.stopPropagation(); updateHandover(p, 'pending'); }}
+                                                            onClick={(e) => { e.stopPropagation(); submitHandover(p); }}
                                                             type="button"
                                                         >
                                                             Gửi duyệt BG
                                                         </button>
                                                     )}
-                                                    {canUpdate && p.handover_status === 'pending' && (
-                                                        <button
+                                                    {canReviewProjectHandover(p) && p.handover_status === 'pending' && (
+                                                        <a
                                                             className="text-xs font-semibold text-emerald-700"
-                                                            onClick={(e) => { e.stopPropagation(); updateHandover(p, 'approved'); }}
-                                                            type="button"
+                                                            href="/ban-giao"
+                                                            onClick={(e) => e.stopPropagation()}
                                                         >
-                                                            Duyệt BG
-                                                        </button>
+                                                            Duyệt bàn giao
+                                                        </a>
                                                     )}
-                                                    {canUpdate && (
+                                                    {canEditProject(p) && (
                                                         <button className="text-xs font-semibold text-primary" onClick={(e) => { e.stopPropagation(); startEdit(p); }} type="button">
                                                             Sửa
                                                         </button>
                                                     )}
-                                                    {canDelete && (
+                                                    {canDeleteProject(p) && (
                                                         <button className="text-xs font-semibold text-rose-500" onClick={(e) => { e.stopPropagation(); remove(p.id); }} type="button">
                                                             Xóa
                                                         </button>
@@ -652,8 +643,10 @@ export default function ProjectsKanban(props) {
                                                         {serviceLabel(p)}
                                                     </span>
                                                     <div className="flex items-center gap-2 text-xs text-text-muted">
-                                                        <button className="hover:text-slate-900" onClick={(e) => { e.stopPropagation(); startEdit(p); }} type="button">Sửa</button>
-                                                        {canDelete && (
+                                                        {canEditProject(p) && (
+                                                            <button className="hover:text-slate-900" onClick={(e) => { e.stopPropagation(); startEdit(p); }} type="button">Sửa</button>
+                                                        )}
+                                                        {canDeleteProject(p) && (
                                                             <button className="hover:text-danger" onClick={(e) => { e.stopPropagation(); remove(p.id); }} type="button">Xoá</button>
                                                         )}
                                                     </div>
@@ -671,27 +664,27 @@ export default function ProjectsKanban(props) {
                                                     <div className="h-1.5 bg-primary" style={{ width: `${projectProgress(p)}%` }} />
                                                 </div>
                                                 <div className="mt-2 flex items-center gap-2">
-                                                    {canUpdate && p.handover_status !== 'pending' && p.handover_status !== 'approved' && (
+                                                    {canSubmitProjectHandover(p) && (
                                                         <button
                                                             className="text-[11px] font-semibold text-amber-700"
-                                                            onClick={(e) => { e.stopPropagation(); updateHandover(p, 'pending'); }}
+                                                            onClick={(e) => { e.stopPropagation(); submitHandover(p); }}
                                                             type="button"
                                                         >
                                                             Gửi duyệt BG
                                                         </button>
                                                     )}
-                                                    {canUpdate && p.handover_status === 'pending' && (
-                                                        <button
+                                                    {canReviewProjectHandover(p) && p.handover_status === 'pending' && (
+                                                        <a
                                                             className="text-[11px] font-semibold text-emerald-700"
-                                                            onClick={(e) => { e.stopPropagation(); updateHandover(p, 'approved'); }}
-                                                            type="button"
+                                                            href="/ban-giao"
+                                                            onClick={(e) => e.stopPropagation()}
                                                         >
                                                             Duyệt BG
-                                                        </button>
+                                                        </a>
                                                     )}
                                                 </div>
                                                 <div className="mt-3 flex flex-wrap gap-2">
-                                                    {statusOptions.map((s) => (
+                                                    {canEditProject(p) && statusOptions.map((s) => (
                                                         <button
                                                             key={s.value}
                                                             className={`text-xs px-2 py-1 rounded-full border ${p.status === s.value ? 'border-primary text-primary' : 'border-slate-200/80 text-text-muted'}`}
@@ -780,68 +773,92 @@ export default function ProjectsKanban(props) {
                 size="lg"
             >
                 <div className="space-y-3 text-sm">
-                    <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" placeholder="Mã dự án *" value={form.code} onChange={(e) => setForm((s) => ({ ...s, code: e.target.value }))} />
-                    <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" placeholder="Tên dự án *" value={form.name} onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))} />
-                    <select className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" value={form.service_type} onChange={(e) => setForm((s) => ({ ...s, service_type: e.target.value }))}>
-                        {serviceOptions.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-                    </select>
+                    <div>
+                        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Mã dự án</label>
+                        <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" placeholder="Ví dụ: PRJ-20260318-ABCD" value={form.code} onChange={(e) => setForm((s) => ({ ...s, code: e.target.value }))} />
+                    </div>
+                    <div>
+                        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Tên dự án</label>
+                        <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" placeholder="Tên dự án hiển thị với đội triển khai" value={form.name} onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))} />
+                    </div>
+                    <div>
+                        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Loại dịch vụ</label>
+                        <select className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" value={form.service_type} onChange={(e) => setForm((s) => ({ ...s, service_type: e.target.value }))}>
+                            {serviceOptions.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                        </select>
+                    </div>
                     {form.service_type === 'khac' && (
-                        <input
-                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                            placeholder="Nhập loại dịch vụ khác"
-                            value={form.service_type_other}
-                            onChange={(e) => setForm((s) => ({ ...s, service_type_other: e.target.value }))}
-                        />
+                        <div>
+                            <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Tên dịch vụ khác</label>
+                            <input
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                placeholder="Nhập đúng tên dịch vụ cần triển khai"
+                                value={form.service_type_other}
+                                onChange={(e) => setForm((s) => ({ ...s, service_type_other: e.target.value }))}
+                            />
+                        </div>
                     )}
                     <div className="grid grid-cols-2 gap-2">
-                        <select
-                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                            value={form.contract_id}
-                            onChange={(e) => setForm((s) => ({ ...s, contract_id: e.target.value }))}
-                        >
-                            <option value="">Chọn hợp đồng (bắt buộc để tạo công việc)</option>
-                            {contracts.map((c) => (
-                                <option key={c.id} value={c.id}>
-                                    {c.code} • {c.title}
-                                </option>
-                            ))}
-                        </select>
-                        <select
-                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                            value={form.owner_id}
-                            onChange={(e) => setForm((s) => ({ ...s, owner_id: e.target.value }))}
-                        >
-                            <option value="">Người phụ trách triển khai</option>
-                            {owners.map((u) => (
-                                <option key={u.id} value={u.id}>
-                                    {u.name} ({u.role})
-                                </option>
-                            ))}
-                        </select>
+                        <div>
+                            <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Hợp đồng liên kết</label>
+                            <select
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                value={form.contract_id}
+                                onChange={(e) => setForm((s) => ({ ...s, contract_id: e.target.value }))}
+                            >
+                                <option value="">Chọn hợp đồng (khuyên chọn để tạo công việc đúng phạm vi)</option>
+                                {contracts.map((c) => (
+                                    <option key={c.id} value={c.id}>
+                                        {c.code} • {c.title}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Người phụ trách triển khai</label>
+                            <select
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                value={form.owner_id}
+                                onChange={(e) => setForm((s) => ({ ...s, owner_id: e.target.value }))}
+                            >
+                                <option value="">Chọn người phụ trách dự án</option>
+                                {owners.map((u) => (
+                                    <option key={u.id} value={u.id}>
+                                        {u.name} ({u.role})
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
-                        <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" type="date" value={form.start_date} onChange={(e) => setForm((s) => ({ ...s, start_date: e.target.value }))} />
-                        <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" type="date" value={form.deadline} onChange={(e) => setForm((s) => ({ ...s, deadline: e.target.value }))} />
+                        <div>
+                            <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Ngày bắt đầu</label>
+                            <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" type="date" value={form.start_date} onChange={(e) => setForm((s) => ({ ...s, start_date: e.target.value }))} />
+                        </div>
+                        <div>
+                            <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Hạn chót</label>
+                            <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" type="date" value={form.deadline} onChange={(e) => setForm((s) => ({ ...s, deadline: e.target.value }))} />
+                        </div>
                     </div>
-                    <input
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        placeholder="Link kho dự án (tuỳ chọn)"
-                        value={form.repo_url}
-                        onChange={(e) => setForm((s) => ({ ...s, repo_url: e.target.value }))}
-                    />
-                    <select className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" value={form.status} onChange={(e) => setForm((s) => ({ ...s, status: e.target.value }))}>
-                        {statusOptions.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-                    </select>
-                    <select
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        value={form.handover_status}
-                        onChange={(e) => setForm((s) => ({ ...s, handover_status: e.target.value }))}
-                    >
-                        <option value="">Chưa bàn giao</option>
-                        <option value="pending">Chờ duyệt bàn giao</option>
-                        <option value="approved">Đã duyệt bàn giao</option>
-                    </select>
-                    <textarea className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" rows={3} placeholder="Yêu cầu khách hàng" value={form.customer_requirement} onChange={(e) => setForm((s) => ({ ...s, customer_requirement: e.target.value }))} />
+                    <div>
+                        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Link kho dự án</label>
+                        <input
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            placeholder="URL kho dự án hoặc repo lưu tài liệu (tuỳ chọn)"
+                            value={form.repo_url}
+                            onChange={(e) => setForm((s) => ({ ...s, repo_url: e.target.value }))}
+                        />
+                    </div>
+                    <div>
+                        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Trạng thái dự án</label>
+                        <select className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" value={form.status} onChange={(e) => setForm((s) => ({ ...s, status: e.target.value }))}>
+                            {statusOptions.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Yêu cầu khách hàng</label>
+                        <textarea className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" rows={3} placeholder="Mô tả yêu cầu, phạm vi triển khai hoặc ghi chú từ khách" value={form.customer_requirement} onChange={(e) => setForm((s) => ({ ...s, customer_requirement: e.target.value }))} />
+                    </div>
                     <div className="flex items-center gap-3">
                         <button className="flex-1 bg-primary text-white rounded-2xl py-2.5 font-semibold" onClick={save} type="button">
                             {editingId ? 'Cập nhật dự án' : 'Tạo dự án'}

@@ -37,6 +37,7 @@ const initialSettings = (settings) => ({
     contract_expiry_reminder_enabled: settings?.contract_expiry_reminder_enabled ?? true,
     contract_expiry_reminder_time: settings?.contract_expiry_reminder_time || '09:00',
     contract_expiry_reminder_days_before: settings?.contract_expiry_reminder_days_before ?? 3,
+    project_handover_min_progress_percent: settings?.project_handover_min_progress_percent ?? 90,
     smtp_custom_enabled: settings?.smtp_custom_enabled ?? false,
     smtp_mailer: settings?.smtp_mailer || 'smtp',
     smtp_host: settings?.smtp_host || '',
@@ -55,24 +56,24 @@ function ToggleSwitch({ checked, onChange, label, description = '' }) {
             role="switch"
             aria-checked={checked}
             onClick={() => onChange(!checked)}
-            className={`inline-flex w-full items-center justify-between gap-4 rounded-2xl border px-4 py-3 text-left transition ${
+            className={`group flex w-full items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 ${
                 checked
-                    ? 'border-primary/25 bg-primary/5'
+                    ? 'border-primary/30 bg-primary/10'
                     : 'border-slate-200/80 bg-white hover:bg-slate-50'
             }`}
         >
-            <div>
-                <div className="text-sm font-semibold text-slate-900">{label}</div>
+            <div className="min-w-0">
+                <div className={`text-sm font-semibold ${checked ? 'text-primary' : 'text-slate-900'}`}>{label}</div>
                 {description ? <div className="mt-1 text-xs text-text-muted">{description}</div> : null}
             </div>
             <span
-                className={`relative inline-flex h-7 w-12 items-center rounded-full transition ${
-                    checked ? 'bg-primary' : 'bg-slate-200'
+                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+                    checked ? 'bg-primary' : 'bg-slate-300'
                 }`}
             >
                 <span
-                    className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
-                        checked ? 'translate-x-6' : 'translate-x-1'
+                    className={`inline-block h-5 w-5 transform rounded-full bg-white shadow ring-1 ring-black/5 transition ${
+                        checked ? 'translate-x-5' : 'translate-x-1'
                     }`}
                 />
             </span>
@@ -80,7 +81,16 @@ function ToggleSwitch({ checked, onChange, label, description = '' }) {
     );
 }
 
-function NotificationCard({ title, subtitle, enabled, onToggle, audience, message, children }) {
+function NotificationCard({
+    title,
+    subtitle,
+    enabled,
+    onToggle,
+    audience,
+    message,
+    children,
+    showToggle = true,
+}) {
     return (
         <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -88,14 +98,20 @@ function NotificationCard({ title, subtitle, enabled, onToggle, audience, messag
                     <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
                     <p className="mt-1 text-xs text-text-muted">{subtitle}</p>
                 </div>
-                <div className="w-full max-w-[280px] lg:w-auto">
-                    <ToggleSwitch
-                        checked={enabled}
-                        onChange={onToggle}
-                        label={enabled ? 'Đang bật' : 'Đang tắt'}
-                        description={enabled ? 'Thông báo này đang hoạt động theo cấu hình bên dưới.' : 'Thông báo này sẽ không được gửi khi đang tắt.'}
-                    />
-                </div>
+                {showToggle ? (
+                    <div className="w-full max-w-[280px] lg:w-auto">
+                        <ToggleSwitch
+                            checked={enabled}
+                            onChange={onToggle}
+                            label={enabled ? 'Đang bật' : 'Đang tắt'}
+                            description={enabled ? 'Thông báo này đang hoạt động theo cấu hình bên dưới.' : 'Thông báo này sẽ không được gửi khi đang tắt.'}
+                        />
+                    </div>
+                ) : (
+                    <div className="rounded-xl border border-slate-200/80 bg-slate-50 px-4 py-3 text-xs text-slate-700">
+                        Cấu hình nghiệp vụ
+                    </div>
+                )}
             </div>
 
             <div className="mt-4 grid gap-4 xl:grid-cols-2">
@@ -283,6 +299,7 @@ export default function SystemSettings(props) {
             formData.append('contract_expiry_reminder_enabled', form.contract_expiry_reminder_enabled ? '1' : '0');
             formData.append('contract_expiry_reminder_time', form.contract_expiry_reminder_time || '09:00');
             formData.append('contract_expiry_reminder_days_before', String(form.contract_expiry_reminder_days_before ?? 3));
+            formData.append('project_handover_min_progress_percent', String(form.project_handover_min_progress_percent ?? 90));
             formData.append('smtp_custom_enabled', form.smtp_custom_enabled ? '1' : '0');
             formData.append('smtp_mailer', form.smtp_mailer || 'smtp');
             formData.append('smtp_host', form.smtp_host || '');
@@ -409,6 +426,7 @@ export default function SystemSettings(props) {
         rows.push({ key: 'Lead mới -> push phụ trách/admin', value: notificationConfig?.lead_capture_notification_enabled ? 'Bật' : 'Tắt' });
         rows.push({ key: 'Nhắc công nợ hợp đồng', value: notificationConfig?.contract_unpaid_reminder_enabled ? `${notificationConfig?.contract_unpaid_reminder_time || '08:00'} mỗi ngày` : 'Tắt' });
         rows.push({ key: 'Nhắc hết hạn hợp đồng', value: notificationConfig?.contract_expiry_reminder_enabled ? `${notificationConfig?.contract_expiry_reminder_time || '09:00'} mỗi ngày, trước ${notificationConfig?.contract_expiry_reminder_days_before ?? 3} ngày` : 'Tắt' });
+        rows.push({ key: 'Ngưỡng gửi duyệt bàn giao', value: `${notificationConfig?.project_handover_min_progress_percent ?? form.project_handover_min_progress_percent ?? 90}%` });
         rows.push({ key: 'Mail configured', value: notificationConfig?.mail_configured ? 'Có' : 'Chưa' });
         rows.push({ key: 'Device tokens total', value: String(pushTokens.total ?? 0) });
         rows.push({ key: 'Tokens iOS', value: String(pushTokens?.by_platform?.ios ?? 0) });
@@ -421,7 +439,7 @@ export default function SystemSettings(props) {
         rows.push({ key: 'Token update gần nhất', value: pushTokens.last_updated_at || '—' });
 
         return rows;
-    }, [systemStatus, form.notifications_dedupe_seconds, form.meeting_reminder_minutes_before, form.task_item_progress_reminder_time]);
+    }, [systemStatus, form.notifications_dedupe_seconds, form.meeting_reminder_minutes_before, form.task_item_progress_reminder_time, form.project_handover_min_progress_percent]);
 
     const firebaseStatus = systemStatus?.firebase || {};
     const pushTokens = systemStatus?.push_tokens || {};
@@ -778,6 +796,37 @@ export default function SystemSettings(props) {
                                     value={form.contract_expiry_reminder_days_before}
                                     onChange={(e) => setForm((s) => ({ ...s, contract_expiry_reminder_days_before: Number(e.target.value || 3) }))}
                                 />
+                            </div>
+                        </NotificationCard>
+
+                        <NotificationCard
+                            title="Bàn giao dự án"
+                            subtitle="Thiết lập điều kiện để phụ trách dự án được gửi phiếu duyệt bàn giao và giúp admin kiểm soát ngưỡng nghiệm thu."
+                            enabled
+                            onToggle={() => {}}
+                            audience="Áp dụng cho phụ trách dự án. Admin và nhân viên lên hợp đồng của dự án là người được quyền duyệt hoặc từ chối."
+                            message='Khi dự án đạt đủ ngưỡng tiến độ, phụ trách dự án mới được gửi phiếu bàn giao. Nếu phiếu bị phản hồi, hệ thống sẽ báo lại cho phụ trách dự án kèm lý do.'
+                            showToggle={false}
+                        >
+                            <div>
+                                <label className="text-xs text-text-muted">Tiến độ tối thiểu để gửi duyệt (%)</label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    max="100"
+                                    className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                    value={form.project_handover_min_progress_percent}
+                                    onChange={(e) => setForm((s) => ({
+                                        ...s,
+                                        project_handover_min_progress_percent: Number(e.target.value || 90),
+                                    }))}
+                                />
+                            </div>
+                            <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-subtle">Logic duyệt</div>
+                                <div className="mt-1 text-sm text-slate-700">
+                                    Chỉ phụ trách dự án mới được gửi phiếu. Dự án đang chờ duyệt sẽ xuất hiện trong trang Bàn giao dự án để admin hoặc nhân viên lên hợp đồng phản hồi.
+                                </div>
                             </div>
                         </NotificationCard>
 

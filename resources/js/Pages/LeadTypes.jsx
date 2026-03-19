@@ -4,6 +4,17 @@ import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import { useToast } from '@/Contexts/ToastContext';
 
+function FormField({ label, required = false, children, className = '' }) {
+    return (
+        <div className={className}>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-text-subtle">
+                {label}{required ? ' *' : ''}
+            </label>
+            {children}
+        </div>
+    );
+}
+
 export default function LeadTypes(props) {
     const toast = useToast();
     const [types, setTypes] = useState([]);
@@ -160,26 +171,32 @@ export default function LeadTypes(props) {
                 size="sm"
             >
                 <div className="space-y-3 text-sm">
-                    <input
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        placeholder="Tên trạng thái"
-                        value={form.name}
-                        onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))}
-                    />
-                    <div className="grid grid-cols-2 gap-2">
-                        <input
-                            className="h-11 w-full rounded-2xl border border-slate-200/80 p-1"
-                            type="color"
-                            value={form.color_hex}
-                            onChange={(e) => setForm((s) => ({ ...s, color_hex: e.target.value }))}
-                        />
+                    <FormField label="Tên trạng thái" required>
                         <input
                             className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                            type="number"
-                            placeholder="Thứ tự"
-                            value={form.sort_order}
-                            onChange={(e) => setForm((s) => ({ ...s, sort_order: e.target.value }))}
+                            placeholder="Ví dụ: Đã tư vấn, Chờ chốt"
+                            value={form.name}
+                            onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))}
                         />
+                    </FormField>
+                    <div className="grid grid-cols-2 gap-2">
+                        <FormField label="Màu thẻ">
+                            <input
+                                className="h-11 w-full rounded-2xl border border-slate-200/80 p-1"
+                                type="color"
+                                value={form.color_hex}
+                                onChange={(e) => setForm((s) => ({ ...s, color_hex: e.target.value }))}
+                            />
+                        </FormField>
+                        <FormField label="Thứ tự hiển thị">
+                            <input
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                type="number"
+                                placeholder="Ví dụ: 1, 2, 3"
+                                value={form.sort_order}
+                                onChange={(e) => setForm((s) => ({ ...s, sort_order: e.target.value }))}
+                            />
+                        </FormField>
                     </div>
                     <div className="flex items-center gap-3">
                         <button

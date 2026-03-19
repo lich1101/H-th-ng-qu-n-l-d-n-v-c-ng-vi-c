@@ -4,6 +4,17 @@ import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import { useToast } from '@/Contexts/ToastContext';
 
+function FormField({ label, required = false, children, className = '' }) {
+    return (
+        <div className={className}>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-text-subtle">
+                {label}{required ? ' *' : ''}
+            </label>
+            {children}
+        </div>
+    );
+}
+
 export default function Departments(props) {
     const toast = useToast();
     const userRole = props?.auth?.user?.role || '';
@@ -201,26 +212,29 @@ export default function Departments(props) {
                 size="lg"
             >
                 <div className="space-y-3 text-sm">
-                    <input
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        placeholder="Tên phòng ban"
-                        value={form.name}
-                        onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))}
-                    />
-                    <select
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        value={form.manager_id}
-                        onChange={(e) => setForm((s) => ({ ...s, manager_id: e.target.value }))}
-                    >
-                        <option value="">Chọn quản lý</option>
-                        {users.map((user) => (
-                            <option key={user.id} value={user.id}>
-                                {user.name} • {user.role}
-                            </option>
-                        ))}
-                    </select>
-                    <div>
-                        <label className="text-xs text-text-muted">Nhân sự thuộc phòng ban</label>
+                    <FormField label="Tên phòng ban" required>
+                        <input
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            placeholder="Ví dụ: Phòng sản xuất, Phòng kinh doanh"
+                            value={form.name}
+                            onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))}
+                        />
+                    </FormField>
+                    <FormField label="Quản lý phòng ban">
+                        <select
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            value={form.manager_id}
+                            onChange={(e) => setForm((s) => ({ ...s, manager_id: e.target.value }))}
+                        >
+                            <option value="">Chọn quản lý</option>
+                            {users.map((user) => (
+                                <option key={user.id} value={user.id}>
+                                    {user.name} • {user.role}
+                                </option>
+                            ))}
+                        </select>
+                    </FormField>
+                    <FormField label="Nhân sự thuộc phòng ban">
                         <select
                             className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
                             multiple
@@ -237,7 +251,7 @@ export default function Departments(props) {
                                 </option>
                             ))}
                         </select>
-                    </div>
+                    </FormField>
                     {!canManage && (
                         <p className="text-xs text-text-muted">
                             Chỉ Admin mới được chỉnh sửa phòng ban.

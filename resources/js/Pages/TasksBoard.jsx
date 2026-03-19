@@ -52,6 +52,128 @@ const REVIEW_STATUS_STYLES = {
     rejected: 'bg-rose-50 text-rose-700 border-rose-200',
 };
 
+const clampPercent = (value) => {
+    const parsed = Number(value || 0);
+    if (Number.isNaN(parsed)) return 0;
+    return Math.max(0, Math.min(100, parsed));
+};
+
+function FieldLabel({ children }) {
+    return (
+        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">
+            {children}
+        </label>
+    );
+}
+
+function InsightStat({ label, value, tone = 'slate' }) {
+    const toneStyles = {
+        slate: 'bg-slate-50 text-slate-900',
+        blue: 'bg-blue-50 text-blue-700',
+        emerald: 'bg-emerald-50 text-emerald-700',
+        amber: 'bg-amber-50 text-amber-700',
+        rose: 'bg-rose-50 text-rose-700',
+    };
+    return (
+        <div className={`rounded-2xl px-4 py-3 ${toneStyles[tone] || toneStyles.slate}`}>
+            <div className="text-[11px] uppercase tracking-[0.16em] text-text-subtle">{label}</div>
+            <div className="mt-1 text-base font-semibold">{value}</div>
+        </div>
+    );
+}
+
+function TaskItemInsightChart({ points = [] }) {
+    if (!points.length) {
+        return (
+            <div className="flex h-[220px] items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-sm text-text-muted">
+                Chưa có dữ liệu biểu đồ tiến độ.
+            </div>
+        );
+    }
+
+    const width = 720;
+    const height = 240;
+    const paddingTop = 20;
+    const paddingBottom = 34;
+    const paddingLeft = 18;
+    const paddingRight = 18;
+    const chartHeight = height - paddingTop - paddingBottom;
+    const chartWidth = width - paddingLeft - paddingRight;
+
+    const pointX = (index) => (
+        points.length === 1
+            ? paddingLeft + chartWidth / 2
+            : paddingLeft + (chartWidth / (points.length - 1)) * index
+    );
+    const pointY = (value) => paddingTop + chartHeight - (chartHeight * clampPercent(value) / 100);
+
+    const buildPath = (key) => points
+        .map((point, index) => `${pointX(index)},${pointY(point[key])}`)
+        .join(' ');
+
+    return (
+        <div className="overflow-x-auto">
+            <svg viewBox={`0 0 ${width} ${height}`} className="h-[240px] w-full min-w-[620px]">
+                {[0, 25, 50, 75, 100].map((tick) => (
+                    <g key={tick}>
+                        <line
+                            x1={paddingLeft}
+                            x2={width - paddingRight}
+                            y1={pointY(tick)}
+                            y2={pointY(tick)}
+                            stroke="#E2E8F0"
+                            strokeWidth="1"
+                        />
+                        <text
+                            x={paddingLeft}
+                            y={pointY(tick) - 6}
+                            fill="#94A3B8"
+                            fontSize="10"
+                        >
+                            {tick}%
+                        </text>
+                    </g>
+                ))}
+                <polyline
+                    fill="none"
+                    stroke="#2563EB"
+                    strokeWidth="3"
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                    points={buildPath('expected_progress')}
+                />
+                <polyline
+                    fill="none"
+                    stroke="#16A34A"
+                    strokeWidth="3"
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                    points={buildPath('actual_progress')}
+                />
+                {points.map((point, index) => (
+                    <g key={`${point.date}-${index}`}>
+                        <circle
+                            cx={pointX(index)}
+                            cy={pointY(point.actual_progress)}
+                            r="4"
+                            fill="#16A34A"
+                        />
+                        <text
+                            x={pointX(index)}
+                            y={height - 10}
+                            textAnchor="middle"
+                            fill="#94A3B8"
+                            fontSize="10"
+                        >
+                            {point.label}
+                        </text>
+                    </g>
+                ))}
+            </svg>
+        </div>
+    );
+}
+
 export default function TasksBoard(props) {
     const toast = useToast();
     const userRole = props?.auth?.user?.role || '';
@@ -162,6 +284,10 @@ export default function TasksBoard(props) {
     const [showItemReview, setShowItemReview] = useState(false);
     const [reviewItem, setReviewItem] = useState(null);
     const [itemUpdates, setItemUpdates] = useState([]);
+    const [showItemInsight, setShowItemInsight] = useState(false);
+    const [insightItem, setInsightItem] = useState(null);
+    const [itemInsight, setItemInsight] = useState(null);
+    const [itemInsightLoading, setItemInsightLoading] = useState(false);
 
     const [showTaskChat, setShowTaskChat] = useState(false);
     const [chatTask, setChatTask] = useState(null);
@@ -944,6 +1070,25 @@ export default function TasksBoard(props) {
         } catch (e) {
             toast.error(e?.response?.data?.message || 'Không tải được báo cáo.');
             setItemUpdates([]);
+        }
+    };
+
+    const openItemInsightModal = async (item) => {
+        if (!itemsTask) return;
+        setInsightItem(item);
+        setItemInsight(null);
+        setShowItemInsight(true);
+        setItemInsightLoading(true);
+        try {
+            const res = await axios.get(
+                `/api/v1/tasks/${itemsTask.id}/items/${item.id}/progress-insight`
+            );
+            setItemInsight(res.data || null);
+        } catch (e) {
+            toast.error(e?.response?.data?.message || 'Không tải được biểu đồ tiến độ đầu việc.');
+            setShowItemInsight(false);
+        } finally {
+            setItemInsightLoading(false);
         }
     };
 
@@ -1954,44 +2099,71 @@ export default function TasksBoard(props) {
                 size="lg"
             >
                 <div className="space-y-3 text-sm">
-                    <select className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" value={form.project_id} onChange={(e) => setForm((s) => ({ ...s, project_id: e.target.value }))}>
-                        <option value="">-- Chọn dự án * --</option>
-                        {projects.map((p) => <option key={p.id} value={p.id}>{p.code} - {p.name}</option>)}
-                    </select>
+                    <div>
+                        <FieldLabel>Dự án liên kết</FieldLabel>
+                        <select className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" value={form.project_id} onChange={(e) => setForm((s) => ({ ...s, project_id: e.target.value }))}>
+                            <option value="">-- Chọn dự án * --</option>
+                            {projects.map((p) => <option key={p.id} value={p.id}>{p.code} - {p.name}</option>)}
+                        </select>
+                    </div>
                     {form.project_id && !projectHasContract && (
                         <p className="text-xs text-warning">Dự án chưa có hợp đồng, cần tạo hợp đồng trước khi tạo công việc.</p>
                     )}
-                    <select
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        value={form.department_id}
-                        onChange={(e) => setForm((s) => ({ ...s, department_id: e.target.value, assignee_id: '' }))}
-                    >
-                        <option value="">-- Chọn phòng ban --</option>
-                        {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-                    </select>
-                    <select
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        value={form.assignee_id}
-                        onChange={(e) => setForm((s) => ({ ...s, assignee_id: e.target.value }))}
-                    >
-                        <option value="">-- Chọn nhân sự phụ trách --</option>
-                        {staffOptions.map((u) => (
-                            <option key={u.id} value={u.id}>{u.name} • {u.email}</option>
-                        ))}
-                    </select>
-                    <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" placeholder="Tiêu đề *" value={form.title} onChange={(e) => setForm((s) => ({ ...s, title: e.target.value }))} />
-                    <textarea className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" rows={3} placeholder="Mô tả" value={form.description} onChange={(e) => setForm((s) => ({ ...s, description: e.target.value }))} />
-                    <div className="grid grid-cols-2 gap-2">
-                        <select className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" value={form.priority} onChange={(e) => setForm((s) => ({ ...s, priority: e.target.value }))}>
-                            {DEFAULT_PRIORITIES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
-                        </select>
-                        <select className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" value={form.status} onChange={(e) => setForm((s) => ({ ...s, status: e.target.value }))}>
-                            {statusOptions.map((s) => <option key={s} value={s}>{LABELS[s] || s}</option>)}
+                    <div>
+                        <FieldLabel>Phòng ban phụ trách</FieldLabel>
+                        <select
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            value={form.department_id}
+                            onChange={(e) => setForm((s) => ({ ...s, department_id: e.target.value, assignee_id: '' }))}
+                        >
+                            <option value="">-- Chọn phòng ban --</option>
+                            {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
                         </select>
                     </div>
+                    <div>
+                        <FieldLabel>Nhân sự phụ trách công việc</FieldLabel>
+                        <select
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            value={form.assignee_id}
+                            onChange={(e) => setForm((s) => ({ ...s, assignee_id: e.target.value }))}
+                        >
+                            <option value="">-- Chọn nhân sự phụ trách --</option>
+                            {staffOptions.map((u) => (
+                                <option key={u.id} value={u.id}>{u.name} • {u.email}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div>
+                        <FieldLabel>Tiêu đề công việc</FieldLabel>
+                        <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" value={form.title} onChange={(e) => setForm((s) => ({ ...s, title: e.target.value }))} />
+                    </div>
+                    <div>
+                        <FieldLabel>Mô tả công việc</FieldLabel>
+                        <textarea className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" rows={3} value={form.description} onChange={(e) => setForm((s) => ({ ...s, description: e.target.value }))} />
+                    </div>
                     <div className="grid grid-cols-2 gap-2">
-                        <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" type="date" value={form.deadline} onChange={(e) => setForm((s) => ({ ...s, deadline: e.target.value }))} />
-                        <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" type="number" min="0" max="100" value={form.progress_percent} onChange={(e) => setForm((s) => ({ ...s, progress_percent: e.target.value }))} />
+                        <div>
+                            <FieldLabel>Mức độ ưu tiên</FieldLabel>
+                            <select className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" value={form.priority} onChange={(e) => setForm((s) => ({ ...s, priority: e.target.value }))}>
+                                {DEFAULT_PRIORITIES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <FieldLabel>Trạng thái công việc</FieldLabel>
+                            <select className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" value={form.status} onChange={(e) => setForm((s) => ({ ...s, status: e.target.value }))}>
+                                {statusOptions.map((s) => <option key={s} value={s}>{LABELS[s] || s}</option>)}
+                            </select>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                        <div>
+                            <FieldLabel>Hạn chót công việc</FieldLabel>
+                            <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" type="date" value={form.deadline} onChange={(e) => setForm((s) => ({ ...s, deadline: e.target.value }))} />
+                        </div>
+                        <div>
+                            <FieldLabel>Tiến độ hiện tại (%)</FieldLabel>
+                            <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" type="number" min="0" max="100" value={form.progress_percent} onChange={(e) => setForm((s) => ({ ...s, progress_percent: e.target.value }))} />
+                        </div>
                     </div>
                     <div className="flex items-center gap-3">
                         <button
@@ -2124,6 +2296,18 @@ export default function TasksBoard(props) {
                                         >
                                             Phiếu duyệt
                                         </button>
+                                        {canApproveItemReports(itemsTask) && (
+                                            <button
+                                                className="rounded-xl border border-slate-200 px-3 py-2 font-semibold text-sky-700"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    openItemInsightModal(item);
+                                                }}
+                                                type="button"
+                                            >
+                                                Biểu đồ
+                                            </button>
+                                        )}
                                         {['admin', 'quan_ly'].includes(userRole) && (
                                             <button
                                                 className="text-primary font-semibold"
@@ -2160,68 +2344,90 @@ export default function TasksBoard(props) {
                                     {editingItemId ? `Sửa đầu việc #${editingItemId}` : 'Tạo đầu việc'}
                                 </h4>
                                 <div className="space-y-2 text-sm">
-                                    <select
-                                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                                        value={itemForm.assignee_id}
-                                        onChange={(e) => setItemForm((s) => ({ ...s, assignee_id: e.target.value }))}
-                                    >
-                                        <option value="">-- Chọn nhân sự --</option>
-                                        {itemStaffOptions.map((u) => (
-                                            <option key={u.id} value={u.id}>{u.name} • {u.email}</option>
-                                        ))}
-                                    </select>
-                                    <input
-                                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                                        placeholder="Tiêu đề đầu việc"
-                                        value={itemForm.title}
-                                        onChange={(e) => setItemForm((s) => ({ ...s, title: e.target.value }))}
-                                    />
-                                    <textarea
-                                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                                        rows={3}
-                                        placeholder="Mô tả"
-                                        value={itemForm.description}
-                                        onChange={(e) => setItemForm((s) => ({ ...s, description: e.target.value }))}
-                                    />
-                                    <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <FieldLabel>Nhân sự phụ trách đầu việc</FieldLabel>
                                         <select
                                             className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                                            value={itemForm.priority}
-                                            onChange={(e) => setItemForm((s) => ({ ...s, priority: e.target.value }))}
+                                            value={itemForm.assignee_id}
+                                            onChange={(e) => setItemForm((s) => ({ ...s, assignee_id: e.target.value }))}
                                         >
-                                            {DEFAULT_PRIORITIES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
-                                        </select>
-                                        <select
-                                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                                            value={itemForm.status}
-                                            onChange={(e) => setItemForm((s) => ({ ...s, status: e.target.value }))}
-                                        >
-                                            {statusOptions.map((s) => <option key={s} value={s}>{LABELS[s] || s}</option>)}
+                                            <option value="">-- Chọn nhân sự --</option>
+                                            {itemStaffOptions.map((u) => (
+                                                <option key={u.id} value={u.id}>{u.name} • {u.email}</option>
+                                            ))}
                                         </select>
                                     </div>
-                                    <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <FieldLabel>Tiêu đề đầu việc</FieldLabel>
                                         <input
                                             className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                                            type="date"
-                                            value={itemForm.start_date}
-                                            onChange={(e) => setItemForm((s) => ({ ...s, start_date: e.target.value }))}
+                                            value={itemForm.title}
+                                            onChange={(e) => setItemForm((s) => ({ ...s, title: e.target.value }))}
                                         />
-                                        <input
+                                    </div>
+                                    <div>
+                                        <FieldLabel>Mô tả đầu việc</FieldLabel>
+                                        <textarea
                                             className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                                            type="number"
-                                            min="0"
-                                            max="100"
-                                            value={itemForm.progress_percent}
-                                            onChange={(e) => setItemForm((s) => ({ ...s, progress_percent: e.target.value }))}
+                                            rows={3}
+                                            value={itemForm.description}
+                                            onChange={(e) => setItemForm((s) => ({ ...s, description: e.target.value }))}
                                         />
                                     </div>
                                     <div className="grid grid-cols-2 gap-2">
-                                        <input
-                                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                                            type="date"
-                                            value={itemForm.deadline}
-                                            onChange={(e) => setItemForm((s) => ({ ...s, deadline: e.target.value }))}
-                                        />
+                                        <div>
+                                            <FieldLabel>Mức độ ưu tiên</FieldLabel>
+                                            <select
+                                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                                value={itemForm.priority}
+                                                onChange={(e) => setItemForm((s) => ({ ...s, priority: e.target.value }))}
+                                            >
+                                                {DEFAULT_PRIORITIES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <FieldLabel>Trạng thái đầu việc</FieldLabel>
+                                            <select
+                                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                                value={itemForm.status}
+                                                onChange={(e) => setItemForm((s) => ({ ...s, status: e.target.value }))}
+                                            >
+                                                {statusOptions.map((s) => <option key={s} value={s}>{LABELS[s] || s}</option>)}
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <FieldLabel>Ngày bắt đầu</FieldLabel>
+                                            <input
+                                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                                type="date"
+                                                value={itemForm.start_date}
+                                                onChange={(e) => setItemForm((s) => ({ ...s, start_date: e.target.value }))}
+                                            />
+                                        </div>
+                                        <div>
+                                            <FieldLabel>Tiến độ ban đầu (%)</FieldLabel>
+                                            <input
+                                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                                type="number"
+                                                min="0"
+                                                max="100"
+                                                value={itemForm.progress_percent}
+                                                onChange={(e) => setItemForm((s) => ({ ...s, progress_percent: e.target.value }))}
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <FieldLabel>Deadline đầu việc</FieldLabel>
+                                            <input
+                                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                                type="date"
+                                                value={itemForm.deadline}
+                                                onChange={(e) => setItemForm((s) => ({ ...s, deadline: e.target.value }))}
+                                            />
+                                        </div>
                                         <div className="text-xs text-text-muted flex items-center px-2">
                                             % tiến độ cập nhật theo báo cáo
                                         </div>
@@ -2543,6 +2749,141 @@ export default function TasksBoard(props) {
                             </div>
                         )}
                     </div>
+                </div>
+            </Modal>
+
+            <Modal
+                open={showItemInsight}
+                onClose={() => {
+                    setShowItemInsight(false);
+                    setInsightItem(null);
+                    setItemInsight(null);
+                }}
+                title={`Biểu đồ tiến độ đầu việc${insightItem ? ` • ${insightItem.title}` : ''}`}
+                description="So sánh tiến độ kỳ vọng và tiến độ thực tế theo từng ngày để nhìn rõ đầu việc đang vượt hay chậm tiến độ."
+                size="lg"
+            >
+                <div className="space-y-4 text-sm">
+                    {itemInsightLoading && (
+                        <div className="flex min-h-[260px] items-center justify-center rounded-2xl border border-slate-200/80 bg-slate-50 text-text-muted">
+                            Đang tải dữ liệu biểu đồ tiến độ...
+                        </div>
+                    )}
+
+                    {!itemInsightLoading && !itemInsight && (
+                        <div className="flex min-h-[220px] items-center justify-center rounded-2xl border border-slate-200/80 bg-slate-50 text-text-muted">
+                            Chưa có dữ liệu tiến độ để hiển thị.
+                        </div>
+                    )}
+
+                    {!itemInsightLoading && itemInsight && (
+                        <>
+                            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                                <InsightStat
+                                    label="Nhân sự phụ trách"
+                                    value={itemInsight?.summary?.assignee_name || '—'}
+                                />
+                                <InsightStat
+                                    label="Tiến độ kỳ vọng hôm nay"
+                                    value={`${clampPercent(itemInsight?.summary?.expected_progress_today)}%`}
+                                    tone="blue"
+                                />
+                                <InsightStat
+                                    label="Tiến độ thực tế"
+                                    value={`${clampPercent(itemInsight?.summary?.actual_progress_today)}%`}
+                                    tone="emerald"
+                                />
+                                <InsightStat
+                                    label="Đang chậm"
+                                    value={`${clampPercent(itemInsight?.summary?.lag_percent)}%`}
+                                    tone={itemInsight?.summary?.is_late ? 'rose' : 'amber'}
+                                />
+                            </div>
+
+                            <div className="rounded-2xl border border-slate-200/80 bg-white p-4">
+                                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                                    <div>
+                                        <div className="text-xs uppercase tracking-[0.14em] text-text-subtle">
+                                            Tiến độ theo ngày
+                                        </div>
+                                        <div className="mt-1 text-base font-semibold text-slate-900">
+                                            {itemInsight?.summary?.task_item_title || insightItem?.title || 'Đầu việc'}
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-wrap gap-4 text-xs text-text-muted">
+                                        <div className="inline-flex items-center gap-2">
+                                            <span className="h-2.5 w-2.5 rounded-full bg-blue-600" />
+                                            Kỳ vọng
+                                        </div>
+                                        <div className="inline-flex items-center gap-2">
+                                            <span className="h-2.5 w-2.5 rounded-full bg-emerald-600" />
+                                            Thực tế
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <TaskItemInsightChart points={itemInsight?.chart || []} />
+
+                                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                                    <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                                        <div className="text-xs text-text-muted">Ngày bắt đầu</div>
+                                        <div className="mt-1 font-semibold text-slate-900">
+                                            {itemInsight?.summary?.start_date || '—'}
+                                        </div>
+                                    </div>
+                                    <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                                        <div className="text-xs text-text-muted">Deadline</div>
+                                        <div className="mt-1 font-semibold text-slate-900">
+                                            {itemInsight?.summary?.deadline || '—'}
+                                        </div>
+                                    </div>
+                                    <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                                        <div className="text-xs text-text-muted">Phòng ban</div>
+                                        <div className="mt-1 font-semibold text-slate-900">
+                                            {itemInsight?.summary?.department_name || '—'}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="rounded-2xl border border-slate-200/80 bg-white p-4">
+                                <div className="text-sm font-semibold text-slate-900">Lịch sử phiếu duyệt đã được chấp thuận</div>
+                                <div className="mt-3 space-y-3">
+                                    {(itemInsight?.approved_updates || []).length === 0 && (
+                                        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-text-muted">
+                                            Chưa có phiếu duyệt nào được chấp thuận.
+                                        </div>
+                                    )}
+                                    {(itemInsight?.approved_updates || []).map((update) => (
+                                        <div
+                                            key={update.id}
+                                            className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3"
+                                        >
+                                            <div className="flex flex-wrap items-start justify-between gap-3">
+                                                <div>
+                                                    <div className="text-xs text-text-muted">
+                                                        Phiếu #{update.id} • {update.submitter?.name || 'Nhân sự'}
+                                                    </div>
+                                                    <div className="mt-1 font-semibold text-slate-900">
+                                                        {update.progress_percent ?? '—'}% • {LABELS[update.status] || update.status || 'Không đổi trạng thái'}
+                                                    </div>
+                                                </div>
+                                                <div className="text-right text-xs text-text-muted">
+                                                    <div>Gửi: {formatDateTime(update.created_at)}</div>
+                                                    <div className="mt-1">Duyệt: {formatDateTime(update.reviewed_at)}</div>
+                                                </div>
+                                            </div>
+                                            {update.note ? (
+                                                <div className="mt-2 text-sm text-slate-700">
+                                                    {update.note}
+                                                </div>
+                                            ) : null}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </>
+                    )}
                 </div>
             </Modal>
         </PageContainer>

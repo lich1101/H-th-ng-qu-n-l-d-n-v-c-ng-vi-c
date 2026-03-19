@@ -58,6 +58,7 @@ class HandleInertiaRequests extends Middleware
                 'contract_expiry_reminder_enabled' => (bool) ($setting->contract_expiry_reminder_enabled ?? true),
                 'contract_expiry_reminder_time' => (string) ($setting->contract_expiry_reminder_time ?: '09:00'),
                 'contract_expiry_reminder_days_before' => (int) ($setting->contract_expiry_reminder_days_before ?? 3),
+                'project_handover_min_progress_percent' => (int) ($setting->project_handover_min_progress_percent ?? 90),
             ]
             : AppSetting::defaults();
 

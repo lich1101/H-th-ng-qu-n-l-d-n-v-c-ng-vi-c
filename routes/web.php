@@ -44,7 +44,7 @@ Route::post('/webhook/facebook', [FacebookWebhookController::class, 'handle'])->
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/du-an', function () {
         return Inertia::render('ProjectsKanban');
-    })->name('projects.kanban')->middleware('role:admin,quan_ly');
+    })->name('projects.kanban')->middleware('role:admin,quan_ly,nhan_vien');
 
     Route::get('/du-an/{project}', function (App\Models\Project $project) {
         return Inertia::render('ProjectDetail', [
@@ -177,10 +177,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/phong-ban', function () {
         return Inertia::render('Departments');
     })->name('departments.index')->middleware('role:admin,quan_ly');
-
-    Route::get('/dieu-phoi-phong-ban', function () {
-        return Inertia::render('DepartmentAssignments');
-    })->name('department-assignments.index')->middleware('role:admin,quan_ly,nhan_vien');
 
     Route::get('/tai-khoan', function () {
         return Inertia::render('UserAccountsDashboard');

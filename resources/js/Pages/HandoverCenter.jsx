@@ -1,350 +1,329 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import { useToast } from '@/Contexts/ToastContext';
 
+const HANDOVER_STYLES = {
+    pending: 'bg-amber-50 text-amber-700 border-amber-200',
+    approved: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    rejected: 'bg-rose-50 text-rose-700 border-rose-200',
+};
+
+const handoverLabel = (value) => {
+    if (!value) return 'Chưa gửi duyệt';
+    if (value === 'pending') return 'Chờ duyệt';
+    if (value === 'approved') return 'Đã duyệt';
+    if (value === 'rejected') return 'Từ chối';
+    return value;
+};
+
+const formatDateTime = (value) => {
+    if (!value) return '—';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toLocaleString('vi-VN');
+};
+
 export default function HandoverCenter(props) {
     const toast = useToast();
     const userRole = props?.auth?.user?.role || '';
-    const canCreate = ['admin', 'quan_ly', 'nhan_vien'].includes(userRole);
-    const canDelete = ['admin', 'quan_ly', 'nhan_vien'].includes(userRole);
-
-    const [tasks, setTasks] = useState([]);
-    const [attachments, setAttachments] = useState([]);
-    const [selectedTaskId, setSelectedTaskId] = useState('');
     const [loading, setLoading] = useState(false);
-    const fileInputRef = useRef(null);
-    const [showForm, setShowForm] = useState(false);
-    const [form, setForm] = useState({
-        type: 'link',
-        title: '',
-        external_url: '',
-        file: null,
-        version: 1,
-        is_handover: true,
-        note: '',
+    const [projects, setProjects] = useState([]);
+    const [filters, setFilters] = useState({
+        search: '',
+        owner_only: userRole === 'nhan_vien' ? '1' : '',
     });
+    const [reviewingProject, setReviewingProject] = useState(null);
+    const [decision, setDecision] = useState('approved');
+    const [reason, setReason] = useState('');
+    const [savingReview, setSavingReview] = useState(false);
 
-    const fetchTasks = async () => {
-        try {
-            const res = await axios.get('/api/v1/tasks', { params: { per_page: 200 } });
-            setTasks(res.data?.data || []);
-        } catch (e) {
-            toast.error(e?.response?.data?.message || 'Không tải được danh sách công việc.');
-        }
-    };
-
-    const fetchAttachments = async (taskId) => {
-        if (!taskId) {
-            setAttachments([]);
-            return;
-        }
+    const fetchQueue = async () => {
         setLoading(true);
         try {
-            const res = await axios.get(`/api/v1/tasks/${taskId}/attachments`, {
-                params: { per_page: 50 },
+            const response = await axios.get('/api/v1/project-handovers', {
+                params: {
+                    per_page: 100,
+                },
             });
-            setAttachments(res.data?.data || []);
-        } catch (e) {
-            toast.error(e?.response?.data?.message || 'Không tải được tệp bàn giao.');
+            setProjects(response.data?.data || []);
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Không tải được hàng đợi bàn giao dự án.');
         } finally {
             setLoading(false);
         }
     };
 
     useEffect(() => {
-        fetchTasks();
+        fetchQueue();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    const resetForm = () => {
-        setForm({
-            type: 'link',
-            title: '',
-            external_url: '',
-            file: null,
-            version: 1,
-            is_handover: true,
-            note: '',
-        });
-    };
-
-    const save = async () => {
-        if (!selectedTaskId) {
-            toast.error('Vui lòng chọn công việc cần bàn giao.');
-            return;
-        }
-        if (!canCreate) {
-            toast.error('Bạn không có quyền tạo tệp bàn giao.');
-            return;
-        }
-        if (!form.external_url?.trim() && !form.file) {
-            toast.error('Vui lòng nhập đường dẫn hoặc chọn tệp tải lên.');
-            return;
-        }
-        try {
-            if (form.file) {
-                const data = new FormData();
-                data.append('type', form.type);
-                if (form.title) data.append('title', form.title);
-                if (form.external_url) data.append('external_url', form.external_url);
-                data.append('file', form.file);
-                data.append('version', String(form.version || 1));
-                data.append('is_handover', form.is_handover ? '1' : '0');
-                if (form.note) data.append('note', form.note);
-                await axios.post(`/api/v1/tasks/${selectedTaskId}/attachments`, data, {
-                    headers: { 'Content-Type': 'multipart/form-data' },
-                });
-            } else {
-                await axios.post(`/api/v1/tasks/${selectedTaskId}/attachments`, {
-                    type: form.type,
-                    title: form.title || null,
-                    external_url: form.external_url,
-                    file_path: null,
-                    version: form.version || 1,
-                    is_handover: !!form.is_handover,
-                    note: form.note || null,
-                });
+    const filteredProjects = useMemo(() => {
+        const keyword = filters.search.trim().toLowerCase();
+        return projects.filter((project) => {
+            const ownerOnly = filters.owner_only === '1';
+            if (ownerOnly && Number(project?.owner_id || 0) !== Number(props?.auth?.user?.id || 0)) {
+                return false;
             }
-            toast.success('Đã thêm tệp bàn giao.');
-            resetForm();
-            setShowForm(false);
-            await fetchAttachments(selectedTaskId);
-        } catch (e) {
-            toast.error(e?.response?.data?.message || 'Thêm tệp bàn giao thất bại.');
-        }
+            if (!keyword) return true;
+            return [
+                project?.name,
+                project?.code,
+                project?.owner?.name,
+                project?.contract?.code,
+                project?.contract?.title,
+                project?.handoverRequester?.name,
+                project?.handover_review_note,
+            ]
+                .filter(Boolean)
+                .join(' ')
+                .toLowerCase()
+                .includes(keyword);
+        });
+    }, [filters.owner_only, filters.search, projects, props?.auth?.user?.id]);
+
+    const stats = useMemo(() => {
+        const total = projects.length;
+        const canReview = projects.filter((project) => project?.permissions?.can_review_handover).length;
+        const ownerQueue = projects.filter((project) => Number(project?.owner_id || 0) === Number(props?.auth?.user?.id || 0)).length;
+        return [
+            { label: 'Phiếu chờ duyệt', value: String(total) },
+            { label: 'Bạn có thể duyệt', value: String(canReview) },
+            { label: 'Dự án bạn phụ trách', value: String(ownerQueue) },
+        ];
+    }, [projects, props?.auth?.user?.id]);
+
+    const openReviewModal = (project, nextDecision) => {
+        setReviewingProject(project);
+        setDecision(nextDecision);
+        setReason('');
     };
 
-    const remove = async (att) => {
-        if (!canDelete) {
-            toast.error('Bạn không có quyền xóa tệp bàn giao.');
+    const closeReviewModal = () => {
+        setReviewingProject(null);
+        setDecision('approved');
+        setReason('');
+    };
+
+    const submitReview = async () => {
+        if (!reviewingProject) return;
+        if (decision === 'rejected' && !reason.trim()) {
+            toast.error('Vui lòng nhập lý do từ chối bàn giao.');
             return;
         }
-        if (!selectedTaskId) return;
-        if (!confirm('Xóa tệp bàn giao này?')) return;
+        setSavingReview(true);
         try {
-            await axios.delete(`/api/v1/tasks/${selectedTaskId}/attachments/${att.id}`);
-            toast.success('Đã xóa tệp bàn giao.');
-            await fetchAttachments(selectedTaskId);
-        } catch (e) {
-            toast.error(e?.response?.data?.message || 'Xóa tệp bàn giao thất bại.');
+            await axios.post(`/api/v1/projects/${reviewingProject.id}/handover-review`, {
+                decision,
+                reason: reason.trim() || null,
+            });
+            toast.success(decision === 'approved' ? 'Đã duyệt bàn giao dự án.' : 'Đã từ chối bàn giao dự án.');
+            closeReviewModal();
+            await fetchQueue();
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Phản hồi bàn giao thất bại.');
+        } finally {
+            setSavingReview(false);
         }
     };
-
-    const stats = [
-        { label: 'File bàn giao', value: String(attachments.length) },
-        { label: 'Vai trò hiện tại', value: userRole || '—' },
-        { label: 'Quyền tạo', value: canCreate ? 'Có' : 'Không' },
-        { label: 'Quyền xóa', value: canDelete ? 'Có' : 'Không' },
-    ];
 
     return (
         <PageContainer
             auth={props.auth}
-            title="Trung tâm bàn giao"
-            description="Quản lý tài liệu, video, phiên bản tải lên và trạng thái bàn giao theo công việc."
+            title="Bàn giao dự án"
+            description="Danh sách dự án đang gửi duyệt bàn giao. Admin và nhân viên lên hợp đồng của dự án có quyền phản hồi duyệt hoặc từ chối."
             stats={stats}
         >
-            <div className="grid gap-5 lg:grid-cols-3">
-                <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card p-5 lg:col-span-1">
-                    <h3 className="font-semibold text-slate-900 mb-4">Chọn công việc bàn giao</h3>
-                    <select
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                        value={selectedTaskId}
-                        onChange={(e) => {
-                            const value = e.target.value;
-                            setSelectedTaskId(value);
-                            fetchAttachments(value);
-                        }}
-                    >
-                        <option value="">-- Chọn công việc --</option>
-                        {tasks.map((t) => (
-                            <option key={t.id} value={t.id}>
-                                #{t.id} • {t.title}
-                            </option>
-                        ))}
-                    </select>
-
-                    <div className="mt-5 pt-5 border-t border-slate-200/80 space-y-3 text-sm">
-                        <p className="text-xs text-text-muted">
-                            Chọn công việc để xem lịch sử tải lên và thêm mới bàn giao.
-                        </p>
-                        <button
-                            type="button"
-                            className="w-full rounded-2xl px-3 py-2.5 bg-primary text-white text-sm font-semibold disabled:opacity-60"
-                            onClick={() => {
-                                if (!selectedTaskId) {
-                                    toast.error('Vui lòng chọn công việc trước khi bàn giao.');
-                                    return;
-                                }
-                                setShowForm(true);
-                            }}
-                            disabled={!selectedTaskId}
-                        >
-                            Thêm file bàn giao
-                        </button>
+            <div className="space-y-4">
+                <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-card">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                        <div>
+                            <h3 className="text-sm font-semibold text-slate-900">Hàng đợi duyệt bàn giao</h3>
+                            <p className="mt-1 text-xs text-text-muted">
+                                Chỉ dự án đã được phụ trách gửi duyệt và đủ điều kiện mới xuất hiện tại đây.
+                            </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            <input
+                                className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                placeholder="Tìm theo dự án / hợp đồng / người gửi"
+                                value={filters.search}
+                                onChange={(e) => setFilters((prev) => ({ ...prev, search: e.target.value }))}
+                            />
+                            {userRole === 'nhan_vien' && (
+                                <button
+                                    type="button"
+                                    className={`rounded-2xl border px-3 py-2 text-sm font-semibold ${
+                                        filters.owner_only === '1'
+                                            ? 'border-primary bg-primary/10 text-primary'
+                                            : 'border-slate-200/80 text-slate-600'
+                                    }`}
+                                    onClick={() => setFilters((prev) => ({
+                                        ...prev,
+                                        owner_only: prev.owner_only === '1' ? '' : '1',
+                                    }))}
+                                >
+                                    Chỉ dự án tôi phụ trách
+                                </button>
+                            )}
+                            <button type="button" className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm font-semibold text-slate-700" onClick={fetchQueue}>
+                                Tải lại
+                            </button>
+                        </div>
                     </div>
                 </div>
 
-                <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card p-5 lg:col-span-2">
-                    <div className="flex items-center justify-between mb-4">
-                        <h3 className="font-semibold text-slate-900">Lịch sử tải lên</h3>
-                        {loading && <span className="text-xs text-text-muted">Đang tải...</span>}
-                    </div>
-                    <div className="grid gap-3 md:grid-cols-2">
-                        {attachments.map((a) => (
-                            <div
-                                key={a.id}
-                                className="rounded-2xl border border-slate-200/80 p-4"
-                            >
-                                <div className="flex items-center justify-between">
-                                    <span className="text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
-                                        {a.type}
-                                    </span>
-                                    <span className="text-xs text-text-muted">v{a.version}</span>
-                                </div>
-                                <p className="mt-3 font-semibold text-slate-900">
-                                    {a.title || `${a.type} v${a.version}`}
-                                </p>
-                                <p className="text-xs text-text-muted mt-1">
-                                    {a.external_url || a.file_path || 'Không có URL'}
-                                </p>
-                                <p className="text-xs text-text-muted mt-1">
-                                    {a.is_handover ? 'Bàn giao' : 'Tham khảo'}
-                                </p>
-                                {a.note && (
-                                    <p className="text-xs text-text-muted mt-2">Ghi chú: {a.note}</p>
-                                )}
-                                <div className="mt-3 flex items-center gap-2">
-                                    {a.external_url && (
-                                        <a
-                                            href={a.external_url}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className="text-xs text-primary"
-                                        >
-                                            Mở link
-                                        </a>
-                                    )}
-                                    {canDelete && (
-                                        <button
-                                            type="button"
-                                            className="text-xs text-danger"
-                                            onClick={() => remove(a)}
-                                        >
-                                            Xóa
-                                        </button>
-                                    )}
+                <div className="space-y-3">
+                    {loading && (
+                        <div className="rounded-2xl border border-slate-200/80 bg-white px-4 py-8 text-center text-sm text-text-muted shadow-card">
+                            Đang tải hàng đợi bàn giao...
+                        </div>
+                    )}
+
+                    {!loading && filteredProjects.length === 0 && (
+                        <div className="rounded-2xl border border-slate-200/80 bg-white px-4 py-8 text-center text-sm text-text-muted shadow-card">
+                            Hiện chưa có dự án nào đang chờ duyệt bàn giao.
+                        </div>
+                    )}
+
+                    {!loading && filteredProjects.map((project) => {
+                        const progress = Number(project?.progress_percent || 0);
+                        return (
+                            <div key={project.id} className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card">
+                                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                    <div className="space-y-3">
+                                        <div>
+                                            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-subtle">
+                                                Dự án • {project.code || `#${project.id}`}
+                                            </div>
+                                            <h3 className="mt-1 text-lg font-semibold text-slate-900">{project.name}</h3>
+                                            <div className="mt-2 flex flex-wrap gap-2 text-xs text-text-muted">
+                                                <span>Phụ trách dự án: {project.owner?.name || '—'}</span>
+                                                <span>Người lên hợp đồng: {project.contract?.collector?.name || '—'}</span>
+                                                <span>Hợp đồng: {project.contract?.code || '—'}</span>
+                                            </div>
+                                        </div>
+
+                                        <div className="grid gap-3 md:grid-cols-3">
+                                            <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                                                <div className="text-xs text-text-muted">Tiến độ hiện tại</div>
+                                                <div className="mt-1 font-semibold text-slate-900">{progress}%</div>
+                                            </div>
+                                            <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                                                <div className="text-xs text-text-muted">Người gửi phiếu</div>
+                                                <div className="mt-1 font-semibold text-slate-900">{project.handoverRequester?.name || project.owner?.name || '—'}</div>
+                                            </div>
+                                            <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                                                <div className="text-xs text-text-muted">Thời gian gửi</div>
+                                                <div className="mt-1 font-semibold text-slate-900">{formatDateTime(project.handover_requested_at)}</div>
+                                            </div>
+                                        </div>
+
+                                        {project.handover_review_note && (
+                                            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                                                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-700">Ghi chú phản hồi gần nhất</div>
+                                                <div className="mt-1">{project.handover_review_note}</div>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="flex w-full max-w-[280px] flex-col gap-3 lg:items-end">
+                                        <span className={`inline-flex w-fit rounded-full border px-3 py-1 text-xs font-semibold ${
+                                            HANDOVER_STYLES[project.handover_status] || 'bg-slate-100 text-slate-700 border-slate-200'
+                                        }`}>
+                                            {handoverLabel(project.handover_status)}
+                                        </span>
+                                        <div className="flex w-full flex-col gap-2">
+                                            <a
+                                                href={`/du-an/${project.id}`}
+                                                className="rounded-2xl border border-slate-200/80 px-4 py-2 text-center text-sm font-semibold text-slate-700"
+                                            >
+                                                Xem dự án
+                                            </a>
+                                            <a
+                                                href={`/cong-viec?project_id=${project.id}`}
+                                                className="rounded-2xl border border-slate-200/80 px-4 py-2 text-center text-sm font-semibold text-slate-700"
+                                            >
+                                                Xem công việc
+                                            </a>
+                                            {project?.permissions?.can_review_handover && (
+                                                <>
+                                                    <button
+                                                        type="button"
+                                                        className="rounded-2xl bg-primary px-4 py-2 text-sm font-semibold text-white"
+                                                        onClick={() => openReviewModal(project, 'approved')}
+                                                    >
+                                                        Duyệt bàn giao
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="rounded-2xl border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-600"
+                                                        onClick={() => openReviewModal(project, 'rejected')}
+                                                    >
+                                                        Từ chối duyệt
+                                                    </button>
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-                        ))}
-                        {!attachments.length && (
-                            <p className="text-sm text-text-muted">
-                                Chưa có file bàn giao cho công việc này. Chọn công việc bên trái để xem/ghi nhận bàn giao.
-                            </p>
-                        )}
-                    </div>
+                        );
+                    })}
                 </div>
             </div>
 
             <Modal
-                open={showForm}
-                onClose={() => {
-                    setShowForm(false);
-                    resetForm();
-                }}
-                title="Thêm tệp bàn giao"
-                description="Tải lên tài liệu hoặc gắn liên kết bàn giao theo công việc."
+                open={!!reviewingProject}
+                onClose={closeReviewModal}
+                title={`${decision === 'approved' ? 'Duyệt' : 'Từ chối'} bàn giao dự án`}
+                description={reviewingProject ? `Dự án: ${reviewingProject.name}` : ''}
+                size="md"
             >
-                <div className="space-y-3 text-sm">
-                    <select
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        value={form.type}
-                        onChange={(e) => setForm((s) => ({ ...s, type: e.target.value }))}
-                    >
-                        <option value="link">Liên kết tài liệu</option>
-                        <option value="video">Video</option>
-                        <option value="file">Tệp khác</option>
-                    </select>
-                    <input
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        placeholder="Tiêu đề hiển thị"
-                        value={form.title}
-                        onChange={(e) => setForm((s) => ({ ...s, title: e.target.value }))}
-                    />
-                        <input
-                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                            placeholder="URL Google Drive/YouTube/Liên kết nội bộ *"
-                            value={form.external_url}
-                            onChange={(e) => setForm((s) => ({ ...s, external_url: e.target.value }))}
-                        />
-                    <div className="rounded-2xl border border-dashed border-slate-200/80 p-3 bg-slate-50">
-                        <div className="flex flex-wrap items-center gap-3">
-                            <button
-                                type="button"
-                                className="rounded-xl bg-white border border-slate-200/80 px-3 py-2 text-xs font-semibold text-slate-700"
-                                onClick={() => fileInputRef.current?.click()}
-                            >
-                                Chọn tệp tải lên
-                            </button>
-                            <span className="text-xs text-text-muted">
-                                {form.file?.name || 'Chưa chọn tệp'}
-                            </span>
+                <div className="space-y-4 text-sm">
+                    <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">
+                        <div className="text-xs text-text-muted">Người gửi phiếu</div>
+                        <div className="mt-1 font-semibold text-slate-900">
+                            {reviewingProject?.handoverRequester?.name || reviewingProject?.owner?.name || '—'}
                         </div>
-                        <input
-                            ref={fileInputRef}
-                            className="hidden"
-                            type="file"
-                            onChange={(e) => setForm((s) => ({ ...s, file: e.target.files?.[0] || null }))}
-                        />
-                        <p className="text-[11px] text-text-muted mt-2">
-                            Ưu tiên tải lên tệp nếu không có liên kết công khai.
-                        </p>
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
-                        <input
-                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                            type="number"
-                            min="1"
-                            placeholder="Phiên bản"
-                            value={form.version}
-                            onChange={(e) => setForm((s) => ({ ...s, version: Number(e.target.value || 1) }))}
-                        />
-                        <label className="flex items-center gap-2 text-xs text-text-muted">
-                            <input
-                                type="checkbox"
-                                checked={form.is_handover}
-                                onChange={(e) => setForm((s) => ({ ...s, is_handover: e.target.checked }))}
-                            />
-                            Đánh dấu bàn giao
+                    <div>
+                        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">
+                            {decision === 'approved' ? 'Ghi chú duyệt (tuỳ chọn)' : 'Lý do từ chối'}
                         </label>
+                        <textarea
+                            className="min-h-[120px] w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            placeholder={
+                                decision === 'approved'
+                                    ? 'Ví dụ: Đã kiểm tra đủ hạng mục, cho phép bàn giao.'
+                                    : 'Nhập rõ lý do để phụ trách dự án biết cần bổ sung gì.'
+                            }
+                            value={reason}
+                            onChange={(e) => setReason(e.target.value)}
+                        />
                     </div>
-                    <textarea
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        rows={3}
-                        placeholder="Ghi chú"
-                        value={form.note}
-                        onChange={(e) => setForm((s) => ({ ...s, note: e.target.value }))}
-                    />
-                    <div className="flex items-center justify-end gap-2">
+                    <div className="flex items-center gap-3">
                         <button
                             type="button"
-                            className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600"
-                            onClick={() => {
-                                setShowForm(false);
-                                resetForm();
-                            }}
+                            className={`flex-1 rounded-2xl px-4 py-2.5 font-semibold ${
+                                decision === 'approved'
+                                    ? 'bg-primary text-white'
+                                    : 'border border-rose-200 text-rose-600'
+                            }`}
+                            onClick={submitReview}
+                            disabled={savingReview}
                         >
-                            Hủy
+                            {savingReview ? 'Đang xử lý...' : (decision === 'approved' ? 'Xác nhận duyệt' : 'Xác nhận từ chối')}
                         </button>
                         <button
                             type="button"
-                            className="rounded-xl bg-primary px-4 py-2 text-xs font-semibold text-white"
-                            onClick={save}
-                            disabled={loading}
+                            className="flex-1 rounded-2xl border border-slate-200 px-4 py-2.5 font-semibold text-slate-700"
+                            onClick={closeReviewModal}
+                            disabled={savingReview}
                         >
-                            Thêm file bàn giao
+                            Hủy
                         </button>
                     </div>
                 </div>

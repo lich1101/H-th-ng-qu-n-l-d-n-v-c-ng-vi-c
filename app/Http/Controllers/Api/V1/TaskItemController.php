@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Http\Helpers\ProjectScope;
 use App\Models\Task;
 use App\Models\TaskItem;
 use App\Models\User;
@@ -24,7 +25,7 @@ class TaskItemController extends Controller
                 'reviewer:id,name,email,avatar_url',
             ]);
 
-        $this->applyItemScope($query, $request->user());
+        ProjectScope::applyTaskItemScope($query, $request->user());
 
         if ($request->filled('project_id')) {
             $projectId = (int) $request->input('project_id');
@@ -76,7 +77,7 @@ class TaskItemController extends Controller
 
     public function index(Task $task, Request $request): JsonResponse
     {
-        if (! $this->canAccessTask($request->user(), $task)) {
+        if (! ProjectScope::canAccessTask($request->user(), $task)) {
             return response()->json(['message' => 'Không có quyền xem đầu việc.'], 403);
         }
 
@@ -93,7 +94,7 @@ class TaskItemController extends Controller
         if (! in_array($request->user()->role, ['admin', 'quan_ly'], true)) {
             return response()->json(['message' => 'Không có quyền tạo đầu việc.'], 403);
         }
-        if (! $this->canAccessTask($request->user(), $task)) {
+        if (! ProjectScope::canAccessTask($request->user(), $task)) {
             return response()->json(['message' => 'Không có quyền tạo đầu việc.'], 403);
         }
 
@@ -172,7 +173,7 @@ class TaskItemController extends Controller
         if (! in_array($request->user()->role, ['admin', 'quan_ly'], true)) {
             return response()->json(['message' => 'Không có quyền cập nhật đầu việc.'], 403);
         }
-        if (! $this->canAccessTask($request->user(), $task)) {
+        if (! ProjectScope::canAccessTask($request->user(), $task)) {
             return response()->json(['message' => 'Không có quyền cập nhật đầu việc.'], 403);
         }
         if ($item->task_id !== $task->id) {
@@ -217,7 +218,7 @@ class TaskItemController extends Controller
         if (! in_array($request->user()->role, ['admin', 'quan_ly'], true)) {
             return response()->json(['message' => 'Không có quyền xoá đầu việc.'], 403);
         }
-        if (! $this->canAccessTask($request->user(), $task)) {
+        if (! ProjectScope::canAccessTask($request->user(), $task)) {
             return response()->json(['message' => 'Không có quyền xoá đầu việc.'], 403);
         }
         if ($item->task_id !== $task->id) {
@@ -227,35 +228,6 @@ class TaskItemController extends Controller
         $item->delete();
         TaskProgressService::recalc($task);
         return response()->json(['message' => 'Đã xoá đầu việc.']);
-    }
-
-    private function canAccessTask(?User $user, Task $task): bool
-    {
-        if (! $user) {
-            return false;
-        }
-        if ($user->role === 'admin') {
-            return true;
-        }
-        if ($user->role === 'ke_toan') {
-            return false;
-        }
-        if ($task->project && (int) $task->project->owner_id === (int) $user->id) {
-            return true;
-        }
-        if ($user->role === 'quan_ly') {
-            $deptIds = $user->managedDepartments()->pluck('id');
-            if ($task->department_id && $deptIds->contains($task->department_id)) {
-                return true;
-            }
-            if ($task->assignee && $deptIds->contains($task->assignee->department_id)) {
-                return true;
-            }
-            return (int) $task->created_by === (int) $user->id
-                || (int) $task->assigned_by === (int) $user->id;
-        }
-        return $task->items()->where('assignee_id', $user->id)->exists()
-            || (int) $task->assignee_id === (int) $user->id;
     }
 
     private function assertAssigneeInDepartment(User $user, Task $task, ?int $assigneeId): void
@@ -279,48 +251,4 @@ class TaskItemController extends Controller
         }
     }
 
-    private function applyItemScope(Builder $query, ?User $user): void
-    {
-        if (! $user) {
-            $query->whereRaw('1 = 0');
-            return;
-        }
-
-        if ($user->role === 'admin') {
-            return;
-        }
-
-        if ($user->role === 'ke_toan') {
-            $query->whereRaw('1 = 0');
-            return;
-        }
-
-        if ($user->role === 'quan_ly') {
-            $deptIds = $user->managedDepartments()->pluck('id');
-            $query->where(function ($builder) use ($deptIds, $user) {
-                $builder->whereHas('task', function ($taskQuery) use ($deptIds, $user) {
-                    $taskQuery->whereIn('department_id', $deptIds)
-                        ->orWhereHas('project', function ($projectQuery) use ($user) {
-                            $projectQuery->where('owner_id', $user->id);
-                        })
-                        ->orWhereHas('assignee', function ($assigneeQuery) use ($deptIds) {
-                            $assigneeQuery->whereIn('department_id', $deptIds);
-                        })
-                        ->orWhere('created_by', $user->id)
-                        ->orWhere('assigned_by', $user->id);
-                });
-            });
-            return;
-        }
-
-        $query->where(function ($builder) use ($user) {
-            $builder->where('assignee_id', $user->id)
-                ->orWhereHas('task.project', function ($projectQuery) use ($user) {
-                    $projectQuery->where('owner_id', $user->id);
-                })
-                ->orWhereHas('task', function ($taskQuery) use ($user) {
-                    $taskQuery->where('assignee_id', $user->id);
-                });
-        });
-    }
 }

@@ -29,6 +29,7 @@ class AppSetting extends Model
         'contract_expiry_reminder_enabled',
         'contract_expiry_reminder_time',
         'contract_expiry_reminder_days_before',
+        'project_handover_min_progress_percent',
         'smtp_custom_enabled',
         'smtp_mailer',
         'smtp_host',
@@ -56,6 +57,7 @@ class AppSetting extends Model
         'contract_unpaid_reminder_enabled' => 'boolean',
         'contract_expiry_reminder_enabled' => 'boolean',
         'contract_expiry_reminder_days_before' => 'integer',
+        'project_handover_min_progress_percent' => 'integer',
         'smtp_custom_enabled' => 'boolean',
         'smtp_port' => 'integer',
     ];
@@ -85,6 +87,7 @@ class AppSetting extends Model
             'contract_expiry_reminder_enabled' => true,
             'contract_expiry_reminder_time' => '09:00',
             'contract_expiry_reminder_days_before' => 3,
+            'project_handover_min_progress_percent' => 90,
             'smtp_custom_enabled' => false,
             'smtp_mailer' => 'smtp',
             'smtp_host' => null,

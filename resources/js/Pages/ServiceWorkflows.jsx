@@ -3,6 +3,17 @@ import axios from 'axios';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 
+function FormField({ label, required = false, children, className = '' }) {
+    return (
+        <div className={className}>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-text-subtle">
+                {label}{required ? ' *' : ''}
+            </label>
+            {children}
+        </div>
+    );
+}
+
 export default function ServiceWorkflows(props) {
     const tabs = [
         { key: 'backlinks', label: 'Backlinks' },
@@ -184,67 +195,119 @@ export default function ServiceWorkflows(props) {
         if (resolved === 'backlinks') {
             return (
                 <>
-                    <input className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Target URL" value={form.target_url || ''} onChange={(e) => setForm((p) => ({ ...p, target_url: e.target.value }))} required />
-                    <input className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Domain" value={form.domain || ''} onChange={(e) => setForm((p) => ({ ...p, domain: e.target.value }))} required />
-                    <input className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Anchor text" value={form.anchor_text || ''} onChange={(e) => setForm((p) => ({ ...p, anchor_text: e.target.value }))} required />
-                    <input type="date" className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" value={form.report_date || ''} onChange={(e) => setForm((p) => ({ ...p, report_date: e.target.value }))} />
-                    <input className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Notes" value={form.note || ''} onChange={(e) => setForm((p) => ({ ...p, note: e.target.value }))} />
-                    <select className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" value={form.status || 'pending'} onChange={(e) => setForm((p) => ({ ...p, status: e.target.value }))}>
-                        <option value="pending">Đang chờ</option>
-                        <option value="live">Đã lên</option>
-                    </select>
+                    <FormField label="Target URL" required>
+                        <input className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="URL cần đẩy link" value={form.target_url || ''} onChange={(e) => setForm((p) => ({ ...p, target_url: e.target.value }))} required />
+                    </FormField>
+                    <FormField label="Domain" required>
+                        <input className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Domain đặt backlink" value={form.domain || ''} onChange={(e) => setForm((p) => ({ ...p, domain: e.target.value }))} required />
+                    </FormField>
+                    <FormField label="Anchor text" required>
+                        <input className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Anchor dùng để đi link" value={form.anchor_text || ''} onChange={(e) => setForm((p) => ({ ...p, anchor_text: e.target.value }))} required />
+                    </FormField>
+                    <FormField label="Ngày báo cáo">
+                        <input type="date" className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" value={form.report_date || ''} onChange={(e) => setForm((p) => ({ ...p, report_date: e.target.value }))} />
+                    </FormField>
+                    <FormField label="Ghi chú">
+                        <input className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Thông tin thêm về vị trí link hoặc yêu cầu" value={form.note || ''} onChange={(e) => setForm((p) => ({ ...p, note: e.target.value }))} />
+                    </FormField>
+                    <FormField label="Trạng thái">
+                        <select className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" value={form.status || 'pending'} onChange={(e) => setForm((p) => ({ ...p, status: e.target.value }))}>
+                            <option value="pending">Đang chờ</option>
+                            <option value="live">Đã lên</option>
+                        </select>
+                    </FormField>
                 </>
             );
         }
         if (resolved === 'content') {
             return (
                 <>
-                    <input className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Main keyword" value={form.main_keyword || ''} onChange={(e) => setForm((p) => ({ ...p, main_keyword: e.target.value }))} required />
-                    <input className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Secondary keywords" value={form.secondary_keywords || ''} onChange={(e) => setForm((p) => ({ ...p, secondary_keywords: e.target.value }))} />
-                    <select className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" value={form.outline_status || 'pending'} onChange={(e) => setForm((p) => ({ ...p, outline_status: e.target.value }))}>
-                        <option value="pending">Outline pending</option>
-                        <option value="approved">Outline approved</option>
-                        <option value="rejected">Outline rejected</option>
-                    </select>
-                    <input type="number" className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Required words" value={form.required_words || ''} onChange={(e) => setForm((p) => ({ ...p, required_words: e.target.value }))} />
-                    <input type="number" className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Actual words" value={form.actual_words || ''} onChange={(e) => setForm((p) => ({ ...p, actual_words: e.target.value }))} />
-                    <input type="number" className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="SEO score" value={form.seo_score || ''} onChange={(e) => setForm((p) => ({ ...p, seo_score: e.target.value }))} />
-                    <input type="number" className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Duplicate (%)" value={form.duplicate_percent || ''} onChange={(e) => setForm((p) => ({ ...p, duplicate_percent: e.target.value }))} />
-                    <select className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" value={form.approval_status || 'pending'} onChange={(e) => setForm((p) => ({ ...p, approval_status: e.target.value }))}>
-                        <option value="pending">Đang chờ</option>
-                        <option value="approved">Đã duyệt</option>
-                        <option value="rejected">Từ chối</option>
-                    </select>
+                    <FormField label="Từ khóa chính" required>
+                        <input className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Từ khóa chính của bài viết" value={form.main_keyword || ''} onChange={(e) => setForm((p) => ({ ...p, main_keyword: e.target.value }))} required />
+                    </FormField>
+                    <FormField label="Từ khóa phụ">
+                        <input className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Danh sách từ khóa phụ" value={form.secondary_keywords || ''} onChange={(e) => setForm((p) => ({ ...p, secondary_keywords: e.target.value }))} />
+                    </FormField>
+                    <FormField label="Trạng thái outline">
+                        <select className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" value={form.outline_status || 'pending'} onChange={(e) => setForm((p) => ({ ...p, outline_status: e.target.value }))}>
+                            <option value="pending">Outline pending</option>
+                            <option value="approved">Outline approved</option>
+                            <option value="rejected">Outline rejected</option>
+                        </select>
+                    </FormField>
+                    <FormField label="Số từ yêu cầu">
+                        <input type="number" className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Mốc cần đạt" value={form.required_words || ''} onChange={(e) => setForm((p) => ({ ...p, required_words: e.target.value }))} />
+                    </FormField>
+                    <FormField label="Số từ thực tế">
+                        <input type="number" className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Kết quả đã viết" value={form.actual_words || ''} onChange={(e) => setForm((p) => ({ ...p, actual_words: e.target.value }))} />
+                    </FormField>
+                    <FormField label="Điểm SEO">
+                        <input type="number" className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Điểm đánh giá SEO" value={form.seo_score || ''} onChange={(e) => setForm((p) => ({ ...p, seo_score: e.target.value }))} />
+                    </FormField>
+                    <FormField label="Tỷ lệ trùng (%)">
+                        <input type="number" className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Phần trăm duplicate" value={form.duplicate_percent || ''} onChange={(e) => setForm((p) => ({ ...p, duplicate_percent: e.target.value }))} />
+                    </FormField>
+                    <FormField label="Trạng thái duyệt">
+                        <select className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" value={form.approval_status || 'pending'} onChange={(e) => setForm((p) => ({ ...p, approval_status: e.target.value }))}>
+                            <option value="pending">Đang chờ</option>
+                            <option value="approved">Đã duyệt</option>
+                            <option value="rejected">Từ chối</option>
+                        </select>
+                    </FormField>
                 </>
             );
         }
         if (resolved === 'audit') {
             return (
                 <>
-                    <input className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Audit URL" value={form.url || ''} onChange={(e) => setForm((p) => ({ ...p, url: e.target.value }))} required />
-                    <input className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Issue type" value={form.issue_type || ''} onChange={(e) => setForm((p) => ({ ...p, issue_type: e.target.value }))} />
-                    <select className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" value={form.priority || 'medium'} onChange={(e) => setForm((p) => ({ ...p, priority: e.target.value }))}>
-                        <option value="low">Thấp</option>
-                        <option value="medium">Trung bình</option>
-                        <option value="high">Cao</option>
-                    </select>
-                    <select className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" value={form.status || 'open'} onChange={(e) => setForm((p) => ({ ...p, status: e.target.value }))}>
-                        <option value="open">Đang mở</option>
-                        <option value="done">Hoàn tất</option>
-                    </select>
-                    <textarea className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" rows={2} placeholder="Issue description" value={form.issue_description || ''} onChange={(e) => setForm((p) => ({ ...p, issue_description: e.target.value }))} />
-                    <textarea className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" rows={2} placeholder="Suggestion" value={form.suggestion || ''} onChange={(e) => setForm((p) => ({ ...p, suggestion: e.target.value }))} />
+                    <FormField label="Audit URL" required>
+                        <input className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="URL cần audit" value={form.url || ''} onChange={(e) => setForm((p) => ({ ...p, url: e.target.value }))} required />
+                    </FormField>
+                    <FormField label="Loại lỗi">
+                        <input className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Ví dụ: index, technical, content" value={form.issue_type || ''} onChange={(e) => setForm((p) => ({ ...p, issue_type: e.target.value }))} />
+                    </FormField>
+                    <FormField label="Mức độ ưu tiên">
+                        <select className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" value={form.priority || 'medium'} onChange={(e) => setForm((p) => ({ ...p, priority: e.target.value }))}>
+                            <option value="low">Thấp</option>
+                            <option value="medium">Trung bình</option>
+                            <option value="high">Cao</option>
+                        </select>
+                    </FormField>
+                    <FormField label="Trạng thái xử lý">
+                        <select className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" value={form.status || 'open'} onChange={(e) => setForm((p) => ({ ...p, status: e.target.value }))}>
+                            <option value="open">Đang mở</option>
+                            <option value="done">Hoàn tất</option>
+                        </select>
+                    </FormField>
+                    <FormField label="Mô tả lỗi" className="sm:col-span-2 xl:col-span-2">
+                        <textarea className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" rows={2} placeholder="Mô tả cụ thể vấn đề phát hiện" value={form.issue_description || ''} onChange={(e) => setForm((p) => ({ ...p, issue_description: e.target.value }))} />
+                    </FormField>
+                    <FormField label="Đề xuất xử lý" className="sm:col-span-2 xl:col-span-2">
+                        <textarea className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" rows={2} placeholder="Gợi ý hướng xử lý hoặc cải thiện" value={form.suggestion || ''} onChange={(e) => setForm((p) => ({ ...p, suggestion: e.target.value }))} />
+                    </FormField>
                 </>
             );
         }
         return (
             <>
-                <input type="date" className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" value={form.check_date || ''} onChange={(e) => setForm((p) => ({ ...p, check_date: e.target.value }))} />
-                <input className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Technical issue" value={form.technical_issue || ''} onChange={(e) => setForm((p) => ({ ...p, technical_issue: e.target.value }))} />
-                <input className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Index status" value={form.index_status || ''} onChange={(e) => setForm((p) => ({ ...p, index_status: e.target.value }))} />
-                <input type="number" className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Traffic" value={form.traffic || ''} onChange={(e) => setForm((p) => ({ ...p, traffic: e.target.value }))} />
-                <input type="number" className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Ranking delta" value={form.ranking_delta || ''} onChange={(e) => setForm((p) => ({ ...p, ranking_delta: e.target.value }))} />
-                <input className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Monthly report" value={form.monthly_report || ''} onChange={(e) => setForm((p) => ({ ...p, monthly_report: e.target.value }))} />
+                <FormField label="Ngày kiểm tra">
+                    <input type="date" className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" value={form.check_date || ''} onChange={(e) => setForm((p) => ({ ...p, check_date: e.target.value }))} />
+                </FormField>
+                <FormField label="Vấn đề kỹ thuật">
+                    <input className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Lỗi kỹ thuật cần theo dõi" value={form.technical_issue || ''} onChange={(e) => setForm((p) => ({ ...p, technical_issue: e.target.value }))} />
+                </FormField>
+                <FormField label="Trạng thái index">
+                    <input className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Ví dụ: Đã index, Chưa index" value={form.index_status || ''} onChange={(e) => setForm((p) => ({ ...p, index_status: e.target.value }))} />
+                </FormField>
+                <FormField label="Traffic">
+                    <input type="number" className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Lượng truy cập ghi nhận" value={form.traffic || ''} onChange={(e) => setForm((p) => ({ ...p, traffic: e.target.value }))} />
+                </FormField>
+                <FormField label="Biến động thứ hạng">
+                    <input type="number" className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Chênh lệch ranking so với kỳ trước" value={form.ranking_delta || ''} onChange={(e) => setForm((p) => ({ ...p, ranking_delta: e.target.value }))} />
+                </FormField>
+                <FormField label="Báo cáo tháng">
+                    <input className="rounded-xl border border-slate-200/80 text-sm px-3 py-2" placeholder="Tóm tắt kết quả tháng" value={form.monthly_report || ''} onChange={(e) => setForm((p) => ({ ...p, monthly_report: e.target.value }))} />
+                </FormField>
             </>
         );
     };
@@ -311,15 +374,17 @@ export default function ServiceWorkflows(props) {
             >
                 <form onSubmit={createItem} className="space-y-4">
                     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                        <input
-                            type="number"
-                            min="1"
-                            value={projectId}
-                            onChange={(e) => setProjectId(e.target.value)}
-                            className="rounded-xl border border-slate-200/80 text-sm px-3 py-2"
-                        placeholder="Mã dự án"
-                            required
-                        />
+                        <FormField label="Mã dự án" required>
+                            <input
+                                type="number"
+                                min="1"
+                                value={projectId}
+                                onChange={(e) => setProjectId(e.target.value)}
+                                className="rounded-xl border border-slate-200/80 text-sm px-3 py-2"
+                                placeholder="Nhập ID dự án cần gắn bản ghi"
+                                required
+                            />
+                        </FormField>
                         {renderTypeFields()}
                     </div>
                     <div className="flex items-center justify-end gap-2">

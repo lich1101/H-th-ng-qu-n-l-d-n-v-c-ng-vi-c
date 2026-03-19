@@ -717,45 +717,56 @@ export default function CRM(props) {
                                     </div>
                                     <div className={`grid gap-2 ${isAdminRole ? 'md:grid-cols-2' : ''}`}>
                                         {isAdminRole && (
+                                            <LabeledField
+                                                label="Phòng ban phụ trách"
+                                                hint="Dùng khi muốn giao lead theo đúng phòng ban trước khi chốt người phụ trách cụ thể."
+                                            >
+                                                <select
+                                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
+                                                    value={clientForm.assigned_department_id}
+                                                    onChange={(e) => setClientForm((s) => ({ ...s, assigned_department_id: e.target.value }))}
+                                                >
+                                                    <option value="">Chọn phòng ban phụ trách</option>
+                                                    {visibleDepartmentOptions.map((dept) => (
+                                                        <option key={dept.id} value={dept.id}>
+                                                            {dept.name}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </LabeledField>
+                                        )}
+                                        <LabeledField
+                                            label="Nhân sự phụ trách"
+                                            required={!isAdminRole}
+                                            hint="Người này sẽ nhận push khi có khách hàng mới từ form, page hoặc CRM."
+                                        >
                                             <select
                                                 className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
-                                                value={clientForm.assigned_department_id}
-                                                onChange={(e) => setClientForm((s) => ({ ...s, assigned_department_id: e.target.value }))}
+                                                value={clientForm.assigned_staff_id}
+                                                onChange={(e) => {
+                                                    const selectedUser = staffUsers.find((user) => String(user.id) === e.target.value);
+                                                    setClientForm((s) => ({
+                                                        ...s,
+                                                        assigned_staff_id: e.target.value,
+                                                        assigned_department_id: selectedUser?.department_id
+                                                            ? String(selectedUser.department_id)
+                                                            : (isAdminRole ? s.assigned_department_id : ''),
+                                                    }));
+                                                }}
                                             >
-                                                <option value="">Chọn phòng ban phụ trách</option>
-                                                {visibleDepartmentOptions.map((dept) => (
-                                                    <option key={dept.id} value={dept.id}>
-                                                        {dept.name}
+                                                <option value="">
+                                                    {isAdminRole ? 'Chọn nhân sự phụ trách (tuỳ chọn)' : 'Chọn nhân sự phụ trách'}
+                                                </option>
+                                                {staffUsers.map((user) => (
+                                                    <option key={user.id} value={user.id}>
+                                                        {user.name}
+                                                        {user.department_id
+                                                            ? ` • ${visibleDepartmentOptions.find((dept) => Number(dept.id) === Number(user.department_id))?.name || user.role}`
+                                                            : ` • ${user.role}`}
                                                     </option>
                                                 ))}
                                             </select>
-                                        )}
-                                        <select
-                                            className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
-                                            value={clientForm.assigned_staff_id}
-                                            onChange={(e) => {
-                                                const selectedUser = staffUsers.find((user) => String(user.id) === e.target.value);
-                                                setClientForm((s) => ({
-                                                    ...s,
-                                                    assigned_staff_id: e.target.value,
-                                                    assigned_department_id: selectedUser?.department_id
-                                                        ? String(selectedUser.department_id)
-                                                        : (isAdminRole ? s.assigned_department_id : ''),
-                                                }));
-                                            }}
-                                        >
-                                            <option value="">
-                                                {isAdminRole ? 'Chọn nhân sự phụ trách (tuỳ chọn)' : 'Chọn nhân sự phụ trách'}
-                                            </option>
-                                            {staffUsers.map((user) => (
-                                                <option key={user.id} value={user.id}>
-                                                    {user.name}
-                                                    {user.department_id
-                                                        ? ` • ${visibleDepartmentOptions.find((dept) => Number(dept.id) === Number(user.department_id))?.name || user.role}`
-                                                        : ` • ${user.role}`}
-                                                </option>
-                                            ))}
-                                        </select>
+                                        </LabeledField>
                                     </div>
                                 </div>
                             )}
@@ -956,53 +967,65 @@ export default function CRM(props) {
                         size="md"
                     >
                         <form className="space-y-3 text-sm" onSubmit={submitPayment}>
-                            <select
-                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                                value={paymentForm.client_id}
-                                onChange={(e) => setPaymentForm((s) => ({ ...s, client_id: e.target.value }))}
-                            >
-                                <option value="">Chọn khách hàng *</option>
-                                {clients.map((c) => (
-                                    <option key={c.id} value={c.id}>
-                                        {c.name} {c.company ? `(${c.company})` : ''}
-                                    </option>
-                                ))}
-                            </select>
-                            <input
-                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                                type="number"
-                                placeholder="Số tiền *"
-                                value={paymentForm.amount}
-                                onChange={(e) => setPaymentForm((s) => ({ ...s, amount: e.target.value }))}
-                            />
-                            <select
-                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                                value={paymentForm.status}
-                                onChange={(e) => setPaymentForm((s) => ({ ...s, status: e.target.value }))}
-                            >
-                                <option value="pending">Đang chờ</option>
-                                <option value="paid">Đã thanh toán</option>
-                                <option value="overdue">Quá hạn</option>
-                            </select>
-                            <input
-                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                                type="date"
-                                value={paymentForm.due_date}
-                                onChange={(e) => setPaymentForm((s) => ({ ...s, due_date: e.target.value }))}
-                            />
-                            <input
-                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                                placeholder="Số hóa đơn"
-                                value={paymentForm.invoice_no}
-                                onChange={(e) => setPaymentForm((s) => ({ ...s, invoice_no: e.target.value }))}
-                            />
-                            <textarea
-                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                                rows={3}
-                                placeholder="Ghi chú"
-                                value={paymentForm.note}
-                                onChange={(e) => setPaymentForm((s) => ({ ...s, note: e.target.value }))}
-                            />
+                            <LabeledField label="Khách hàng" required>
+                                <select
+                                    className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                    value={paymentForm.client_id}
+                                    onChange={(e) => setPaymentForm((s) => ({ ...s, client_id: e.target.value }))}
+                                >
+                                    <option value="">Chọn khách hàng *</option>
+                                    {clients.map((c) => (
+                                        <option key={c.id} value={c.id}>
+                                            {c.name} {c.company ? `(${c.company})` : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                            </LabeledField>
+                            <LabeledField label="Số tiền" required>
+                                <input
+                                    className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                    type="number"
+                                    placeholder="Nhập số tiền cần ghi nhận"
+                                    value={paymentForm.amount}
+                                    onChange={(e) => setPaymentForm((s) => ({ ...s, amount: e.target.value }))}
+                                />
+                            </LabeledField>
+                            <LabeledField label="Trạng thái thanh toán">
+                                <select
+                                    className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                    value={paymentForm.status}
+                                    onChange={(e) => setPaymentForm((s) => ({ ...s, status: e.target.value }))}
+                                >
+                                    <option value="pending">Đang chờ</option>
+                                    <option value="paid">Đã thanh toán</option>
+                                    <option value="overdue">Quá hạn</option>
+                                </select>
+                            </LabeledField>
+                            <LabeledField label="Hạn thanh toán">
+                                <input
+                                    className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                    type="date"
+                                    value={paymentForm.due_date}
+                                    onChange={(e) => setPaymentForm((s) => ({ ...s, due_date: e.target.value }))}
+                                />
+                            </LabeledField>
+                            <LabeledField label="Số hóa đơn">
+                                <input
+                                    className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                    placeholder="Điền nếu có xuất hóa đơn"
+                                    value={paymentForm.invoice_no}
+                                    onChange={(e) => setPaymentForm((s) => ({ ...s, invoice_no: e.target.value }))}
+                                />
+                            </LabeledField>
+                            <LabeledField label="Ghi chú">
+                                <textarea
+                                    className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                    rows={3}
+                                    placeholder="Thêm ghi chú thu tiền, chứng từ hoặc lưu ý nội bộ"
+                                    value={paymentForm.note}
+                                    onChange={(e) => setPaymentForm((s) => ({ ...s, note: e.target.value }))}
+                                />
+                            </LabeledField>
                             {!canManagePayments && (
                                 <p className="text-xs text-text-muted">
                                     Chỉ Admin/Kế toán được quản lý thanh toán.
@@ -1036,25 +1059,30 @@ export default function CRM(props) {
                 size="md"
             >
                 <form className="space-y-3 text-sm" onSubmit={submitClientImport}>
-                    <div className="rounded-2xl border border-dashed border-slate-200/80 p-4 text-center">
-                        <p className="text-xs text-text-muted mb-2">Chọn file khách hàng</p>
-                        <input
-                            id="import-client-file"
-                            type="file"
-                            accept=".xls,.xlsx,.csv"
-                            onChange={(e) => setClientImportFile(e.target.files?.[0] || null)}
-                            className="hidden"
-                        />
-                        <label
-                            htmlFor="import-client-file"
-                            className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
-                        >
-                            Chọn file
-                        </label>
-                        <p className="text-xs text-text-muted mt-2">
-                            {clientImportFile ? clientImportFile.name : 'Chưa chọn file'}
-                        </p>
-                    </div>
+                    <LabeledField
+                        label="File khách hàng"
+                        required
+                        hint="Hỗ trợ file Excel hoặc CSV. Hệ thống sẽ đọc từng dòng để tạo khách hàng mới."
+                    >
+                        <div className="rounded-2xl border border-dashed border-slate-200/80 p-4 text-center">
+                            <input
+                                id="import-client-file"
+                                type="file"
+                                accept=".xls,.xlsx,.csv"
+                                onChange={(e) => setClientImportFile(e.target.files?.[0] || null)}
+                                className="hidden"
+                            />
+                            <label
+                                htmlFor="import-client-file"
+                                className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+                            >
+                                Chọn file
+                            </label>
+                            <p className="text-xs text-text-muted mt-2">
+                                {clientImportFile ? clientImportFile.name : 'Chưa chọn file'}
+                            </p>
+                        </div>
+                    </LabeledField>
                     <div className="flex items-center gap-2">
                         <button
                             type="submit"

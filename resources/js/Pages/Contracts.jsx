@@ -893,54 +893,79 @@ export default function Contracts(props) {
                                         <p className="text-xs font-semibold text-slate-600">Sản phẩm #{index + 1}</p>
                                         <button type="button" className="text-xs text-rose-500" onClick={() => removeItem(index)}>Xóa</button>
                                     </div>
-                                    <select
-                                        className="w-full rounded-xl border border-slate-200/80 px-3 py-2 text-xs"
-                                        value={item.product_id}
-                                        onChange={(e) => {
-                                            const selected = products.find((p) => String(p.id) === e.target.value);
-                                            updateItem(index, {
-                                                product_id: e.target.value,
-                                                product_name: selected?.name || item.product_name,
-                                                unit: selected?.unit || item.unit,
-                                                unit_price: selected?.unit_price ?? item.unit_price,
-                                            });
-                                        }}
-                                    >
-                                        <option value="">Chọn sản phẩm</option>
-                                        {products.map((product) => (
-                                            <option key={product.id} value={product.id}>
-                                                {product.name}
-                                            </option>
-                                        ))}
-                                    </select>
+                                    <div>
+                                        <label className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.12em] text-text-subtle">
+                                            Sản phẩm
+                                        </label>
+                                        <select
+                                            className="w-full rounded-xl border border-slate-200/80 px-3 py-2 text-xs"
+                                            value={item.product_id}
+                                            onChange={(e) => {
+                                                const selected = products.find((p) => String(p.id) === e.target.value);
+                                                updateItem(index, {
+                                                    product_id: e.target.value,
+                                                    product_name: selected?.name || item.product_name,
+                                                    unit: selected?.unit || item.unit,
+                                                    unit_price: selected?.unit_price ?? item.unit_price,
+                                                });
+                                            }}
+                                        >
+                                            <option value="">Chọn sản phẩm</option>
+                                            {products.map((product) => (
+                                                <option key={product.id} value={product.id}>
+                                                    {product.name}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
                                     <div className="grid grid-cols-3 gap-2">
+                                        <div>
+                                            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.12em] text-text-subtle">
+                                                Đơn vị
+                                            </label>
+                                            <input
+                                                className="rounded-xl border border-slate-200/80 px-3 py-2 text-xs"
+                                                placeholder="Ví dụ: gói, tháng"
+                                                value={item.unit || ''}
+                                                onChange={(e) => updateItem(index, { unit: e.target.value })}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.12em] text-text-subtle">
+                                                Đơn giá
+                                            </label>
+                                            <input
+                                                className="rounded-xl border border-slate-200/80 px-3 py-2 text-xs"
+                                                placeholder="Giá bán"
+                                                type="number"
+                                                value={item.unit_price}
+                                                onChange={(e) => updateItem(index, { unit_price: e.target.value })}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.12em] text-text-subtle">
+                                                Số lượng
+                                            </label>
+                                            <input
+                                                className="rounded-xl border border-slate-200/80 px-3 py-2 text-xs"
+                                                placeholder="Số lượng"
+                                                type="number"
+                                                value={item.quantity}
+                                                onChange={(e) => updateItem(index, { quantity: e.target.value })}
+                                            />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.12em] text-text-subtle">
+                                            Ghi chú sản phẩm
+                                        </label>
                                         <input
                                             className="rounded-xl border border-slate-200/80 px-3 py-2 text-xs"
-                                            placeholder="Đơn vị"
-                                            value={item.unit || ''}
-                                            onChange={(e) => updateItem(index, { unit: e.target.value })}
-                                        />
-                                        <input
-                                            className="rounded-xl border border-slate-200/80 px-3 py-2 text-xs"
-                                            placeholder="Đơn giá"
-                                            type="number"
-                                            value={item.unit_price}
-                                            onChange={(e) => updateItem(index, { unit_price: e.target.value })}
-                                        />
-                                        <input
-                                            className="rounded-xl border border-slate-200/80 px-3 py-2 text-xs"
-                                            placeholder="Số lượng"
-                                            type="number"
-                                            value={item.quantity}
-                                            onChange={(e) => updateItem(index, { quantity: e.target.value })}
+                                            placeholder="Điều khoản riêng hoặc phạm vi áp dụng"
+                                            value={item.note || ''}
+                                            onChange={(e) => updateItem(index, { note: e.target.value })}
                                         />
                                     </div>
-                                    <input
-                                        className="rounded-xl border border-slate-200/80 px-3 py-2 text-xs"
-                                        placeholder="Ghi chú sản phẩm"
-                                        value={item.note || ''}
-                                        onChange={(e) => updateItem(index, { note: e.target.value })}
-                                    />
                                 </div>
                             ))}
                             {items.length === 0 && (
@@ -1340,32 +1365,40 @@ export default function Contracts(props) {
                 size="md"
             >
                 <form className="space-y-3 text-sm" onSubmit={submitPayment}>
-                    <input
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        placeholder="Số tiền (VNĐ)"
-                        type="number"
-                        value={paymentForm.amount}
-                        onChange={(e) => setPaymentForm((s) => ({ ...s, amount: e.target.value }))}
-                    />
-                    <input
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        type="date"
-                        value={paymentForm.paid_at}
-                        onChange={(e) => setPaymentForm((s) => ({ ...s, paid_at: e.target.value }))}
-                    />
-                    <input
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        placeholder="Phương thức thanh toán"
-                        value={paymentForm.method}
-                        onChange={(e) => setPaymentForm((s) => ({ ...s, method: e.target.value }))}
-                    />
-                    <textarea
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        rows={3}
-                        placeholder="Ghi chú"
-                        value={paymentForm.note}
-                        onChange={(e) => setPaymentForm((s) => ({ ...s, note: e.target.value }))}
-                    />
+                    <LabeledField label="Số tiền thanh toán" required>
+                        <input
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            placeholder="Nhập số tiền đã thu"
+                            type="number"
+                            value={paymentForm.amount}
+                            onChange={(e) => setPaymentForm((s) => ({ ...s, amount: e.target.value }))}
+                        />
+                    </LabeledField>
+                    <LabeledField label="Ngày thu">
+                        <input
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            type="date"
+                            value={paymentForm.paid_at}
+                            onChange={(e) => setPaymentForm((s) => ({ ...s, paid_at: e.target.value }))}
+                        />
+                    </LabeledField>
+                    <LabeledField label="Phương thức thanh toán">
+                        <input
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            placeholder="Ví dụ: Chuyển khoản, tiền mặt"
+                            value={paymentForm.method}
+                            onChange={(e) => setPaymentForm((s) => ({ ...s, method: e.target.value }))}
+                        />
+                    </LabeledField>
+                    <LabeledField label="Ghi chú">
+                        <textarea
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            rows={3}
+                            placeholder="Thêm chứng từ, đợt thanh toán hoặc lưu ý nội bộ"
+                            value={paymentForm.note}
+                            onChange={(e) => setPaymentForm((s) => ({ ...s, note: e.target.value }))}
+                        />
+                    </LabeledField>
                     <div className="flex items-center gap-2">
                         <button type="submit" className="flex-1 rounded-2xl px-3 py-2.5 bg-primary text-white text-sm font-semibold">
                             Lưu
@@ -1384,32 +1417,40 @@ export default function Contracts(props) {
                 size="md"
             >
                 <form className="space-y-3 text-sm" onSubmit={submitCost}>
-                    <input
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        placeholder="Số tiền (VNĐ)"
-                        type="number"
-                        value={costForm.amount}
-                        onChange={(e) => setCostForm((s) => ({ ...s, amount: e.target.value }))}
-                    />
-                    <input
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        type="date"
-                        value={costForm.cost_date}
-                        onChange={(e) => setCostForm((s) => ({ ...s, cost_date: e.target.value }))}
-                    />
-                    <input
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        placeholder="Loại chi phí"
-                        value={costForm.cost_type}
-                        onChange={(e) => setCostForm((s) => ({ ...s, cost_type: e.target.value }))}
-                    />
-                    <textarea
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        rows={3}
-                        placeholder="Ghi chú"
-                        value={costForm.note}
-                        onChange={(e) => setCostForm((s) => ({ ...s, note: e.target.value }))}
-                    />
+                    <LabeledField label="Số tiền chi" required>
+                        <input
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            placeholder="Nhập chi phí phát sinh"
+                            type="number"
+                            value={costForm.amount}
+                            onChange={(e) => setCostForm((s) => ({ ...s, amount: e.target.value }))}
+                        />
+                    </LabeledField>
+                    <LabeledField label="Ngày chi">
+                        <input
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            type="date"
+                            value={costForm.cost_date}
+                            onChange={(e) => setCostForm((s) => ({ ...s, cost_date: e.target.value }))}
+                        />
+                    </LabeledField>
+                    <LabeledField label="Loại chi phí">
+                        <input
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            placeholder="Ví dụ: Quảng cáo, freelancer, vận hành"
+                            value={costForm.cost_type}
+                            onChange={(e) => setCostForm((s) => ({ ...s, cost_type: e.target.value }))}
+                        />
+                    </LabeledField>
+                    <LabeledField label="Ghi chú chi phí">
+                        <textarea
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            rows={3}
+                            placeholder="Nêu rõ khoản chi, chứng từ hoặc người chi"
+                            value={costForm.note}
+                            onChange={(e) => setCostForm((s) => ({ ...s, note: e.target.value }))}
+                        />
+                    </LabeledField>
                     <div className="flex items-center gap-2">
                         <button type="submit" className="flex-1 rounded-2xl px-3 py-2.5 bg-primary text-white text-sm font-semibold">
                             Lưu
@@ -1429,25 +1470,30 @@ export default function Contracts(props) {
                 size="md"
             >
                 <form className="space-y-3 text-sm" onSubmit={submitImport}>
-                    <div className="rounded-2xl border border-dashed border-slate-200/80 p-4 text-center">
-                        <p className="text-xs text-text-muted mb-2">Chọn file hợp đồng</p>
-                        <input
-                            id="import-contract-file"
-                            type="file"
-                            accept=".xls,.xlsx,.csv"
-                            onChange={(e) => setImportFile(e.target.files?.[0] || null)}
-                            className="hidden"
-                        />
-                        <label
-                            htmlFor="import-contract-file"
-                            className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
-                        >
-                            Chọn file
-                        </label>
-                        <p className="text-xs text-text-muted mt-2">
-                            {importFile ? importFile.name : 'Chưa chọn file'}
-                        </p>
-                    </div>
+                    <LabeledField
+                        label="File hợp đồng"
+                        required
+                        hint="Hỗ trợ Excel hoặc CSV. Hệ thống sẽ cố gắng tự nối hợp đồng với khách hàng trùng tên."
+                    >
+                        <div className="rounded-2xl border border-dashed border-slate-200/80 p-4 text-center">
+                            <input
+                                id="import-contract-file"
+                                type="file"
+                                accept=".xls,.xlsx,.csv"
+                                onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                                className="hidden"
+                            />
+                            <label
+                                htmlFor="import-contract-file"
+                                className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+                            >
+                                Chọn file
+                            </label>
+                            <p className="text-xs text-text-muted mt-2">
+                                {importFile ? importFile.name : 'Chưa chọn file'}
+                            </p>
+                        </div>
+                    </LabeledField>
                     <div className="flex items-center gap-2">
                         <button
                             type="submit"

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Http\Helpers\ProjectScope;
 use App\Models\AppSetting;
 use App\Models\Task;
 use App\Models\TaskItem;
@@ -12,13 +13,14 @@ use App\Services\NotificationService;
 use App\Services\TaskProgressService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 
 class TaskItemUpdateController extends Controller
 {
     public function index(Task $task, TaskItem $item, Request $request): JsonResponse
     {
-        if (! $this->canAccessTask($request->user(), $task)) {
+        if (! ProjectScope::canAccessTask($request->user(), $task)) {
             return response()->json(['message' => 'Không có quyền xem phiếu duyệt đầu việc.'], 403);
         }
         if ($item->task_id !== $task->id) {
@@ -35,7 +37,7 @@ class TaskItemUpdateController extends Controller
 
     public function store(Task $task, TaskItem $item, Request $request): JsonResponse
     {
-        if (! $this->canAccessTask($request->user(), $task)) {
+        if (! ProjectScope::canAccessTask($request->user(), $task)) {
             return response()->json(['message' => 'Không có quyền gửi phiếu duyệt đầu việc.'], 403);
         }
         if ($item->task_id !== $task->id) {
@@ -117,6 +119,34 @@ class TaskItemUpdateController extends Controller
         ]);
 
         return response()->json($update->fresh()->load(['submitter', 'reviewer']));
+    }
+
+    public function insight(Task $task, TaskItem $item, Request $request): JsonResponse
+    {
+        if ($item->task_id !== $task->id) {
+            return response()->json(['message' => 'Đầu việc không thuộc công việc.'], 422);
+        }
+        if (! ProjectScope::canAccessTask($request->user(), $task)) {
+            return response()->json(['message' => 'Không có quyền xem đầu việc này.'], 403);
+        }
+        if (! $this->canApproveTask($request->user(), $task)) {
+            return response()->json(['message' => 'Không có quyền xem biểu đồ tiến độ đầu việc.'], 403);
+        }
+
+        $task->loadMissing([
+            'project:id,name,owner_id',
+            'department:id,name,manager_id',
+            'assignee:id,name,email,department_id',
+        ]);
+        $item->loadMissing([
+            'assignee:id,name,email,department_id',
+            'updates' => function ($query) {
+                $query->with(['submitter:id,name,email', 'reviewer:id,name,email'])
+                    ->orderBy('created_at');
+            },
+        ]);
+
+        return response()->json($this->buildInsightPayload($task, $item));
     }
 
     public function approve(Task $task, TaskItem $item, TaskItemUpdate $update, Request $request): JsonResponse
@@ -210,36 +240,6 @@ class TaskItemUpdateController extends Controller
         $this->notifyFeedback($task, $item, $update, $request->user(), 'deleted');
 
         return response()->json(['message' => 'Đã xóa phiếu duyệt đầu việc.']);
-    }
-
-    private function canAccessTask(?User $user, Task $task): bool
-    {
-        if (! $user) {
-            return false;
-        }
-        if ($user->role === 'admin') {
-            return true;
-        }
-        if ($user->role === 'ke_toan') {
-            return false;
-        }
-        if ($this->isProjectOwner($user, $task)) {
-            return true;
-        }
-        if ($user->role === 'quan_ly') {
-            $deptIds = $user->managedDepartments()->pluck('id');
-            if ($task->department_id && $deptIds->contains($task->department_id)) {
-                return true;
-            }
-            if ($task->assignee && $deptIds->contains($task->assignee->department_id)) {
-                return true;
-            }
-            return (int) $task->created_by === (int) $user->id
-                || (int) $task->assigned_by === (int) $user->id;
-        }
-
-        return $task->items()->where('assignee_id', $user->id)->exists()
-            || (int) $task->assignee_id === (int) $user->id;
     }
 
     private function canApproveTask(?User $user, Task $task): bool
@@ -422,5 +422,124 @@ class TaskItemUpdateController extends Controller
         $managerId = $task->department()->value('manager_id');
 
         return $managerId ? (int) $managerId : null;
+    }
+
+    private function buildInsightPayload(Task $task, TaskItem $item): array
+    {
+        $now = Carbon::now('Asia/Ho_Chi_Minh')->startOfDay();
+        $start = $item->start_date
+            ? Carbon::parse($item->start_date, 'Asia/Ho_Chi_Minh')->startOfDay()
+            : ($item->created_at ? Carbon::parse($item->created_at, 'Asia/Ho_Chi_Minh')->startOfDay() : $now->copy());
+        $deadline = $item->deadline
+            ? Carbon::parse($item->deadline, 'Asia/Ho_Chi_Minh')->startOfDay()
+            : null;
+
+        if (! $deadline || $deadline->lessThan($start)) {
+            $deadline = $now->copy();
+        }
+
+        $rangeEnd = $deadline->copy();
+        if ($rangeEnd->lessThan($now)) {
+            $rangeEnd = $now->copy();
+        }
+
+        $approvedUpdates = collect($item->updates)
+            ->filter(function (TaskItemUpdate $update) {
+                return (string) $update->review_status === 'approved';
+            })
+            ->sortBy(function (TaskItemUpdate $update) {
+                return $update->created_at ? $update->created_at->timestamp : 0;
+            })
+            ->values();
+
+        $points = [];
+        $cursor = $start->copy();
+        $approvedIndex = 0;
+        $approvedProgress = 0;
+        $totalDays = max(1, $start->diffInDays($deadline));
+
+        while ($cursor->lessThanOrEqualTo($rangeEnd)) {
+            while ($approvedIndex < $approvedUpdates->count()) {
+                /** @var TaskItemUpdate $candidate */
+                $candidate = $approvedUpdates[$approvedIndex];
+                $candidateDate = $candidate->created_at
+                    ? Carbon::parse($candidate->created_at, 'Asia/Ho_Chi_Minh')->startOfDay()
+                    : null;
+                if (! $candidateDate || $candidateDate->greaterThan($cursor)) {
+                    break;
+                }
+                $approvedProgress = (int) ($candidate->progress_percent ?? $approvedProgress);
+                $approvedProgress = max(0, min(100, $approvedProgress));
+                $approvedIndex++;
+            }
+
+            $elapsedDays = min($totalDays, max(0, $start->diffInDays($cursor, false)));
+            $expected = (int) round(($elapsedDays / $totalDays) * 100);
+            $expected = max(0, min(100, $expected));
+
+            $actual = $approvedProgress;
+            if ($cursor->equalTo($rangeEnd)) {
+                $actual = max($actual, (int) ($item->progress_percent ?? 0));
+            }
+            $actual = max(0, min(100, $actual));
+
+            $points[] = [
+                'date' => $cursor->toDateString(),
+                'label' => $cursor->format('d/m'),
+                'expected_progress' => $expected,
+                'actual_progress' => $actual,
+                'is_today' => $cursor->equalTo($now),
+            ];
+
+            $cursor->addDay();
+        }
+
+        $expectedToday = 0;
+        if ($now->greaterThanOrEqualTo($start)) {
+        $effectiveToday = $now->lessThan($deadline) ? $now : $deadline;
+        $elapsedToday = min($totalDays, max(0, $start->diffInDays($effectiveToday, false)));
+            $expectedToday = (int) round(($elapsedToday / $totalDays) * 100);
+        }
+        $expectedToday = max(0, min(100, $expectedToday));
+
+        $actualToday = max(0, min(100, (int) ($item->progress_percent ?? 0)));
+        $lagPercent = max(0, $expectedToday - $actualToday);
+
+        return [
+            'summary' => [
+                'task_id' => $task->id,
+                'task_title' => (string) $task->title,
+                'task_item_id' => $item->id,
+                'task_item_title' => (string) $item->title,
+                'assignee_name' => optional($item->assignee)->name ?: optional($task->assignee)->name ?: 'Chưa phân công',
+                'department_name' => optional($task->department)->name ?: '—',
+                'start_date' => $start->toDateString(),
+                'deadline' => $deadline->toDateString(),
+                'expected_progress_today' => $expectedToday,
+                'actual_progress_today' => $actualToday,
+                'lag_percent' => $lagPercent,
+                'is_late' => $lagPercent > 0,
+                'status' => (string) $item->status,
+            ],
+            'chart' => $points,
+            'approved_updates' => $approvedUpdates->map(function (TaskItemUpdate $update) {
+                return [
+                    'id' => $update->id,
+                    'progress_percent' => $update->progress_percent !== null ? (int) $update->progress_percent : null,
+                    'status' => $update->status,
+                    'note' => $update->note,
+                    'created_at' => optional($update->created_at)->toIso8601String(),
+                    'reviewed_at' => optional($update->reviewed_at)->toIso8601String(),
+                    'submitter' => $update->submitter ? [
+                        'id' => $update->submitter->id,
+                        'name' => $update->submitter->name,
+                    ] : null,
+                    'reviewer' => $update->reviewer ? [
+                        'id' => $update->reviewer->id,
+                        'name' => $update->reviewer->name,
+                    ] : null,
+                ];
+            })->values()->all(),
+        ];
     }
 }

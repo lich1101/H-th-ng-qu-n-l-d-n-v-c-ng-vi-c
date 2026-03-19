@@ -130,6 +130,7 @@ class SystemStatusController extends Controller
                 'contract_expiry_reminder_enabled' => $setting ? (bool) $setting->contract_expiry_reminder_enabled : true,
                 'contract_expiry_reminder_time' => $setting ? (string) ($setting->contract_expiry_reminder_time ?: '09:00') : '09:00',
                 'contract_expiry_reminder_days_before' => $setting ? (int) ($setting->contract_expiry_reminder_days_before ?? 3) : 3,
+                'project_handover_min_progress_percent' => $setting ? (int) ($setting->project_handover_min_progress_percent ?? 90) : 90,
                 'mail_configured' => $setting
                     ? ((bool) ($setting->smtp_custom_enabled ?? false)
                         ? (trim((string) $setting->smtp_host) !== '' && trim((string) $setting->smtp_from_address) !== '')

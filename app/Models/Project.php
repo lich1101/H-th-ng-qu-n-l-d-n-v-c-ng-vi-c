@@ -21,6 +21,9 @@ class Project extends Model
         'budget',
         'status',
         'handover_status',
+        'handover_requested_by',
+        'handover_requested_at',
+        'handover_review_note',
         'customer_requirement',
         'created_by',
         'approved_by',
@@ -33,6 +36,7 @@ class Project extends Model
     protected $casts = [
         'start_date' => 'date',
         'deadline' => 'date',
+        'handover_requested_at' => 'datetime',
         'approved_at' => 'datetime',
         'budget' => 'float',
         'progress_percent' => 'integer',
@@ -61,5 +65,15 @@ class Project extends Model
     public function owner()
     {
         return $this->belongsTo(User::class, 'owner_id');
+    }
+
+    public function approver()
+    {
+        return $this->belongsTo(User::class, 'approved_by');
+    }
+
+    public function handoverRequester()
+    {
+        return $this->belongsTo(User::class, 'handover_requested_by');
     }
 }

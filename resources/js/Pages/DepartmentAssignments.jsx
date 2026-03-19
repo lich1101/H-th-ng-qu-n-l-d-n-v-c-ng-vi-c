@@ -10,6 +10,17 @@ const statusLabels = {
     done: 'Hoàn tất',
 };
 
+function FormField({ label, required = false, children, className = '' }) {
+    return (
+        <div className={className}>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-text-subtle">
+                {label}{required ? ' *' : ''}
+            </label>
+            {children}
+        </div>
+    );
+}
+
 export default function DepartmentAssignments(props) {
     const toast = useToast();
     const userRole = props?.auth?.user?.role || '';
@@ -289,62 +300,74 @@ export default function DepartmentAssignments(props) {
                 size="lg"
             >
                 <div className="space-y-3 text-sm">
-                    <select
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        value={form.client_id}
-                        onChange={(e) => setForm((s) => ({ ...s, client_id: e.target.value }))}
-                    >
-                        <option value="">Chọn khách hàng *</option>
-                        {clients.map((client) => (
-                            <option key={client.id} value={client.id}>
-                                {client.name} {client.company ? `(${client.company})` : ''}
-                            </option>
-                        ))}
-                    </select>
-                    <select
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        value={form.contract_id}
-                        onChange={(e) => setForm((s) => ({ ...s, contract_id: e.target.value }))}
-                    >
-                        <option value="">Liên kết hợp đồng</option>
-                        {contracts.map((contract) => (
-                            <option key={contract.id} value={contract.id}>
-                                {contract.code} • {contract.title}
-                            </option>
-                        ))}
-                    </select>
-                    <select
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        value={form.department_id}
-                        onChange={(e) => setForm((s) => ({ ...s, department_id: e.target.value }))}
-                    >
-                        <option value="">Chọn phòng ban *</option>
-                        {departments.map((dept) => (
-                            <option key={dept.id} value={dept.id}>
-                                {dept.name}
-                            </option>
-                        ))}
-                    </select>
-                    <input
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        type="date"
-                        value={form.deadline}
-                        onChange={(e) => setForm((s) => ({ ...s, deadline: e.target.value }))}
-                    />
-                    <input
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        type="number"
-                        placeholder="Giá trị phân bổ"
-                        value={form.allocated_value}
-                        onChange={(e) => setForm((s) => ({ ...s, allocated_value: e.target.value }))}
-                    />
-                    <textarea
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        rows={3}
-                        placeholder="Yêu cầu chi tiết"
-                        value={form.requirements}
-                        onChange={(e) => setForm((s) => ({ ...s, requirements: e.target.value }))}
-                    />
+                    <FormField label="Khách hàng" required>
+                        <select
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            value={form.client_id}
+                            onChange={(e) => setForm((s) => ({ ...s, client_id: e.target.value }))}
+                        >
+                            <option value="">Chọn khách hàng *</option>
+                            {clients.map((client) => (
+                                <option key={client.id} value={client.id}>
+                                    {client.name} {client.company ? `(${client.company})` : ''}
+                                </option>
+                            ))}
+                        </select>
+                    </FormField>
+                    <FormField label="Hợp đồng liên kết">
+                        <select
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            value={form.contract_id}
+                            onChange={(e) => setForm((s) => ({ ...s, contract_id: e.target.value }))}
+                        >
+                            <option value="">Liên kết hợp đồng</option>
+                            {contracts.map((contract) => (
+                                <option key={contract.id} value={contract.id}>
+                                    {contract.code} • {contract.title}
+                                </option>
+                            ))}
+                        </select>
+                    </FormField>
+                    <FormField label="Phòng ban nhận việc" required>
+                        <select
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            value={form.department_id}
+                            onChange={(e) => setForm((s) => ({ ...s, department_id: e.target.value }))}
+                        >
+                            <option value="">Chọn phòng ban *</option>
+                            {departments.map((dept) => (
+                                <option key={dept.id} value={dept.id}>
+                                    {dept.name}
+                                </option>
+                            ))}
+                        </select>
+                    </FormField>
+                    <FormField label="Hạn chót">
+                        <input
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            type="date"
+                            value={form.deadline}
+                            onChange={(e) => setForm((s) => ({ ...s, deadline: e.target.value }))}
+                        />
+                    </FormField>
+                    <FormField label="Giá trị phân bổ (VNĐ)">
+                        <input
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            type="number"
+                            placeholder="Số tiền giao cho phòng ban xử lý"
+                            value={form.allocated_value}
+                            onChange={(e) => setForm((s) => ({ ...s, allocated_value: e.target.value }))}
+                        />
+                    </FormField>
+                    <FormField label="Yêu cầu chi tiết">
+                        <textarea
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            rows={3}
+                            placeholder="Mô tả phạm vi phối hợp, đầu việc hoặc lưu ý cần bàn giao"
+                            value={form.requirements}
+                            onChange={(e) => setForm((s) => ({ ...s, requirements: e.target.value }))}
+                        />
+                    </FormField>
                     {!canCreate && (
                         <p className="text-xs text-text-muted">Chỉ Admin mới được tạo điều phối phòng ban.</p>
                     )}
@@ -376,34 +399,40 @@ export default function DepartmentAssignments(props) {
             >
                 {progressModal.assignment && (
                     <div className="space-y-3 text-sm">
-                        <select
-                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                            value={progressForm.status}
-                            onChange={(e) => setProgressForm((s) => ({ ...s, status: e.target.value }))}
-                        >
-                            <option value="new">Mới</option>
-                            <option value="in_progress">Đang triển khai</option>
-                            <option value="done">Hoàn tất</option>
-                        </select>
-                        <input
-                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                            type="number"
-                            placeholder="Tiến độ (%)"
-                            value={progressForm.progress_percent}
-                            onChange={(e) =>
-                                setProgressForm((s) => ({
-                                    ...s,
-                                    progress_percent: Number(e.target.value || 0),
-                                }))
-                            }
-                        />
-                        <textarea
-                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                            rows={3}
-                            placeholder="Ghi chú tiến độ"
-                            value={progressForm.progress_note}
-                            onChange={(e) => setProgressForm((s) => ({ ...s, progress_note: e.target.value }))}
-                        />
+                        <FormField label="Trạng thái điều phối">
+                            <select
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                value={progressForm.status}
+                                onChange={(e) => setProgressForm((s) => ({ ...s, status: e.target.value }))}
+                            >
+                                <option value="new">Mới</option>
+                                <option value="in_progress">Đang triển khai</option>
+                                <option value="done">Hoàn tất</option>
+                            </select>
+                        </FormField>
+                        <FormField label="Tiến độ (%)">
+                            <input
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                type="number"
+                                placeholder="Nhập tiến độ hiện tại"
+                                value={progressForm.progress_percent}
+                                onChange={(e) =>
+                                    setProgressForm((s) => ({
+                                        ...s,
+                                        progress_percent: Number(e.target.value || 0),
+                                    }))
+                                }
+                            />
+                        </FormField>
+                        <FormField label="Ghi chú tiến độ">
+                            <textarea
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                rows={3}
+                                placeholder="Nêu rõ phần đã làm, vướng mắc hoặc yêu cầu phối hợp thêm"
+                                value={progressForm.progress_note}
+                                onChange={(e) => setProgressForm((s) => ({ ...s, progress_note: e.target.value }))}
+                            />
+                        </FormField>
                         <div className="flex items-center gap-3">
                             <button
                                 type="button"

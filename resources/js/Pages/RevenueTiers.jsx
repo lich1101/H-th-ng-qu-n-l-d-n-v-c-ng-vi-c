@@ -4,6 +4,17 @@ import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import { useToast } from '@/Contexts/ToastContext';
 
+function FormField({ label, required = false, children, className = '' }) {
+    return (
+        <div className={className}>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-text-subtle">
+                {label}{required ? ' *' : ''}
+            </label>
+            {children}
+        </div>
+    );
+}
+
 export default function RevenueTiers(props) {
     const toast = useToast();
     const [tiers, setTiers] = useState([]);
@@ -181,40 +192,50 @@ export default function RevenueTiers(props) {
                 size="md"
             >
                 <div className="space-y-3 text-sm">
-                    <input
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        placeholder="Tên hệ thống (vd: bac)"
-                        value={form.name}
-                        onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))}
-                    />
-                    <input
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        placeholder="Nhãn hiển thị (vd: Bạc)"
-                        value={form.label}
-                        onChange={(e) => setForm((s) => ({ ...s, label: e.target.value }))}
-                    />
-                    <div className="grid grid-cols-2 gap-2">
+                    <FormField label="Tên hệ thống" required>
                         <input
-                            className="h-11 w-full rounded-2xl border border-slate-200/80 p-1"
-                            type="color"
-                            value={form.color_hex}
-                            onChange={(e) => setForm((s) => ({ ...s, color_hex: e.target.value }))}
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            placeholder="Ví dụ: bac, vang, kim_cuong"
+                            value={form.name}
+                            onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))}
                         />
+                    </FormField>
+                    <FormField label="Nhãn hiển thị" required>
+                        <input
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            placeholder="Ví dụ: Bạc, Vàng, Kim cương"
+                            value={form.label}
+                            onChange={(e) => setForm((s) => ({ ...s, label: e.target.value }))}
+                        />
+                    </FormField>
+                    <div className="grid grid-cols-2 gap-2">
+                        <FormField label="Màu hiển thị">
+                            <input
+                                className="h-11 w-full rounded-2xl border border-slate-200/80 p-1"
+                                type="color"
+                                value={form.color_hex}
+                                onChange={(e) => setForm((s) => ({ ...s, color_hex: e.target.value }))}
+                            />
+                        </FormField>
+                        <FormField label="Mốc doanh thu (VNĐ)">
+                            <input
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                type="number"
+                                placeholder="Ngưỡng tối thiểu để vào hạng này"
+                                value={form.min_amount}
+                                onChange={(e) => setForm((s) => ({ ...s, min_amount: e.target.value }))}
+                            />
+                        </FormField>
+                    </div>
+                    <FormField label="Thứ tự hiển thị">
                         <input
                             className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
                             type="number"
-                            placeholder="Mốc doanh thu"
-                            value={form.min_amount}
-                            onChange={(e) => setForm((s) => ({ ...s, min_amount: e.target.value }))}
+                            placeholder="Số nhỏ hơn sẽ đứng trước"
+                            value={form.sort_order}
+                            onChange={(e) => setForm((s) => ({ ...s, sort_order: e.target.value }))}
                         />
-                    </div>
-                    <input
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                        type="number"
-                        placeholder="Thứ tự"
-                        value={form.sort_order}
-                        onChange={(e) => setForm((s) => ({ ...s, sort_order: e.target.value }))}
-                    />
+                    </FormField>
                     <div className="flex items-center gap-3">
                         <button
                             type="button"
