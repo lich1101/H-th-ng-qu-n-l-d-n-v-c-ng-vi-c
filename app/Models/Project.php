@@ -47,6 +47,11 @@ class Project extends Model
         return $this->hasMany(Task::class);
     }
 
+    public function meetings()
+    {
+        return $this->hasMany(ProjectMeeting::class);
+    }
+
     public function client()
     {
         return $this->belongsTo(Client::class);

@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
+import AppIcon from '@/Components/AppIcon';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
+import { useToast } from '@/Contexts/ToastContext';
 
 function FormField({ label, required = false, children, className = '' }) {
     return (
@@ -15,6 +17,7 @@ function FormField({ label, required = false, children, className = '' }) {
 }
 
 export default function ServiceWorkflows(props) {
+    const toast = useToast();
     const tabs = [
         { key: 'backlinks', label: 'Backlinks' },
         { key: 'viet_content', label: 'Content' },
@@ -26,6 +29,7 @@ export default function ServiceWorkflows(props) {
     const [items, setItems] = useState([]);
     const [projectId, setProjectId] = useState('');
     const [form, setForm] = useState({});
+    const [editingId, setEditingId] = useState(null);
     const [showForm, setShowForm] = useState(false);
 
     const normalizeType = (type) => {
@@ -43,17 +47,58 @@ export default function ServiceWorkflows(props) {
     useEffect(() => {
         fetchItems(activeType);
         setForm({});
+        setProjectId('');
+        setEditingId(null);
     }, [activeType]);
 
-    const createItem = async (e) => {
+    const saveItem = async (e) => {
         e.preventDefault();
         const parsed = buildPayload(activeType, form);
-        await axios.post(`/api/v1/services/${activeType}/items`, {
+        const payload = {
             project_id: Number(projectId),
             ...parsed,
-        });
+        };
+
+        if (editingId) {
+            await axios.put(`/api/v1/services/${activeType}/items/${editingId}`, payload);
+            toast.success('Đã cập nhật bản ghi quy trình dịch vụ.');
+        } else {
+            await axios.post(`/api/v1/services/${activeType}/items`, payload);
+            toast.success('Đã thêm bản ghi quy trình dịch vụ.');
+        }
+
+        resetFormState();
+        fetchItems(activeType);
+    };
+
+    const resetFormState = () => {
         setForm({});
+        setProjectId('');
+        setEditingId(null);
         setShowForm(false);
+    };
+
+    const openCreateForm = () => {
+        setForm({});
+        setProjectId('');
+        setEditingId(null);
+        setShowForm(true);
+    };
+
+    const openEditForm = (item) => {
+        setProjectId(String(item.project_id || ''));
+        setEditingId(item.id);
+        setForm({ ...item });
+        setShowForm(true);
+    };
+
+    const deleteItem = async (item) => {
+        if (!window.confirm(`Xóa bản ghi #${item.id} khỏi quy trình ${tabs.find((tab) => tab.key === activeType)?.label}?`)) {
+            return;
+        }
+
+        await axios.delete(`/api/v1/services/${activeType}/items/${item.id}`);
+        toast.success('Đã xóa bản ghi quy trình dịch vụ.');
         fetchItems(activeType);
     };
 
@@ -169,14 +214,32 @@ export default function ServiceWorkflows(props) {
 
         return (
             <div key={item.id} className="rounded-2xl border border-slate-200/80 p-4 bg-white">
-                <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                         <p className="text-xs text-text-muted">ID #{item.id}</p>
                         <h4 className="font-semibold text-slate-900">{formatValue(title)}</h4>
                     </div>
-                    <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-primary/10 text-primary">
-                        {formatValue(status)}
-                    </span>
+                    <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-primary/10 text-primary">
+                            {formatValue(status)}
+                        </span>
+                        <button
+                            type="button"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-primary/40 hover:text-primary"
+                            onClick={() => openEditForm(item)}
+                            title="Sửa bản ghi"
+                        >
+                            <AppIcon name="pencil" className="h-4 w-4" />
+                        </button>
+                        <button
+                            type="button"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-rose-200 bg-white text-rose-500 transition hover:border-rose-300 hover:bg-rose-50"
+                            onClick={() => deleteItem(item)}
+                            title="Xóa bản ghi"
+                        >
+                            <AppIcon name="trash" className="h-4 w-4" />
+                        </button>
+                    </div>
                 </div>
                 <div className="mt-3 grid gap-2 sm:grid-cols-2">
                     {meta.map((m) => (
@@ -351,7 +414,7 @@ export default function ServiceWorkflows(props) {
                 <button
                     type="button"
                     className="rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white"
-                    onClick={() => setShowForm(true)}
+                    onClick={openCreateForm}
                 >
                     Thêm bản ghi
                 </button>
@@ -367,12 +430,12 @@ export default function ServiceWorkflows(props) {
 
             <Modal
                 open={showForm}
-                onClose={() => setShowForm(false)}
-                title={`Thêm bản ghi ${tabs.find((t) => t.key === activeType)?.label}`}
-                description="Nhập thông tin chi tiết theo form nghiệp vụ."
+                onClose={resetFormState}
+                title={`${editingId ? 'Cập nhật' : 'Thêm'} bản ghi ${tabs.find((t) => t.key === activeType)?.label}`}
+                description={editingId ? 'Chỉnh sửa thông tin bản ghi quy trình dịch vụ.' : 'Nhập thông tin chi tiết theo form nghiệp vụ.'}
                 size="xl"
             >
-                <form onSubmit={createItem} className="space-y-4">
+                <form onSubmit={saveItem} className="space-y-4">
                     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                         <FormField label="Mã dự án" required>
                             <input
@@ -391,7 +454,7 @@ export default function ServiceWorkflows(props) {
                         <button
                             type="button"
                             className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600"
-                            onClick={() => setShowForm(false)}
+                            onClick={resetFormState}
                         >
                             Hủy
                         </button>
@@ -399,7 +462,7 @@ export default function ServiceWorkflows(props) {
                             type="submit"
                             className="rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white"
                         >
-                            Tạo bản ghi
+                            {editingId ? 'Cập nhật bản ghi' : 'Tạo bản ghi'}
                         </button>
                     </div>
                 </form>

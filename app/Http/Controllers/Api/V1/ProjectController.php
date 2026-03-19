@@ -7,10 +7,12 @@ use App\Http\Helpers\ProjectScope;
 use App\Models\AppSetting;
 use App\Models\Contract;
 use App\Models\Project;
+use App\Models\ProjectMeeting;
 use App\Models\User;
 use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
@@ -189,10 +191,20 @@ class ProjectController extends Controller
             return response()->json(['message' => 'Chỉ admin mới có quyền xóa dự án.'], 403);
         }
 
-        $project->delete();
+        DB::transaction(function () use ($project) {
+            Contract::query()
+                ->where('project_id', $project->id)
+                ->update(['project_id' => null]);
+
+            ProjectMeeting::query()
+                ->where('project_id', $project->id)
+                ->delete();
+
+            $project->delete();
+        });
 
         return response()->json([
-            'message' => 'Đã xóa dự án.',
+            'message' => 'Đã xóa dự án cùng toàn bộ công việc và đầu việc liên quan.',
         ]);
     }
 

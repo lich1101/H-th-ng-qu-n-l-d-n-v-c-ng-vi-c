@@ -355,8 +355,8 @@ export default function CompanyRevenueReport(props) {
                 ))}
             </div>
 
-            <div className="mb-6 grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.18fr)]">
-                <div className="flex self-start rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card">
+            <div className="mb-6 grid gap-5 xl:grid-cols-[minmax(420px,0.94fr)_minmax(560px,1.18fr)]">
+                <div className="flex h-full flex-col rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card">
                     <div className="flex items-start justify-between gap-4">
                         <div>
                             <h3 className="text-base font-semibold text-slate-900">Doanh thu theo sản phẩm</h3>
@@ -366,8 +366,10 @@ export default function CompanyRevenueReport(props) {
                             {periodLabel}
                         </span>
                     </div>
-                    <div className="mt-4 w-full">
-                        <DonutChart data={productBreakdown} size={290} thickness={28} centerLabel="Sản phẩm" layout="horizontal" />
+                    <div className="mt-4 flex flex-1 items-center justify-center">
+                        <div className="w-full max-w-[560px]">
+                            <DonutChart data={productBreakdown} size={300} thickness={30} centerLabel="Sản phẩm" layout="vertical" />
+                        </div>
                     </div>
                 </div>
 
@@ -385,8 +387,8 @@ export default function CompanyRevenueReport(props) {
                     </span>
                 </div>
 
-                <div className="overflow-x-auto">
-                    <table className="min-w-[1280px] text-sm">
+                <div className="w-full overflow-x-auto">
+                    <table className="w-full min-w-[1280px] text-sm">
                         <thead>
                             <tr className="bg-slate-100 text-xs uppercase tracking-wider text-text-subtle">
                                 <th className="px-3 py-3 text-left border-b border-slate-200">Ngày</th>
