@@ -46,6 +46,7 @@ function SummaryTile({ label, value, note }) {
 }
 
 function RevenueStaffBreakdown({ data = [] }) {
+    const [hoveredSegment, setHoveredSegment] = useState(null);
     const series = [
         { key: 'revenue', label: 'Doanh thu', color: 'bg-sky-500' },
         { key: 'cashflow', label: 'Dòng tiền', color: 'bg-emerald-500' },
@@ -113,19 +114,39 @@ function RevenueStaffBreakdown({ data = [] }) {
                                 </td>
                                 <td className="px-3 py-3">
                                     <div className="min-w-[260px]">
-                                        <div className="flex h-11 overflow-hidden rounded-2xl border border-slate-200/80 bg-slate-100">
-                                            {total > 0 ? rowSeries.map((seriesItem) => (
-                                                <div
-                                                    key={seriesItem.key}
-                                                    className={`${seriesItem.color} h-full transition-all`}
-                                                    style={{ width: `${(seriesItem.value / total) * 100}%` }}
-                                                    title={`${item.staff_name} • ${seriesItem.label}: ${formatCurrency(seriesItem.value)}`}
-                                                />
-                                            )) : (
-                                                <div className="flex h-full w-full items-center justify-center text-xs font-semibold text-text-muted">
-                                                    Chưa có doanh thu
+                                        <div className="relative">
+                                            {hoveredSegment?.staffKey === `${item.staff_id || 'unassigned'}-${item.staff_name}` ? (
+                                                <div className="absolute left-1/2 top-0 z-20 -translate-x-1/2 -translate-y-[calc(100%+8px)] rounded-xl bg-slate-900/95 px-3 py-2 text-center text-[11px] text-white shadow-xl">
+                                                    <div className="font-semibold">{hoveredSegment.staffName}</div>
+                                                    <div>
+                                                        {hoveredSegment.label}: {formatCurrency(hoveredSegment.value)}
+                                                    </div>
                                                 </div>
-                                            )}
+                                            ) : null}
+                                            <div className="flex h-11 overflow-hidden rounded-2xl border border-slate-200/80 bg-slate-100">
+                                                {total > 0 ? rowSeries.map((seriesItem) => (
+                                                    <div
+                                                        key={seriesItem.key}
+                                                        className={`${seriesItem.color} h-full transition-all`}
+                                                        style={{ width: `${(seriesItem.value / total) * 100}%` }}
+                                                        onMouseEnter={() => setHoveredSegment({
+                                                            staffKey: `${item.staff_id || 'unassigned'}-${item.staff_name}`,
+                                                            staffName: item.staff_name,
+                                                            label: seriesItem.label,
+                                                            value: seriesItem.value,
+                                                        })}
+                                                        onMouseLeave={() => setHoveredSegment((current) => (
+                                                            current?.staffKey === `${item.staff_id || 'unassigned'}-${item.staff_name}` && current?.label === seriesItem.label
+                                                                ? null
+                                                                : current
+                                                        ))}
+                                                    />
+                                                )) : (
+                                                    <div className="flex h-full w-full items-center justify-center text-xs font-semibold text-text-muted">
+                                                        Chưa có doanh thu
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
                                         <div className="mt-2 text-[11px] text-text-muted">
                                             Tổng nhóm màu: {formatCompactCurrency(total)}

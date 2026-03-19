@@ -1042,35 +1042,26 @@ export default function Contracts(props) {
                                             <td className="py-2">{p.note || '—'}</td>
                                             <td className="py-2 text-right">
                                                 {canFinance ? (
-                                                    <Dropdown>
-                                                        <Dropdown.Trigger>
-                                                            <button
-                                                                type="button"
-                                                                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700"
-                                                                aria-label="Thao tác thanh toán hợp đồng"
-                                                            >
-                                                                <AppIcon name="ellipsis-horizontal" className="h-4 w-4" />
-                                                            </button>
-                                                        </Dropdown.Trigger>
-                                                        <Dropdown.Content align="right" width="48" contentClasses="py-2 bg-white rounded-2xl border border-slate-200 shadow-xl">
-                                                            <button
-                                                                type="button"
-                                                                className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
-                                                                onClick={() => editPayment(p)}
-                                                            >
-                                                                <AppIcon name="pencil" className="h-4 w-4 text-slate-400" />
-                                                                Sửa thanh toán
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-rose-600 hover:bg-rose-50"
-                                                                onClick={() => removePayment(p.id)}
-                                                            >
-                                                                <AppIcon name="trash" className="h-4 w-4" />
-                                                                Xóa thanh toán
-                                                            </button>
-                                                        </Dropdown.Content>
-                                                    </Dropdown>
+                                                    <div className="inline-flex items-center justify-end gap-2">
+                                                        <button
+                                                            type="button"
+                                                            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+                                                            aria-label="Sửa thanh toán"
+                                                            title="Sửa thanh toán"
+                                                            onClick={() => editPayment(p)}
+                                                        >
+                                                            <AppIcon name="pencil" className="h-4 w-4" />
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-rose-200 text-rose-500 hover:bg-rose-50 hover:text-rose-600"
+                                                            aria-label="Xóa thanh toán"
+                                                            title="Xóa thanh toán"
+                                                            onClick={() => removePayment(p.id)}
+                                                        >
+                                                            <AppIcon name="trash" className="h-4 w-4" />
+                                                        </button>
+                                                    </div>
                                                 ) : (
                                                     <span className="text-xs text-text-muted">—</span>
                                                 )}
@@ -1121,35 +1112,26 @@ export default function Contracts(props) {
                                             <td className="py-2">{c.note || '—'}</td>
                                             <td className="py-2 text-right">
                                                 {canFinance ? (
-                                                    <Dropdown>
-                                                        <Dropdown.Trigger>
-                                                            <button
-                                                                type="button"
-                                                                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700"
-                                                                aria-label="Thao tác chi phí hợp đồng"
-                                                            >
-                                                                <AppIcon name="ellipsis-horizontal" className="h-4 w-4" />
-                                                            </button>
-                                                        </Dropdown.Trigger>
-                                                        <Dropdown.Content align="right" width="48" contentClasses="py-2 bg-white rounded-2xl border border-slate-200 shadow-xl">
-                                                            <button
-                                                                type="button"
-                                                                className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
-                                                                onClick={() => editCost(c)}
-                                                            >
-                                                                <AppIcon name="pencil" className="h-4 w-4 text-slate-400" />
-                                                                Sửa chi phí
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-rose-600 hover:bg-rose-50"
-                                                                onClick={() => removeCost(c.id)}
-                                                            >
-                                                                <AppIcon name="trash" className="h-4 w-4" />
-                                                                Xóa chi phí
-                                                            </button>
-                                                        </Dropdown.Content>
-                                                    </Dropdown>
+                                                    <div className="inline-flex items-center justify-end gap-2">
+                                                        <button
+                                                            type="button"
+                                                            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+                                                            aria-label="Sửa chi phí"
+                                                            title="Sửa chi phí"
+                                                            onClick={() => editCost(c)}
+                                                        >
+                                                            <AppIcon name="pencil" className="h-4 w-4" />
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-rose-200 text-rose-500 hover:bg-rose-50 hover:text-rose-600"
+                                                            aria-label="Xóa chi phí"
+                                                            title="Xóa chi phí"
+                                                            onClick={() => removeCost(c.id)}
+                                                        >
+                                                            <AppIcon name="trash" className="h-4 w-4" />
+                                                        </button>
+                                                    </div>
                                                 ) : (
                                                     <span className="text-xs text-text-muted">—</span>
                                                 )}
