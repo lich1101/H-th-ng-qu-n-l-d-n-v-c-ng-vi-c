@@ -24,6 +24,8 @@ class ContractController extends Controller
     {
         $query = Contract::query()
             ->with(['client', 'project', 'opportunity', 'creator', 'approver', 'collector'])
+            ->withCount('items')
+            ->withSum('items as items_total_value', 'total_price')
             ->withCount('payments')
             ->withSum('payments as payments_total', 'amount')
             ->withSum('costs as costs_total', 'amount');
@@ -431,9 +433,9 @@ class ContractController extends Controller
             $name = $item['product_name'] ?? ($product ? $product->name : 'Sản phẩm');
             $unit = $item['unit'] ?? ($product ? $product->unit : null);
             $unitPrice = isset($item['unit_price'])
-                ? (float) $item['unit_price']
-                : ($product ? (float) $product->unit_price : 0);
-            $quantity = max(1, (int) ($item['quantity'] ?? 1));
+                ? $this->parseNumericInput($item['unit_price'])
+                : ($product ? $this->parseNumericInput($product->unit_price) : 0);
+            $quantity = max(1, (int) round($this->parseNumericInput($item['quantity'] ?? 1)));
             $total = $unitPrice * $quantity;
 
             return [
@@ -446,6 +448,42 @@ class ContractController extends Controller
                 'note' => $item['note'] ?? null,
             ];
         })->values()->all();
+    }
+
+    private function parseNumericInput($value): float
+    {
+        if ($value === null || $value === '') {
+            return 0.0;
+        }
+
+        if (is_numeric($value)) {
+            return (float) $value;
+        }
+
+        $raw = preg_replace('/\s+/u', '', (string) $value);
+        $raw = preg_replace('/(₫|đ|VNĐ|VND)/iu', '', $raw);
+
+        $hasComma = strpos($raw, ',') !== false;
+        $hasDot = strpos($raw, '.') !== false;
+
+        if ($hasComma && $hasDot) {
+            $raw = str_replace('.', '', $raw);
+            $raw = str_replace(',', '.', $raw);
+        } elseif ($hasComma) {
+            $parts = explode(',', $raw);
+            $raw = count($parts) > 2 || (count($parts) === 2 && strlen($parts[1]) === 3)
+                ? str_replace(',', '', $raw)
+                : str_replace(',', '.', $raw);
+        } elseif ($hasDot) {
+            $parts = explode('.', $raw);
+            if (count($parts) > 2 || (count($parts) === 2 && strlen($parts[1]) === 3)) {
+                $raw = str_replace('.', '', $raw);
+            }
+        }
+
+        $raw = preg_replace('/[^0-9.\-]/', '', $raw);
+
+        return is_numeric($raw) ? (float) $raw : 0.0;
     }
 
     private function sumItems(array $items): float

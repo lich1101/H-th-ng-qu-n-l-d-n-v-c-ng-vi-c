@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
+import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import { useToast } from '@/Contexts/ToastContext';
@@ -137,25 +138,15 @@ export default function HandoverCenter(props) {
             stats={stats}
         >
             <div className="space-y-4">
-                <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-card">
-                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                        <div>
-                            <h3 className="text-sm font-semibold text-slate-900">Hàng đợi duyệt bàn giao</h3>
-                            <p className="mt-1 text-xs text-text-muted">
-                                Chỉ dự án đã được phụ trách gửi duyệt và đủ điều kiện mới xuất hiện tại đây.
-                            </p>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                            <input
-                                className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                                placeholder="Tìm theo dự án / hợp đồng / người gửi"
-                                value={filters.search}
-                                onChange={(e) => setFilters((prev) => ({ ...prev, search: e.target.value }))}
-                            />
+                <FilterToolbar
+                    title="Hàng đợi duyệt bàn giao"
+                    description="Chỉ dự án đã được phụ trách gửi duyệt và đủ điều kiện mới xuất hiện tại đây."
+                    actions={(
+                        <FilterActionGroup>
                             {userRole === 'nhan_vien' && (
                                 <button
                                     type="button"
-                                    className={`rounded-2xl border px-3 py-2 text-sm font-semibold ${
+                                    className={`rounded-xl border px-4 py-2.5 text-sm font-semibold ${
                                         filters.owner_only === '1'
                                             ? 'border-primary bg-primary/10 text-primary'
                                             : 'border-slate-200/80 text-slate-600'
@@ -168,12 +159,23 @@ export default function HandoverCenter(props) {
                                     Chỉ dự án tôi phụ trách
                                 </button>
                             )}
-                            <button type="button" className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm font-semibold text-slate-700" onClick={fetchQueue}>
+                            <button type="button" className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700" onClick={fetchQueue}>
                                 Tải lại
                             </button>
-                        </div>
+                        </FilterActionGroup>
+                    )}
+                >
+                    <div className="grid gap-3 md:grid-cols-2">
+                        <FilterField label="Tìm kiếm">
+                            <input
+                                className={filterControlClass}
+                                placeholder="Dự án, hợp đồng hoặc người gửi"
+                                value={filters.search}
+                                onChange={(e) => setFilters((prev) => ({ ...prev, search: e.target.value }))}
+                            />
+                        </FilterField>
                     </div>
-                </div>
+                </FilterToolbar>
 
                 <div className="space-y-3">
                     {loading && (

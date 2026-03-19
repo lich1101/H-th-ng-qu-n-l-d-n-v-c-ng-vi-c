@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
+import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import { useToast } from '@/Contexts/ToastContext';
@@ -182,18 +183,34 @@ export default function DepartmentAssignments(props) {
                         <h3 className="font-semibold">Danh sách điều phối</h3>
                         <p className="text-xs text-text-muted mt-1">Giao khách hàng cho phòng ban và theo dõi tiến độ.</p>
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                        {canCreate && (
+                    {canCreate && (
+                        <button
+                            type="button"
+                            className="rounded-xl bg-primary text-white px-4 py-2 text-sm font-semibold"
+                            onClick={openCreate}
+                        >
+                            Thêm mới
+                        </button>
+                    )}
+                </div>
+                <FilterToolbar
+                    title="Bộ lọc điều phối"
+                    description="Lọc nhanh theo phòng ban và trạng thái triển khai để theo dõi nhóm đang xử lý."
+                    actions={(
+                        <FilterActionGroup>
                             <button
                                 type="button"
-                                className="rounded-xl bg-primary text-white px-4 py-2 text-sm font-semibold"
-                                onClick={openCreate}
+                                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                                onClick={fetchData}
                             >
-                                Thêm mới
+                                Làm mới
                             </button>
-                        )}
+                        </FilterActionGroup>
+                    )}
+                >
+                    <FilterField label="Phòng ban">
                         <select
-                            className="rounded-xl border border-slate-200/80 px-3 py-2 text-sm"
+                            className={filterControlClass}
                             value={filters.department_id}
                             onChange={(e) => setFilters((s) => ({ ...s, department_id: e.target.value }))}
                         >
@@ -204,8 +221,10 @@ export default function DepartmentAssignments(props) {
                                 </option>
                             ))}
                         </select>
+                    </FilterField>
+                    <FilterField label="Trạng thái">
                         <select
-                            className="rounded-xl border border-slate-200/80 px-3 py-2 text-sm"
+                            className={filterControlClass}
                             value={filters.status}
                             onChange={(e) => setFilters((s) => ({ ...s, status: e.target.value }))}
                         >
@@ -214,16 +233,9 @@ export default function DepartmentAssignments(props) {
                             <option value="in_progress">Đang triển khai</option>
                             <option value="done">Hoàn tất</option>
                         </select>
-                        <button
-                            type="button"
-                            className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
-                            onClick={fetchData}
-                        >
-                            Lọc
-                        </button>
-                    </div>
-                </div>
-                <div className="space-y-4">
+                    </FilterField>
+                </FilterToolbar>
+                <div className="mt-4 space-y-4">
                     {assignments.map((assignment) => (
                         <div key={assignment.id} className="rounded-2xl border border-slate-200/80 p-4">
                                     <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">

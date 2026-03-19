@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import DonutChart from '@/Components/DonutChart';
+import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
 import PageContainer from '@/Components/PageContainer';
 import { useToast } from '@/Contexts/ToastContext';
 
@@ -55,7 +56,7 @@ function RevenueStaffBreakdown({ data = [] }) {
     ];
 
     return (
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card">
+        <div className="flex h-full flex-col rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card">
             <div className="flex items-start justify-between gap-4">
                 <div>
                     <h3 className="text-base font-semibold text-slate-900">Doanh thu theo nhân viên</h3>
@@ -71,7 +72,7 @@ function RevenueStaffBreakdown({ data = [] }) {
                 </div>
             </div>
 
-            <div className="mt-4 overflow-x-auto">
+            <div className="mt-4 flex-1 overflow-x-auto">
                 <table className="min-w-full text-sm">
                     <thead>
                         <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-[0.14em] text-text-subtle">
@@ -285,67 +286,63 @@ export default function CompanyRevenueReport(props) {
             description="Xem toàn bộ doanh thu công ty theo thời gian, sản phẩm và nhân viên thu hợp đồng."
             stats={[]}
         >
-            <div className="mb-6 rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card">
-                <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-                    <div>
-                        <h3 className="text-base font-semibold text-slate-900">Bộ lọc thời gian</h3>
-                        <p className="mt-1 text-sm text-text-muted">
-                            Khi vừa vào trang, hệ thống tự lấy toàn bộ dữ liệu từ đầu đến cuối để bạn không bị lệch kỳ.
-                        </p>
-                    </div>
-                    <div className="flex flex-wrap gap-3">
-                        <div className="flex flex-col gap-1">
-                            <label className="text-xs font-semibold text-text-subtle">Từ ngày</label>
-                            <input
-                                type="date"
-                                className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                                value={draftFilters.from}
-                                onChange={(e) => setDraftFilters((prev) => ({ ...prev, from: e.target.value }))}
-                            />
-                        </div>
-                        <div className="flex flex-col gap-1">
-                            <label className="text-xs font-semibold text-text-subtle">Đến ngày</label>
-                            <input
-                                type="date"
-                                className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                                value={draftFilters.to}
-                                onChange={(e) => setDraftFilters((prev) => ({ ...prev, to: e.target.value }))}
-                            />
-                        </div>
-                        <div className="flex min-w-[220px] flex-col gap-1">
-                            <label className="text-xs font-semibold text-text-subtle">Chỉ tiêu doanh thu (VNĐ)</label>
-                            <input
-                                type="number"
-                                min="0"
-                                className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                                value={draftFilters.target_revenue}
-                                onChange={(e) => setDraftFilters((prev) => ({ ...prev, target_revenue: e.target.value }))}
-                            />
-                        </div>
+            <FilterToolbar
+                title="Bộ lọc thời gian"
+                description="Khi vừa vào trang, hệ thống tự lấy toàn bộ dữ liệu từ đầu đến cuối để bạn không bị lệch kỳ."
+                actions={(
+                    <FilterActionGroup>
                         <button
                             type="button"
                             onClick={applyFilters}
-                            className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white shadow-card"
+                            className="rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-card"
                         >
                             Áp dụng
                         </button>
                         <button
                             type="button"
                             onClick={resetFilters}
-                            className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
+                            className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700"
                         >
                             Toàn thời gian
                         </button>
                         <button
                             type="button"
                             onClick={fetchReport}
-                            className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
+                            className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700"
                         >
                             Làm mới
                         </button>
-                    </div>
+                    </FilterActionGroup>
+                )}
+            >
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(280px,0.9fr)]">
+                    <FilterField label="Từ ngày">
+                        <input
+                            type="date"
+                            className={filterControlClass}
+                            value={draftFilters.from}
+                            onChange={(e) => setDraftFilters((prev) => ({ ...prev, from: e.target.value }))}
+                        />
+                    </FilterField>
+                    <FilterField label="Đến ngày">
+                        <input
+                            type="date"
+                            className={filterControlClass}
+                            value={draftFilters.to}
+                            onChange={(e) => setDraftFilters((prev) => ({ ...prev, to: e.target.value }))}
+                        />
+                    </FilterField>
+                    <FilterField label="Chỉ tiêu doanh thu (VNĐ)">
+                        <input
+                            type="number"
+                            min="0"
+                            className={filterControlClass}
+                            value={draftFilters.target_revenue}
+                            onChange={(e) => setDraftFilters((prev) => ({ ...prev, target_revenue: e.target.value }))}
+                        />
+                    </FilterField>
                 </div>
-            </div>
+            </FilterToolbar>
 
             <div className="mb-6 grid gap-4 lg:grid-cols-4">
                 {summaryTiles.map((tile) => (
@@ -358,8 +355,8 @@ export default function CompanyRevenueReport(props) {
                 ))}
             </div>
 
-            <div className="mb-6 grid gap-5 xl:grid-cols-[0.9fr,1.3fr]">
-                <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card">
+            <div className="mb-6 grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.18fr)]">
+                <div className="flex self-start rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card">
                     <div className="flex items-start justify-between gap-4">
                         <div>
                             <h3 className="text-base font-semibold text-slate-900">Doanh thu theo sản phẩm</h3>
@@ -369,8 +366,8 @@ export default function CompanyRevenueReport(props) {
                             {periodLabel}
                         </span>
                     </div>
-                    <div className="mt-4">
-                        <DonutChart data={productBreakdown} size={220} thickness={26} centerLabel="Sản phẩm" />
+                    <div className="mt-4 w-full">
+                        <DonutChart data={productBreakdown} size={290} thickness={28} centerLabel="Sản phẩm" layout="horizontal" />
                     </div>
                 </div>
 

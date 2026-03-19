@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
+import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import { useToast } from '@/Contexts/ToastContext';
@@ -223,45 +224,53 @@ export default function Products(props) {
         >
             <div className="grid gap-5 lg:grid-cols-3">
                 <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card p-5">
-                    <div className="flex items-start justify-between mb-4">
-                        <div>
-                            <h3 className="font-semibold">Danh mục sản phẩm</h3>
-                            <p className="text-xs text-text-muted mt-1">Quản lý nhóm sản phẩm để lọc nhanh.</p>
-                        </div>
-                        {canManage && (
-                            <button
-                                type="button"
-                                className="rounded-xl bg-primary text-white px-3 py-2 text-xs font-semibold"
-                                onClick={openCategoryCreate}
-                            >
-                                Thêm danh mục
-                            </button>
+                    <FilterToolbar
+                        title="Danh mục sản phẩm"
+                        description="Quản lý nhóm sản phẩm để lọc nhanh."
+                        actions={(
+                            <FilterActionGroup>
+                                {canManage && (
+                                    <button
+                                        type="button"
+                                        className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white"
+                                        onClick={openCategoryCreate}
+                                    >
+                                        Thêm danh mục
+                                    </button>
+                                )}
+                                <button
+                                    type="button"
+                                    className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700"
+                                    onClick={() => fetchCategories(categoryFilters)}
+                                >
+                                    Lọc
+                                </button>
+                            </FilterActionGroup>
                         )}
-                    </div>
-                    <div className="flex flex-wrap gap-2 mb-4">
-                        <input
-                            className="flex-1 rounded-xl border border-slate-200/80 px-3 py-2 text-sm"
-                            placeholder="Tìm danh mục"
-                            value={categoryFilters.search}
-                            onChange={(e) => setCategoryFilters((s) => ({ ...s, search: e.target.value }))}
-                        />
-                        <select
-                            className="rounded-xl border border-slate-200/80 px-3 py-2 text-sm"
-                            value={categoryFilters.is_active}
-                            onChange={(e) => setCategoryFilters((s) => ({ ...s, is_active: e.target.value }))}
-                        >
-                            <option value="">Tất cả trạng thái</option>
-                            <option value="1">Đang hoạt động</option>
-                            <option value="0">Ngưng</option>
-                        </select>
-                        <button
-                            type="button"
-                            className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
-                            onClick={() => fetchCategories(categoryFilters)}
-                        >
-                            Lọc
-                        </button>
-                    </div>
+                    >
+                        <div className="grid gap-3 md:grid-cols-2">
+                            <FilterField label="Tìm danh mục">
+                                <input
+                                    className={filterControlClass}
+                                    placeholder="Tên hoặc mã danh mục"
+                                    value={categoryFilters.search}
+                                    onChange={(e) => setCategoryFilters((s) => ({ ...s, search: e.target.value }))}
+                                />
+                            </FilterField>
+                            <FilterField label="Trạng thái">
+                                <select
+                                    className={filterControlClass}
+                                    value={categoryFilters.is_active}
+                                    onChange={(e) => setCategoryFilters((s) => ({ ...s, is_active: e.target.value }))}
+                                >
+                                    <option value="">Tất cả trạng thái</option>
+                                    <option value="1">Đang hoạt động</option>
+                                    <option value="0">Ngưng</option>
+                                </select>
+                            </FilterField>
+                        </div>
+                    </FilterToolbar>
+                    <div className="mb-4" />
                     <div className="space-y-3">
                         {categories.map((c) => (
                             <div key={c.id} className="rounded-2xl border border-slate-200/80 p-3">
@@ -310,55 +319,65 @@ export default function Products(props) {
                 </div>
 
                 <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card p-5 lg:col-span-2">
-                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4">
-                        <div>
-                            <h3 className="font-semibold">Danh sách sản phẩm</h3>
-                            <p className="text-xs text-text-muted mt-1">Quản lý sản phẩm và đơn giá gắn hợp đồng.</p>
+                    <FilterToolbar
+                        title="Danh sách sản phẩm"
+                        description="Quản lý sản phẩm và đơn giá gắn hợp đồng."
+                        actions={(
+                            <FilterActionGroup>
+                                <button
+                                    type="button"
+                                    className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white"
+                                    onClick={openCreate}
+                                >
+                                    Thêm mới
+                                </button>
+                                <button
+                                    type="button"
+                                    className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700"
+                                    onClick={() => fetchProducts(filters)}
+                                >
+                                    Lọc
+                                </button>
+                            </FilterActionGroup>
+                        )}
+                    >
+                        <div className="grid gap-3 md:grid-cols-3">
+                            <FilterField label="Tìm kiếm">
+                                <input
+                                    className={filterControlClass}
+                                    placeholder="Tên hoặc mã sản phẩm"
+                                    value={filters.search}
+                                    onChange={(e) => setFilters((s) => ({ ...s, search: e.target.value }))}
+                                />
+                            </FilterField>
+                            <FilterField label="Danh mục">
+                                <select
+                                    className={filterControlClass}
+                                    value={filters.category_id}
+                                    onChange={(e) => setFilters((s) => ({ ...s, category_id: e.target.value }))}
+                                >
+                                    <option value="">Tất cả danh mục</option>
+                                    {categories.map((c) => (
+                                        <option key={c.id} value={c.id}>
+                                            {c.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </FilterField>
+                            <FilterField label="Trạng thái">
+                                <select
+                                    className={filterControlClass}
+                                    value={filters.is_active}
+                                    onChange={(e) => setFilters((s) => ({ ...s, is_active: e.target.value }))}
+                                >
+                                    <option value="">Tất cả trạng thái</option>
+                                    <option value="1">Đang hoạt động</option>
+                                    <option value="0">Ngưng</option>
+                                </select>
+                            </FilterField>
                         </div>
-                        <div className="flex flex-col gap-2 md:flex-row md:items-center">
-                            <button
-                                type="button"
-                                className="rounded-xl bg-primary text-white px-4 py-2 text-sm font-semibold"
-                                onClick={openCreate}
-                            >
-                                Thêm mới
-                            </button>
-                            <input
-                                className="rounded-xl border border-slate-200/80 px-3 py-2 text-sm"
-                                placeholder="Tìm theo tên hoặc mã"
-                                value={filters.search}
-                                onChange={(e) => setFilters((s) => ({ ...s, search: e.target.value }))}
-                            />
-                            <select
-                                className="rounded-xl border border-slate-200/80 px-3 py-2 text-sm"
-                                value={filters.category_id}
-                                onChange={(e) => setFilters((s) => ({ ...s, category_id: e.target.value }))}
-                            >
-                                <option value="">Tất cả danh mục</option>
-                                {categories.map((c) => (
-                                    <option key={c.id} value={c.id}>
-                                        {c.name}
-                                    </option>
-                                ))}
-                            </select>
-                            <select
-                                className="rounded-xl border border-slate-200/80 px-3 py-2 text-sm"
-                                value={filters.is_active}
-                                onChange={(e) => setFilters((s) => ({ ...s, is_active: e.target.value }))}
-                            >
-                                <option value="">Tất cả trạng thái</option>
-                                <option value="1">Đang hoạt động</option>
-                                <option value="0">Ngưng</option>
-                            </select>
-                            <button
-                                type="button"
-                                className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
-                                onClick={() => fetchProducts(filters)}
-                            >
-                                Lọc
-                            </button>
-                        </div>
-                    </div>
+                    </FilterToolbar>
+                    <div className="mb-4" />
                     <div className="overflow-x-auto">
                         <table className="min-w-full text-sm">
                             <thead>

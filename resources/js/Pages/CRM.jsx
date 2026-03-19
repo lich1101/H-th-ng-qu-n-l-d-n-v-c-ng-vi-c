@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { Link } from '@inertiajs/inertia-react';
+import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import Dropdown from '@/Components/Dropdown';
@@ -438,63 +439,74 @@ export default function CRM(props) {
             {activeTab === 'clients' && (
                 <>
                     <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card p-5">
-                        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4">
-                            <h3 className="font-semibold">Danh sách khách hàng</h3>
-                            <div className="flex flex-col gap-2 md:flex-row md:items-center">
-                                {canManageClients && (
+                        <FilterToolbar
+                            className="mb-4 border-0 p-0 shadow-none"
+                            title="Danh sách khách hàng"
+                            description="Lọc theo tên, loại lead và nhóm khách trước khi thao tác CRM hoặc phân công phụ trách."
+                        >
+                            <div className="grid gap-3 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.8fr)_minmax(0,0.75fr)_auto]">
+                                <FilterField label="Tìm kiếm">
+                                    <input
+                                        className={filterControlClass}
+                                        placeholder="Tìm theo tên khách hàng, email hoặc số điện thoại"
+                                        value={clientFilters.search}
+                                        onChange={(e) => setClientFilters((s) => ({ ...s, search: e.target.value }))}
+                                    />
+                                </FilterField>
+                                <FilterField label="Trạng thái lead">
+                                    <select
+                                        className={filterControlClass}
+                                        value={clientFilters.lead_type_id}
+                                        onChange={(e) => setClientFilters((s) => ({ ...s, lead_type_id: e.target.value }))}
+                                    >
+                                        <option value="">Tất cả trạng thái</option>
+                                        {leadTypes.map((type) => (
+                                            <option key={type.id} value={type.id}>
+                                                {type.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </FilterField>
+                                <FilterField label="Nhóm khách">
+                                    <select
+                                        className={filterControlClass}
+                                        value={clientFilters.type}
+                                        onChange={(e) => setClientFilters((s) => ({ ...s, type: e.target.value }))}
+                                    >
+                                        <option value="">Tất cả nhóm</option>
+                                        <option value="potential">Tiềm năng</option>
+                                        <option value="active">Đã mua</option>
+                                    </select>
+                                </FilterField>
+                                <FilterActionGroup className="xl:self-end xl:justify-end">
+                                    {canManageClients && (
+                                        <button
+                                            type="button"
+                                            className="rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-sm"
+                                            onClick={openClientCreate}
+                                        >
+                                            Thêm mới
+                                        </button>
+                                    )}
+                                    {canManageClients && (
+                                        <button
+                                            type="button"
+                                            className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+                                            onClick={() => setShowClientImport(true)}
+                                        >
+                                            Import Excel
+                                        </button>
+                                    )}
                                     <button
                                         type="button"
-                                        className="rounded-xl bg-primary text-white px-4 py-2 text-sm font-semibold"
-                                        onClick={openClientCreate}
+                                        className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+                                        onClick={() => fetchClients(1, clientFilters)}
                                     >
-                                        Thêm mới
+                                        Lọc
                                     </button>
-                                )}
-                                {canManageClients && (
-                                    <button
-                                        type="button"
-                                        className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
-                                        onClick={() => setShowClientImport(true)}
-                                    >
-                                        Import Excel
-                                    </button>
-                                )}
-                                <input
-                                    className="rounded-xl border border-slate-200/80 px-3 py-2 text-sm"
-                                    placeholder="Tìm theo tên/email..."
-                                    value={clientFilters.search}
-                                    onChange={(e) => setClientFilters((s) => ({ ...s, search: e.target.value }))}
-                                />
-                                <select
-                                    className="rounded-xl border border-slate-200/80 px-3 py-2 text-sm"
-                                    value={clientFilters.lead_type_id}
-                                    onChange={(e) => setClientFilters((s) => ({ ...s, lead_type_id: e.target.value }))}
-                                >
-                                    <option value="">Tất cả trạng thái</option>
-                                    {leadTypes.map((type) => (
-                                        <option key={type.id} value={type.id}>
-                                            {type.name}
-                                        </option>
-                                    ))}
-                                </select>
-                                <select
-                                    className="rounded-xl border border-slate-200/80 px-3 py-2 text-sm"
-                                    value={clientFilters.type}
-                                    onChange={(e) => setClientFilters((s) => ({ ...s, type: e.target.value }))}
-                                >
-                                    <option value="">Tất cả nhóm</option>
-                                    <option value="potential">Tiềm năng</option>
-                                    <option value="active">Đã mua</option>
-                                </select>
-                                <button
-                                    type="button"
-                                    className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
-                                    onClick={() => fetchClients(1, clientFilters)}
-                                >
-                                    Lọc
-                                </button>
+                                </FilterActionGroup>
                             </div>
-                        </div>
+                        </FilterToolbar>
                         <div className="mb-4 rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3 text-xs text-slate-600">
                             {isAdminRole
                                 ? 'Bạn đang ở chế độ xem toàn bộ khách hàng. Có thể phân công khách cho mọi phòng ban và nhân sự.'
@@ -851,37 +863,44 @@ export default function CRM(props) {
             {activeTab === 'payments' && (
                 <>
                     <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card p-5">
-                        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4">
-                            <h3 className="font-semibold">Danh sách thanh toán</h3>
-                            <div className="flex gap-2 flex-wrap">
-                                {canManagePayments && (
+                        <FilterToolbar
+                            className="mb-4 border-0 p-0 shadow-none"
+                            title="Danh sách thanh toán"
+                            description="Lọc nhanh trạng thái thanh toán để theo dõi công nợ và nhắc hạn dễ hơn."
+                        >
+                            <div className="grid gap-3 xl:grid-cols-[minmax(0,0.85fr)_auto]">
+                                <FilterField label="Trạng thái thanh toán">
+                                    <select
+                                        className={filterControlClass}
+                                        value={paymentFilters.status}
+                                        onChange={(e) => setPaymentFilters((s) => ({ ...s, status: e.target.value }))}
+                                    >
+                                        <option value="">Tất cả trạng thái</option>
+                                        <option value="pending">Đang chờ</option>
+                                        <option value="paid">Đã thanh toán</option>
+                                        <option value="overdue">Quá hạn</option>
+                                    </select>
+                                </FilterField>
+                                <FilterActionGroup className="xl:self-end xl:justify-end">
+                                    {canManagePayments && (
+                                        <button
+                                            type="button"
+                                            className="rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-sm"
+                                            onClick={openPaymentCreate}
+                                        >
+                                            Thêm mới
+                                        </button>
+                                    )}
                                     <button
                                         type="button"
-                                        className="rounded-xl bg-primary text-white px-4 py-2 text-sm font-semibold"
-                                        onClick={openPaymentCreate}
+                                        className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+                                        onClick={() => fetchPayments(1, paymentFilters)}
                                     >
-                                        Thêm mới
+                                        Lọc
                                     </button>
-                                )}
-                                <select
-                                    className="rounded-xl border border-slate-200/80 px-3 py-2 text-sm"
-                                    value={paymentFilters.status}
-                                    onChange={(e) => setPaymentFilters((s) => ({ ...s, status: e.target.value }))}
-                                >
-                                    <option value="">Tất cả trạng thái</option>
-                                    <option value="pending">Đang chờ</option>
-                                    <option value="paid">Đã thanh toán</option>
-                                    <option value="overdue">Quá hạn</option>
-                                </select>
-                                <button
-                                    type="button"
-                                    className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
-                                    onClick={() => fetchPayments(1, paymentFilters)}
-                                >
-                                    Lọc
-                                </button>
+                                </FilterActionGroup>
                             </div>
-                        </div>
+                        </FilterToolbar>
                         <div className="overflow-x-auto">
                             <table className="min-w-full text-sm">
                                 <thead>

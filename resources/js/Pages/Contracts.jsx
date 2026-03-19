@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
+import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import Dropdown from '@/Components/Dropdown';
@@ -24,6 +25,46 @@ const APPROVAL_LABELS = {
 const approvalLabel = (value) => APPROVAL_LABELS[value] || APPROVAL_LABELS.pending;
 const formatCurrency = (value) => Number(value || 0).toLocaleString('vi-VN');
 const formatDateDisplay = (value) => (value ? new Date(value).toLocaleDateString('vi-VN') : '—');
+const parseNumberInput = (value) => {
+    if (value === null || value === undefined || value === '') return 0;
+    if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+
+    let raw = String(value)
+        .trim()
+        .replace(/\s+/g, '')
+        .replace(/₫|đ|VNĐ|VND/gi, '');
+
+    if (!raw) return 0;
+
+    const hasComma = raw.includes(',');
+    const hasDot = raw.includes('.');
+
+    if (hasComma && hasDot) {
+        raw = raw.replace(/\./g, '').replace(/,/g, '.');
+    } else if (hasComma) {
+        const parts = raw.split(',');
+        raw = parts.length > 2 || parts[1]?.length === 3 ? raw.replace(/,/g, '') : raw.replace(',', '.');
+    } else if (hasDot) {
+        const parts = raw.split('.');
+        raw = parts.length > 2 || parts[1]?.length === 3 ? raw.replace(/\./g, '') : raw;
+    }
+
+    raw = raw.replace(/[^\d.-]/g, '');
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : 0;
+};
+const calculateItemTotal = (item) => {
+    const price = parseNumberInput(item?.unit_price);
+    const quantity = Math.max(1, parseNumberInput(item?.quantity) || 1);
+    return price * quantity;
+};
+const resolveContractValue = (contract) => {
+    if (!contract) return 0;
+    if (Array.isArray(contract.items) && contract.items.length) {
+        return contract.items.reduce((sum, item) => sum + calculateItemTotal(item), 0);
+    }
+    return parseNumberInput(contract.effective_value ?? contract.items_total_value ?? contract.value);
+};
 const statusBadgeClass = (value) => ({
     active: 'bg-emerald-100 text-emerald-700',
     signed: 'bg-sky-100 text-sky-700',
@@ -129,8 +170,14 @@ export default function Contracts(props) {
     const [importFile, setImportFile] = useState(null);
     const [importing, setImporting] = useState(false);
 
+    const itemsTotal = useMemo(() => {
+        return items.reduce((sum, item) => {
+            return sum + calculateItemTotal(item);
+        }, 0);
+    }, [items]);
+
     const contractValueTotal = useMemo(() => (
-        items.length ? itemsTotal : Number(form.value || 0)
+        items.length ? itemsTotal : parseNumberInput(form.value)
     ), [form.value, items.length, itemsTotal]);
 
     const paymentBaseTotal = useMemo(() => {
@@ -138,7 +185,7 @@ export default function Contracts(props) {
             if (editingPaymentId && Number(payment.id) === Number(editingPaymentId)) {
                 return sum;
             }
-            return sum + Number(payment.amount || 0);
+            return sum + parseNumberInput(payment.amount);
         }, 0);
     }, [payments, editingPaymentId]);
 
@@ -148,7 +195,7 @@ export default function Contracts(props) {
     );
 
     const paymentProjectedTotal = useMemo(
-        () => paymentBaseTotal + Number(paymentForm.amount || 0),
+        () => paymentBaseTotal + parseNumberInput(paymentForm.amount),
         [paymentBaseTotal, paymentForm.amount]
     );
 
@@ -265,7 +312,7 @@ export default function Contracts(props) {
                 client_id: detail.client_id || '',
                 project_id: detail.project_id || '',
                 collector_user_id: detail.collector_user_id ? String(detail.collector_user_id) : (currentUserId ? String(currentUserId) : ''),
-                value: detail.value ?? '',
+                value: String(resolveContractValue(detail)),
                 payment_times: String(detail.payment_times ?? 1),
                 status: detail.status || 'draft',
                 signed_at: detail.signed_at ? String(detail.signed_at).slice(0, 10) : '',
@@ -322,32 +369,34 @@ export default function Contracts(props) {
     };
 
     const addItem = () => {
-        setItems((prev) => [
-            ...prev,
-            { product_id: '', product_name: '', unit: '', unit_price: '', quantity: 1, note: '' },
-        ]);
+        setItems((prev) => {
+            const nextItems = [
+                ...prev,
+                { product_id: '', product_name: '', unit: '', unit_price: '', quantity: 1, note: '' },
+            ];
+            setForm((current) => ({ ...current, value: String(nextItems.reduce((sum, item) => sum + calculateItemTotal(item), 0)) }));
+            return nextItems;
+        });
     };
 
     const updateItem = (index, changes) => {
-        setItems((prev) =>
-            prev.map((item, idx) => {
+        setItems((prev) => {
+            const nextItems = prev.map((item, idx) => {
                 if (idx !== index) return item;
                 return { ...item, ...changes };
-            })
-        );
+            });
+            setForm((current) => ({ ...current, value: String(nextItems.reduce((sum, item) => sum + calculateItemTotal(item), 0)) }));
+            return nextItems;
+        });
     };
 
     const removeItem = (index) => {
-        setItems((prev) => prev.filter((_, idx) => idx !== index));
+        setItems((prev) => {
+            const nextItems = prev.filter((_, idx) => idx !== index);
+            setForm((current) => ({ ...current, value: nextItems.length ? String(nextItems.reduce((sum, item) => sum + calculateItemTotal(item), 0)) : '' }));
+            return nextItems;
+        });
     };
-
-    const itemsTotal = useMemo(() => {
-        return items.reduce((sum, item) => {
-            const price = Number(item.unit_price || 0);
-            const qty = Number(item.quantity || 1);
-            return sum + price * qty;
-        }, 0);
-    }, [items]);
 
     const refreshContractExtras = async () => {
         if (!editingId) return;
@@ -395,7 +444,7 @@ export default function Contracts(props) {
         }
         try {
             const payload = {
-                amount: Number(paymentForm.amount || 0),
+                amount: parseNumberInput(paymentForm.amount),
                 paid_at: paymentForm.paid_at || null,
                 method: paymentForm.method || null,
                 note: paymentForm.note || null,
@@ -459,7 +508,7 @@ export default function Contracts(props) {
         if (!editingId) return;
         try {
             const payload = {
-                amount: Number(costForm.amount || 0),
+                amount: parseNumberInput(costForm.amount),
                 cost_date: costForm.cost_date || null,
                 cost_type: costForm.cost_type || null,
                 note: costForm.note || null,
@@ -529,7 +578,7 @@ export default function Contracts(props) {
             client_id: Number(form.client_id),
             project_id: form.project_id ? Number(form.project_id) : null,
             collector_user_id: form.collector_user_id ? Number(form.collector_user_id) : null,
-            value: items.length ? itemsTotal : form.value === '' ? null : Number(form.value),
+            value: items.length ? itemsTotal : form.value === '' ? null : parseNumberInput(form.value),
             payment_times: form.payment_times === '' ? 1 : Number(form.payment_times),
             status: form.status,
             signed_at: form.signed_at || null,
@@ -540,8 +589,8 @@ export default function Contracts(props) {
                 product_id: item.product_id ? Number(item.product_id) : null,
                 product_name: item.product_name || null,
                 unit: item.unit || null,
-                unit_price: item.unit_price === '' ? 0 : Number(item.unit_price),
-                quantity: item.quantity === '' ? 1 : Number(item.quantity),
+                unit_price: parseNumberInput(item.unit_price),
+                quantity: item.quantity === '' ? 1 : Math.max(1, parseNumberInput(item.quantity)),
                 note: item.note || null,
             })),
         };
@@ -596,43 +645,54 @@ export default function Contracts(props) {
             stats={stats}
         >
             <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card p-5">
-                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4">
-                    <h3 className="font-semibold">Danh sách hợp đồng</h3>
-                    <div className="flex flex-col gap-2 md:flex-row md:items-center">
-                        {canManage && (
-                            <button
-                                type="button"
-                                className="rounded-xl bg-primary text-white px-4 py-2 text-sm font-semibold"
-                                onClick={openCreate}
-                            >
-                                Thêm mới
-                            </button>
-                        )}
-                        {canManage && (
-                            <button
-                                type="button"
-                                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
-                                onClick={() => setShowImport(true)}
-                            >
-                                Import Excel
-                            </button>
-                        )}
-                        <input className="rounded-xl border border-slate-200/80 px-3 py-2 text-sm" placeholder="Tìm theo mã/tiêu đề" value={filters.search} onChange={(e) => setFilters((s) => ({ ...s, search: e.target.value }))} />
-                        <select className="rounded-xl border border-slate-200/80 px-3 py-2 text-sm" value={filters.status} onChange={(e) => setFilters((s) => ({ ...s, status: e.target.value }))}>
-                            <option value="">Tất cả trạng thái</option>
-                            {STATUS_OPTIONS.map((opt) => (
-                                <option key={opt.value} value={opt.value}>{opt.label}</option>
-                            ))}
-                        </select>
-                        <select className="rounded-xl border border-slate-200/80 px-3 py-2 text-sm" value={filters.approval_status} onChange={(e) => setFilters((s) => ({ ...s, approval_status: e.target.value }))}>
-                            <option value="">Tất cả duyệt</option>
-                            <option value="pending">Chờ duyệt</option>
-                            <option value="approved">Đã duyệt</option>
-                            <option value="rejected">Từ chối</option>
-                        </select>
-                        <button type="button" className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700" onClick={applyFilters}>Lọc</button>
+                <FilterToolbar
+                    className="mb-4 border-0 p-0 shadow-none"
+                    title="Danh sách hợp đồng"
+                    description="Lọc theo mã, trạng thái thực hiện và trạng thái duyệt trước khi thao tác chi tiết từng hợp đồng."
+                >
+                    <div className="grid gap-3 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.7fr)_minmax(0,0.7fr)_auto]">
+                        <FilterField label="Tìm kiếm">
+                            <input className={filterControlClass} placeholder="Tìm theo mã hợp đồng hoặc tiêu đề" value={filters.search} onChange={(e) => setFilters((s) => ({ ...s, search: e.target.value }))} />
+                        </FilterField>
+                        <FilterField label="Trạng thái">
+                            <select className={filterControlClass} value={filters.status} onChange={(e) => setFilters((s) => ({ ...s, status: e.target.value }))}>
+                                <option value="">Tất cả trạng thái</option>
+                                {STATUS_OPTIONS.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                ))}
+                            </select>
+                        </FilterField>
+                        <FilterField label="Duyệt">
+                            <select className={filterControlClass} value={filters.approval_status} onChange={(e) => setFilters((s) => ({ ...s, approval_status: e.target.value }))}>
+                                <option value="">Tất cả duyệt</option>
+                                <option value="pending">Chờ duyệt</option>
+                                <option value="approved">Đã duyệt</option>
+                                <option value="rejected">Từ chối</option>
+                            </select>
+                        </FilterField>
+                        <FilterActionGroup className="xl:self-end xl:justify-end">
+                            {canManage && (
+                                <button
+                                    type="button"
+                                    className="rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-sm"
+                                    onClick={openCreate}
+                                >
+                                    Thêm mới
+                                </button>
+                            )}
+                            {canManage && (
+                                <button
+                                    type="button"
+                                    className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+                                    onClick={() => setShowImport(true)}
+                                >
+                                    Import Excel
+                                </button>
+                            )}
+                            <button type="button" className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-semibold text-slate-700" onClick={applyFilters}>Lọc</button>
+                        </FilterActionGroup>
                     </div>
-                </div>
+                </FilterToolbar>
                 <div className="mb-4 rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3 text-xs text-slate-600">
                     {isEmployee
                         ? 'Bạn chỉ được tạo hợp đồng cho khách hàng mình phụ trách và hệ thống sẽ tự gắn bạn là nhân viên thu theo hợp đồng.'
@@ -679,7 +739,7 @@ export default function Contracts(props) {
                                         </td>
                                         <td className="py-2 text-slate-700">{c.client?.name || '—'}</td>
                                         <td className="py-2 text-slate-700">{c.collector?.name || '—'}</td>
-                                        <td className="py-2 text-slate-700">{formatCurrency(c.value || 0)}</td>
+                                        <td className="py-2 text-slate-700">{formatCurrency(resolveContractValue(c))}</td>
                                         <td className="py-2 text-slate-700">{formatCurrency(c.payments_total || 0)}</td>
                                         <td className="py-2 text-slate-700">{formatCurrency(c.debt_outstanding || 0)}</td>
                                         <td className="py-2 text-slate-700">{formatCurrency(c.costs_total || 0)}</td>
@@ -952,7 +1012,7 @@ export default function Contracts(props) {
                                             ))}
                                         </select>
                                     </div>
-                                    <div className="grid grid-cols-3 gap-2">
+                                    <div className="grid grid-cols-4 gap-2">
                                         <div>
                                             <label className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.12em] text-text-subtle">
                                                 Đơn vị
@@ -987,6 +1047,14 @@ export default function Contracts(props) {
                                                 value={item.quantity}
                                                 onChange={(e) => updateItem(index, { quantity: e.target.value })}
                                             />
+                                        </div>
+                                        <div>
+                                            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.12em] text-text-subtle">
+                                                Giá trị
+                                            </label>
+                                            <div className="rounded-xl border border-slate-200/80 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700">
+                                                {formatCurrency(calculateItemTotal(item))} VNĐ
+                                            </div>
                                         </div>
                                     </div>
                                     <div>
@@ -1037,7 +1105,7 @@ export default function Contracts(props) {
                                     {payments.map((p) => (
                                         <tr key={p.id} className="border-b border-slate-100">
                                             <td className="py-2">{p.paid_at ? String(p.paid_at).slice(0, 10) : '—'}</td>
-                                            <td className="py-2">{Number(p.amount || 0).toLocaleString('vi-VN')}</td>
+                                            <td className="py-2">{formatCurrency(p.amount || 0)}</td>
                                             <td className="py-2">{p.method || '—'}</td>
                                             <td className="py-2">{p.note || '—'}</td>
                                             <td className="py-2 text-right">
@@ -1084,7 +1152,7 @@ export default function Contracts(props) {
                         <div className="flex items-center justify-between">
                             <div>
                                 <h4 className="text-sm font-semibold text-slate-900">Chi phí hợp đồng</h4>
-                                <p className="text-xs text-text-muted">Tổng chi phí: {Number(costs.reduce((sum, c) => sum + Number(c.amount || 0), 0)).toLocaleString('vi-VN')} VNĐ</p>
+                                <p className="text-xs text-text-muted">Tổng chi phí: {formatCurrency(costs.reduce((sum, c) => sum + parseNumberInput(c.amount), 0))} VNĐ</p>
                             </div>
                             {canFinance && (
                                 <button type="button" className="text-xs font-semibold text-primary" onClick={openCostCreate}>
@@ -1108,7 +1176,7 @@ export default function Contracts(props) {
                                         <tr key={c.id} className="border-b border-slate-100">
                                             <td className="py-2">{c.cost_date ? String(c.cost_date).slice(0, 10) : '—'}</td>
                                             <td className="py-2">{c.cost_type || '—'}</td>
-                                            <td className="py-2">{Number(c.amount || 0).toLocaleString('vi-VN')}</td>
+                                            <td className="py-2">{formatCurrency(c.amount || 0)}</td>
                                             <td className="py-2">{c.note || '—'}</td>
                                             <td className="py-2 text-right">
                                                 {canFinance ? (
@@ -1204,7 +1272,7 @@ export default function Contracts(props) {
                         </div>
 
                         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                            <DetailMetric label="Giá trị hợp đồng" value={`${formatCurrency(detailContract.value || 0)} VNĐ`} tone="sky" />
+                            <DetailMetric label="Giá trị hợp đồng" value={`${formatCurrency(resolveContractValue(detailContract))} VNĐ`} tone="sky" />
                             <DetailMetric label="Đã thu" value={`${formatCurrency(detailContract.payments_total || 0)} VNĐ`} tone="emerald" />
                             <DetailMetric label="Còn phải thu" value={`${formatCurrency(detailContract.debt_outstanding || 0)} VNĐ`} tone="amber" />
                             <DetailMetric label="Chi phí đã ghi nhận" value={`${formatCurrency(detailContract.costs_total || 0)} VNĐ`} />
@@ -1296,7 +1364,7 @@ export default function Contracts(props) {
                                                 <td className="py-2">{item.unit || '—'}</td>
                                                 <td className="py-2">{formatCurrency(item.unit_price || 0)}</td>
                                                 <td className="py-2">{item.quantity || 0}</td>
-                                                <td className="py-2">{formatCurrency(item.total_price || 0)}</td>
+                                                <td className="py-2">{formatCurrency(item.total_price || calculateItemTotal(item))}</td>
                                             </tr>
                                         ))}
                                         {(detailContract.items || []).length === 0 && (

@@ -37,4 +37,18 @@ class ContractItem extends Model
     {
         return $this->belongsTo(Product::class);
     }
+
+    public function getTotalPriceAttribute($value): float
+    {
+        $stored = (float) ($value ?? 0);
+        $unitPrice = (float) ($this->attributes['unit_price'] ?? 0);
+        $quantity = max(1, (int) ($this->attributes['quantity'] ?? 1));
+        $computed = $unitPrice * $quantity;
+
+        if ($stored <= 0 && $computed > 0) {
+            return $computed;
+        }
+
+        return $stored;
+    }
 }

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import PageContainer from '@/Components/PageContainer';
+import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
 import { useToast } from '@/Contexts/ToastContext';
 
 const toColorStyle = (hex) => ({
@@ -125,44 +126,49 @@ export default function Opportunities(props) {
             stats={stats}
         >
             <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card p-5 mb-6">
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                    <div>
-                        <h3 className="text-lg font-semibold text-slate-900">Danh sách cơ hội</h3>
-                        <p className="text-sm text-text-muted">
-                            Lọc nhanh theo trạng thái và tìm kiếm khách hàng.
-                        </p>
-                    </div>
-                    <button
-                        type="button"
-                        onClick={fetchData}
-                        className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                    >
-                        Làm mới
-                    </button>
-                </div>
-                <div className="mt-4 grid gap-3 md:grid-cols-3">
-                    <input
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                        placeholder="Tìm theo tên, email, công ty..."
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                    />
-                    <select
-                        className="w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                        value={selectedLead}
-                        onChange={(e) => setSelectedLead(e.target.value)}
-                    >
-                        <option value="">Tất cả trạng thái</option>
-                        {leadTypes.map((type) => (
-                            <option key={type.id} value={type.id}>
-                                {type.name}
-                            </option>
-                        ))}
-                    </select>
-                    <div className="rounded-2xl border border-dashed border-slate-200/80 px-3 py-2 text-xs text-text-muted">
-                        {canEdit ? 'Chọn trạng thái trong danh sách để cập nhật.' : 'Chỉ xem dữ liệu.'}
-                    </div>
-                </div>
+                <FilterToolbar
+                    title="Danh sách cơ hội"
+                    description="Lọc nhanh theo khách hàng tiềm năng, trạng thái và phạm vi theo dõi hiện tại."
+                    actions={(
+                        <FilterActionGroup>
+                            <button
+                                type="button"
+                                onClick={fetchData}
+                                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                            >
+                                Làm mới
+                            </button>
+                        </FilterActionGroup>
+                    )}
+                >
+                    <FilterField label="Tìm kiếm">
+                        <input
+                            className={filterControlClass}
+                            placeholder="Tìm theo tên, email, công ty..."
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                        />
+                    </FilterField>
+                    <FilterField label="Trạng thái lead">
+                        <select
+                            className={filterControlClass}
+                            value={selectedLead}
+                            onChange={(e) => setSelectedLead(e.target.value)}
+                        >
+                            <option value="">Tất cả trạng thái</option>
+                            {leadTypes.map((type) => (
+                                <option key={type.id} value={type.id}>
+                                    {type.name}
+                                </option>
+                            ))}
+                        </select>
+                    </FilterField>
+                    <FilterField label="Ghi chú thao tác">
+                        <div className="flex min-h-[48px] items-center rounded-2xl border border-dashed border-slate-200/80 px-4 py-3 text-sm text-text-muted">
+                            {canEdit ? 'Chọn trạng thái ngay trong danh sách để cập nhật phễu khách hàng.' : 'Bạn đang ở chế độ chỉ xem dữ liệu.'}
+                        </div>
+                    </FilterField>
+                </FilterToolbar>
                 <div className="mt-4 flex flex-wrap gap-2">
                     <button
                         type="button"

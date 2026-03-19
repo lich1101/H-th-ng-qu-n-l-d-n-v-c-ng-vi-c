@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
+import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
 import PageContainer from '@/Components/PageContainer';
 import { useToast } from '@/Contexts/ToastContext';
 
@@ -108,59 +109,78 @@ export default function TasksByStaff(props) {
             stats={[]}
         >
             <div className="lg:col-span-2 space-y-4">
-                <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-card">
-                    <div className="flex flex-wrap gap-2">
-                        <select
-                            className="rounded-xl border border-slate-200/80 px-3 py-2 text-sm"
-                            value={filters.project_id}
-                            onChange={(e) => setFilters((s) => ({ ...s, project_id: e.target.value }))}
-                        >
-                            <option value="">Tất cả dự án</option>
-                            {projects.map((p) => <option key={p.id} value={p.id}>{p.code}</option>)}
-                        </select>
-                        <select
-                            className="rounded-xl border border-slate-200/80 px-3 py-2 text-sm"
-                            value={filters.assignee_id}
-                            onChange={(e) => setFilters((s) => ({ ...s, assignee_id: e.target.value }))}
-                        >
-                            <option value="">Tất cả nhân sự</option>
-                            {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                        </select>
-                        <select
-                            className="rounded-xl border border-slate-200/80 px-3 py-2 text-sm"
-                            value={filters.status}
-                            onChange={(e) => setFilters((s) => ({ ...s, status: e.target.value }))}
-                        >
-                            <option value="">Tất cả trạng thái</option>
-                            {Object.keys(LABELS).map((key) => <option key={key} value={key}>{LABELS[key]}</option>)}
-                        </select>
-                        <input
-                            className="rounded-xl border border-slate-200/80 px-3 py-2 text-sm"
-                            placeholder="Tìm tiêu đề công việc"
-                            value={filters.search}
-                            onChange={(e) => setFilters((s) => ({ ...s, search: e.target.value }))}
-                        />
-                        <input
-                            type="date"
-                            className="rounded-xl border border-slate-200/80 px-3 py-2 text-sm"
-                            value={filters.deadline_from}
-                            onChange={(e) => setFilters((s) => ({ ...s, deadline_from: e.target.value }))}
-                        />
-                        <input
-                            type="date"
-                            className="rounded-xl border border-slate-200/80 px-3 py-2 text-sm"
-                            value={filters.deadline_to}
-                            onChange={(e) => setFilters((s) => ({ ...s, deadline_to: e.target.value }))}
-                        />
-                        <button
-                            type="button"
-                            className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white"
-                            onClick={fetchTasks}
-                        >
-                            Lọc
-                        </button>
+                <FilterToolbar
+                    title="Bộ lọc công việc theo nhân sự"
+                    description="Lọc theo dự án, nhân sự, trạng thái và khoảng hạn chót để theo dõi khối lượng công việc rõ hơn."
+                    actions={(
+                        <FilterActionGroup>
+                            <button
+                                type="button"
+                                className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white"
+                                onClick={fetchTasks}
+                            >
+                                Lọc
+                            </button>
+                        </FilterActionGroup>
+                    )}
+                >
+                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                        <FilterField label="Dự án">
+                            <select
+                                className={filterControlClass}
+                                value={filters.project_id}
+                                onChange={(e) => setFilters((s) => ({ ...s, project_id: e.target.value }))}
+                            >
+                                <option value="">Tất cả dự án</option>
+                                {projects.map((p) => <option key={p.id} value={p.id}>{p.code}</option>)}
+                            </select>
+                        </FilterField>
+                        <FilterField label="Nhân sự">
+                            <select
+                                className={filterControlClass}
+                                value={filters.assignee_id}
+                                onChange={(e) => setFilters((s) => ({ ...s, assignee_id: e.target.value }))}
+                            >
+                                <option value="">Tất cả nhân sự</option>
+                                {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                            </select>
+                        </FilterField>
+                        <FilterField label="Trạng thái">
+                            <select
+                                className={filterControlClass}
+                                value={filters.status}
+                                onChange={(e) => setFilters((s) => ({ ...s, status: e.target.value }))}
+                            >
+                                <option value="">Tất cả trạng thái</option>
+                                {Object.keys(LABELS).map((key) => <option key={key} value={key}>{LABELS[key]}</option>)}
+                            </select>
+                        </FilterField>
+                        <FilterField label="Tìm kiếm">
+                            <input
+                                className={filterControlClass}
+                                placeholder="Tiêu đề công việc"
+                                value={filters.search}
+                                onChange={(e) => setFilters((s) => ({ ...s, search: e.target.value }))}
+                            />
+                        </FilterField>
+                        <FilterField label="Từ hạn chót">
+                            <input
+                                type="date"
+                                className={filterControlClass}
+                                value={filters.deadline_from}
+                                onChange={(e) => setFilters((s) => ({ ...s, deadline_from: e.target.value }))}
+                            />
+                        </FilterField>
+                        <FilterField label="Đến hạn chót">
+                            <input
+                                type="date"
+                                className={filterControlClass}
+                                value={filters.deadline_to}
+                                onChange={(e) => setFilters((s) => ({ ...s, deadline_to: e.target.value }))}
+                            />
+                        </FilterField>
                     </div>
-                </div>
+                </FilterToolbar>
 
                 {loading && (
                     <div className="rounded-2xl border border-slate-200/80 bg-white p-5 text-sm text-slate-500 shadow-card">

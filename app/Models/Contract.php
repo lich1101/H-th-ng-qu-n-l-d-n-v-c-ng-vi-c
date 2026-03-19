@@ -53,6 +53,8 @@ class Contract extends Model
     ];
 
     protected $appends = [
+        'items_total_value',
+        'effective_value',
         'payments_total',
         'payments_count',
         'costs_total',
@@ -106,6 +108,39 @@ class Contract extends Model
         return $this->hasMany(ContractCost::class);
     }
 
+    public function getItemsTotalValueAttribute(): float
+    {
+        $value = $this->attributes['items_total_value'] ?? null;
+        if ($value !== null) {
+            return (float) $value;
+        }
+        if ($this->relationLoaded('items')) {
+            return (float) $this->items->sum('total_price');
+        }
+        return (float) $this->items()->sum('total_price');
+    }
+
+    public function getEffectiveValueAttribute(): float
+    {
+        $rawValue = (float) ($this->attributes['value'] ?? 0);
+        $itemsCount = $this->attributes['items_count'] ?? null;
+
+        if ($itemsCount !== null) {
+            return (int) $itemsCount > 0 ? $this->items_total_value : $rawValue;
+        }
+
+        if ($this->relationLoaded('items')) {
+            return $this->items->isNotEmpty() ? $this->items_total_value : $rawValue;
+        }
+
+        return $this->items()->exists() ? $this->items_total_value : $rawValue;
+    }
+
+    public function getValueAttribute($value): float
+    {
+        return $this->effective_value;
+    }
+
     public function getPaymentsTotalAttribute(): float
     {
         $value = $this->attributes['payments_total'] ?? $this->attributes['payments_sum_amount'] ?? null;
@@ -149,23 +184,24 @@ class Contract extends Model
 
     public function getDebtOutstandingAttribute(): float
     {
-        $base = (float) ($this->value ?? 0);
+        $base = (float) $this->effective_value;
         $outstanding = $base - $this->payments_total;
         return $outstanding > 0 ? $outstanding : 0.0;
     }
 
     public function getNetRevenueAttribute(): float
     {
-        $base = (float) ($this->value ?? 0);
+        $base = (float) $this->effective_value;
         return $base - $this->costs_total;
     }
 
     public function refreshFinancials(): void
     {
-        $value = (float) ($this->value ?? 0);
+        $value = (float) $this->effective_value;
         $payments = (float) $this->payments()->sum('amount');
         $costs = (float) $this->costs()->sum('amount');
         $this->update([
+            'value' => $value,
             'revenue' => $payments,
             'debt' => max(0, $value - $payments),
             'cash_flow' => $value - $costs,

@@ -7,6 +7,7 @@ export default function DonutChart({
     size = 160,
     thickness = 18,
     centerLabel = 'Tổng',
+    layout = 'vertical',
 }) {
     const [hoveredSegment, setHoveredSegment] = useState(null);
     const normalized = data.map((item, idx) => ({
@@ -35,9 +36,14 @@ export default function DonutChart({
         });
     }, [circumference, normalized, total]);
 
+    const isHorizontal = layout === 'horizontal';
+
     return (
-        <div className="flex flex-col items-center gap-3">
-            <div className="relative" style={{ width: size, height: size }}>
+        <div className={isHorizontal ? 'grid h-full gap-6 lg:grid-cols-[minmax(280px,360px)_1fr] lg:items-start' : 'flex flex-col items-center gap-3'}>
+            <div
+                className={isHorizontal ? 'flex justify-center' : ''}
+            >
+                <div className="relative" style={{ width: size, height: size }}>
                 {hoveredSegment ? (
                     <div className="absolute left-1/2 top-2 z-20 -translate-x-1/2 rounded-xl bg-slate-900/95 px-3 py-2 text-center text-[11px] text-white shadow-xl">
                         <div className="font-semibold">{hoveredSegment.label}</div>
@@ -90,13 +96,14 @@ export default function DonutChart({
                     <p className="text-xs text-text-muted">{centerLabel}</p>
                     <p className="text-lg font-semibold text-slate-900">{total.toLocaleString('vi-VN')}</p>
                 </div>
+                </div>
             </div>
-            <div className="w-full space-y-2 text-xs">
+            <div className={`w-full text-xs ${isHorizontal ? 'grid content-start auto-rows-min gap-2 sm:grid-cols-2' : 'space-y-2'}`}>
                 {normalized.map((item) => (
                     <button
                         key={item.label}
                         type="button"
-                        className="flex w-full items-center justify-between gap-3 rounded-xl px-2 py-1 text-left hover:bg-slate-50"
+                        className={`flex w-full items-center justify-between gap-3 rounded-xl text-left hover:bg-slate-50 ${isHorizontal ? 'px-3 py-2' : 'px-2 py-1'}`}
                         onMouseEnter={() => {
                             const segment = segments.find((seg) => seg.label === item.label);
                             if (segment) setHoveredSegment(segment);

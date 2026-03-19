@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
+import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import { useToast } from '@/Contexts/ToastContext';
@@ -315,55 +316,72 @@ export default function Meetings(props) {
             title="Lịch họp"
             description="Lịch họp theo dạng lịch tháng, có chọn nhiều thành viên và xem nhanh thông tin cuộc họp."
         >
-            <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card mb-4">
-                <form onSubmit={applyFilters} className="flex flex-wrap gap-2">
-                    <button
-                        type="button"
-                        className="rounded-2xl bg-primary text-white px-3 py-2 text-sm font-semibold"
-                        onClick={openCreate}
-                        disabled={!canManage}
-                    >
-                        Thêm lịch họp
-                    </button>
-                    <input
-                        type="text"
-                        className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                        placeholder="Tìm tiêu đề / ghi chú"
-                        value={filters.search}
-                        onChange={(e) => setFilters((prev) => ({ ...prev, search: e.target.value }))}
-                    />
-                    <input
-                        type="date"
-                        className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                        value={filters.date_from}
-                        onChange={(e) => setFilters((prev) => ({ ...prev, date_from: e.target.value }))}
-                    />
-                    <input
-                        type="date"
-                        className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                        value={filters.date_to}
-                        onChange={(e) => setFilters((prev) => ({ ...prev, date_to: e.target.value }))}
-                    />
-                    <select
-                        className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                        value={filters.attendee_id}
-                        onChange={(e) => setFilters((prev) => ({ ...prev, attendee_id: e.target.value }))}
-                    >
-                        <option value="">Tất cả thành viên</option>
-                        {users.map((user) => (
-                            <option key={user.id} value={user.id}>
-                                {user.name}
-                            </option>
-                        ))}
-                    </select>
-                    <button type="submit" className="rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700">
-                        Lọc
-                    </button>
-                    <button type="button" className="rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700" onClick={useCurrentMonthRange}>
-                        Lọc theo tháng đang xem
-                    </button>
+            <FilterToolbar
+                title="Bộ lọc lịch họp"
+                description="Lọc theo tiêu đề, thời gian và thành viên tham gia để xem lịch tháng gọn và đúng phạm vi."
+                actions={(
+                    <FilterActionGroup className="justify-end">
+                        <button type="submit" form="meeting-filter-form" className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-semibold text-slate-700">
+                            Lọc
+                        </button>
+                        <button type="button" className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-semibold text-slate-700" onClick={useCurrentMonthRange}>
+                            Tháng đang xem
+                        </button>
+                    </FilterActionGroup>
+                )}
+            >
+                <form id="meeting-filter-form" onSubmit={applyFilters} className="grid gap-3 xl:grid-cols-[auto_minmax(0,1fr)_minmax(0,0.7fr)_minmax(0,0.7fr)_minmax(0,0.9fr)]">
+                    <FilterActionGroup className="xl:self-end">
+                        <button
+                            type="button"
+                            className="rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-sm"
+                            onClick={openCreate}
+                            disabled={!canManage}
+                        >
+                            Thêm lịch họp
+                        </button>
+                    </FilterActionGroup>
+                    <FilterField label="Tìm kiếm">
+                        <input
+                            type="text"
+                            className={filterControlClass}
+                            placeholder="Tìm theo tiêu đề hoặc ghi chú cuộc họp"
+                            value={filters.search}
+                            onChange={(e) => setFilters((prev) => ({ ...prev, search: e.target.value }))}
+                        />
+                    </FilterField>
+                    <FilterField label="Từ ngày">
+                        <input
+                            type="date"
+                            className={filterControlClass}
+                            value={filters.date_from}
+                            onChange={(e) => setFilters((prev) => ({ ...prev, date_from: e.target.value }))}
+                        />
+                    </FilterField>
+                    <FilterField label="Đến ngày">
+                        <input
+                            type="date"
+                            className={filterControlClass}
+                            value={filters.date_to}
+                            onChange={(e) => setFilters((prev) => ({ ...prev, date_to: e.target.value }))}
+                        />
+                    </FilterField>
+                    <FilterField label="Thành viên">
+                        <select
+                            className={filterControlClass}
+                            value={filters.attendee_id}
+                            onChange={(e) => setFilters((prev) => ({ ...prev, attendee_id: e.target.value }))}
+                        >
+                            <option value="">Tất cả thành viên</option>
+                            {users.map((user) => (
+                                <option key={user.id} value={user.id}>
+                                    {user.name}
+                                </option>
+                            ))}
+                        </select>
+                    </FilterField>
                 </form>
-            </div>
+            </FilterToolbar>
 
             <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
                 <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-card">

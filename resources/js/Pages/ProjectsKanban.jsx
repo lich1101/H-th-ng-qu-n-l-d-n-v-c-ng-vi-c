@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
+import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import { useToast } from '@/Contexts/ToastContext';
@@ -415,65 +416,78 @@ export default function ProjectsKanban(props) {
             stats={stats}
         >
             <div className="lg:col-span-2">
-                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4">
-                    <div className="flex flex-wrap gap-2">
-                        {canCreate && (
-                            <button
-                                type="button"
-                                className="rounded-2xl bg-primary text-white px-4 py-2 text-sm font-semibold"
-                                onClick={openCreate}
-                            >
-                                Thêm mới
-                            </button>
-                        )}
-                        <input
-                            className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                            placeholder="Tìm theo mã/tên"
-                            value={filters.search}
-                            onChange={(e) => setFilters((s) => ({ ...s, search: e.target.value }))}
-                        />
-                        <select
-                            className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                            value={filters.status}
-                            onChange={(e) => setFilters((s) => ({ ...s, status: e.target.value }))}
-                        >
-                            <option value="">Tất cả trạng thái</option>
-                            {statusOptions.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-                        </select>
-                        <select
-                            className="rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                            value={filters.service_type}
-                            onChange={(e) => setFilters((s) => ({ ...s, service_type: e.target.value }))}
-                        >
-                            <option value="">Tất cả dịch vụ</option>
-                            {serviceOptions.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-                        </select>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        {[
-                            { key: 'list', label: 'Danh sách' },
-                            { key: 'kanban', label: 'Bảng Kanban' },
-                            { key: 'timeline', label: 'Dòng thời gian' },
-                            { key: 'gantt', label: 'Biểu đồ Gantt' },
-                        ].map((tab) => (
+                <FilterToolbar
+                    title="Bộ lọc dự án"
+                    description="Tìm nhanh theo mã dự án, trạng thái triển khai và nhóm dịch vụ trước khi chuyển chế độ xem."
+                    actions={(
+                        <FilterActionGroup className="justify-end">
+                            {[
+                                { key: 'list', label: 'Danh sách' },
+                                { key: 'kanban', label: 'Bảng Kanban' },
+                                { key: 'timeline', label: 'Dòng thời gian' },
+                                { key: 'gantt', label: 'Biểu đồ Gantt' },
+                            ].map((tab) => (
                                 <button
                                     key={tab.key}
                                     type="button"
                                     onClick={() => setViewMode(tab.key)}
-                                    className={`px-3 py-2 rounded-2xl text-xs font-semibold ${
+                                    className={`rounded-2xl px-3.5 py-3 text-xs font-semibold transition ${
                                         viewMode === tab.key
-                                            ? 'bg-primary text-white'
-                                            : 'bg-white border border-slate-200/80 text-slate-600'
+                                            ? 'bg-primary text-white shadow-sm'
+                                            : 'border border-slate-200/80 bg-white text-slate-600 hover:border-primary/30 hover:text-primary'
                                     }`}
                                 >
                                     {tab.label}
                                 </button>
                             ))}
-                            <button className="text-sm text-primary font-semibold" onClick={fetchProjects} type="button">
+                            <button className="rounded-2xl px-3 py-2 text-sm font-semibold text-primary" onClick={fetchProjects} type="button">
                                 Tải lại
                             </button>
-                        </div>
+                        </FilterActionGroup>
+                    )}
+                >
+                    <div className="grid gap-3 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.7fr)_minmax(0,0.7fr)_auto]">
+                        <FilterField label="Tìm kiếm">
+                            <input
+                                className={filterControlClass}
+                                placeholder="Tìm theo mã dự án hoặc tên dự án"
+                                value={filters.search}
+                                onChange={(e) => setFilters((s) => ({ ...s, search: e.target.value }))}
+                            />
+                        </FilterField>
+                        <FilterField label="Trạng thái">
+                            <select
+                                className={filterControlClass}
+                                value={filters.status}
+                                onChange={(e) => setFilters((s) => ({ ...s, status: e.target.value }))}
+                            >
+                                <option value="">Tất cả trạng thái</option>
+                                {statusOptions.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                            </select>
+                        </FilterField>
+                        <FilterField label="Dịch vụ">
+                            <select
+                                className={filterControlClass}
+                                value={filters.service_type}
+                                onChange={(e) => setFilters((s) => ({ ...s, service_type: e.target.value }))}
+                            >
+                                <option value="">Tất cả dịch vụ</option>
+                                {serviceOptions.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                            </select>
+                        </FilterField>
+                        <FilterActionGroup className="xl:self-end xl:justify-end">
+                            {canCreate && (
+                                <button
+                                    type="button"
+                                    className="rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-sm"
+                                    onClick={openCreate}
+                                >
+                                    Thêm mới
+                                </button>
+                            )}
+                        </FilterActionGroup>
                     </div>
+                </FilterToolbar>
 
                     {viewMode === 'list' && (
                         <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card p-4">

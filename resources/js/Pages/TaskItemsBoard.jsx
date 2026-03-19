@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
+import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
 import PageContainer from '@/Components/PageContainer';
 import { useToast } from '@/Contexts/ToastContext';
 
@@ -132,82 +133,107 @@ export default function TaskItemsBoard(props) {
             stats={[]}
         >
             <div className="lg:col-span-2 space-y-4">
-                <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-card">
-                    <div className="flex flex-wrap gap-2">
-                        <select
-                            className="rounded-xl border border-slate-200/80 px-3 py-2 text-sm"
-                            value={filters.project_id}
-                            onChange={(e) => setFilters((s) => ({ ...s, project_id: e.target.value, task_id: '' }))}
-                        >
-                            <option value="">Tất cả dự án</option>
-                            {projects.map((p) => <option key={p.id} value={p.id}>{p.code}</option>)}
-                        </select>
-                        <select
-                            className="rounded-xl border border-slate-200/80 px-3 py-2 text-sm"
-                            value={filters.task_id}
-                            onChange={(e) => setFilters((s) => ({ ...s, task_id: e.target.value }))}
-                        >
-                            <option value="">Tất cả công việc</option>
-                            {tasks.map((task) => <option key={task.id} value={task.id}>{task.title}</option>)}
-                        </select>
-                        <select
-                            className="rounded-xl border border-slate-200/80 px-3 py-2 text-sm"
-                            value={filters.assignee_id}
-                            onChange={(e) => setFilters((s) => ({ ...s, assignee_id: e.target.value }))}
-                        >
-                            <option value="">Tất cả nhân sự</option>
-                            {users.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
-                        </select>
-                        <select
-                            className="rounded-xl border border-slate-200/80 px-3 py-2 text-sm"
-                            value={filters.status}
-                            onChange={(e) => setFilters((s) => ({ ...s, status: e.target.value }))}
-                        >
-                            <option value="">Tất cả trạng thái</option>
-                            {Object.keys(LABELS).map((key) => <option key={key} value={key}>{LABELS[key]}</option>)}
-                        </select>
-                        <input
-                            className="rounded-xl border border-slate-200/80 px-3 py-2 text-sm"
-                            placeholder="Tìm tiêu đề đầu việc/công việc"
-                            value={filters.search}
-                            onChange={(e) => setFilters((s) => ({ ...s, search: e.target.value }))}
-                        />
-                        <input
-                            type="date"
-                            className="rounded-xl border border-slate-200/80 px-3 py-2 text-sm"
-                            value={filters.start_from}
-                            onChange={(e) => setFilters((s) => ({ ...s, start_from: e.target.value }))}
-                        />
-                        <input
-                            type="date"
-                            className="rounded-xl border border-slate-200/80 px-3 py-2 text-sm"
-                            value={filters.start_to}
-                            onChange={(e) => setFilters((s) => ({ ...s, start_to: e.target.value }))}
-                        />
-                        <input
-                            type="date"
-                            className="rounded-xl border border-slate-200/80 px-3 py-2 text-sm"
-                            value={filters.deadline_from}
-                            onChange={(e) => setFilters((s) => ({ ...s, deadline_from: e.target.value }))}
-                        />
-                        <input
-                            type="date"
-                            className="rounded-xl border border-slate-200/80 px-3 py-2 text-sm"
-                            value={filters.deadline_to}
-                            onChange={(e) => setFilters((s) => ({ ...s, deadline_to: e.target.value }))}
-                        />
-                        <button
-                            type="button"
-                            className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white"
-                            onClick={() => fetchItems(1, { ...filters, page: 1 })}
-                        >
-                            Lọc
-                        </button>
+                <FilterToolbar
+                    title="Bộ lọc đầu việc"
+                    description="Lọc đầu việc theo dự án, công việc, nhân sự và mốc thời gian để rà tiến độ chính xác hơn."
+                    actions={(
+                        <FilterActionGroup>
+                            <button
+                                type="button"
+                                className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white"
+                                onClick={() => fetchItems(1, { ...filters, page: 1 })}
+                            >
+                                Lọc
+                            </button>
+                        </FilterActionGroup>
+                    )}
+                >
+                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                        <FilterField label="Dự án">
+                            <select
+                                className={filterControlClass}
+                                value={filters.project_id}
+                                onChange={(e) => setFilters((s) => ({ ...s, project_id: e.target.value, task_id: '' }))}
+                            >
+                                <option value="">Tất cả dự án</option>
+                                {projects.map((p) => <option key={p.id} value={p.id}>{p.code}</option>)}
+                            </select>
+                        </FilterField>
+                        <FilterField label="Công việc">
+                            <select
+                                className={filterControlClass}
+                                value={filters.task_id}
+                                onChange={(e) => setFilters((s) => ({ ...s, task_id: e.target.value }))}
+                            >
+                                <option value="">Tất cả công việc</option>
+                                {tasks.map((task) => <option key={task.id} value={task.id}>{task.title}</option>)}
+                            </select>
+                        </FilterField>
+                        <FilterField label="Nhân sự">
+                            <select
+                                className={filterControlClass}
+                                value={filters.assignee_id}
+                                onChange={(e) => setFilters((s) => ({ ...s, assignee_id: e.target.value }))}
+                            >
+                                <option value="">Tất cả nhân sự</option>
+                                {users.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
+                            </select>
+                        </FilterField>
+                        <FilterField label="Trạng thái">
+                            <select
+                                className={filterControlClass}
+                                value={filters.status}
+                                onChange={(e) => setFilters((s) => ({ ...s, status: e.target.value }))}
+                            >
+                                <option value="">Tất cả trạng thái</option>
+                                {Object.keys(LABELS).map((key) => <option key={key} value={key}>{LABELS[key]}</option>)}
+                            </select>
+                        </FilterField>
+                        <FilterField label="Tìm kiếm">
+                            <input
+                                className={filterControlClass}
+                                placeholder="Tiêu đề đầu việc hoặc công việc"
+                                value={filters.search}
+                                onChange={(e) => setFilters((s) => ({ ...s, search: e.target.value }))}
+                            />
+                        </FilterField>
+                        <FilterField label="Từ ngày bắt đầu">
+                            <input
+                                type="date"
+                                className={filterControlClass}
+                                value={filters.start_from}
+                                onChange={(e) => setFilters((s) => ({ ...s, start_from: e.target.value }))}
+                            />
+                        </FilterField>
+                        <FilterField label="Đến ngày bắt đầu">
+                            <input
+                                type="date"
+                                className={filterControlClass}
+                                value={filters.start_to}
+                                onChange={(e) => setFilters((s) => ({ ...s, start_to: e.target.value }))}
+                            />
+                        </FilterField>
+                        <FilterField label="Từ hạn chót">
+                            <input
+                                type="date"
+                                className={filterControlClass}
+                                value={filters.deadline_from}
+                                onChange={(e) => setFilters((s) => ({ ...s, deadline_from: e.target.value }))}
+                            />
+                        </FilterField>
+                        <FilterField label="Đến hạn chót">
+                            <input
+                                type="date"
+                                className={filterControlClass}
+                                value={filters.deadline_to}
+                                onChange={(e) => setFilters((s) => ({ ...s, deadline_to: e.target.value }))}
+                            />
+                        </FilterField>
                     </div>
                     <div className="mt-3 text-xs text-slate-500">
                         Tổng: {paging.total} • Đang làm: {summary.doing} • Hoàn tất: {summary.done}
                     </div>
-                </div>
+                </FilterToolbar>
 
                 <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-card">
                     <div className="overflow-x-auto">
