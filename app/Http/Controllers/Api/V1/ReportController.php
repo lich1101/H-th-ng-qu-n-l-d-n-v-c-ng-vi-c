@@ -251,62 +251,9 @@ class ReportController extends Controller
 
     public function companyRevenue(Request $request): JsonResponse
     {
-        $approved = Contract::query()->where('approval_status', 'approved');
-
-        $lifetimeRevenue = (float) (clone $approved)->sum('value');
-        $lifetimeContractsTotal = (int) (clone $approved)->count();
-        $lifetimePaid = (float) ContractPayment::query()
-            ->join('contracts', 'contract_payments.contract_id', '=', 'contracts.id')
-            ->where('contracts.approval_status', 'approved')
-            ->sum('contract_payments.amount');
-        $lifetimeCosts = (float) ContractCost::query()
-            ->join('contracts', 'contract_costs.contract_id', '=', 'contracts.id')
-            ->where('contracts.approval_status', 'approved')
-            ->sum('contract_costs.amount');
-        $lifetimeDebt = max(0, $lifetimeRevenue - $lifetimePaid);
-        $lifetimeNetRevenue = $lifetimeRevenue - $lifetimeCosts;
-
-        $monthlyRows = Contract::query()
-            ->where('approval_status', 'approved')
-            ->selectRaw("DATE_FORMAT(COALESCE(signed_at, approved_at, created_at), '%Y-%m') as month, SUM(value) as revenue, COUNT(*) as contracts")
-            ->groupBy('month')
-            ->orderByDesc('month')
-            ->limit(6)
-            ->get()
-            ->sortBy('month')
-            ->values()
-            ->map(function ($item) {
-                return [
-                    'month' => $item->month,
-                    'revenue' => round((float) $item->revenue, 2),
-                    'contracts' => (int) $item->contracts,
-                ];
-            });
-
-        $topCustomers = Contract::query()
-            ->join('clients', 'contracts.client_id', '=', 'clients.id')
-            ->where('contracts.approval_status', 'approved')
-            ->selectRaw('clients.id as client_id, clients.name, clients.company, SUM(contracts.value) as revenue, COUNT(*) as contracts')
-            ->groupBy('clients.id', 'clients.name', 'clients.company')
-            ->orderByDesc('revenue')
-            ->limit(5)
-            ->get()
-            ->map(function ($item) {
-                return [
-                    'client_id' => (int) $item->client_id,
-                    'name' => $item->name,
-                    'company' => $item->company,
-                    'revenue' => round((float) $item->revenue, 2),
-                    'contracts' => (int) $item->contracts,
-                ];
-            })
-            ->values();
-
-        $fromInput = $request->query('from');
-        $toInput = $request->query('to');
         $targetRevenue = (float) $request->query('target_revenue', 0);
-
         $contractDateExpr = "DATE(COALESCE(contracts.signed_at, contracts.approved_at, contracts.created_at))";
+
         $earliestContractDate = Contract::query()
             ->where('approval_status', 'approved')
             ->selectRaw("MIN($contractDateExpr) as aggregate_date")
@@ -320,28 +267,33 @@ class ReportController extends Controller
             ->where('contracts.approval_status', 'approved')
             ->whereNotNull('contract_payments.paid_at')
             ->max('contract_payments.paid_at');
+        $latestCostDate = ContractCost::query()
+            ->join('contracts', 'contract_costs.contract_id', '=', 'contracts.id')
+            ->where('contracts.approval_status', 'approved')
+            ->whereNotNull('contract_costs.cost_date')
+            ->max('contract_costs.cost_date');
 
         $availableStart = $earliestContractDate
             ? Carbon::parse($earliestContractDate)
             : now()->startOfMonth();
-        $availableEndCandidate = collect([$latestContractDate, $latestPaymentDate])
-            ->filter()
-            ->map(function ($value) {
-                return Carbon::parse($value);
-            })
-            ->sortBy(function (Carbon $value) {
-                return $value->timestamp;
-            })
-            ->last();
-        $availableEnd = $availableEndCandidate ?: now();
+        $availableEnd = $this->resolveLatestRevenueDate([
+            $latestContractDate,
+            $latestPaymentDate,
+            $latestCostDate,
+        ]) ?: now();
 
         try {
-            $start = $fromInput ? Carbon::parse($fromInput) : $availableStart->copy();
+            $start = $request->filled('from')
+                ? Carbon::parse((string) $request->query('from'))
+                : $availableStart->copy();
         } catch (\Throwable $e) {
             $start = $availableStart->copy();
         }
+
         try {
-            $end = $toInput ? Carbon::parse($toInput) : $availableEnd->copy();
+            $end = $request->filled('to')
+                ? Carbon::parse((string) $request->query('to'))
+                : $availableEnd->copy();
         } catch (\Throwable $e) {
             $end = $availableEnd->copy();
         }
@@ -349,258 +301,232 @@ class ReportController extends Controller
         $start = $start->startOfDay();
         $end = $end->endOfDay();
         if ($end->lt($start)) {
-            [$start, $end] = [$end, $start];
+            $swap = $start;
+            $start = $end;
+            $end = $swap;
         }
 
         $startDate = $start->toDateString();
         $endDate = $end->toDateString();
 
-        $periodApproved = Contract::query()
-            ->where('approval_status', 'approved')
-            ->whereBetween(DB::raw($contractDateExpr), [$startDate, $endDate]);
-        $periodContractIds = (clone $periodApproved)->pluck('contracts.id');
-        $periodRevenueTotal = (float) (clone $periodApproved)->sum('contracts.value');
-        $periodContractsTotal = (int) (clone $periodApproved)->count();
+        $paymentTotalsSubquery = ContractPayment::query()
+            ->selectRaw('contract_id, SUM(amount) as payments_total')
+            ->groupBy('contract_id');
+        $costTotalsSubquery = ContractCost::query()
+            ->selectRaw('contract_id, SUM(amount) as costs_total')
+            ->groupBy('contract_id');
 
-        $dailyRevenueRows = Contract::query()
-            ->where('approval_status', 'approved')
-            ->whereBetween(DB::raw($contractDateExpr), [$startDate, $endDate])
-            ->selectRaw("$contractDateExpr as date, SUM(contracts.value) as revenue")
-            ->groupBy('date')
-            ->get();
-        $dailyRevenueMap = $dailyRevenueRows->mapWithKeys(function ($row) {
-            return [$row->date => (float) $row->revenue];
-        });
-
-        $paymentsBase = ContractPayment::query()
-            ->join('contracts', 'contract_payments.contract_id', '=', 'contracts.id')
+        $baseContractsQuery = Contract::query()
+            ->leftJoinSub($paymentTotalsSubquery, 'payment_totals', function ($join) {
+                $join->on('payment_totals.contract_id', '=', 'contracts.id');
+            })
+            ->leftJoinSub($costTotalsSubquery, 'cost_totals', function ($join) {
+                $join->on('cost_totals.contract_id', '=', 'contracts.id');
+            })
             ->where('contracts.approval_status', 'approved')
-            ->whereNotNull('contract_payments.paid_at');
+            ->select(
+                'contracts.id',
+                'contracts.collector_user_id',
+                'contracts.created_by'
+            )
+            ->selectRaw("$contractDateExpr as contract_date")
+            ->selectRaw('COALESCE(contracts.value, 0) as contract_value')
+            ->selectRaw('COALESCE(payment_totals.payments_total, 0) as payments_total')
+            ->selectRaw('COALESCE(cost_totals.costs_total, 0) as costs_total');
 
-        $paymentsAll = (clone $paymentsBase)
-            ->whereBetween('contract_payments.paid_at', [$startDate, $endDate])
-            ->selectRaw('contract_payments.paid_at as date, SUM(contract_payments.amount) as amount')
-            ->groupBy('date')
-            ->get();
-        $paymentsAllMap = $paymentsAll->mapWithKeys(function ($row) {
-            return [$row->date => (float) $row->amount];
-        });
-
-        $paymentsPeriod = (clone $paymentsBase)
+        $lifetimeContracts = (clone $baseContractsQuery)->get();
+        $filteredContracts = (clone $baseContractsQuery)
             ->whereBetween(DB::raw($contractDateExpr), [$startDate, $endDate])
-            ->whereBetween('contract_payments.paid_at', [$startDate, $endDate])
-            ->selectRaw('contract_payments.paid_at as date, SUM(contract_payments.amount) as amount')
-            ->groupBy('date')
+            ->orderBy('contract_date')
             ->get();
-        $paymentsPeriodMap = $paymentsPeriod->mapWithKeys(function ($row) {
-            return [$row->date => (float) $row->amount];
-        });
 
-        $paymentsPrePeriod = (clone $paymentsBase)
-            ->where(DB::raw($contractDateExpr), '<', $startDate)
-            ->whereBetween('contract_payments.paid_at', [$startDate, $endDate])
-            ->selectRaw('contract_payments.paid_at as date, SUM(contract_payments.amount) as amount')
-            ->groupBy('date')
-            ->get();
-        $paymentsPrePeriodMap = $paymentsPrePeriod->mapWithKeys(function ($row) {
-            return [$row->date => (float) $row->amount];
-        });
+        $lifetimeTotals = $this->summarizeContracts($lifetimeContracts);
+        $periodTotals = $this->summarizeContracts($filteredContracts);
+        $periodContractIds = $filteredContracts->pluck('id')->all();
 
-        $prePeriodRevenue = Contract::query()
-            ->where('approval_status', 'approved')
-            ->where(DB::raw($contractDateExpr), '<', $startDate)
-            ->sum('value');
+        $dailyMetrics = [];
+        foreach ($filteredContracts as $contract) {
+            $dateKey = (string) $contract->contract_date;
+            if (! isset($dailyMetrics[$dateKey])) {
+                $dailyMetrics[$dateKey] = [
+                    'revenue' => 0.0,
+                    'cashflow' => 0.0,
+                    'debt' => 0.0,
+                    'costs' => 0.0,
+                ];
+            }
 
-        $prePeriodPaid = (clone $paymentsBase)
-            ->where(DB::raw($contractDateExpr), '<', $startDate)
-            ->where('contract_payments.paid_at', '<', $startDate)
-            ->sum('contract_payments.amount');
+            $contractValue = (float) $contract->contract_value;
+            $paymentsTotal = (float) $contract->payments_total;
+            $costsTotal = (float) $contract->costs_total;
 
-        $openingPrevDebt = max(0, (float) $prePeriodRevenue - (float) $prePeriodPaid);
+            $dailyMetrics[$dateKey]['revenue'] += $contractValue;
+            $dailyMetrics[$dateKey]['cashflow'] += $paymentsTotal;
+            $dailyMetrics[$dateKey]['costs'] += $costsTotal;
+            $dailyMetrics[$dateKey]['debt'] += max(0, $contractValue - $paymentsTotal);
+        }
 
-        $clientsBeforeStart = Client::query()
-            ->whereDate('created_at', '<', $startDate)
-            ->count();
-        $clientsDailyRows = Client::query()
-            ->whereBetween(DB::raw('DATE(created_at)'), [$startDate, $endDate])
-            ->selectRaw('DATE(created_at) as date, COUNT(*) as total')
-            ->groupBy('date')
-            ->get();
-        $clientsDailyMap = $clientsDailyRows->mapWithKeys(function ($row) {
-            return [$row->date => (int) $row->total];
-        });
-
-        $rows = [];
-        $cumRevenue = 0;
-        $cumCollected = 0;
-        $cumPaymentsAll = 0;
-        $cumPrePeriodPayments = 0;
-        $cumAgents = $clientsBeforeStart;
-        $monthKey = null;
-        $monthAgents = 0;
-
+        $dailyRows = [];
+        $revenueCumulative = 0.0;
+        $cashflowCumulative = 0.0;
+        $debtCumulative = 0.0;
+        $costsCumulative = 0.0;
         $cursor = $start->copy();
         while ($cursor->lte($end)) {
             $dateKey = $cursor->toDateString();
-            $revDaily = (float) ($dailyRevenueMap[$dateKey] ?? 0);
-            $cumRevenue += $revDaily;
+            $metrics = $dailyMetrics[$dateKey] ?? [
+                'revenue' => 0.0,
+                'cashflow' => 0.0,
+                'debt' => 0.0,
+                'costs' => 0.0,
+            ];
+            $revenueCumulative += (float) $metrics['revenue'];
+            $cashflowCumulative += (float) $metrics['cashflow'];
+            $debtCumulative += (float) $metrics['debt'];
+            $costsCumulative += (float) $metrics['costs'];
 
-            $collectedDaily = (float) ($paymentsPeriodMap[$dateKey] ?? 0);
-            $cumCollected += $collectedDaily;
-
-            $debtDaily = max(0, $revDaily - $collectedDaily);
-            $debtCumulative = max(0, $cumRevenue - $cumCollected);
-
-            $preCollectedDaily = (float) ($paymentsPrePeriodMap[$dateKey] ?? 0);
-            $prevDebtOpen = max(0, $openingPrevDebt - $cumPrePeriodPayments);
-            $cumPrePeriodPayments += $preCollectedDaily;
-            $prevDebtRemaining = max(0, $prevDebtOpen - $preCollectedDaily);
-
-            $paymentsAllDaily = (float) ($paymentsAllMap[$dateKey] ?? 0);
-            $cumPaymentsAll += $paymentsAllDaily;
-
-            $agentsDaily = (int) ($clientsDailyMap[$dateKey] ?? 0);
-            $cumAgents += $agentsDaily;
-
-            $currentMonthKey = $cursor->format('Y-m');
-            if ($monthKey !== $currentMonthKey) {
-                $monthKey = $currentMonthKey;
-                $monthAgents = 0;
-            }
-            $monthAgents += $agentsDaily;
-
-            $targetRate = $targetRevenue > 0
-                ? round(($revDaily / $targetRevenue) * 100, 2)
-                : 0;
-            $cashRate = $revDaily > 0 ? round(($collectedDaily / $revDaily) * 100, 2) : 0;
-            $debtRate = $revDaily > 0 ? round(($debtDaily / $revDaily) * 100, 2) : 0;
-
-            $rows[] = [
+            $dailyRows[] = [
                 'date' => $dateKey,
-                'revenue_cumulative' => round($cumRevenue, 2),
-                'revenue_daily' => round($revDaily, 2),
-                'collected_cumulative' => round($cumCollected, 2),
-                'collected_daily' => round($collectedDaily, 2),
+                'revenue_daily' => round((float) $metrics['revenue'], 2),
+                'revenue_cumulative' => round($revenueCumulative, 2),
+                'cashflow_daily' => round((float) $metrics['cashflow'], 2),
+                'cashflow_cumulative' => round($cashflowCumulative, 2),
+                'debt_daily' => round((float) $metrics['debt'], 2),
                 'debt_cumulative' => round($debtCumulative, 2),
-                'debt_daily' => round($debtDaily, 2),
-                'debt_collected' => round($collectedDaily, 2),
-                'prev_month_debt_open' => round($prevDebtOpen, 2),
-                'prev_month_debt_collected' => round($preCollectedDaily, 2),
-                'cash_cumulative_period' => round($cumPaymentsAll, 2),
-                'cash_daily_total' => round($paymentsAllDaily, 2),
-                'agents_total' => $cumAgents,
-                'agents_month_cumulative' => $monthAgents,
-                'agents_daily_new' => $agentsDaily,
-                'agents_dropped' => 0,
+                'costs_daily' => round((float) $metrics['costs'], 2),
+                'costs_cumulative' => round($costsCumulative, 2),
                 'target_revenue' => round($targetRevenue, 2),
-                'target_rate' => $targetRate,
-                'cash_rate' => $cashRate,
-                'debt_rate' => $debtRate,
-                'prev_month_debt_remaining' => round($prevDebtRemaining, 2),
+                'target_rate' => $targetRevenue > 0
+                    ? round((((float) $metrics['revenue']) / $targetRevenue) * 100, 2)
+                    : 0,
             ];
 
             $cursor->addDay();
         }
 
-        $periodCostsTotal = 0.0;
-        if ($periodContractIds->isNotEmpty()) {
-            $periodCostsTotal = (float) ContractCost::query()
-                ->whereIn('contract_id', $periodContractIds)
-                ->sum('amount');
+        $productBreakdown = collect();
+        if (! empty($periodContractIds)) {
+            $productBreakdown = ContractItem::query()
+                ->leftJoin('products', 'contract_items.product_id', '=', 'products.id')
+                ->whereIn('contract_items.contract_id', $periodContractIds)
+                ->selectRaw("COALESCE(products.name, contract_items.product_name, 'Chưa gắn sản phẩm') as product_name")
+                ->selectRaw('SUM(contract_items.total_price) as revenue')
+                ->groupBy('product_name')
+                ->orderByDesc('revenue')
+                ->get()
+                ->map(function ($item) {
+                    return [
+                        'label' => (string) $item->product_name,
+                        'value' => round((float) $item->revenue, 2),
+                    ];
+                })
+                ->values();
         }
-        $periodPaidTotal = (float) collect($paymentsAllMap)->sum();
-        $periodDebtTotal = max(0, $periodRevenueTotal - $cumCollected);
 
-        $productRows = ContractItem::query()
-            ->join('contracts', 'contract_items.contract_id', '=', 'contracts.id')
-            ->leftJoin('products', 'contract_items.product_id', '=', 'products.id')
-            ->where('contracts.approval_status', 'approved')
-            ->whereBetween(DB::raw($contractDateExpr), [$startDate, $endDate])
-            ->selectRaw('COALESCE(products.name, contract_items.product_name, ?) as product_name, SUM(contract_items.total_price) as revenue', ['Chưa gắn sản phẩm'])
-            ->groupBy('product_name')
-            ->orderByDesc('revenue')
-            ->get()
-            ->map(function ($item) {
-                return [
-                    'label' => (string) $item->product_name,
-                    'value' => round((float) $item->revenue, 2),
-                ];
-            })
-            ->values();
-
-        $productCoveredRevenue = (float) $productRows->sum('value');
-        $unmappedProductRevenue = round(max(0, $periodRevenueTotal - $productCoveredRevenue), 2);
+        $coveredProductRevenue = 0.0;
+        foreach ($productBreakdown as $row) {
+            $coveredProductRevenue += (float) ($row['value'] ?? 0);
+        }
+        $unmappedProductRevenue = round(max(0, (float) $periodTotals['revenue'] - $coveredProductRevenue), 2);
         if ($unmappedProductRevenue > 0) {
-            $productRows->push([
+            $productBreakdown->push([
                 'label' => 'Chưa gắn sản phẩm',
                 'value' => $unmappedProductRevenue,
             ]);
         }
 
-        $paymentSubquery = ContractPayment::query()
-            ->selectRaw('contract_id, SUM(amount) as payments_total')
-            ->groupBy('contract_id');
-        $costSubquery = ContractCost::query()
-            ->selectRaw('contract_id, SUM(amount) as costs_total')
-            ->groupBy('contract_id');
-
-        $staffRevenueRows = Contract::query()
-            ->join('clients', 'contracts.client_id', '=', 'clients.id')
-            ->leftJoinSub($paymentSubquery, 'payment_totals', function ($join) {
-                $join->on('payment_totals.contract_id', '=', 'contracts.id');
-            })
-            ->leftJoinSub($costSubquery, 'cost_totals', function ($join) {
-                $join->on('cost_totals.contract_id', '=', 'contracts.id');
-            })
-            ->where('contracts.approval_status', 'approved')
-            ->whereBetween(DB::raw($contractDateExpr), [$startDate, $endDate])
-            ->selectRaw('COALESCE(contracts.collector_user_id, contracts.created_by, clients.assigned_staff_id) as staff_id')
-            ->selectRaw('SUM(contracts.value) as signed_revenue')
-            ->selectRaw('SUM(GREATEST(contracts.value - COALESCE(cost_totals.costs_total, 0), 0)) as settled_revenue')
-            ->selectRaw('SUM(COALESCE(payment_totals.payments_total, 0)) as collected_revenue')
-            ->selectRaw('COUNT(contracts.id) as contracts_count')
-            ->groupBy('staff_id')
-            ->orderByDesc('signed_revenue')
+        $staffUsers = User::query()
+            ->whereIn('role', ['admin', 'quan_ly', 'nhan_vien', 'ke_toan'])
+            ->orderBy('name')
             ->get();
-        $staffMap = User::query()
-            ->whereIn('id', $staffRevenueRows->pluck('staff_id')->filter()->all())
-            ->get()
-            ->keyBy('id');
-        $staffBreakdown = $staffRevenueRows
-            ->map(function ($item) use ($staffMap) {
-                $staff = $item->staff_id ? $staffMap->get((int) $item->staff_id) : null;
-                return [
-                    'staff_id' => $item->staff_id ? (int) $item->staff_id : null,
-                    'staff_name' => $staff ? ($staff->name ?: 'Chưa gán nhân viên') : 'Chưa gán nhân viên',
-                    'avatar_url' => $staff ? $staff->avatar_url : null,
-                    'signed_revenue' => round((float) $item->signed_revenue, 2),
-                    'settled_revenue' => round((float) $item->settled_revenue, 2),
-                    'collected_revenue' => round((float) $item->collected_revenue, 2),
-                    'contracts_count' => (int) $item->contracts_count,
+        $staffMetrics = [];
+        foreach ($filteredContracts as $contract) {
+            $staffId = (int) ($contract->collector_user_id ?: $contract->created_by ?: 0);
+            if (! isset($staffMetrics[$staffId])) {
+                $staffMetrics[$staffId] = [
+                    'revenue' => 0.0,
+                    'cashflow' => 0.0,
+                    'debt' => 0.0,
+                    'costs' => 0.0,
+                    'contracts_count' => 0,
                 ];
-            })
-            ->values();
+            }
+
+            $contractValue = (float) $contract->contract_value;
+            $paymentsTotal = (float) $contract->payments_total;
+            $costsTotal = (float) $contract->costs_total;
+
+            $staffMetrics[$staffId]['revenue'] += $contractValue;
+            $staffMetrics[$staffId]['cashflow'] += $paymentsTotal;
+            $staffMetrics[$staffId]['costs'] += $costsTotal;
+            $staffMetrics[$staffId]['debt'] += max(0, $contractValue - $paymentsTotal);
+            $staffMetrics[$staffId]['contracts_count'] += 1;
+        }
+
+        $staffBreakdown = [];
+        foreach ($staffUsers as $staff) {
+            $metrics = $staffMetrics[$staff->id] ?? [
+                'revenue' => 0.0,
+                'cashflow' => 0.0,
+                'debt' => 0.0,
+                'costs' => 0.0,
+                'contracts_count' => 0,
+            ];
+
+            $staffBreakdown[] = [
+                'staff_id' => (int) $staff->id,
+                'staff_name' => (string) ($staff->name ?: 'Nhân viên'),
+                'avatar_url' => $staff->avatar_url,
+                'revenue' => round((float) $metrics['revenue'], 2),
+                'cashflow' => round((float) $metrics['cashflow'], 2),
+                'debt' => round((float) $metrics['debt'], 2),
+                'costs' => round((float) $metrics['costs'], 2),
+                'contracts_count' => (int) $metrics['contracts_count'],
+            ];
+        }
+        usort($staffBreakdown, function ($left, $right) {
+            $revenueCompare = ($right['revenue'] <=> $left['revenue']);
+            if ($revenueCompare !== 0) {
+                return $revenueCompare;
+            }
+            return strcmp((string) $left['staff_name'], (string) $right['staff_name']);
+        });
+
+        if (isset($staffMetrics[0])) {
+            $staffBreakdown[] = [
+                'staff_id' => null,
+                'staff_name' => 'Chưa gán nhân viên',
+                'avatar_url' => null,
+                'revenue' => round((float) $staffMetrics[0]['revenue'], 2),
+                'cashflow' => round((float) $staffMetrics[0]['cashflow'], 2),
+                'debt' => round((float) $staffMetrics[0]['debt'], 2),
+                'costs' => round((float) $staffMetrics[0]['costs'], 2),
+                'contracts_count' => (int) $staffMetrics[0]['contracts_count'],
+            ];
+        }
 
         return response()->json([
-            'total_revenue' => round($lifetimeRevenue, 2),
-            'total_paid' => round($lifetimePaid, 2),
-            'total_debt' => round($lifetimeDebt, 2),
-            'total_costs' => round($lifetimeCosts, 2),
-            'net_revenue' => round($lifetimeNetRevenue, 2),
-            'contracts_total' => $lifetimeContractsTotal,
+            'total_revenue' => round((float) $lifetimeTotals['revenue'], 2),
+            'total_paid' => round((float) $lifetimeTotals['cashflow'], 2),
+            'total_debt' => round((float) $lifetimeTotals['debt'], 2),
+            'total_costs' => round((float) $lifetimeTotals['costs'], 2),
+            'net_revenue' => round((float) $lifetimeTotals['revenue'] - (float) $lifetimeTotals['costs'], 2),
+            'contracts_total' => (int) $lifetimeTotals['contracts_total'],
             'period_totals' => [
-                'revenue' => round($periodRevenueTotal, 2),
-                'paid' => round($periodPaidTotal, 2),
-                'debt' => round($periodDebtTotal, 2),
-                'costs' => round($periodCostsTotal, 2),
-                'net_revenue' => round($periodRevenueTotal - $periodCostsTotal, 2),
-                'contracts_total' => $periodContractsTotal,
+                'revenue' => round((float) $periodTotals['revenue'], 2),
+                'cashflow' => round((float) $periodTotals['cashflow'], 2),
+                'paid' => round((float) $periodTotals['cashflow'], 2),
+                'debt' => round((float) $periodTotals['debt'], 2),
+                'costs' => round((float) $periodTotals['costs'], 2),
+                'contracts_total' => (int) $periodTotals['contracts_total'],
+                'target_revenue' => round($targetRevenue, 2),
+                'target_rate' => $targetRevenue > 0
+                    ? round((((float) $periodTotals['revenue']) / $targetRevenue) * 100, 2)
+                    : 0,
             ],
-            'monthly' => $monthlyRows,
-            'top_customers' => $topCustomers,
-            'product_breakdown' => $productRows,
+            'product_breakdown' => $productBreakdown->values(),
             'staff_breakdown' => $staffBreakdown,
-            'daily_rows' => $rows,
+            'daily_rows' => $dailyRows,
             'period' => [
                 'from' => $startDate,
                 'to' => $endDate,
@@ -608,5 +534,45 @@ class ReportController extends Controller
                 'available_to' => $availableEnd->toDateString(),
             ],
         ]);
+    }
+
+    private function resolveLatestRevenueDate(array $values): ?Carbon
+    {
+        $dates = collect($values)
+            ->filter()
+            ->map(function ($value) {
+                return Carbon::parse($value);
+            })
+            ->sortBy(function (Carbon $value) {
+                return $value->timestamp;
+            })
+            ->values();
+
+        return $dates->isEmpty() ? null : $dates->last();
+    }
+
+    private function summarizeContracts($contracts): array
+    {
+        $totals = [
+            'revenue' => 0.0,
+            'cashflow' => 0.0,
+            'debt' => 0.0,
+            'costs' => 0.0,
+            'contracts_total' => 0,
+        ];
+
+        foreach ($contracts as $contract) {
+            $value = (float) ($contract->contract_value ?? 0);
+            $paymentsTotal = (float) ($contract->payments_total ?? 0);
+            $costsTotal = (float) ($contract->costs_total ?? 0);
+
+            $totals['revenue'] += $value;
+            $totals['cashflow'] += $paymentsTotal;
+            $totals['costs'] += $costsTotal;
+            $totals['debt'] += max(0, $value - $paymentsTotal);
+            $totals['contracts_total'] += 1;
+        }
+
+        return $totals;
     }
 }

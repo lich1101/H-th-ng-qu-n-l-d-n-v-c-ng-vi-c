@@ -5,90 +5,134 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Models\Client;
 use App\Models\Contract;
-use App\Models\ContractCost;
+use App\Models\ContractItem;
 use App\Models\ContractPayment;
+use App\Models\Department;
 use App\Models\LeadType;
+use App\Models\Product;
 use App\Models\Project;
 use App\Models\RevenueTier;
 use App\Models\Task;
 use App\Models\User;
+use App\Services\ProjectProgressService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
+use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
 class ImportController extends Controller
 {
+    protected $userCacheByEmail = [];
+    protected $userCacheByName = [];
+    protected $users = [];
+    protected $departmentCacheByName = [];
+    protected $leadTypeCacheByName = [];
+    protected $productCacheByCode = [];
+    protected $productCacheByName = [];
+
     public function importClients(Request $request): JsonResponse
     {
         $this->authorizeRoles($request, ['admin', 'quan_ly', 'nhan_vien']);
+        $this->prepareImportRuntime();
         $file = $this->validateFile($request);
-
-        $rows = $this->loadRows($file->getRealPath());
-        if (count($rows) < 2) {
-            return response()->json(['message' => 'File không có dữ liệu.'], 422);
-        }
-
-        $headerMap = $this->buildHeaderMap(array_shift($rows), $this->clientHeaderMap());
         $report = $this->initReport();
+        $user = $request->user();
 
-        foreach ($rows as $index => $row) {
-            $rowNumber = $index + 2;
-            $data = $this->mapRow($row, $headerMap);
+        $this->iterateMappedRows($file->getRealPath(), $this->clientHeaderMap(), function (array $data, int $rowNumber) use (&$report, $user) {
             if (empty($data['name'])) {
-                $report['skipped']++;
-                $report['errors'][] = ['row' => $rowNumber, 'message' => 'Thiếu tên khách hàng.'];
-                continue;
+                $this->skipRow($report, $rowNumber, 'Thiếu tên khách hàng.');
+                return;
             }
 
             try {
                 DB::beginTransaction();
-                $client = $this->findClientByIdentity($data['name'], $data['phone'] ?? null, $data['email'] ?? null);
+
+                $leadTypeId = $this->resolveLeadTypeId($data['lead_type_name'] ?? null);
+                $salesOwnerId = $this->resolveUserId($data['manager_name'] ?? null);
+                $assignedStaffId = $this->resolveUserId($data['watcher_name'] ?? null);
+                if (! $assignedStaffId) {
+                    $assignedStaffId = $salesOwnerId;
+                }
+
+                if ($user->role === 'nhan_vien') {
+                    $assignedStaffId = (int) $user->id;
+                    $salesOwnerId = (int) $user->id;
+                }
+
+                $assignedDepartmentId = $assignedStaffId ? $this->getUserDepartmentId($assignedStaffId) : null;
+                $totalRevenue = $this->parseNumber($data['total_revenue'] ?? null);
                 $payload = [
                     'name' => $data['name'],
+                    'external_code' => $data['external_code'] ?? null,
                     'company' => $data['company'] ?? null,
                     'email' => $data['email'] ?? null,
                     'phone' => $data['phone'] ?? null,
                     'notes' => $data['notes'] ?? null,
+                    'lead_type_id' => $leadTypeId,
+                    'sales_owner_id' => $salesOwnerId,
+                    'assigned_staff_id' => $assignedStaffId,
+                    'assigned_department_id' => $assignedDepartmentId,
                     'lead_source' => $data['lead_source'] ?? null,
                     'lead_channel' => $data['lead_channel'] ?? null,
                     'lead_message' => $data['lead_message'] ?? null,
+                    'customer_status_label' => $data['customer_status_label'] ?? null,
+                    'customer_level' => $data['customer_level'] ?? null,
+                    'legacy_debt_amount' => $this->parseNumber($data['legacy_debt_amount'] ?? null) ?: 0,
+                    'company_size' => $data['company_size'] ?? null,
+                    'product_categories' => $data['product_categories'] ?? null,
                 ];
 
-                if (! empty($data['lead_type'])) {
-                    $leadTypeId = LeadType::query()
-                        ->where('name', 'like', '%' . $data['lead_type'] . '%')
-                        ->value('id');
-                    if ($leadTypeId) {
-                        $payload['lead_type_id'] = $leadTypeId;
-                    }
+                if ($totalRevenue !== null) {
+                    $payload['total_revenue'] = $totalRevenue;
+                    $payload['has_purchased'] = $totalRevenue > 0;
+                    $payload['revenue_tier_id'] = $this->resolveRevenueTierId($totalRevenue);
                 }
 
+                $client = $this->findClientByIdentity(
+                    $data['name'],
+                    $data['phone'] ?? null,
+                    $data['email'] ?? null,
+                    $data['external_code'] ?? null
+                );
+
+                $createdAt = $this->parseDateTime($data['created_at'] ?? null);
+
                 if ($client) {
-                    $client->update(array_filter($payload, function ($value) {
-                        return $value !== null && $value !== '';
-                    }));
+                    $client->update($this->filterNullValues($payload));
+                    if ($createdAt && empty($client->created_at)) {
+                        $client->timestamps = false;
+                        $client->created_at = $createdAt;
+                        $client->save();
+                        $client->timestamps = true;
+                    }
                     $report['updated']++;
                 } else {
                     if (empty($payload['lead_type_id'])) {
-                        $payload['lead_type_id'] = LeadType::query()
-                            ->where('name', 'Khách hàng tiềm năng')
-                            ->value('id');
+                        $payload['lead_type_id'] = $this->resolveLeadTypeId('Khách hàng tiềm năng');
                     }
                     $client = Client::create($payload);
+                    if ($createdAt) {
+                        $client->timestamps = false;
+                        $client->created_at = $createdAt;
+                        $client->updated_at = $createdAt;
+                        $client->save();
+                        $client->timestamps = true;
+                    }
                     $report['created']++;
                 }
 
                 DB::commit();
             } catch (\Throwable $e) {
                 DB::rollBack();
-                $report['skipped']++;
-                $report['errors'][] = ['row' => $rowNumber, 'message' => 'Lỗi xử lý: ' . $e->getMessage()];
+                $this->skipRow($report, $rowNumber, 'Lỗi xử lý: ' . $e->getMessage());
             }
-        }
+        });
 
         return response()->json($this->finalizeReport($report));
     }
@@ -96,106 +140,135 @@ class ImportController extends Controller
     public function importContracts(Request $request): JsonResponse
     {
         $this->authorizeRoles($request, ['admin', 'quan_ly', 'nhan_vien', 'ke_toan']);
+        $this->prepareImportRuntime();
         $file = $this->validateFile($request);
-
-        $rows = $this->loadRows($file->getRealPath());
-        if (count($rows) < 2) {
-            return response()->json(['message' => 'File không có dữ liệu.'], 422);
-        }
-
-        $headerMap = $this->buildHeaderMap(array_shift($rows), $this->contractHeaderMap());
         $report = $this->initReport();
+        $user = $request->user();
 
-        foreach ($rows as $index => $row) {
-            $rowNumber = $index + 2;
-            $data = $this->mapRow($row, $headerMap);
+        $this->iterateMappedRows($file->getRealPath(), $this->contractHeaderMap(), function (array $data, int $rowNumber) use (&$report, $user) {
+            $code = $data['code'] ?? null;
+            $clientName = $data['client_name'] ?? null;
 
-            if (empty($data['title'])) {
-                $report['skipped']++;
-                $report['errors'][] = ['row' => $rowNumber, 'message' => 'Thiếu tiêu đề hợp đồng.'];
-                continue;
+            if (! $code) {
+                $this->skipRow($report, $rowNumber, 'Thiếu số hợp đồng.');
+                return;
             }
-            if (empty($data['client_name'])) {
-                $report['skipped']++;
-                $report['errors'][] = ['row' => $rowNumber, 'message' => 'Thiếu tên khách hàng.'];
-                continue;
+
+            if (! $clientName) {
+                $this->skipRow($report, $rowNumber, 'Thiếu tên khách hàng.');
+                return;
             }
 
             try {
                 DB::beginTransaction();
 
-                $client = Client::query()->where('name', $data['client_name'])->first();
-                if (! $client) {
-                    $client = Client::create([
-                        'name' => $data['client_name'],
-                        'lead_type_id' => LeadType::query()
-                            ->where('name', 'Khách hàng tiềm năng')
-                            ->value('id'),
-                    ]);
-                }
+                $collectorId = $this->resolveUserId($data['collector_name'] ?? null);
+                $client = $this->resolveOrCreateClientForContract($data, $collectorId);
+                $status = $this->normalizeContractStatus($data['status'] ?? '');
+                $approval = $this->resolveApproval($user);
+                $value = $this->parseNumber($data['value'] ?? null);
+                $debt = $this->parseNumber($data['debt'] ?? null);
+                $paidTotal = $value !== null
+                    ? max(0, min($value, $value - max(0, (float) ($debt ?: 0))))
+                    : null;
 
-                $status = $this->normalizeContractStatus($data['status'] ?? 'draft');
-                $approval = $this->resolveApproval($request->user());
-
-                $contract = Contract::create([
-                    'code' => $data['code'] ?: $this->generateContractCode(),
-                    'title' => $data['title'],
+                $payload = [
+                    'title' => $this->buildImportedContractTitle($data),
+                    'contract_type' => $data['contract_type'] ?? null,
                     'client_id' => $client->id,
-                    'project_id' => $this->resolveProjectId($data),
-                    'value' => $this->parseNumber($data['value'] ?? null),
-                    'payment_times' => (int) ($data['payment_times'] ?? 1) ?: 1,
+                    'value' => $value,
                     'status' => $status,
+                    'approval_status' => $approval['approval_status'],
+                    'approved_by' => $approval['approved_by'],
+                    'approved_at' => $approval['approved_at'],
                     'signed_at' => $this->parseDate($data['signed_at'] ?? null),
                     'start_date' => $this->parseDate($data['start_date'] ?? null),
                     'end_date' => $this->parseDate($data['end_date'] ?? null),
                     'notes' => $data['notes'] ?? null,
-                    'created_by' => $request->user()->id,
-                    'approval_status' => $approval['approval_status'],
-                    'approved_by' => $approval['approved_by'],
-                    'approved_at' => $approval['approved_at'],
-                ]);
+                    'created_by' => $user->id,
+                    'collector_user_id' => $collectorId,
+                    'care_schedule' => $data['care_schedule'] ?? null,
+                    'duration_months' => $this->parseInteger($data['duration_months'] ?? null),
+                    'payment_cycle' => $data['payment_cycle'] ?? null,
+                    'imported_paid_periods' => $this->parseInteger($data['collected_periods'] ?? null),
+                ];
 
-                $paidAmount = $this->parseNumber($data['paid_amount'] ?? null);
-                if ($paidAmount !== null) {
-                    ContractPayment::create([
-                        'contract_id' => $contract->id,
-                        'amount' => $paidAmount,
-                        'paid_at' => $this->parseDate($data['paid_at'] ?? null),
-                        'method' => $data['payment_method'] ?? null,
-                        'note' => $data['payment_note'] ?? null,
-                        'created_by' => $request->user()->id,
-                    ]);
+                $contract = Contract::query()->where('code', $code)->first();
+                if ($contract) {
+                    $contract->update($this->filterNullValues($payload));
+                    $report['updated']++;
+                } else {
+                    $contract = Contract::create(array_merge($payload, [
+                        'code' => $code,
+                    ]));
+                    $report['created']++;
                 }
 
-                $costAmount = $this->parseNumber($data['cost_amount'] ?? null);
-                if ($costAmount !== null) {
-                    ContractCost::create([
+                $product = $this->resolveOrCreateProduct(
+                    $data['product_code'] ?? null,
+                    $data['product_name'] ?? null,
+                    $data['unit'] ?? null,
+                    $this->parseNumber($data['unit_price'] ?? null)
+                );
+
+                $quantity = $this->parseInteger($data['quantity'] ?? null) ?: 1;
+                $unitPrice = $this->parseNumber($data['unit_price'] ?? null) ?: 0;
+                $discountAmount = $this->parseNumber($data['discount_amount'] ?? null) ?: 0;
+                $vatAmount = $this->parseNumber($data['vat_amount'] ?? null) ?: 0;
+                $itemTotal = $this->parseNumber($data['value'] ?? null);
+                if ($itemTotal === null) {
+                    $itemTotal = max(0, ($unitPrice * $quantity) - $discountAmount + $vatAmount);
+                }
+
+                if (! empty($data['product_name']) || ! empty($data['product_code'])) {
+                    $itemIdentity = [
                         'contract_id' => $contract->id,
-                        'amount' => $costAmount,
-                        'cost_type' => $data['cost_type'] ?? null,
-                        'cost_date' => $this->parseDate($data['cost_date'] ?? null),
-                        'note' => $data['cost_note'] ?? null,
-                        'created_by' => $request->user()->id,
+                        'product_code' => $data['product_code'] ?? null,
+                        'product_name' => $data['product_name'] ?: ($product ? $product->name : 'Sản phẩm import'),
+                    ];
+
+                    ContractItem::query()->updateOrCreate(
+                        $itemIdentity,
+                        [
+                            'product_id' => $product ? $product->id : null,
+                            'unit' => $data['unit'] ?? ($product ? $product->unit : null),
+                            'unit_price' => $unitPrice,
+                            'quantity' => $quantity,
+                            'discount_amount' => $discountAmount,
+                            'vat_amount' => $vatAmount,
+                            'total_price' => $itemTotal,
+                            'note' => $this->composeImportedContractItemNote($data),
+                        ]
+                    );
+                }
+
+                $paymentNote = 'Import Excel: tổng đã thu';
+                if ($paidTotal !== null && $paidTotal > 0) {
+                    $payment = ContractPayment::query()
+                        ->firstOrNew([
+                            'contract_id' => $contract->id,
+                            'note' => $paymentNote,
+                        ]);
+                    $payment->fill([
+                        'amount' => $paidTotal,
+                        'paid_at' => $this->parseDate($data['signed_at'] ?? $data['start_date'] ?? null),
+                        'method' => 'import_excel',
+                        'created_by' => $user->id,
                     ]);
+                    $payment->save();
                 }
 
                 $contract->refreshFinancials();
-
-                if ($contract->approval_status === 'approved') {
-                    $contract->load('client');
-                    if ($contract->client) {
-                        $this->syncClientRevenue($contract->client);
-                    }
+                if ($contract->client) {
+                    $this->syncClientRevenue($contract->client);
                 }
 
                 DB::commit();
-                $report['created']++;
             } catch (\Throwable $e) {
                 DB::rollBack();
-                $report['skipped']++;
-                $report['errors'][] = ['row' => $rowNumber, 'message' => 'Lỗi xử lý: ' . $e->getMessage()];
+                $this->skipRow($report, $rowNumber, 'Lỗi xử lý: ' . $e->getMessage());
             }
-        }
+        });
 
         return response()->json($this->finalizeReport($report));
     }
@@ -203,60 +276,327 @@ class ImportController extends Controller
     public function importTasks(Request $request): JsonResponse
     {
         $this->authorizeRoles($request, ['admin', 'quan_ly']);
+        $this->prepareImportRuntime();
         $file = $this->validateFile($request);
-
-        $rows = $this->loadRows($file->getRealPath());
-        if (count($rows) < 2) {
-            return response()->json(['message' => 'File không có dữ liệu.'], 422);
-        }
-
-        $headerMap = $this->buildHeaderMap(array_shift($rows), $this->taskHeaderMap());
         $report = $this->initReport();
+        $user = $request->user();
+        $touchedProjectIds = [];
 
-        foreach ($rows as $index => $row) {
-            $rowNumber = $index + 2;
-            $data = $this->mapRow($row, $headerMap);
-
+        $this->iterateMappedRows($file->getRealPath(), $this->taskHeaderMap(), function (array $data, int $rowNumber) use (&$report, $user, &$touchedProjectIds) {
             if (empty($data['title'])) {
-                $report['skipped']++;
-                $report['errors'][] = ['row' => $rowNumber, 'message' => 'Thiếu tiêu đề công việc.'];
-                continue;
-            }
-
-            $projectId = $this->resolveTaskProject($data, $request->user());
-            if (! $projectId) {
-                $report['skipped']++;
-                $report['errors'][] = ['row' => $rowNumber, 'message' => 'Không xác định được dự án cho công việc.'];
-                continue;
+                $this->skipRow($report, $rowNumber, 'Thiếu tên công việc.');
+                return;
             }
 
             try {
                 DB::beginTransaction();
+
+                $client = $this->resolveOrCreateClientForTask($data, $user);
+                $project = $this->resolveProjectForTaskImport($data, $client, $user);
+                if (! $project) {
+                    $this->skipRow($report, $rowNumber, 'Không xác định được dự án cho công việc.');
+                    DB::rollBack();
+                    return;
+                }
+
+                $description = $data['description'] ?? null;
+                if (! empty($data['comments'])) {
+                    $description = trim((string) $description);
+                    $description = trim($description . ($description !== '' ? "\n\n" : '') . 'Ghi chú import: ' . $data['comments']);
+                }
+
                 $assigneeId = $this->resolveUserId($data['assignee'] ?? null);
-                Task::create([
-                    'project_id' => $projectId,
+                $identity = Task::query()
+                    ->where('project_id', $project->id)
+                    ->where('title', $data['title']);
+
+                if (! empty($data['start_at'])) {
+                    $parsedStart = $this->parseDateTime($data['start_at']);
+                    if ($parsedStart) {
+                        $identity->whereDate('start_at', Carbon::parse($parsedStart)->format('Y-m-d'));
+                    }
+                }
+
+                $task = $identity->first();
+                $payload = [
+                    'project_id' => $project->id,
+                    'department_id' => $assigneeId ? $this->getUserDepartmentId($assigneeId) : null,
                     'title' => $data['title'],
-                    'description' => $data['description'] ?? null,
+                    'description' => $description,
                     'priority' => $this->normalizeTaskPriority($data['priority'] ?? 'medium'),
                     'status' => $this->normalizeTaskStatus($data['status'] ?? 'todo'),
                     'start_at' => $this->parseDateTime($data['start_at'] ?? null),
                     'deadline' => $this->parseDateTime($data['deadline'] ?? null),
-                    'progress_percent' => (int) ($this->parseNumber($data['progress'] ?? 0) ?? 0),
-                    'created_by' => $request->user()->id,
-                    'assigned_by' => $request->user()->id,
+                    'created_by' => $user->id,
+                    'assigned_by' => $user->id,
                     'assignee_id' => $assigneeId,
                     'require_acknowledgement' => true,
-                ]);
+                    'weight_percent' => 100,
+                ];
+
+                if ($task) {
+                    $task->update($this->filterNullValues($payload));
+                    $report['updated']++;
+                } else {
+                    Task::create($payload);
+                    $report['created']++;
+                }
+
+                $touchedProjectIds[$project->id] = $project->id;
+
                 DB::commit();
-                $report['created']++;
             } catch (\Throwable $e) {
                 DB::rollBack();
-                $report['skipped']++;
-                $report['errors'][] = ['row' => $rowNumber, 'message' => 'Lỗi xử lý: ' . $e->getMessage()];
+                $this->skipRow($report, $rowNumber, 'Lỗi xử lý: ' . $e->getMessage());
             }
+        });
+
+        if (! empty($touchedProjectIds)) {
+            Project::query()
+                ->whereIn('id', array_values($touchedProjectIds))
+                ->get()
+                ->each(function (Project $project) {
+                    try {
+                        ProjectProgressService::recalc($project);
+                    } catch (\Throwable $e) {
+                        report($e);
+                    }
+                });
         }
 
         return response()->json($this->finalizeReport($report));
+    }
+
+    public function importUsers(Request $request): JsonResponse
+    {
+        $this->authorizeRoles($request, ['admin']);
+        $this->prepareImportRuntime();
+        $file = $this->validateFile($request);
+        $report = $this->initReport();
+
+        $this->iterateMappedRows($file->getRealPath(), $this->userHeaderMap(), function (array $data, int $rowNumber) use (&$report) {
+            if (empty($data['name'])) {
+                $this->skipRow($report, $rowNumber, 'Thiếu họ tên nhân viên.');
+                return;
+            }
+            if (empty($data['email'])) {
+                $this->skipRow($report, $rowNumber, 'Thiếu email nhân viên.');
+                return;
+            }
+
+            try {
+                DB::beginTransaction();
+
+                $departmentName = $data['department_name'] ?? null;
+                $departmentId = $departmentName ? $this->resolveOrCreateDepartmentId($departmentName) : null;
+                $password = $data['password'] ?? null;
+                if (! $password) {
+                    $password = ! empty($data['phone']) ? preg_replace('/\s+/', '', (string) $data['phone']) : 'clickon123';
+                    $this->pushWarning($report, $rowNumber, 'Thiếu mật khẩu, hệ thống dùng mật khẩu mặc định cho dòng import này.');
+                }
+
+                $payload = [
+                    'name' => $data['name'],
+                    'email' => Str::lower((string) $data['email']),
+                    'password' => Hash::make((string) $password),
+                    'role' => $this->normalizeUserRole($data['role'] ?? null),
+                    'department' => $departmentName,
+                    'department_id' => $departmentId,
+                    'phone' => $data['phone'] ?? null,
+                    'workload_capacity' => $this->parseInteger($data['workload_capacity'] ?? null) ?: 100,
+                    'is_active' => $this->normalizeUserActive($data['status'] ?? null),
+                ];
+
+                $user = User::query()->where('email', Str::lower((string) $data['email']))->first();
+                if ($user) {
+                    if (empty($data['password'])) {
+                        unset($payload['password']);
+                    }
+                    $user->update($payload);
+                    $report['updated']++;
+                } else {
+                    User::create($payload);
+                    $report['created']++;
+                }
+
+                DB::commit();
+            } catch (\Throwable $e) {
+                DB::rollBack();
+                $this->skipRow($report, $rowNumber, 'Lỗi xử lý: ' . $e->getMessage());
+            }
+        });
+
+        return response()->json($this->finalizeReport($report));
+    }
+
+    public function downloadClientsTemplate(Request $request)
+    {
+        $this->authorizeRoles($request, ['admin', 'quan_ly', 'nhan_vien']);
+
+        return $this->streamTemplate(
+            'mau-import-khach-hang.csv',
+            [
+                'Tên khách hàng',
+                'Mã khách hàng',
+                'Nguồn khách',
+                'Loại khách hàng',
+                'Email',
+                'Điện thoại',
+                'Ghi chú',
+                'Tình trạng',
+                'Người quản lý',
+                'Cấp',
+                'Công nợ',
+                'Nguồn khách hàng',
+                'Ngày tạo',
+                'Người theo dõi',
+                'Quy mô công ty',
+                'Danh mục sản phẩm',
+                'Doanh số lũy kế',
+            ],
+            [
+                'Công ty ABC',
+                'KH-001',
+                'Facebook Lead',
+                'Khách hàng tiềm năng',
+                'abc@example.com',
+                '0901234567',
+                'Khách cần tư vấn gói SEO tổng thể',
+                'Đang chăm sóc',
+                'Hà Hương ClickOn',
+                'Vàng',
+                '15000000',
+                'Fanpage ClickOn',
+                '18/03/2026',
+                'Minh Quang ClickOn',
+                '50-100 nhân sự',
+                'SEO tổng thể, Website Care',
+                '25000000',
+            ]
+        );
+    }
+
+    public function downloadContractsTemplate(Request $request)
+    {
+        $this->authorizeRoles($request, ['admin', 'quan_ly', 'nhan_vien', 'ke_toan']);
+
+        return $this->streamTemplate(
+            'mau-import-hop-dong.csv',
+            [
+                'Số hợp đồng',
+                'Khách hàng',
+                'Mã khách hàng',
+                'Loại hợp đồng',
+                'Ngày ký',
+                'Ngày kết thúc',
+                'Mã sản phẩm',
+                'Sản phẩm',
+                'Đơn giá',
+                'Số lượng',
+                'Đơn vị tính',
+                'Giảm giá',
+                'VAT',
+                'Lịch chăm sóc',
+                'Số tháng',
+                'Kỳ thanh toán',
+                'Ngày bắt đầu',
+                'Giá trị hợp đồng',
+                'Chưa thanh toán',
+                'Trạng thái',
+                'Người quản lý',
+                'Kỳ đã thu',
+                'Ghi chú',
+                'Điện thoại',
+            ],
+            [
+                'CTR-SEO-001',
+                'Công ty ABC',
+                'KH-001',
+                'Dịch vụ SEO',
+                '19/03/2026 - 11h11',
+                '19/09/2026',
+                'SEO-001',
+                'SEO Tổng Thể',
+                '30000000',
+                '1',
+                'gói',
+                '0',
+                '3000000',
+                'Hàng tuần',
+                '6',
+                'Hàng tháng',
+                '20/03/2026',
+                '33000000',
+                '15000000',
+                'Đang thực hiện',
+                'Hà Hương ClickOn',
+                '1',
+                'Khách ký gói 6 tháng',
+                '0901234567',
+            ]
+        );
+    }
+
+    public function downloadTasksTemplate(Request $request)
+    {
+        $this->authorizeRoles($request, ['admin', 'quan_ly']);
+
+        return $this->streamTemplate(
+            'mau-import-cong-viec.csv',
+            [
+                'Tên công việc',
+                'Khách hàng',
+                'Dự án',
+                'Loại dịch vụ',
+                'Ngày bắt đầu',
+                'Deadline',
+                'Nội dung',
+                'Comments',
+                'Trạng thái',
+                'Người thực hiện',
+            ],
+            [
+                'Nhắc khách hàng Gia hạn hợp đồng (1 ngày)',
+                'Công ty ABC',
+                'CRM Import - Công ty ABC',
+                'khac',
+                '28/02/2026 - 07h30',
+                '01/03/2026 - 09h00',
+                'Gọi khách xác nhận nhu cầu gia hạn hợp đồng',
+                'Ưu tiên gọi trong buổi sáng',
+                'Cần làm',
+                'Lương Chiến ClickOn',
+            ]
+        );
+    }
+
+    public function downloadUsersTemplate(Request $request)
+    {
+        $this->authorizeRoles($request, ['admin']);
+
+        return $this->streamTemplate(
+            'mau-import-nhan-vien.csv',
+            [
+                'Họ tên',
+                'Email',
+                'Mật khẩu',
+                'Vai trò',
+                'Phòng ban',
+                'Số điện thoại',
+                'Tải trọng công việc',
+                'Trạng thái',
+            ],
+            [
+                'Nguyễn Văn A',
+                'nva@example.com',
+                '12345678',
+                'nhan_vien',
+                'Phòng Sản Xuất',
+                '0901234567',
+                '100',
+                'Đang hoạt động',
+            ]
+        );
     }
 
     private function authorizeRoles(Request $request, array $roles): void
@@ -269,57 +609,146 @@ class ImportController extends Controller
     private function validateFile(Request $request)
     {
         $validated = $request->validate([
-            'file' => ['required', 'file', 'max:10240', 'mimes:xls,xlsx,csv'],
+            'file' => ['required', 'file', 'max:51200', 'mimes:xls,xlsx,csv'],
         ]);
+
         return $validated['file'];
     }
 
-    private function loadRows(string $path): array
+    private function iterateMappedRows(string $path, array $patterns, callable $handler): void
     {
-        $spreadsheet = IOFactory::load($path);
-        $sheet = $spreadsheet->getActiveSheet();
-        $rows = $sheet->toArray(null, true, true, true);
-        return array_values($rows);
+        $spreadsheet = $this->loadSpreadsheet($path);
+
+        try {
+            $sheet = $spreadsheet->getActiveSheet();
+            $highestColumn = $sheet->getHighestDataColumn();
+            $highestRow = (int) $sheet->getHighestDataRow();
+
+            if ($highestRow < 2) {
+                throw ValidationException::withMessages([
+                    'file' => 'File không có dữ liệu để import.',
+                ]);
+            }
+
+            $headerRows = $sheet->rangeToArray('A1:' . $highestColumn . '1', null, true, true, true);
+            $headerRow = isset($headerRows[1]) ? $headerRows[1] : [];
+            $headerMap = $this->buildHeaderMap($headerRow, $patterns);
+
+            if (empty($headerMap)) {
+                throw ValidationException::withMessages([
+                    'file' => 'Không nhận diện được tiêu đề cột của file import.',
+                ]);
+            }
+
+            for ($rowNumber = 2; $rowNumber <= $highestRow; $rowNumber++) {
+                $data = $this->mapSheetRow($sheet, $rowNumber, $headerMap);
+                if ($this->isMappedRowEmpty($data)) {
+                    continue;
+                }
+                $handler($data, $rowNumber);
+
+                if ($rowNumber % 250 === 0) {
+                    gc_collect_cycles();
+                }
+            }
+        } finally {
+            $spreadsheet->disconnectWorksheets();
+            unset($spreadsheet);
+        }
+    }
+
+    private function loadSpreadsheet(string $path)
+    {
+        if (! class_exists(IOFactory::class)) {
+            throw ValidationException::withMessages([
+                'file' => 'Thiếu thư viện đọc Excel trên server. Vui lòng chạy composer update phpoffice/phpspreadsheet.',
+            ]);
+        }
+
+        $reader = IOFactory::createReaderForFile($path);
+        if (method_exists($reader, 'setReadDataOnly')) {
+            $reader->setReadDataOnly(true);
+        }
+        if (method_exists($reader, 'setReadEmptyCells')) {
+            $reader->setReadEmptyCells(false);
+        }
+
+        return $reader->load($path);
     }
 
     private function buildHeaderMap(array $headerRow, array $patterns): array
     {
         $map = [];
         foreach ($headerRow as $col => $value) {
-            $key = $this->normalizeHeader((string) $value);
+            $key = $this->normalizeHeader((string) $this->cellToString($value));
             if ($key === '') {
                 continue;
             }
+
+            if (isset($patterns[$key])) {
+                $map[$col] = $patterns[$key];
+                continue;
+            }
+
             foreach ($patterns as $pattern => $field) {
-                if (str_contains($key, $pattern)) {
+                if (strpos($key, $pattern) !== false) {
                     $map[$col] = $field;
                     break;
                 }
             }
         }
+
         return $map;
     }
 
-    private function mapRow(array $row, array $headerMap): array
+    private function mapSheetRow(Worksheet $sheet, int $rowNumber, array $headerMap): array
     {
         $data = [];
-        foreach ($headerMap as $col => $field) {
-            $value = $row[$col] ?? null;
-            if (is_string($value)) {
-                $value = trim($value);
-            }
+        foreach ($headerMap as $column => $field) {
+            $value = $sheet->getCell($column . $rowNumber)->getValue();
+            $value = $this->cellToString($value);
             if ($value !== null && $value !== '') {
                 $data[$field] = $value;
             }
         }
+
         return $data;
+    }
+
+    private function cellToString($value)
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        if (is_object($value) && method_exists($value, 'getPlainText')) {
+            $value = $value->getPlainText();
+        }
+
+        if (is_string($value)) {
+            $value = trim($value);
+        }
+
+        return $value;
+    }
+
+    private function isMappedRowEmpty(array $data): bool
+    {
+        foreach ($data as $value) {
+            if ($value !== null && $value !== '') {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private function normalizeHeader(string $value): string
     {
         $ascii = Str::ascii($value);
         $ascii = Str::lower($ascii);
-        return preg_replace('/[^a-z0-9]/', '', $ascii) ?? '';
+
+        return preg_replace('/[^a-z0-9]/', '', $ascii) ?: '';
     }
 
     private function parseNumber($value): ?float
@@ -327,29 +756,56 @@ class ImportController extends Controller
         if ($value === null || $value === '') {
             return null;
         }
+
         if (is_numeric($value)) {
             return (float) $value;
         }
-        $clean = preg_replace('/[^0-9\.\-]/', '', str_replace(',', '', (string) $value));
-        if ($clean === '' || $clean === null) {
+
+        $raw = preg_replace('/[^\d,\.\-]/', '', (string) $value);
+        if ($raw === '' || $raw === null) {
             return null;
         }
-        return (float) $clean;
+
+        $commaCount = substr_count($raw, ',');
+        $dotCount = substr_count($raw, '.');
+
+        if ($commaCount > 0 && $dotCount > 0) {
+            $lastComma = strrpos($raw, ',');
+            $lastDot = strrpos($raw, '.');
+            if ($lastComma > $lastDot) {
+                $raw = str_replace('.', '', $raw);
+                $raw = str_replace(',', '.', $raw);
+            } else {
+                $raw = str_replace(',', '', $raw);
+            }
+        } elseif ($commaCount > 0) {
+            if ($commaCount === 1 && preg_match('/,\d{1,2}$/', $raw)) {
+                $raw = str_replace(',', '.', $raw);
+            } else {
+                $raw = str_replace(',', '', $raw);
+            }
+        } elseif ($dotCount > 1) {
+            $raw = str_replace('.', '', $raw);
+        }
+
+        return is_numeric($raw) ? (float) $raw : null;
+    }
+
+    private function parseInteger($value): ?int
+    {
+        $number = $this->parseNumber($value);
+        if ($number === null) {
+            return null;
+        }
+
+        return (int) round($number);
     }
 
     private function parseDate($value): ?string
     {
-        if ($value === null || $value === '') {
-            return null;
-        }
-        try {
-            if (is_numeric($value)) {
-                return ExcelDate::excelToDateTimeObject($value)->format('Y-m-d');
-            }
-            return Carbon::parse($value)->format('Y-m-d');
-        } catch (\Throwable $e) {
-            return null;
-        }
+        $dateTime = $this->parseDateTime($value);
+
+        return $dateTime ? Carbon::parse($dateTime)->format('Y-m-d') : null;
     }
 
     private function parseDateTime($value): ?string
@@ -357,177 +813,97 @@ class ImportController extends Controller
         if ($value === null || $value === '') {
             return null;
         }
+
         try {
             if (is_numeric($value)) {
                 return ExcelDate::excelToDateTimeObject($value)->format('Y-m-d H:i:s');
             }
-            return Carbon::parse($value)->format('Y-m-d H:i:s');
+
+            $normalized = trim((string) $value);
+            $normalized = preg_replace('/\s*-\s*/', ' ', $normalized);
+            $normalized = preg_replace('/(\d{1,2})h(\d{1,2})/i', '$1:$2', $normalized);
+            $normalized = preg_replace('/\s+/', ' ', $normalized);
+
+            $formats = [
+                'd/m/Y H:i',
+                'd/m/Y H:i:s',
+                'd/m/Y',
+                'Y-m-d H:i:s',
+                'Y-m-d H:i',
+                'Y-m-d',
+            ];
+
+            foreach ($formats as $format) {
+                try {
+                    $date = Carbon::createFromFormat($format, $normalized);
+                    if ($date) {
+                        return $date->format('Y-m-d H:i:s');
+                    }
+                } catch (\Throwable $e) {
+                }
+            }
+
+            return Carbon::parse($normalized)->format('Y-m-d H:i:s');
         } catch (\Throwable $e) {
             return null;
         }
-    }
-
-    private function resolveProjectId(array $data): ?int
-    {
-        if (! empty($data['project_id'])) {
-            return (int) $data['project_id'];
-        }
-        if (! empty($data['project_name'])) {
-            $project = Project::query()->where('name', $data['project_name'])->first();
-            return $project ? $project->id : null;
-        }
-        return null;
-    }
-
-    private function resolveTaskProject(array $data, User $user): ?int
-    {
-        if (! empty($data['project_id'])) {
-            return (int) $data['project_id'];
-        }
-        if (! empty($data['project_name'])) {
-            $project = Project::query()->where('name', $data['project_name'])->first();
-            if ($project) {
-                return $project->id;
-            }
-            $serviceType = $this->normalizeServiceType($data['service_type'] ?? '');
-            if (! $serviceType) {
-                return null;
-            }
-            $code = $this->generateProjectCode();
-            $project = Project::create([
-                'code' => $code,
-                'name' => $data['project_name'],
-                'service_type' => $serviceType,
-                'status' => 'moi_tao',
-                'created_by' => $user->id,
-            ]);
-            return $project->id;
-        }
-        return null;
-    }
-
-    private function resolveUserId(?string $value): ?int
-    {
-        if (! $value) {
-            return null;
-        }
-        $user = User::query()
-            ->where('email', $value)
-            ->orWhere('name', 'like', '%' . $value . '%')
-            ->first();
-        return $user ? $user->id : null;
-    }
-
-    private function normalizeContractStatus(string $value): string
-    {
-        $key = preg_replace('/[^a-z0-9]/', '', Str::lower(Str::ascii($value))) ?? '';
-        if (str_contains($key, 'thanhcong') || str_contains($key, 'success')) return 'success';
-        if (str_contains($key, 'danghieuluc') || str_contains($key, 'active')) return 'active';
-        if (str_contains($key, 'daky') || str_contains($key, 'signed')) return 'signed';
-        if (str_contains($key, 'hethan') || str_contains($key, 'expired')) return 'expired';
-        if (str_contains($key, 'huy') || str_contains($key, 'cancel')) return 'cancelled';
-        return 'draft';
-    }
-
-    private function normalizeTaskStatus(string $value): string
-    {
-        $key = preg_replace('/[^a-z0-9]/', '', Str::lower(Str::ascii($value))) ?? '';
-        if (str_contains($key, 'doing') || str_contains($key, 'danglam')) return 'doing';
-        if (str_contains($key, 'done') || str_contains($key, 'hoanthanh')) return 'done';
-        if (str_contains($key, 'blocked') || str_contains($key, 'bichan')) return 'blocked';
-        return 'todo';
-    }
-
-    private function normalizeTaskPriority(string $value): string
-    {
-        $key = preg_replace('/[^a-z0-9]/', '', Str::lower(Str::ascii($value))) ?? '';
-        if (str_contains($key, 'urgent') || str_contains($key, 'khancap')) return 'urgent';
-        if (str_contains($key, 'high') || str_contains($key, 'cao')) return 'high';
-        if (str_contains($key, 'low') || str_contains($key, 'thap')) return 'low';
-        return 'medium';
-    }
-
-    private function normalizeServiceType(string $value): ?string
-    {
-        $key = preg_replace('/[^a-z0-9]/', '', Str::lower(Str::ascii($value))) ?? '';
-        if ($key === '') {
-            return null;
-        }
-        if (str_contains($key, 'backlink')) return 'backlinks';
-        if (str_contains($key, 'chamsoc') || str_contains($key, 'websitecare')) return 'cham_soc_website_tong_the';
-        if (str_contains($key, 'viet') || str_contains($key, 'content')) return 'viet_content';
-        if (str_contains($key, 'audit')) return 'audit_content';
-        return null;
     }
 
     private function clientHeaderMap(): array
     {
         return [
             'tenkhachhang' => 'name',
-            'khachhang' => 'name',
-            'customer' => 'name',
-            'name' => 'name',
-            'congty' => 'company',
-            'company' => 'company',
+            'makhachhang' => 'external_code',
+            'nguonkhachhang' => 'lead_channel',
+            'nguonkhach' => 'lead_source',
+            'loaikhachhang' => 'lead_type_name',
+            'email' => 'email',
+            'dienthoai' => 'phone',
             'sodienthoai' => 'phone',
             'sdt' => 'phone',
-            'dienthoai' => 'phone',
-            'phone' => 'phone',
-            'email' => 'email',
-            'trangthai' => 'lead_type',
-            'leadtype' => 'lead_type',
-            'nguon' => 'lead_source',
-            'source' => 'lead_source',
-            'kenh' => 'lead_channel',
-            'channel' => 'lead_channel',
             'ghichu' => 'notes',
-            'note' => 'notes',
+            'tinhtrang' => 'customer_status_label',
+            'nguoiquanly' => 'manager_name',
+            'cap' => 'customer_level',
+            'congno' => 'legacy_debt_amount',
+            'ngaytao' => 'created_at',
+            'nguoitheodoi' => 'watcher_name',
+            'quymocongty' => 'company_size',
+            'danhmucsanpham' => 'product_categories',
+            'doanhsoluyke' => 'total_revenue',
+            'noidung' => 'lead_message',
+            'company' => 'company',
         ];
     }
 
     private function contractHeaderMap(): array
     {
         return [
-            'mahopdong' => 'code',
             'sohopdong' => 'code',
-            'code' => 'code',
-            'tenhopdong' => 'title',
-            'hopdong' => 'title',
-            'title' => 'title',
             'khachhang' => 'client_name',
-            'tenkhachhang' => 'client_name',
-            'customer' => 'client_name',
-            'giatri' => 'value',
-            'tonggiatri' => 'value',
-            'doanhthu' => 'value',
-            'amount' => 'value',
-            'value' => 'value',
-            'trangthai' => 'status',
-            'status' => 'status',
+            'makhachhang' => 'client_code',
+            'loaikhopdong' => 'contract_type',
             'ngayky' => 'signed_at',
-            'ngaybatdau' => 'start_date',
             'ngayketthuc' => 'end_date',
-            'hethan' => 'end_date',
-            'solanthanhtoan' => 'payment_times',
-            'lanthanhtoan' => 'payment_times',
-            'dathu' => 'paid_amount',
-            'thanhtoan' => 'paid_amount',
-            'paid' => 'paid_amount',
-            'ngaythu' => 'paid_at',
-            'ngaythanhtoan' => 'paid_at',
-            'phuongthuc' => 'payment_method',
-            'method' => 'payment_method',
-            'ghichuthanhtoan' => 'payment_note',
-            'chiphi' => 'cost_amount',
-            'cost' => 'cost_amount',
-            'loaichiphi' => 'cost_type',
-            'ngaychi' => 'cost_date',
-            'ghichuchi' => 'cost_note',
+            'masanpham' => 'product_code',
+            'sanpham' => 'product_name',
+            'dongia' => 'unit_price',
+            'soluong' => 'quantity',
+            'donvitinh' => 'unit',
+            'giamgia' => 'discount_amount',
+            'vat' => 'vat_amount',
+            'lichchamsoc' => 'care_schedule',
+            'sothang' => 'duration_months',
+            'kythanhtoan' => 'payment_cycle',
+            'ngaybatdau' => 'start_date',
+            'giatrihopdong' => 'value',
+            'chuathanhtoan' => 'debt',
+            'trangthai' => 'status',
+            'nguoiquanly' => 'collector_name',
+            'kydathu' => 'collected_periods',
             'ghichu' => 'notes',
-            'note' => 'notes',
-            'duan' => 'project_name',
-            'project' => 'project_name',
-            'projectid' => 'project_id',
+            'dienthoai' => 'phone',
+            'sodienthoai' => 'phone',
         ];
     }
 
@@ -535,30 +911,34 @@ class ImportController extends Controller
     {
         return [
             'tencongviec' => 'title',
-            'congviec' => 'title',
-            'title' => 'title',
-            'mota' => 'description',
-            'noidung' => 'description',
-            'description' => 'description',
+            'khachhang' => 'client_name',
             'duan' => 'project_name',
-            'project' => 'project_name',
-            'projectid' => 'project_id',
-            'dichvu' => 'service_type',
             'loaidichvu' => 'service_type',
-            'servicetype' => 'service_type',
+            'dichvu' => 'service_type',
+            'ngaybatdau' => 'start_at',
             'deadline' => 'deadline',
-            'hanchot' => 'deadline',
-            'batdau' => 'start_at',
-            'start' => 'start_at',
+            'noidung' => 'description',
+            'comments' => 'comments',
             'trangthai' => 'status',
-            'status' => 'status',
-            'uutien' => 'priority',
-            'priority' => 'priority',
-            'nguoi' => 'assignee',
-            'phutrach' => 'assignee',
-            'assignee' => 'assignee',
-            'tiendo' => 'progress',
-            'progress' => 'progress',
+            'nguoithuchien' => 'assignee',
+            'nguoiphutrach' => 'assignee',
+        ];
+    }
+
+    private function userHeaderMap(): array
+    {
+        return [
+            'hoten' => 'name',
+            'tennhanvien' => 'name',
+            'email' => 'email',
+            'matkhau' => 'password',
+            'vaitro' => 'role',
+            'phongban' => 'department_name',
+            'sodienthoai' => 'phone',
+            'dienthoai' => 'phone',
+            'tailuongcongviec' => 'workload_capacity',
+            'taitrongcongviec' => 'workload_capacity',
+            'trangthai' => 'status',
         ];
     }
 
@@ -569,25 +949,86 @@ class ImportController extends Controller
             'updated' => 0,
             'skipped' => 0,
             'errors' => [],
+            'warnings' => [],
         ];
+    }
+
+    private function prepareImportRuntime(): void
+    {
+        DB::disableQueryLog();
+
+        if (function_exists('set_time_limit')) {
+            @set_time_limit(0);
+        }
+
+        @ini_set('memory_limit', '1024M');
     }
 
     private function finalizeReport(array $report): array
     {
         $report['total'] = $report['created'] + $report['updated'] + $report['skipped'];
+
         return $report;
     }
 
-    private function findClientByIdentity(string $name, ?string $phone, ?string $email): ?Client
+    private function skipRow(array &$report, int $rowNumber, string $message): void
     {
-        $query = Client::query()->where('name', $name);
+        $report['skipped']++;
+        if (count($report['errors']) < 100) {
+            $report['errors'][] = [
+                'row' => $rowNumber,
+                'message' => $message,
+            ];
+        }
+    }
+
+    private function pushWarning(array &$report, int $rowNumber, string $message): void
+    {
+        if (count($report['warnings']) < 100) {
+            $report['warnings'][] = [
+                'row' => $rowNumber,
+                'message' => $message,
+            ];
+        }
+    }
+
+    private function filterNullValues(array $payload, array $keepNull = []): array
+    {
+        return array_filter($payload, function ($value, $key) use ($keepNull) {
+            if (in_array($key, $keepNull, true)) {
+                return true;
+            }
+
+            return $value !== null && $value !== '';
+        }, ARRAY_FILTER_USE_BOTH);
+    }
+
+    private function findClientByIdentity(string $name, ?string $phone, ?string $email, ?string $externalCode): ?Client
+    {
+        $query = Client::query();
+
+        if ($externalCode) {
+            $client = (clone $query)->where('external_code', $externalCode)->first();
+            if ($client) {
+                return $client;
+            }
+        }
+
         if ($phone) {
-            $query->orWhere('phone', $phone);
+            $client = (clone $query)->where('phone', $phone)->first();
+            if ($client) {
+                return $client;
+            }
         }
+
         if ($email) {
-            $query->orWhere('email', $email);
+            $client = (clone $query)->where('email', Str::lower($email))->first();
+            if ($client) {
+                return $client;
+            }
         }
-        return $query->first();
+
+        return (clone $query)->where('name', $name)->first();
     }
 
     private function resolveApproval(User $user): array
@@ -607,24 +1048,434 @@ class ImportController extends Controller
         ];
     }
 
-    private function generateContractCode(): string
+    private function buildImportedContractTitle(array $data): string
     {
-        $date = now()->format('Ymd');
-        for ($i = 0; $i < 5; $i++) {
-            $random = Str::upper(Str::random(4));
-            $code = "CTR-{$date}-{$random}";
-            if (! Contract::where('code', $code)->exists()) {
-                return $code;
+        if (! empty($data['title'])) {
+            return $data['title'];
+        }
+
+        $parts = [];
+        if (! empty($data['product_name'])) {
+            $parts[] = $data['product_name'];
+        }
+        if (! empty($data['client_name'])) {
+            $parts[] = $data['client_name'];
+        }
+        if (empty($parts) && ! empty($data['code'])) {
+            $parts[] = 'Hợp đồng ' . $data['code'];
+        }
+
+        return implode(' • ', $parts);
+    }
+
+    private function composeImportedContractItemNote(array $data): ?string
+    {
+        $notes = [];
+        if (! empty($data['contract_type'])) {
+            $notes[] = 'Loại hợp đồng: ' . $data['contract_type'];
+        }
+        if (! empty($data['care_schedule'])) {
+            $notes[] = 'Lịch chăm sóc: ' . $data['care_schedule'];
+        }
+        if (! empty($data['notes'])) {
+            $notes[] = 'Ghi chú: ' . $data['notes'];
+        }
+
+        return empty($notes) ? null : implode(' | ', $notes);
+    }
+
+    private function resolveLeadTypeId(?string $value): ?int
+    {
+        if (! $value) {
+            return null;
+        }
+
+        $key = $this->normalizeHeader($value);
+        if (isset($this->leadTypeCacheByName[$key])) {
+            return $this->leadTypeCacheByName[$key];
+        }
+
+        $leadType = LeadType::query()->get()->first(function ($item) use ($key) {
+            return $this->normalizeHeader($item->name) === $key;
+        });
+
+        if (! $leadType) {
+            $leadType = LeadType::create([
+                'name' => trim((string) $value),
+                'color_hex' => '#94A3B8',
+                'sort_order' => (int) LeadType::query()->max('sort_order') + 1,
+            ]);
+        }
+
+        $this->leadTypeCacheByName[$key] = (int) $leadType->id;
+
+        return (int) $leadType->id;
+    }
+
+    private function resolveRevenueTierId(float $totalRevenue): ?int
+    {
+        if ($totalRevenue <= 0) {
+            return null;
+        }
+
+        $tier = RevenueTier::query()
+            ->orderByDesc('min_amount')
+            ->get()
+            ->first(function ($item) use ($totalRevenue) {
+                return $totalRevenue >= (float) $item->min_amount;
+            });
+
+        return $tier ? (int) $tier->id : null;
+    }
+
+    private function resolveUserId(?string $value): ?int
+    {
+        if (! $value) {
+            return null;
+        }
+
+        $value = trim((string) $value);
+        if ($value === '') {
+            return null;
+        }
+
+        $this->bootUserCache();
+
+        $emailKey = Str::lower($value);
+        if (isset($this->userCacheByEmail[$emailKey])) {
+            return $this->userCacheByEmail[$emailKey];
+        }
+
+        $nameKey = $this->normalizeHeader($value);
+        if (isset($this->userCacheByName[$nameKey])) {
+            return $this->userCacheByName[$nameKey];
+        }
+
+        foreach ($this->users as $user) {
+            $normalizedName = $this->normalizeHeader($user['name']);
+            if (strpos($normalizedName, $nameKey) !== false || strpos($nameKey, $normalizedName) !== false) {
+                $this->userCacheByName[$nameKey] = (int) $user['id'];
+                return (int) $user['id'];
             }
         }
 
-        return 'CTR-' . $date . '-' . strtoupper(Str::random(6));
+        return null;
+    }
+
+    private function bootUserCache(): void
+    {
+        if (! empty($this->users)) {
+            return;
+        }
+
+        $this->users = User::query()
+            ->select(['id', 'name', 'email', 'department_id'])
+            ->get()
+            ->map(function ($user) {
+                return [
+                    'id' => (int) $user->id,
+                    'name' => (string) $user->name,
+                    'email' => Str::lower((string) $user->email),
+                    'department_id' => $user->department_id ? (int) $user->department_id : null,
+                ];
+            })
+            ->all();
+
+        foreach ($this->users as $user) {
+            $this->userCacheByEmail[$user['email']] = (int) $user['id'];
+            $this->userCacheByName[$this->normalizeHeader($user['name'])] = (int) $user['id'];
+        }
+    }
+
+    private function getUserDepartmentId(?int $userId): ?int
+    {
+        if (! $userId) {
+            return null;
+        }
+
+        $this->bootUserCache();
+        foreach ($this->users as $user) {
+            if ((int) $user['id'] === (int) $userId) {
+                return $user['department_id'] ?: null;
+            }
+        }
+
+        return null;
+    }
+
+    private function resolveOrCreateDepartmentId(string $departmentName): int
+    {
+        $departmentName = trim($departmentName);
+        $key = $this->normalizeHeader($departmentName);
+
+        if (isset($this->departmentCacheByName[$key])) {
+            return $this->departmentCacheByName[$key];
+        }
+
+        $department = Department::query()->get()->first(function ($item) use ($key) {
+            return $this->normalizeHeader($item->name) === $key;
+        });
+
+        if (! $department) {
+            $department = Department::create([
+                'name' => $departmentName,
+                'manager_id' => null,
+            ]);
+        }
+
+        $this->departmentCacheByName[$key] = (int) $department->id;
+
+        return (int) $department->id;
+    }
+
+    private function resolveOrCreateClientForContract(array $data, ?int $collectorId): Client
+    {
+        $client = $this->findClientByIdentity(
+            $data['client_name'],
+            $data['phone'] ?? null,
+            null,
+            $data['client_code'] ?? null
+        );
+
+        $payload = [
+            'name' => $data['client_name'],
+            'external_code' => $data['client_code'] ?? null,
+            'phone' => $data['phone'] ?? null,
+            'assigned_staff_id' => $collectorId,
+            'sales_owner_id' => $collectorId,
+            'assigned_department_id' => $collectorId ? $this->getUserDepartmentId($collectorId) : null,
+        ];
+
+        if ($client) {
+            $client->update($this->filterNullValues($payload));
+            return $client->fresh();
+        }
+
+        $payload['lead_type_id'] = $this->resolveLeadTypeId('Khách hàng tiềm năng');
+
+        return Client::create($payload);
+    }
+
+    private function resolveOrCreateProduct(?string $code, ?string $name, ?string $unit, ?float $unitPrice): ?Product
+    {
+        if (! $code && ! $name) {
+            return null;
+        }
+
+        if ($code) {
+            $cacheKey = Str::lower($code);
+            if (isset($this->productCacheByCode[$cacheKey])) {
+                return Product::find($this->productCacheByCode[$cacheKey]);
+            }
+        }
+
+        if ($name) {
+            $cacheKey = $this->normalizeHeader($name);
+            if (isset($this->productCacheByName[$cacheKey])) {
+                return Product::find($this->productCacheByName[$cacheKey]);
+            }
+        }
+
+        $product = null;
+        if ($code) {
+            $product = Product::query()->where('code', $code)->first();
+        }
+        if (! $product && $name) {
+            $product = Product::query()->where('name', $name)->first();
+        }
+
+        if (! $product) {
+            $product = Product::create([
+                'code' => $code,
+                'name' => $name ?: $code,
+                'unit' => $unit,
+                'unit_price' => $unitPrice ?: 0,
+                'is_active' => true,
+            ]);
+        } else {
+            $product->update($this->filterNullValues([
+                'name' => $name ?: $product->name,
+                'unit' => $unit ?: $product->unit,
+                'unit_price' => $unitPrice !== null ? $unitPrice : $product->unit_price,
+            ], ['unit_price']));
+        }
+
+        if ($code) {
+            $this->productCacheByCode[Str::lower($code)] = (int) $product->id;
+        }
+        if ($name) {
+            $this->productCacheByName[$this->normalizeHeader($name)] = (int) $product->id;
+        }
+
+        return $product;
+    }
+
+    private function resolveOrCreateClientForTask(array $data, User $user): ?Client
+    {
+        if (empty($data['client_name'])) {
+            return null;
+        }
+
+        $client = $this->findClientByIdentity($data['client_name'], null, null, null);
+        if ($client) {
+            return $client;
+        }
+
+        return Client::create([
+            'name' => $data['client_name'],
+            'lead_type_id' => $this->resolveLeadTypeId('Khách hàng tiềm năng'),
+            'assigned_staff_id' => $user->role === 'nhan_vien' ? $user->id : null,
+            'sales_owner_id' => $user->role === 'nhan_vien' ? $user->id : null,
+            'assigned_department_id' => $user->department_id ?: null,
+            'lead_source' => 'import_excel',
+            'lead_channel' => 'task_import',
+        ]);
+    }
+
+    private function resolveProjectForTaskImport(array $data, ?Client $client, User $user): ?Project
+    {
+        if (! empty($data['project_name'])) {
+            $project = Project::query()->where('name', $data['project_name'])->first();
+            if ($project) {
+                return $project;
+            }
+        }
+
+        if ($client) {
+            $existing = Project::query()
+                ->where('client_id', $client->id)
+                ->orderByDesc('id')
+                ->first();
+            if ($existing) {
+                return $existing;
+            }
+        }
+
+        $name = ! empty($data['project_name'])
+            ? $data['project_name']
+            : ($client ? 'CRM Import - ' . $client->name : 'CRM Import');
+
+        return Project::create([
+            'code' => $this->generateProjectCode(),
+            'name' => $name,
+            'client_id' => $client ? $client->id : null,
+            'service_type' => 'khac',
+            'service_type_other' => ! empty($data['service_type']) ? $data['service_type'] : 'CRM Import',
+            'status' => 'moi_tao',
+            'handover_status' => 'chua_ban_giao',
+            'created_by' => $user->id,
+        ]);
+    }
+
+    private function normalizeContractStatus(string $value): string
+    {
+        $key = preg_replace('/[^a-z0-9]/', '', Str::lower(Str::ascii($value))) ?: '';
+
+        if ($key === '') {
+            return 'draft';
+        }
+        if (strpos($key, 'hoanthanh') !== false || strpos($key, 'success') !== false || strpos($key, 'thanhcong') !== false) {
+            return 'success';
+        }
+        if (strpos($key, 'dangthuchien') !== false || strpos($key, 'danghieuluc') !== false || strpos($key, 'active') !== false) {
+            return 'active';
+        }
+        if (strpos($key, 'daky') !== false || strpos($key, 'signed') !== false) {
+            return 'signed';
+        }
+        if (strpos($key, 'hethan') !== false || strpos($key, 'expired') !== false) {
+            return 'expired';
+        }
+        if (strpos($key, 'huy') !== false || strpos($key, 'cancel') !== false || strpos($key, 'tamdung') !== false) {
+            return 'cancelled';
+        }
+
+        return 'draft';
+    }
+
+    private function normalizeTaskStatus(string $value): string
+    {
+        $key = preg_replace('/[^a-z0-9]/', '', Str::lower(Str::ascii($value))) ?: '';
+
+        if (strpos($key, 'doing') !== false || strpos($key, 'danglam') !== false || strpos($key, 'dangthuchien') !== false) {
+            return 'doing';
+        }
+        if (strpos($key, 'done') !== false || strpos($key, 'hoanthanh') !== false) {
+            return 'done';
+        }
+        if (strpos($key, 'blocked') !== false || strpos($key, 'bichan') !== false || strpos($key, 'tamdung') !== false) {
+            return 'blocked';
+        }
+
+        return 'todo';
+    }
+
+    private function normalizeTaskPriority(string $value): string
+    {
+        $key = preg_replace('/[^a-z0-9]/', '', Str::lower(Str::ascii($value))) ?: '';
+
+        if (strpos($key, 'urgent') !== false || strpos($key, 'khancap') !== false) {
+            return 'urgent';
+        }
+        if (strpos($key, 'high') !== false || strpos($key, 'cao') !== false) {
+            return 'high';
+        }
+        if (strpos($key, 'low') !== false || strpos($key, 'thap') !== false) {
+            return 'low';
+        }
+
+        return 'medium';
+    }
+
+    private function normalizeUserRole(?string $value): string
+    {
+        $key = preg_replace('/[^a-z0-9]/', '', Str::lower(Str::ascii((string) $value))) ?: '';
+
+        if (in_array($key, ['administrator', 'adminsystem'], true)) {
+            return 'administrator';
+        }
+        if (in_array($key, ['admin', 'quantricongty'], true)) {
+            return 'admin';
+        }
+        if (strpos($key, 'quanly') !== false || strpos($key, 'manager') !== false || strpos($key, 'truongphong') !== false) {
+            return 'quan_ly';
+        }
+        if (strpos($key, 'ketoan') !== false || strpos($key, 'accountant') !== false) {
+            return 'ke_toan';
+        }
+
+        return 'nhan_vien';
+    }
+
+    private function normalizeUserActive(?string $value): bool
+    {
+        $key = preg_replace('/[^a-z0-9]/', '', Str::lower(Str::ascii((string) $value))) ?: '';
+
+        if (in_array($key, ['0', 'inactive', 'tamkhoa', 'locked', 'disable', 'disabled'], true)) {
+            return false;
+        }
+
+        return true;
     }
 
     private function generateProjectCode(): string
     {
         $date = now()->format('Ymd');
+
         return 'PRJ-' . $date . '-' . strtoupper(Str::random(4));
+    }
+
+    private function streamTemplate(string $filename, array $headers, array $sample)
+    {
+        return response()->streamDownload(function () use ($headers, $sample) {
+            $handle = fopen('php://output', 'w');
+            fwrite($handle, "\xEF\xBB\xBF");
+            fputcsv($handle, $headers);
+            fputcsv($handle, $sample);
+            fclose($handle);
+        }, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
     }
 
     private function syncClientRevenue(Client $client): void
@@ -642,13 +1493,6 @@ class ImportController extends Controller
                 ->first(function ($item) use ($totalRevenue) {
                     return $totalRevenue >= (float) $item->min_amount;
                 });
-
-            if (! $tier) {
-                $tier = RevenueTier::query()
-                    ->where('min_amount', '>', 0)
-                    ->orderBy('min_amount')
-                    ->first();
-            }
         }
 
         $client->update([

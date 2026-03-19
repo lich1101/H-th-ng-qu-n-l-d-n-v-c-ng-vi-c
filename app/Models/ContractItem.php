@@ -9,10 +9,13 @@ class ContractItem extends Model
     protected $fillable = [
         'contract_id',
         'product_id',
+        'product_code',
         'product_name',
         'unit',
         'unit_price',
         'quantity',
+        'discount_amount',
+        'vat_amount',
         'total_price',
         'note',
     ];
@@ -20,6 +23,8 @@ class ContractItem extends Model
     protected $casts = [
         'unit_price' => 'float',
         'total_price' => 'float',
+        'discount_amount' => 'float',
+        'vat_amount' => 'float',
         'quantity' => 'integer',
     ];
 

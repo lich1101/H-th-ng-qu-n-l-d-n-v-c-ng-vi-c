@@ -341,17 +341,7 @@ class ContractController extends Controller
         }
 
         if ($user->role === 'quan_ly') {
-            $allowedIds = User::query()
-                ->where('is_active', true)
-                ->where(function (Builder $builder) use ($user) {
-                    $builder->whereIn('department_id', $user->managedDepartments()->pluck('id'))
-                        ->orWhere('id', $user->id);
-                })
-                ->pluck('id')
-                ->map(function ($id) {
-                    return (int) $id;
-                })
-                ->all();
+            $allowedIds = $this->allowedCollectorIdsForManager($user);
 
             if ($requestedCollectorId && in_array($requestedCollectorId, $allowedIds, true)) {
                 return $requestedCollectorId;
@@ -365,24 +355,50 @@ class ContractController extends Controller
         }
 
         if (in_array($user->role, ['admin', 'ke_toan'], true)) {
-            if ($requestedCollectorId) {
-                $exists = User::query()
-                    ->where('id', $requestedCollectorId)
-                    ->where('is_active', true)
-                    ->exists();
-                if ($exists) {
-                    return $requestedCollectorId;
-                }
+            $allowedIds = $this->allowedCollectorIdsForAdminAndAccounting();
+
+            if ($requestedCollectorId && in_array($requestedCollectorId, $allowedIds, true)) {
+                return $requestedCollectorId;
             }
 
-            if ($contract && $contract->collector_user_id) {
+            if ($contract && $contract->collector_user_id && in_array((int) $contract->collector_user_id, $allowedIds, true)) {
                 return (int) $contract->collector_user_id;
             }
 
-            return (int) $user->id;
+            return null;
         }
 
         return $requestedCollectorId ?: ($contract ? (int) $contract->collector_user_id : null);
+    }
+
+    private function allowedCollectorIdsForManager(User $user): array
+    {
+        return User::query()
+            ->where('is_active', true)
+            ->where(function (Builder $builder) use ($user) {
+                $builder->where('id', $user->id)
+                    ->orWhere(function (Builder $employeeBuilder) use ($user) {
+                        $employeeBuilder->where('role', 'nhan_vien')
+                            ->whereIn('department_id', $user->managedDepartments()->pluck('id'));
+                    });
+            })
+            ->pluck('id')
+            ->map(function ($id) {
+                return (int) $id;
+            })
+            ->all();
+    }
+
+    private function allowedCollectorIdsForAdminAndAccounting(): array
+    {
+        return User::query()
+            ->where('is_active', true)
+            ->where('role', 'nhan_vien')
+            ->pluck('id')
+            ->map(function ($id) {
+                return (int) $id;
+            })
+            ->all();
     }
 
     private function normalizeItems(array $items): array

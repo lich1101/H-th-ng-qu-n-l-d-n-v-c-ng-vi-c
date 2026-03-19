@@ -2,9 +2,9 @@ import React from 'react';
 
 const sizeMap = {
     sm: 'max-w-md',
-    md: 'max-w-xl',
-    lg: 'max-w-2xl',
-    xl: 'max-w-4xl',
+    md: 'max-w-4xl',
+    lg: 'max-w-6xl',
+    xl: 'max-w-7xl',
 };
 
 export default function Modal({
@@ -20,7 +20,7 @@ export default function Modal({
 
     return (
         <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4 py-6 md:px-8 md:py-10 backdrop-blur-sm"
             onClick={onClose}
             role="dialog"
             aria-modal="true"
@@ -29,9 +29,9 @@ export default function Modal({
                 className={`w-full ${sizeClass} max-h-[90vh] rounded-3xl bg-white border border-slate-200/80 shadow-[0_30px_80px_rgba(15,23,42,0.22)] flex flex-col overflow-hidden`}
                 onClick={(event) => event.stopPropagation()}
             >
-                <div className="flex items-start justify-between border-b border-slate-200/80 bg-slate-50/80 px-5 py-4">
+                <div className="flex items-start justify-between border-b border-slate-200/80 bg-slate-50/80 px-7 py-5 md:px-10">
                     <div>
-                        {title && <h3 className="text-lg font-semibold text-slate-900">{title}</h3>}
+                        {title && <h3 className="text-xl font-semibold text-slate-900">{title}</h3>}
                         {description && <p className="text-sm text-text-muted mt-1">{description}</p>}
                     </div>
                     {onClose && (
@@ -45,7 +45,7 @@ export default function Modal({
                         </button>
                     )}
                 </div>
-                <div className="flex-1 p-5 overflow-y-auto">{children}</div>
+                <div className="flex-1 overflow-y-auto px-7 py-7 md:px-10 md:py-9">{children}</div>
             </div>
         </div>
     );

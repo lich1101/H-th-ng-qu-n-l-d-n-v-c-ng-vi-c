@@ -16,11 +16,11 @@ const badgeStyle = (hex) => ({
 function LabeledField({ label, required = false, hint = '', className = '', children }) {
     return (
         <div className={className}>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-text-subtle">
+            <label className="mb-3.5 block text-xs font-semibold uppercase tracking-[0.14em] text-text-subtle">
                 {label}{required ? ' *' : ''}
             </label>
             {children}
-            {hint ? <p className="mt-1 text-xs text-text-muted">{hint}</p> : null}
+            {hint ? <p className="mt-1.5 text-xs text-text-muted">{hint}</p> : null}
         </div>
     );
 }
@@ -168,7 +168,9 @@ export default function CRM(props) {
             formData.append('file', clientImportFile);
             const res = await axios.post('/api/v1/imports/clients', formData);
             const report = res.data || {};
-            toast.success(`Import hoàn tất: ${report.created || 0} tạo mới, ${report.updated || 0} cập nhật.`);
+            toast.success(
+                `Import hoàn tất: ${report.created || 0} tạo mới, ${report.updated || 0} cập nhật, ${report.skipped || 0} bỏ qua.`
+            );
             setShowClientImport(false);
             setClientImportFile(null);
             await fetchClients(1, clientFilters);
@@ -1062,9 +1064,16 @@ export default function CRM(props) {
                     <LabeledField
                         label="File khách hàng"
                         required
-                        hint="Hỗ trợ file Excel hoặc CSV. Hệ thống sẽ đọc từng dòng để tạo khách hàng mới."
+                        hint="Hỗ trợ Excel hoặc CSV. Hệ thống sẽ tự nối theo mã khách, email, số điện thoại hoặc tên để tránh trùng dữ liệu."
                     >
                         <div className="rounded-2xl border border-dashed border-slate-200/80 p-4 text-center">
+                            <button
+                                type="button"
+                                className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+                                onClick={() => window.open('/api/v1/imports/clients/template', '_blank', 'noopener,noreferrer')}
+                            >
+                                Tải file mẫu
+                            </button>
                             <input
                                 id="import-client-file"
                                 type="file"
@@ -1074,7 +1083,7 @@ export default function CRM(props) {
                             />
                             <label
                                 htmlFor="import-client-file"
-                                className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+                                className="mt-3 inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
                             >
                                 Chọn file
                             </label>

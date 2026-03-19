@@ -41,11 +41,11 @@ const approvalBadgeClass = (value) => ({
 function LabeledField({ label, required = false, hint = '', className = '', children }) {
     return (
         <div className={className}>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-text-subtle">
+            <label className="mb-3.5 block text-xs font-semibold uppercase tracking-[0.14em] text-text-subtle">
                 {label}{required ? ' *' : ''}
             </label>
             {children}
-            {hint ? <p className="mt-1 text-xs text-text-muted">{hint}</p> : null}
+            {hint ? <p className="mt-1.5 text-xs text-text-muted">{hint}</p> : null}
         </div>
     );
 }
@@ -76,6 +76,9 @@ export default function Contracts(props) {
     const canFinance = ['admin', 'ke_toan'].includes(userRole);
     const isEmployee = userRole === 'nhan_vien';
     const canChooseCollector = ['admin', 'quan_ly', 'ke_toan'].includes(userRole);
+    const defaultCollectorUserId = userRole === 'nhan_vien' || userRole === 'quan_ly'
+        ? (currentUserId ? String(currentUserId) : '')
+        : '';
 
     const [contracts, setContracts] = useState([]);
     const [clients, setClients] = useState([]);
@@ -94,7 +97,7 @@ export default function Contracts(props) {
         title: '',
         client_id: '',
         project_id: '',
-        collector_user_id: currentUserId ? String(currentUserId) : '',
+        collector_user_id: defaultCollectorUserId,
         value: '',
         payment_times: '1',
         status: 'draft',
@@ -126,6 +129,29 @@ export default function Contracts(props) {
     const [importFile, setImportFile] = useState(null);
     const [importing, setImporting] = useState(false);
 
+    const contractValueTotal = useMemo(() => (
+        items.length ? itemsTotal : Number(form.value || 0)
+    ), [form.value, items.length, itemsTotal]);
+
+    const paymentBaseTotal = useMemo(() => {
+        return payments.reduce((sum, payment) => {
+            if (editingPaymentId && Number(payment.id) === Number(editingPaymentId)) {
+                return sum;
+            }
+            return sum + Number(payment.amount || 0);
+        }, 0);
+    }, [payments, editingPaymentId]);
+
+    const paymentRemaining = useMemo(
+        () => Math.max(0, contractValueTotal - paymentBaseTotal),
+        [contractValueTotal, paymentBaseTotal]
+    );
+
+    const paymentProjectedTotal = useMemo(
+        () => paymentBaseTotal + Number(paymentForm.amount || 0),
+        [paymentBaseTotal, paymentForm.amount]
+    );
+
     const fetchClients = async () => {
         try {
             const res = await axios.get('/api/v1/crm/clients', { params: { per_page: 200 } });
@@ -155,7 +181,9 @@ export default function Contracts(props) {
 
     const fetchCollectors = async () => {
         try {
-            const res = await axios.get('/api/v1/users/lookup');
+            const res = await axios.get('/api/v1/users/lookup', {
+                params: { purpose: 'contract_collector' },
+            });
             setCollectors(res.data?.data || []);
         } catch {
             setCollectors([]);
@@ -212,7 +240,7 @@ export default function Contracts(props) {
             title: '',
             client_id: '',
             project_id: '',
-            collector_user_id: currentUserId ? String(currentUserId) : '',
+            collector_user_id: defaultCollectorUserId,
             value: '',
             payment_times: '1',
             status: 'draft',
@@ -361,6 +389,10 @@ export default function Contracts(props) {
     const submitPayment = async (e) => {
         e.preventDefault();
         if (!editingId) return;
+        if (paymentProjectedTotal > contractValueTotal + 0.0001) {
+            toast.error(`Số tiền thanh toán vượt giá trị hợp đồng. Chỉ còn tối đa ${formatCurrency(paymentRemaining)} VNĐ.`);
+            return;
+        }
         try {
             const payload = {
                 amount: Number(paymentForm.amount || 0),
@@ -473,7 +505,9 @@ export default function Contracts(props) {
             formData.append('file', importFile);
             const res = await axios.post('/api/v1/imports/contracts', formData);
             const report = res.data || {};
-            toast.success(`Import hoàn tất: ${report.created || 0} tạo mới, ${report.updated || 0} cập nhật.`);
+            toast.success(
+                `Import hoàn tất: ${report.created || 0} tạo mới, ${report.updated || 0} cập nhật, ${report.skipped || 0} bỏ qua.`
+            );
             setShowImport(false);
             setImportFile(null);
             await fetchContracts();
@@ -791,7 +825,7 @@ export default function Contracts(props) {
                                         : userRole === 'quan_ly'
                                             ? 'Trưởng phòng mặc định là chính mình nhưng có thể chọn nhân sự trong phòng để đứng tên hợp đồng.'
                                             : canApprove
-                                                ? 'Admin/Kế toán có thể tạo hợp đồng cho mọi nhân sự và dùng thêm nút tạo & duyệt.'
+                                                ? 'Admin/Kế toán có thể tạo hợp đồng cho mọi nhân viên và dùng thêm nút tạo & duyệt.'
                                                 : 'Chọn nhân sự thu theo hợp đồng.'}
                                 </p>
                             </div>
@@ -1365,6 +1399,21 @@ export default function Contracts(props) {
                 size="md"
             >
                 <form className="space-y-3 text-sm" onSubmit={submitPayment}>
+                    <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3 text-xs text-text-muted">
+                        <div className="flex items-center justify-between gap-3">
+                            <span>Giá trị hợp đồng</span>
+                            <span className="font-semibold text-slate-900">{formatCurrency(contractValueTotal)} VNĐ</span>
+                        </div>
+                        <div className="mt-1 flex items-center justify-between gap-3">
+                            <span>Còn có thể thu</span>
+                            <span className={`font-semibold ${paymentRemaining > 0 ? 'text-emerald-700' : 'text-rose-600'}`}>{formatCurrency(paymentRemaining)} VNĐ</span>
+                        </div>
+                        {paymentProjectedTotal > contractValueTotal + 0.0001 && (
+                            <p className="mt-2 text-rose-600">
+                                Số tiền đang nhập vượt tổng giá trị hợp đồng.
+                            </p>
+                        )}
+                    </div>
                     <LabeledField label="Số tiền thanh toán" required>
                         <input
                             className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
@@ -1473,9 +1522,16 @@ export default function Contracts(props) {
                     <LabeledField
                         label="File hợp đồng"
                         required
-                        hint="Hỗ trợ Excel hoặc CSV. Hệ thống sẽ cố gắng tự nối hợp đồng với khách hàng trùng tên."
+                        hint="Hỗ trợ Excel hoặc CSV. Hệ thống sẽ tự nối theo số hợp đồng, mã khách hàng, số điện thoại và tạo dữ liệu còn thiếu nếu cần."
                     >
                         <div className="rounded-2xl border border-dashed border-slate-200/80 p-4 text-center">
+                            <button
+                                type="button"
+                                className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+                                onClick={() => window.open('/api/v1/imports/contracts/template', '_blank', 'noopener,noreferrer')}
+                            >
+                                Tải file mẫu
+                            </button>
                             <input
                                 id="import-contract-file"
                                 type="file"
@@ -1485,7 +1541,7 @@ export default function Contracts(props) {
                             />
                             <label
                                 htmlFor="import-contract-file"
-                                className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+                                className="mt-3 inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
                             >
                                 Chọn file
                             </label>

@@ -39,6 +39,10 @@ class ContractPaymentController extends Controller
         ]);
         $validated['created_by'] = $request->user()->id;
 
+        if ($error = $this->validatePaymentCap($contract, (float) $validated['amount'])) {
+            return response()->json(['message' => $error], 422);
+        }
+
         $payment = $contract->payments()->create($validated);
         $contract->refreshFinancials();
 
@@ -63,6 +67,11 @@ class ContractPaymentController extends Controller
             'method' => ['nullable', 'string', 'max:60'],
             'note' => ['nullable', 'string'],
         ]);
+
+        if ($error = $this->validatePaymentCap($contract, (float) $validated['amount'], $payment)) {
+            return response()->json(['message' => $error], 422);
+        }
+
         $payment->update($validated);
         $contract->refreshFinancials();
 
@@ -108,5 +117,26 @@ class ContractPaymentController extends Controller
         }
 
         return $contract->client && (int) $contract->client->assigned_staff_id === (int) $user->id;
+    }
+
+    private function validatePaymentCap(Contract $contract, float $nextAmount, ?ContractPayment $currentPayment = null): ?string
+    {
+        $contractValue = (float) ($contract->value ?? 0);
+        $existingTotal = (float) $contract->payments()->sum('amount');
+
+        if ($currentPayment) {
+            $existingTotal -= (float) ($currentPayment->amount ?? 0);
+        }
+
+        $projectedTotal = $existingTotal + max(0, $nextAmount);
+        if ($projectedTotal <= $contractValue + 0.0001) {
+            return null;
+        }
+
+        $remaining = max(0, $contractValue - $existingTotal);
+
+        return 'Số tiền thanh toán vượt giá trị hợp đồng. Chỉ còn có thể thu tối đa '
+            .number_format($remaining, 0, ',', '.')
+            .' VNĐ.';
     }
 }

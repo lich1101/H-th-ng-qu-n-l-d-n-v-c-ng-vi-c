@@ -60,7 +60,7 @@ const clampPercent = (value) => {
 
 function FieldLabel({ children }) {
     return (
-        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">
+        <label className="mb-3.5 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">
             {children}
         </label>
     );
@@ -221,6 +221,8 @@ export default function TasksBoard(props) {
     const [importFile, setImportFile] = useState(null);
     const [importing, setImporting] = useState(false);
     const [savingTask, setSavingTask] = useState(false);
+    const [projectWeightReference, setProjectWeightReference] = useState([]);
+    const [projectWeightLoading, setProjectWeightLoading] = useState(false);
     const [form, setForm] = useState({
         project_id: '',
         department_id: '',
@@ -229,7 +231,7 @@ export default function TasksBoard(props) {
         priority: 'medium',
         status: 'todo',
         deadline: '',
-        progress_percent: 0,
+        weight_percent: 100,
         assignee_id: '',
     });
 
@@ -265,6 +267,7 @@ export default function TasksBoard(props) {
         priority: 'medium',
         status: 'todo',
         progress_percent: '',
+        weight_percent: 100,
         start_date: '',
         deadline: '',
         assignee_id: '',
@@ -913,6 +916,7 @@ export default function TasksBoard(props) {
             priority: 'medium',
             status: statusOptions[0] || 'todo',
             progress_percent: '',
+            weight_percent: 100,
             start_date: '',
             deadline: '',
             assignee_id: '',
@@ -934,6 +938,7 @@ export default function TasksBoard(props) {
             priority: item.priority || 'medium',
             status: item.status || statusOptions[0] || 'todo',
             progress_percent: item.progress_percent ?? '',
+            weight_percent: item.weight_percent ?? 100,
             start_date: item.start_date ? String(item.start_date).slice(0, 10) : '',
             deadline: item.deadline ? String(item.deadline).slice(0, 10) : '',
             assignee_id: item.assignee_id || '',
@@ -961,6 +966,7 @@ export default function TasksBoard(props) {
                     priority: itemForm.priority,
                     status: itemForm.status,
                     progress_percent: itemForm.progress_percent === '' ? null : Number(itemForm.progress_percent),
+                    weight_percent: itemForm.weight_percent === '' ? null : Number(itemForm.weight_percent),
                     start_date: itemForm.start_date || null,
                     deadline: itemForm.deadline || null,
                     assignee_id: itemForm.assignee_id ? Number(itemForm.assignee_id) : null,
@@ -973,6 +979,7 @@ export default function TasksBoard(props) {
                     priority: itemForm.priority,
                     status: itemForm.status,
                     progress_percent: itemForm.progress_percent === '' ? null : Number(itemForm.progress_percent),
+                    weight_percent: itemForm.weight_percent === '' ? null : Number(itemForm.weight_percent),
                     start_date: itemForm.start_date || null,
                     deadline: itemForm.deadline || null,
                     assignee_id: itemForm.assignee_id ? Number(itemForm.assignee_id) : null,
@@ -1151,7 +1158,9 @@ export default function TasksBoard(props) {
             formData.append('file', importFile);
             const res = await axios.post('/api/v1/imports/tasks', formData);
             const report = res.data || {};
-            toast.success(`Import hoàn tất: ${report.created || 0} tạo mới, ${report.updated || 0} cập nhật.`);
+            toast.success(
+                `Import hoàn tất: ${report.created || 0} tạo mới, ${report.updated || 0} cập nhật, ${report.skipped || 0} bỏ qua.`
+            );
             setShowImport(false);
             setImportFile(null);
             await fetchTasks(1, { ...filters, page: 1 });
@@ -1265,7 +1274,7 @@ export default function TasksBoard(props) {
             priority: 'medium',
             status: statusOptions[0] || 'todo',
             deadline: '',
-            progress_percent: 0,
+            weight_percent: 100,
             assignee_id: '',
         });
     };
@@ -1277,6 +1286,7 @@ export default function TasksBoard(props) {
 
     const closeForm = () => {
         setShowForm(false);
+        setProjectWeightReference([]);
         resetForm();
     };
 
@@ -1285,6 +1295,23 @@ export default function TasksBoard(props) {
         [projects, form.project_id]
     );
     const projectHasContract = !!selectedProject?.contract_id;
+
+    const siblingProjectTasks = useMemo(
+        () => projectWeightReference.filter((task) => Number(task.id) !== Number(editingId || 0)),
+        [projectWeightReference, editingId]
+    );
+    const siblingProjectWeightTotal = useMemo(
+        () => siblingProjectTasks.reduce((sum, task) => sum + Number(task.weight_percent || 0), 0),
+        [siblingProjectTasks]
+    );
+    const projectedProjectWeightTotal = useMemo(
+        () => siblingProjectWeightTotal + Number(form.weight_percent || 0),
+        [siblingProjectWeightTotal, form.weight_percent]
+    );
+    const remainingProjectWeight = useMemo(
+        () => Math.max(0, 100 - siblingProjectWeightTotal),
+        [siblingProjectWeightTotal]
+    );
 
     const selectedDepartment = useMemo(
         () => departments.find((d) => String(d.id) === String(form.department_id)),
@@ -1322,6 +1349,50 @@ export default function TasksBoard(props) {
         return [];
     }, [itemsTask, departments, userRole]);
 
+    const siblingTaskItems = useMemo(
+        () => taskItems.filter((item) => Number(item.id) !== Number(editingItemId || 0)),
+        [taskItems, editingItemId]
+    );
+    const siblingItemWeightTotal = useMemo(
+        () => siblingTaskItems.reduce((sum, item) => sum + Number(item.weight_percent || 0), 0),
+        [siblingTaskItems]
+    );
+    const projectedItemWeightTotal = useMemo(
+        () => siblingItemWeightTotal + Number(itemForm.weight_percent || 0),
+        [siblingItemWeightTotal, itemForm.weight_percent]
+    );
+    const remainingItemWeight = useMemo(
+        () => Math.max(0, 100 - siblingItemWeightTotal),
+        [siblingItemWeightTotal]
+    );
+
+    const fetchProjectWeightReference = async (projectId) => {
+        if (!projectId) {
+            setProjectWeightReference([]);
+            return;
+        }
+        setProjectWeightLoading(true);
+        try {
+            const res = await axios.get('/api/v1/tasks', {
+                params: { project_id: Number(projectId), per_page: 200 },
+            });
+            setProjectWeightReference(res.data?.data || []);
+        } catch {
+            setProjectWeightReference([]);
+        } finally {
+            setProjectWeightLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (!showForm || !form.project_id) {
+            setProjectWeightReference([]);
+            setProjectWeightLoading(false);
+            return;
+        }
+        fetchProjectWeightReference(form.project_id);
+    }, [showForm, form.project_id]);
+
     const startEdit = (t) => {
         setEditingId(t.id);
         setForm({
@@ -1332,7 +1403,7 @@ export default function TasksBoard(props) {
             priority: t.priority || 'medium',
             status: t.status || statusOptions[0] || 'todo',
             deadline: t.deadline ? String(t.deadline).slice(0, 10) : '',
-            progress_percent: t.progress_percent ?? 0,
+            weight_percent: t.weight_percent ?? 100,
             assignee_id: t.assignee_id || '',
         });
         setShowForm(true);
@@ -1354,7 +1425,7 @@ export default function TasksBoard(props) {
                 priority: form.priority,
                 status: form.status,
                 deadline: form.deadline || null,
-                progress_percent: form.progress_percent === '' ? null : Number(form.progress_percent),
+                weight_percent: form.weight_percent === '' ? null : Number(form.weight_percent),
                 assignee_id: form.assignee_id ? Number(form.assignee_id) : null,
             };
             if (editingId) {
@@ -2098,7 +2169,7 @@ export default function TasksBoard(props) {
                 description="Nhập thông tin công việc và phân công."
                 size="lg"
             >
-                <div className="space-y-3 text-sm">
+                <div className="space-y-5 text-sm">
                     <div>
                         <FieldLabel>Dự án liên kết</FieldLabel>
                         <select className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" value={form.project_id} onChange={(e) => setForm((s) => ({ ...s, project_id: e.target.value }))}>
@@ -2141,7 +2212,7 @@ export default function TasksBoard(props) {
                         <FieldLabel>Mô tả công việc</FieldLabel>
                         <textarea className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" rows={3} value={form.description} onChange={(e) => setForm((s) => ({ ...s, description: e.target.value }))} />
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-2 gap-4">
                         <div>
                             <FieldLabel>Mức độ ưu tiên</FieldLabel>
                             <select className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" value={form.priority} onChange={(e) => setForm((s) => ({ ...s, priority: e.target.value }))}>
@@ -2155,15 +2226,33 @@ export default function TasksBoard(props) {
                             </select>
                         </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-2 gap-4">
                         <div>
                             <FieldLabel>Hạn chót công việc</FieldLabel>
                             <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" type="date" value={form.deadline} onChange={(e) => setForm((s) => ({ ...s, deadline: e.target.value }))} />
                         </div>
                         <div>
-                            <FieldLabel>Tiến độ hiện tại (%)</FieldLabel>
-                            <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" type="number" min="0" max="100" value={form.progress_percent} onChange={(e) => setForm((s) => ({ ...s, progress_percent: e.target.value }))} />
+                            <FieldLabel>Tỷ trọng trong dự án (%)</FieldLabel>
+                            <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" type="number" min="1" max="100" value={form.weight_percent} onChange={(e) => setForm((s) => ({ ...s, weight_percent: e.target.value }))} />
+                            <div className="mt-2 flex flex-wrap gap-2">
+                                <button
+                                    type="button"
+                                    className="rounded-full border border-slate-200 px-3 py-1 text-[11px] font-semibold text-slate-700 disabled:opacity-50"
+                                    disabled={!form.project_id || remainingProjectWeight <= 0}
+                                    onClick={() => setForm((s) => ({ ...s, weight_percent: String(Math.max(1, remainingProjectWeight)) }))}
+                                >
+                                    Điền phần còn lại ({remainingProjectWeight}%)
+                                </button>
+                            </div>
                         </div>
+                    </div>
+                    <div className={`rounded-2xl border px-4 py-3 text-xs ${projectWeightLoading ? 'border-slate-200 bg-slate-50 text-text-muted' : projectedProjectWeightTotal === 100 ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : projectedProjectWeightTotal > 100 ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
+                        {projectWeightLoading
+                            ? 'Đang kiểm tra tổng tỷ trọng công việc trong dự án...'
+                            : `Tổng tỷ trọng công việc của dự án sau khi lưu sẽ là ${projectedProjectWeightTotal}%. Mốc hợp lý là 100%.`}
+                    </div>
+                    <div className="rounded-2xl border border-dashed border-slate-200/80 bg-slate-50 px-4 py-3 text-xs leading-6 text-text-muted">
+                        Tiến độ công việc sẽ được hệ thống tự tính từ tổng tiến độ đầu việc nhân với tỷ trọng của từng đầu việc. Công việc chỉ đóng góp vào tiến độ dự án theo tỷ trọng công việc bạn nhập ở trên.
                     </div>
                     <div className="flex items-center gap-3">
                         <button
@@ -2194,7 +2283,16 @@ export default function TasksBoard(props) {
             >
                 <form className="space-y-3 text-sm" onSubmit={submitImport}>
                     <div className="rounded-2xl border border-dashed border-slate-200/80 p-4 text-center">
-                        <p className="text-xs text-text-muted mb-2">Chọn file công việc</p>
+                        <button
+                            type="button"
+                            className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+                            onClick={() => window.open('/api/v1/imports/tasks/template', '_blank', 'noopener,noreferrer')}
+                        >
+                            Tải file mẫu
+                        </button>
+                        <p className="text-xs text-text-muted mt-3 mb-2">
+                            Chọn file công việc. Hệ thống sẽ tự nối khách hàng, tìm dự án phù hợp hoặc tạo dự án nhập liệu nếu chưa có.
+                        </p>
                         <input
                             id="import-task-file"
                             type="file"
@@ -2343,7 +2441,7 @@ export default function TasksBoard(props) {
                                 <h4 className="font-semibold text-slate-900 mb-3">
                                     {editingItemId ? `Sửa đầu việc #${editingItemId}` : 'Tạo đầu việc'}
                                 </h4>
-                                <div className="space-y-2 text-sm">
+                                <div className="space-y-4 text-sm">
                                     <div>
                                         <FieldLabel>Nhân sự phụ trách đầu việc</FieldLabel>
                                         <select
@@ -2374,7 +2472,7 @@ export default function TasksBoard(props) {
                                             onChange={(e) => setItemForm((s) => ({ ...s, description: e.target.value }))}
                                         />
                                     </div>
-                                    <div className="grid grid-cols-2 gap-2">
+                                    <div className="grid grid-cols-2 gap-4">
                                         <div>
                                             <FieldLabel>Mức độ ưu tiên</FieldLabel>
                                             <select
@@ -2396,7 +2494,7 @@ export default function TasksBoard(props) {
                                             </select>
                                         </div>
                                     </div>
-                                    <div className="grid grid-cols-2 gap-2">
+                                    <div className="grid grid-cols-2 gap-4">
                                         <div>
                                             <FieldLabel>Ngày bắt đầu</FieldLabel>
                                             <input
@@ -2404,6 +2502,41 @@ export default function TasksBoard(props) {
                                                 type="date"
                                                 value={itemForm.start_date}
                                                 onChange={(e) => setItemForm((s) => ({ ...s, start_date: e.target.value }))}
+                                            />
+                                        </div>
+                                        <div>
+                                            <FieldLabel>Tỷ trọng trong công việc (%)</FieldLabel>
+                                            <input
+                                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                                type="number"
+                                                min="1"
+                                                max="100"
+                                                value={itemForm.weight_percent}
+                                                onChange={(e) => setItemForm((s) => ({ ...s, weight_percent: e.target.value }))}
+                                            />
+                                            <div className="mt-2 flex flex-wrap gap-2">
+                                                <button
+                                                    type="button"
+                                                    className="rounded-full border border-slate-200 px-3 py-1 text-[11px] font-semibold text-slate-700 disabled:opacity-50"
+                                                    disabled={remainingItemWeight <= 0}
+                                                    onClick={() => setItemForm((s) => ({ ...s, weight_percent: String(Math.max(1, remainingItemWeight)) }))}
+                                                >
+                                                    Điền phần còn lại ({remainingItemWeight}%)
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className={`rounded-2xl border px-4 py-3 text-xs ${projectedItemWeightTotal === 100 ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : projectedItemWeightTotal > 100 ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
+                                        {`Tổng tỷ trọng đầu việc của công việc sau khi lưu sẽ là ${projectedItemWeightTotal}%. Mốc hợp lý là 100%.`}
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <FieldLabel>Deadline đầu việc</FieldLabel>
+                                            <input
+                                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                                type="date"
+                                                value={itemForm.deadline}
+                                                onChange={(e) => setItemForm((s) => ({ ...s, deadline: e.target.value }))}
                                             />
                                         </div>
                                         <div>
@@ -2418,19 +2551,8 @@ export default function TasksBoard(props) {
                                             />
                                         </div>
                                     </div>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <div>
-                                            <FieldLabel>Deadline đầu việc</FieldLabel>
-                                            <input
-                                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                                                type="date"
-                                                value={itemForm.deadline}
-                                                onChange={(e) => setItemForm((s) => ({ ...s, deadline: e.target.value }))}
-                                            />
-                                        </div>
-                                        <div className="text-xs text-text-muted flex items-center px-2">
-                                            % tiến độ cập nhật theo báo cáo
-                                        </div>
+                                    <div className="rounded-2xl border border-dashed border-slate-200/80 bg-slate-50 px-4 py-3 text-xs text-text-muted">
+                                        Đầu việc sẽ đóng góp vào tiến độ công việc theo tỷ trọng này. Phần nhắc chậm tiến độ theo ngày vẫn chỉ dùng để so với thời gian thực hiện.
                                     </div>
                                     <div className="flex items-center gap-2">
                                         <button

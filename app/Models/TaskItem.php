@@ -16,6 +16,7 @@ class TaskItem extends Model
         'priority',
         'status',
         'progress_percent',
+        'weight_percent',
         'start_date',
         'deadline',
         'assignee_id',
@@ -27,6 +28,8 @@ class TaskItem extends Model
     protected $casts = [
         'start_date' => 'date',
         'deadline' => 'datetime',
+        'progress_percent' => 'integer',
+        'weight_percent' => 'integer',
     ];
 
     public function task()

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Task;
 use App\Models\TaskUpdate;
 use App\Models\User;
+use App\Services\TaskProgressService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -133,14 +134,16 @@ class TaskUpdateController extends Controller
         if (! empty($update->status)) {
             $taskPayload['status'] = $update->status;
         }
-        if ($update->progress_percent !== null) {
-            $taskPayload['progress_percent'] = $update->progress_percent;
-        }
         if (! empty($taskPayload)) {
             if (($taskPayload['status'] ?? $task->status) === 'done') {
                 $taskPayload['completed_at'] = now();
             }
             $task->update($taskPayload);
+            try {
+                TaskProgressService::recalc($task);
+            } catch (\Throwable $e) {
+                report($e);
+            }
         }
 
         return response()->json($update->fresh()->load(['submitter', 'reviewer']));

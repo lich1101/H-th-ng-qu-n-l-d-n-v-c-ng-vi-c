@@ -9,6 +9,7 @@ use App\Models\Task;
 use App\Models\User;
 use App\Models\Department;
 use App\Services\NotificationService;
+use App\Services\ProjectProgressService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -88,8 +89,19 @@ class TaskController extends Controller
         $this->applyDepartmentRules($request, $validated);
         $validated['created_by'] = $request->user()->id;
         $validated['assigned_by'] = $validated['assigned_by'] ?? $request->user()->id;
+        $validated['weight_percent'] = isset($validated['weight_percent'])
+            ? max(1, min(100, (int) $validated['weight_percent']))
+            : 100;
 
         $task = Task::create($validated);
+
+        if ($task->project) {
+            try {
+                ProjectProgressService::recalc($task->project);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
 
         $managerId = null;
         if ($request->user()->role === 'admin' && ! empty($task->department_id)) {
@@ -153,15 +165,31 @@ class TaskController extends Controller
             }
         }
 
-        if (isset($validated['progress_percent'])) {
-            $validated['progress_percent'] = max(0, min(100, (int) $validated['progress_percent']));
+        if (isset($validated['weight_percent'])) {
+            $validated['weight_percent'] = max(1, min(100, (int) $validated['weight_percent']));
         }
 
         if (isset($validated['status']) && $validated['status'] === 'done') {
             $validated['completed_at'] = now();
         }
 
+        $oldProject = $task->project;
         $task->update($validated);
+
+        if ($oldProject) {
+            try {
+                ProjectProgressService::recalc($oldProject);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+        if ($task->project && (! $oldProject || (int) $oldProject->id !== (int) $task->project->id)) {
+            try {
+                ProjectProgressService::recalc($task->project);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
 
         return response()->json(
             $task->load(['project', 'project.owner', 'assignee', 'reviewer', 'department'])->loadCount(['comments', 'attachments'])
@@ -176,7 +204,15 @@ class TaskController extends Controller
         if (! ProjectScope::canAccessTask($request->user(), $task)) {
             return response()->json(['message' => 'Không có quyền xóa công việc.'], 403);
         }
+        $project = $task->project;
         $task->delete();
+        if ($project) {
+            try {
+                ProjectProgressService::recalc($project);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
 
         return response()->json([
             'message' => 'Task deleted.',
@@ -195,7 +231,7 @@ class TaskController extends Controller
             'start_at' => ['nullable', 'date'],
             'deadline' => ['nullable', 'date'],
             'completed_at' => ['nullable', 'date'],
-            'progress_percent' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'weight_percent' => ['nullable', 'integer', 'min:1', 'max:100'],
             'assigned_by' => ['nullable', 'integer', 'exists:users,id'],
             'assignee_id' => ['nullable', 'integer', 'exists:users,id'],
             'reviewer_id' => ['nullable', 'integer', 'exists:users,id'],

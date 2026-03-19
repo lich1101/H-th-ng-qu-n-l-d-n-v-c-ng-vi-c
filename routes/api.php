@@ -75,6 +75,7 @@ Route::prefix('v1')->group(function () {
     Route::get('/public/accounts-summary', [PublicMobileController::class, 'accountsSummary']);
 
     Route::post('/login', [AuthController::class, 'login']);
+    Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
     Route::post('/leads/webhook', [LeadCaptureController::class, 'webhook']);
 
     Route::middleware('auth:sanctum')->group(function () {
@@ -316,10 +317,20 @@ Route::prefix('v1')->group(function () {
 
         Route::post('/imports/clients', [ImportController::class, 'importClients'])
             ->middleware('role:admin,quan_ly,nhan_vien');
+        Route::get('/imports/clients/template', [ImportController::class, 'downloadClientsTemplate'])
+            ->middleware('role:admin,quan_ly,nhan_vien');
         Route::post('/imports/contracts', [ImportController::class, 'importContracts'])
+            ->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
+        Route::get('/imports/contracts/template', [ImportController::class, 'downloadContractsTemplate'])
             ->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
         Route::post('/imports/tasks', [ImportController::class, 'importTasks'])
             ->middleware('role:admin,quan_ly');
+        Route::get('/imports/tasks/template', [ImportController::class, 'downloadTasksTemplate'])
+            ->middleware('role:admin,quan_ly');
+        Route::post('/imports/users', [ImportController::class, 'importUsers'])
+            ->middleware('role:admin');
+        Route::get('/imports/users/template', [ImportController::class, 'downloadUsersTemplate'])
+            ->middleware('role:admin');
 
         Route::get('/facebook/pages', [FacebookPageController::class, 'index'])
             ->middleware('role:admin,quan_ly,nhan_vien,ke_toan');

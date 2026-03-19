@@ -38,8 +38,11 @@ export default function UserAccountsDashboard(props) {
     });
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
+    const [importingUsers, setImportingUsers] = useState(false);
     const [editingId, setEditingId] = useState(null);
     const [showForm, setShowForm] = useState(false);
+    const [showImport, setShowImport] = useState(false);
+    const [importFile, setImportFile] = useState(null);
     const [form, setForm] = useState({
         name: '',
         email: '',
@@ -125,6 +128,11 @@ export default function UserAccountsDashboard(props) {
         resetForm();
     };
 
+    const closeImport = () => {
+        setShowImport(false);
+        setImportFile(null);
+    };
+
     const submitAccount = async (e) => {
         e.preventDefault();
         setSubmitting(true);
@@ -198,6 +206,33 @@ export default function UserAccountsDashboard(props) {
         }
     };
 
+    const submitImport = async (e) => {
+        e.preventDefault();
+        if (!importFile) {
+            setErrorMessage('Vui lòng chọn file Excel để import.');
+            return;
+        }
+
+        setImportingUsers(true);
+        setMessage('');
+        setErrorMessage('');
+        try {
+            const formData = new FormData();
+            formData.append('file', importFile);
+            const res = await axios.post('/api/v1/imports/users', formData);
+            const report = res.data || {};
+            setMessage(
+                `Import hoàn tất: ${report.created || 0} tạo mới, ${report.updated || 0} cập nhật, ${report.skipped || 0} bỏ qua.`
+            );
+            closeImport();
+            fetchAccounts(filters);
+        } catch (error) {
+            setErrorMessage(error?.response?.data?.message || 'Không thể import nhân viên.');
+        } finally {
+            setImportingUsers(false);
+        }
+    };
+
     const statusPercent = useMemo(() => {
         const total = stats.total_users || 1;
         return {
@@ -223,13 +258,22 @@ export default function UserAccountsDashboard(props) {
                     <h3 className="font-semibold text-slate-900">Tài khoản người dùng</h3>
                     <p className="text-xs text-text-muted">Thêm mới hoặc chỉnh sửa thông tin người dùng.</p>
                 </div>
-                <button
-                    type="button"
-                    className="rounded-xl bg-primary text-white px-4 py-2 text-sm font-semibold"
-                    onClick={openCreate}
-                >
-                    Thêm mới
-                </button>
+                <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
+                        onClick={() => setShowImport(true)}
+                    >
+                        Import Excel
+                    </button>
+                    <button
+                        type="button"
+                        className="rounded-xl bg-primary text-white px-4 py-2 text-sm font-semibold"
+                        onClick={openCreate}
+                    >
+                        Thêm mới
+                    </button>
+                </div>
             </div>
 
             <form onSubmit={submitSearch} className="mb-4 bg-white rounded-2xl border border-slate-200/80 p-4 shadow-card">
@@ -383,6 +427,60 @@ export default function UserAccountsDashboard(props) {
                         </button>
                         {message && <span className="text-sm text-emerald-700">{message}</span>}
                         {errorMessage && <span className="text-sm text-rose-700">{errorMessage}</span>}
+                    </div>
+                </form>
+            </Modal>
+
+            <Modal
+                open={showImport}
+                onClose={closeImport}
+                title="Import nhân viên"
+                description="Tải file Excel (.xls/.xlsx/.csv) để tạo hoặc cập nhật tài khoản nhân viên theo email."
+                size="md"
+            >
+                <form onSubmit={submitImport} className="space-y-3 text-sm">
+                    <FormField label="File nhân viên" required>
+                        <div className="rounded-2xl border border-dashed border-slate-200/80 p-4 text-center">
+                            <button
+                                type="button"
+                                className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                onClick={() => window.open('/api/v1/imports/users/template', '_blank', 'noopener,noreferrer')}
+                            >
+                                Tải file mẫu
+                            </button>
+                            <input
+                                id="import-user-file"
+                                type="file"
+                                accept=".xls,.xlsx,.csv"
+                                onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                                className="hidden"
+                            />
+                            <label
+                                htmlFor="import-user-file"
+                                className="mt-3 inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+                            >
+                                Chọn file
+                            </label>
+                            <p className="mt-2 text-xs text-text-muted">
+                                {importFile ? importFile.name : 'Chưa chọn file'}
+                            </p>
+                        </div>
+                    </FormField>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="submit"
+                            disabled={importingUsers}
+                            className="flex-1 rounded-2xl bg-primary px-3 py-2.5 text-sm font-semibold text-white"
+                        >
+                            {importingUsers ? 'Đang import...' : 'Import'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={closeImport}
+                            className="flex-1 rounded-2xl border border-slate-200 px-3 py-2.5 text-sm font-semibold"
+                        >
+                            Hủy
+                        </button>
                     </div>
                 </form>
             </Modal>

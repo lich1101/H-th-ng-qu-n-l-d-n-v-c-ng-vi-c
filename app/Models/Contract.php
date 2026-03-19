@@ -12,6 +12,11 @@ class Contract extends Model
     protected $fillable = [
         'code',
         'title',
+        'contract_type',
+        'care_schedule',
+        'duration_months',
+        'payment_cycle',
+        'imported_paid_periods',
         'client_id',
         'opportunity_id',
         'project_id',
@@ -42,6 +47,8 @@ class Contract extends Model
         'revenue' => 'float',
         'debt' => 'float',
         'cash_flow' => 'float',
+        'duration_months' => 'integer',
+        'imported_paid_periods' => 'integer',
         'approved_at' => 'datetime',
     ];
 

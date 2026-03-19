@@ -82,10 +82,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ]);
     })->name('tasks.detail')->middleware('role:admin,quan_ly,nhan_vien');
 
-    Route::get('/deadline', function () {
-        return Inertia::render('DeadlineReminders');
-    })->name('deadlines.index')->middleware('role:admin,quan_ly,nhan_vien');
-
     Route::get('/ban-giao', function () {
         return Inertia::render('HandoverCenter');
     })->name('handover.index')->middleware('role:admin,nhan_vien');

@@ -9,7 +9,7 @@ class TaskProgressService
 {
     public static function recalc(Task $task): void
     {
-        $items = $task->items()->get();
+        $items = $task->items()->get(['id', 'progress_percent', 'weight_percent', 'status']);
         if ($items->isEmpty()) {
             $task->update([
                 'progress_percent' => 0,
@@ -19,8 +19,7 @@ class TaskProgressService
             return;
         }
 
-        $avg = (int) round($items->avg('progress_percent') ?? 0);
-        $avg = max(0, min(100, $avg));
+        $avg = self::weightedProgress($items);
 
         $statuses = $items->pluck('status')->filter()->map(function ($s) {
             return (string) $s;
@@ -59,5 +58,28 @@ class TaskProgressService
                 report($e);
             }
         }
+    }
+
+    private static function weightedProgress($items): int
+    {
+        $weightedSum = 0;
+        $totalWeight = 0;
+
+        foreach ($items as $item) {
+            $weight = (int) ($item->weight_percent ?? 0);
+            if ($weight <= 0) {
+                continue;
+            }
+
+            $totalWeight += $weight;
+            $progress = max(0, min(100, (int) ($item->progress_percent ?? 0)));
+            $weightedSum += (($progress * $weight) / 100);
+        }
+
+        if ($totalWeight > 0) {
+            return max(0, min(100, (int) round($weightedSum)));
+        }
+
+        return 0;
     }
 }

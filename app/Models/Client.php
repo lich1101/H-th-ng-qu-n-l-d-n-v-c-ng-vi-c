@@ -11,6 +11,7 @@ class Client extends Model
 
     protected $fillable = [
         'name',
+        'external_code',
         'company',
         'email',
         'phone',
@@ -25,12 +26,18 @@ class Client extends Model
         'lead_source',
         'lead_channel',
         'lead_message',
+        'customer_status_label',
+        'customer_level',
+        'legacy_debt_amount',
+        'company_size',
+        'product_categories',
         'facebook_psid',
         'facebook_page_id',
     ];
 
     protected $casts = [
         'total_revenue' => 'float',
+        'legacy_debt_amount' => 'float',
         'has_purchased' => 'boolean',
     ];
 

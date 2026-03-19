@@ -20,6 +20,7 @@ class Task extends Model
         'deadline',
         'completed_at',
         'progress_percent',
+        'weight_percent',
         'created_by',
         'assigned_by',
         'assignee_id',
@@ -34,6 +35,8 @@ class Task extends Model
         'completed_at' => 'datetime',
         'acknowledged_at' => 'datetime',
         'require_acknowledgement' => 'boolean',
+        'progress_percent' => 'integer',
+        'weight_percent' => 'integer',
     ];
 
     public function project()
