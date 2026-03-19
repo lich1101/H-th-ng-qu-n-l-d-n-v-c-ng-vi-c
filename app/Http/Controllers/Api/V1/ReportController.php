@@ -474,7 +474,7 @@ class ReportController extends Controller
                 $productBreakdown = $productQuery
                     ->selectRaw("$productLabelExpr as product_name")
                     ->selectRaw('SUM(contract_items.total_price) as revenue')
-                    ->groupBy('product_name')
+                    ->groupBy(DB::raw($productLabelExpr))
                     ->orderByDesc('revenue')
                     ->get()
                     ->map(function ($item) {
