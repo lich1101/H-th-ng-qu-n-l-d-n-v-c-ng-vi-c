@@ -13,6 +13,14 @@ const TABS = [
     { key: 'mobile_devices', label: 'Thiết bị di động người dùng' },
 ];
 
+const DEFAULT_GEMINI_MODEL_OPTIONS = [
+    { id: 'gemini-2.0-flash', name: 'gemini-2.0-flash', display_name: 'Gemini 2.0 Flash' },
+    { id: 'gemini-2.0-flash-lite', name: 'gemini-2.0-flash-lite', display_name: 'Gemini 2.0 Flash Lite' },
+    { id: 'gemini-1.5-pro', name: 'gemini-1.5-pro', display_name: 'Gemini 1.5 Pro' },
+    { id: 'gemini-1.5-flash', name: 'gemini-1.5-flash', display_name: 'Gemini 1.5 Flash' },
+    { id: 'gemini-1.5-flash-8b', name: 'gemini-1.5-flash-8b', display_name: 'Gemini 1.5 Flash 8B' },
+];
+
 const initialSettings = (settings) => ({
     brand_name: settings?.brand_name || '',
     primary_color: settings?.primary_color || '#04BC5C',
@@ -170,7 +178,7 @@ export default function SystemSettings(props) {
     const [editingBotId, setEditingBotId] = useState(null);
     const [botForm, setBotForm] = useState(initialBotForm());
     const [modelLoading, setModelLoading] = useState(false);
-    const [modelOptions, setModelOptions] = useState([]);
+    const [modelOptions, setModelOptions] = useState(DEFAULT_GEMINI_MODEL_OPTIONS);
     const [modelError, setModelError] = useState('');
     const [systemStatus, setSystemStatus] = useState(null);
     const [deviceLoading, setDeviceLoading] = useState(false);
@@ -248,7 +256,7 @@ export default function SystemSettings(props) {
         if (list.length === 0) {
             setEditingBotId(null);
             setBotForm(initialBotForm());
-            setModelOptions([]);
+            setModelOptions(DEFAULT_GEMINI_MODEL_OPTIONS);
             setModelError('');
             return;
         }
@@ -264,20 +272,8 @@ export default function SystemSettings(props) {
         const selectedForm = initialBotForm(selected);
         setEditingBotId(Number(selected.id));
         setBotForm(selectedForm);
-        setModelOptions([]);
+        setModelOptions(DEFAULT_GEMINI_MODEL_OPTIONS);
         setModelError('');
-        if (
-            (selectedForm.provider || 'gemini') === 'gemini'
-            && String(selectedForm.api_key || '').trim() !== ''
-        ) {
-            void loadGeminiModels({
-                apiKey: selectedForm.api_key,
-                provider: selectedForm.provider,
-                currentModel: selectedForm.model,
-                silent: true,
-                showError: false,
-            });
-        }
     };
 
     const loadGeminiModels = async ({
@@ -298,7 +294,7 @@ export default function SystemSettings(props) {
         }
 
         if (resolvedKey === '') {
-            setModelOptions([]);
+            setModelOptions(DEFAULT_GEMINI_MODEL_OPTIONS);
             setModelError('');
             if (showError) {
                 toast.error('Vui lòng nhập Gemini API key trước khi tải model.');
@@ -317,7 +313,8 @@ export default function SystemSettings(props) {
             setModelOptions(rows);
             setModelError('');
 
-            if (!resolvedModel && rows.length > 0) {
+            const hasResolvedModel = rows.some((item) => String(item.name || item.id || '').trim() === resolvedModel);
+            if (rows.length > 0 && (!resolvedModel || !hasResolvedModel)) {
                 const firstModelName = String(rows[0].name || '').trim();
                 if (firstModelName) {
                     setBotForm((s) => ({ ...s, model: firstModelName }));
@@ -328,7 +325,7 @@ export default function SystemSettings(props) {
                 toast.error('Key hợp lệ nhưng chưa tìm thấy model hỗ trợ generateContent.');
             }
         } catch (e) {
-            setModelOptions([]);
+            setModelOptions(DEFAULT_GEMINI_MODEL_OPTIONS);
             const message = e?.response?.data?.message || 'Không tải được danh sách model từ Gemini API.';
             setModelError(message);
             if (showError) {
@@ -380,7 +377,7 @@ export default function SystemSettings(props) {
     const startCreateBot = () => {
         setEditingBotId(null);
         setBotForm(initialBotForm());
-        setModelOptions([]);
+        setModelOptions(DEFAULT_GEMINI_MODEL_OPTIONS);
         setModelError('');
     };
 
@@ -388,20 +385,8 @@ export default function SystemSettings(props) {
         const selectedForm = initialBotForm(bot);
         setEditingBotId(Number(bot.id));
         setBotForm(selectedForm);
-        setModelOptions([]);
+        setModelOptions(DEFAULT_GEMINI_MODEL_OPTIONS);
         setModelError('');
-        if (
-            (selectedForm.provider || 'gemini') === 'gemini'
-            && String(selectedForm.api_key || '').trim() !== ''
-        ) {
-            void loadGeminiModels({
-                apiKey: selectedForm.api_key,
-                provider: selectedForm.provider,
-                currentModel: selectedForm.model,
-                silent: true,
-                showError: false,
-            });
-        }
     };
 
     const saveBot = async () => {
@@ -501,6 +486,38 @@ export default function SystemSettings(props) {
         fetchDevices();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    useEffect(() => {
+        if (activeTab !== 'chatbot') return undefined;
+
+        const provider = String(botForm.provider || 'gemini').trim() || 'gemini';
+        const apiKey = String(botForm.api_key || '').trim();
+
+        if (provider !== 'gemini') {
+            setModelOptions([]);
+            setModelError('Provider hiện tại chưa hỗ trợ lấy model tự động.');
+            return undefined;
+        }
+
+        if (apiKey === '') {
+            setModelOptions(DEFAULT_GEMINI_MODEL_OPTIONS);
+            setModelError('');
+            return undefined;
+        }
+
+        const timer = setTimeout(() => {
+            void loadGeminiModels({
+                apiKey,
+                provider,
+                currentModel: botForm.model,
+                silent: true,
+                showError: false,
+            });
+        }, 550);
+
+        return () => clearTimeout(timer);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeTab, botForm.api_key, botForm.provider]);
 
     const save = async () => {
         setLoading(true);
@@ -1014,20 +1031,12 @@ export default function SystemSettings(props) {
                                             onChange={(e) => {
                                                 const nextProvider = e.target.value;
                                                 setBotForm((s) => ({ ...s, provider: nextProvider }));
-                                                setModelOptions([]);
-                                                setModelError('');
-                                                if (
+                                                setModelOptions(
                                                     nextProvider === 'gemini'
-                                                    && String(botForm.api_key || '').trim() !== ''
-                                                ) {
-                                                    void loadGeminiModels({
-                                                        provider: nextProvider,
-                                                        apiKey: botForm.api_key,
-                                                        currentModel: botForm.model,
-                                                        silent: true,
-                                                        showError: false,
-                                                    });
-                                                }
+                                                        ? DEFAULT_GEMINI_MODEL_OPTIONS
+                                                        : []
+                                                );
+                                                setModelError('');
                                             }}
                                         >
                                             <option value="gemini">Gemini</option>
@@ -1035,34 +1044,36 @@ export default function SystemSettings(props) {
                                     </div>
                                     <div>
                                         <label className="text-xs text-text-muted">Model Gemini</label>
-                                        <div className="mt-2 flex items-center gap-2">
-                                            <input
-                                                list="gemini-model-options"
-                                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                                                value={botForm.model}
-                                                onChange={(e) => setBotForm((s) => ({ ...s, model: e.target.value }))}
-                                                placeholder={modelLoading ? 'Đang tải model...' : 'gemini-2.0-flash'}
-                                            />
-                                            <button
-                                                type="button"
-                                                className="shrink-0 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700"
-                                                onClick={() => loadGeminiModels()}
-                                                disabled={modelLoading}
-                                            >
-                                                {modelLoading ? 'Đang tải...' : 'Lấy model'}
-                                            </button>
-                                        </div>
-                                        <datalist id="gemini-model-options">
-                                            {modelOptions.map((item) => (
-                                                <option key={item.id || item.name} value={item.name || item.id}>
-                                                    {item.display_name || item.name}
+                                        <select
+                                            className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                            value={botForm.model}
+                                            onChange={(e) => setBotForm((s) => ({ ...s, model: e.target.value }))}
+                                        >
+                                            {!botForm.model && (
+                                                <option value="" disabled>
+                                                    {modelLoading ? 'Đang tải model...' : '-- Chọn model --'}
                                                 </option>
-                                            ))}
-                                        </datalist>
+                                            )}
+                                            {modelOptions.map((item) => {
+                                                const value = String(item.name || item.id || '').trim();
+                                                if (!value) return null;
+                                                const label = String(item.display_name || item.name || item.id).trim() || value;
+                                                return (
+                                                    <option key={value} value={value}>
+                                                        {label}
+                                                    </option>
+                                                );
+                                            })}
+                                            {botForm.model && !modelOptions.some((item) => String(item.name || item.id) === botForm.model) && (
+                                                <option value={botForm.model}>{botForm.model}</option>
+                                            )}
+                                        </select>
                                         <p className="mt-1 text-xs text-text-muted">
-                                            {modelOptions.length > 0
-                                                ? `Đã tải ${modelOptions.length} model từ API key hiện tại.`
-                                                : 'Nhập API key rồi bấm "Lấy model" để chọn nhanh.'}
+                                            {String(botForm.api_key || '').trim() === ''
+                                                ? `Đang dùng danh sách mặc định ${DEFAULT_GEMINI_MODEL_OPTIONS.length} model.`
+                                                : (modelLoading
+                                                    ? 'Đang đồng bộ model theo API key...'
+                                                    : `Đã tải ${modelOptions.length} model theo API key hiện tại.`)}
                                         </p>
                                         {modelError ? (
                                             <p className="mt-1 text-xs font-semibold text-rose-600">{modelError}</p>
@@ -1074,15 +1085,13 @@ export default function SystemSettings(props) {
                                             type="password"
                                             className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
                                             value={botForm.api_key}
+                                            autoComplete="new-password"
+                                            name="gemini_api_key"
+                                            data-lpignore="true"
                                             onChange={(e) => {
                                                 const nextValue = e.target.value;
                                                 setBotForm((s) => ({ ...s, api_key: nextValue }));
                                                 setModelError('');
-                                            }}
-                                            onBlur={() => {
-                                                if (String(botForm.api_key || '').trim() !== '') {
-                                                    void loadGeminiModels({ silent: true });
-                                                }
                                             }}
                                             placeholder="AIza..."
                                         />

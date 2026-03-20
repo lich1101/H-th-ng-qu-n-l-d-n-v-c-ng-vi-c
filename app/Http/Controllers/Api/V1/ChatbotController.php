@@ -257,7 +257,7 @@ class ChatbotController extends Controller
     public function index(Request $request): JsonResponse
     {
         $user = $request->user();
-        $limit = max(40, min((int) $request->integer('limit', 160), 400));
+        $limit = max(40, min($this->requestInt($request, 'limit', 160), 400));
         $bot = $this->resolveSelectedBot($request);
 
         if ($bot) {
@@ -416,9 +416,9 @@ class ChatbotController extends Controller
             ]);
         }
 
-        $pairs = max(1, min((int) $request->integer('pairs', (int) ($bot->history_pairs ?? 8)), 40));
+        $pairs = max(1, min($this->requestInt($request, 'pairs', (int) ($bot->history_pairs ?? 8)), 40));
         $targetUserId = (int) $viewer->id;
-        $requestedUserId = (int) $request->integer('user_id', 0);
+        $requestedUserId = $this->requestInt($request, 'user_id', 0);
         if ($requestedUserId > 0 && in_array((string) $viewer->role, ['administrator', 'admin'], true)) {
             $targetUserId = $requestedUserId;
         }
@@ -1061,5 +1061,18 @@ class ChatbotController extends Controller
 
         $trimmed = trim((string) $value);
         return $trimmed === '' ? null : $trimmed;
+    }
+
+    private function requestInt(Request $request, string $key, int $default = 0): int
+    {
+        $raw = $request->input($key, $default);
+        if (is_int($raw)) {
+            return $raw;
+        }
+        if (is_numeric($raw)) {
+            return (int) $raw;
+        }
+
+        return $default;
     }
 }
