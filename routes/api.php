@@ -390,6 +390,8 @@ Route::prefix('v1')->group(function () {
             ->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
         Route::get('/chatbot/bots/manage', [ChatbotController::class, 'manageBots'])
             ->middleware('role:administrator');
+        Route::post('/chatbot/models', [ChatbotController::class, 'models'])
+            ->middleware('role:administrator');
         Route::post('/chatbot/bots', [ChatbotController::class, 'storeBot'])
             ->middleware('role:administrator');
         Route::put('/chatbot/bots/{bot}', [ChatbotController::class, 'updateBot'])

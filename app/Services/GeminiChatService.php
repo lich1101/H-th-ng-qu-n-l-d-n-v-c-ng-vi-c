@@ -6,6 +6,91 @@ use Illuminate\Support\Facades\Http;
 
 class GeminiChatService
 {
+    public function listModels(string $apiKey): array
+    {
+        $trimmedKey = trim($apiKey);
+        if ($trimmedKey === '') {
+            return [
+                'ok' => false,
+                'error' => 'missing_api_key',
+                'message' => 'Thiếu Gemini API key.',
+            ];
+        }
+
+        $models = [];
+        $nextPageToken = null;
+
+        for ($page = 0; $page < 5; $page++) {
+            $url = sprintf(
+                'https://generativelanguage.googleapis.com/v1beta/models?key=%s%s',
+                urlencode($trimmedKey),
+                $nextPageToken ? '&pageToken='.urlencode($nextPageToken) : ''
+            );
+
+            $response = Http::timeout(30)->acceptJson()->get($url);
+            $json = $response->json();
+
+            if (! $response->successful()) {
+                $errorMessage = data_get($json, 'error.message', $response->body());
+                return [
+                    'ok' => false,
+                    'error' => data_get($json, 'error.status', 'gemini_request_failed'),
+                    'message' => (string) $errorMessage,
+                    'status' => $response->status(),
+                    'raw' => is_array($json) ? $json : ['body' => $response->body()],
+                ];
+            }
+
+            $rows = data_get($json, 'models', []);
+            if (is_array($rows)) {
+                foreach ($rows as $row) {
+                    $name = (string) data_get($row, 'name', '');
+                    if ($name === '') {
+                        continue;
+                    }
+
+                    $supported = data_get($row, 'supportedGenerationMethods', []);
+                    $supportsGenerate = is_array($supported)
+                        ? in_array('generateContent', $supported, true)
+                        : false;
+
+                    if (! $supportsGenerate) {
+                        continue;
+                    }
+
+                    $normalized = str_starts_with($name, 'models/')
+                        ? substr($name, 7)
+                        : $name;
+
+                    $models[$normalized] = [
+                        'id' => $normalized,
+                        'name' => $normalized,
+                        'display_name' => (string) data_get($row, 'displayName', $normalized),
+                        'description' => (string) data_get($row, 'description', ''),
+                        'version' => (string) data_get($row, 'version', ''),
+                        'input_token_limit' => data_get($row, 'inputTokenLimit'),
+                        'output_token_limit' => data_get($row, 'outputTokenLimit'),
+                    ];
+                }
+            }
+
+            $nextPageToken = (string) data_get($json, 'nextPageToken', '');
+            if ($nextPageToken === '') {
+                break;
+            }
+        }
+
+        $list = array_values($models);
+        usort($list, function (array $a, array $b): int {
+            return strnatcasecmp((string) ($a['name'] ?? ''), (string) ($b['name'] ?? ''));
+        });
+
+        return [
+            'ok' => true,
+            'models' => $list,
+        ];
+    }
+
     public function generateReply(
         string $apiKey,
         string $model,
@@ -124,4 +209,3 @@ class GeminiChatService
         ];
     }
 }
-

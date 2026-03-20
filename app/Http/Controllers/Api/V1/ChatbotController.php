@@ -49,6 +49,36 @@ class ChatbotController extends Controller
         ]);
     }
 
+    public function models(Request $request): JsonResponse
+    {
+        $this->assertAdministrator($request);
+
+        $validated = $request->validate([
+            'provider' => ['nullable', 'string', 'in:gemini'],
+            'api_key' => ['required', 'string', 'max:4096'],
+        ]);
+
+        $provider = $validated['provider'] ?? 'gemini';
+        if ($provider !== 'gemini') {
+            return response()->json([
+                'message' => 'Provider hiện tại chưa được hỗ trợ lấy model tự động.',
+            ], 422);
+        }
+
+        $result = $this->geminiChatService->listModels((string) $validated['api_key']);
+        if (! ($result['ok'] ?? false)) {
+            return response()->json([
+                'message' => (string) ($result['message'] ?? 'Không tải được danh sách model Gemini.'),
+                'error' => (string) ($result['error'] ?? 'model_fetch_failed'),
+                'status' => $result['status'] ?? null,
+            ], 422);
+        }
+
+        return response()->json([
+            'models' => $result['models'] ?? [],
+        ]);
+    }
+
     public function storeBot(Request $request): JsonResponse
     {
         $this->assertAdministrator($request);
