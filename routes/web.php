@@ -110,6 +110,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         return Inertia::render('NotificationCenter');
     })->name('notifications.center');
 
+    Route::get('/tro-ly-ai', function () {
+        return Inertia::render('ChatbotAssistant');
+    })->name('chatbot.assistant')->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
+
     Route::get('/nhat-ky-he-thong', function () {
         return Inertia::render('ActivityLogs');
     })->name('activity.logs')->middleware('role:admin,quan_ly');

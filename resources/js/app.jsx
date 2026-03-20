@@ -7,7 +7,7 @@ import { createInertiaApp } from '@inertiajs/inertia-react';
 import { InertiaProgress } from '@inertiajs/progress';
 import { ToastProvider } from '@/Contexts/ToastContext';
 
-const appName = window.document.getElementsByTagName('title')[0]?.innerText || 'Job ClickOn';
+const appName = window.document.getElementsByTagName('title')[0]?.innerText || 'Jobs ClickOn';
 const pages = require.context('./Pages', true, /\.jsx$/);
 
 createInertiaApp({

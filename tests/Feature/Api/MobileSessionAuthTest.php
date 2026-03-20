@@ -25,14 +25,14 @@ class MobileSessionAuthTest extends TestCase
             'user_id' => $user->id,
             'token' => 'old-device-token',
             'platform' => 'android',
-            'device_name' => 'Job ClickOn',
+            'device_name' => 'Jobs ClickOn',
             'last_seen_at' => now()->subMinute(),
         ]);
 
         $response = $this->postJson('/api/v1/login', [
             'email' => $user->email,
             'password' => 'secret123',
-            'device_name' => 'Job ClickOn',
+            'device_name' => 'Jobs ClickOn',
         ]);
 
         $response->assertOk();
@@ -47,7 +47,7 @@ class MobileSessionAuthTest extends TestCase
             'user_id' => $user->id,
             'token' => 'device-token-1',
             'platform' => 'android',
-            'device_name' => 'Job ClickOn',
+            'device_name' => 'Jobs ClickOn',
             'last_seen_at' => now(),
         ]);
 

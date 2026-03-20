@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\V1\ActivityLogController;
 use App\Http\Controllers\Api\V1\AppSettingController;
 use App\Http\Controllers\Api\V1\AuthController;
+use App\Http\Controllers\Api\V1\ChatbotController;
 use App\Http\Controllers\Api\V1\ContractController;
 use App\Http\Controllers\Api\V1\ContractCostController;
 use App\Http\Controllers\Api\V1\ContractPaymentController;
@@ -380,5 +381,28 @@ Route::prefix('v1')->group(function () {
         Route::post('/notifications/in-app/read', [NotificationCenterController::class, 'markRead']);
         Route::post('/notifications/in-app/read-all', [NotificationCenterController::class, 'markAllRead']);
         Route::post('/notifications/in-app/clear-read', [NotificationCenterController::class, 'clearRead']);
+
+        Route::get('/chatbot/messages', [ChatbotController::class, 'index'])
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
+        Route::post('/chatbot/messages', [ChatbotController::class, 'store'])
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
+        Route::get('/chatbot/bots', [ChatbotController::class, 'bots'])
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
+        Route::get('/chatbot/bots/manage', [ChatbotController::class, 'manageBots'])
+            ->middleware('role:administrator');
+        Route::post('/chatbot/bots', [ChatbotController::class, 'storeBot'])
+            ->middleware('role:administrator');
+        Route::put('/chatbot/bots/{bot}', [ChatbotController::class, 'updateBot'])
+            ->middleware('role:administrator');
+        Route::delete('/chatbot/bots/{bot}', [ChatbotController::class, 'destroyBot'])
+            ->middleware('role:administrator');
+        Route::put('/chatbot/messages/{message}', [ChatbotController::class, 'updateQueued'])
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
+        Route::delete('/chatbot/messages/{message}', [ChatbotController::class, 'destroyQueued'])
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
+        Route::post('/chatbot/stop', [ChatbotController::class, 'stop'])
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
+        Route::get('/chatbot/history', [ChatbotController::class, 'history'])
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
     });
 });

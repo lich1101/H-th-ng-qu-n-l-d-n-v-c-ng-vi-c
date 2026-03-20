@@ -20,14 +20,14 @@ class DeviceTokenControllerTest extends TestCase
             'user_id' => $user->id,
             'token' => 'old-token-1',
             'platform' => 'android',
-            'device_name' => 'Job ClickOn',
+            'device_name' => 'Jobs ClickOn',
             'last_seen_at' => now()->subHour(),
         ]);
         UserDeviceToken::query()->create([
             'user_id' => $user->id,
             'token' => 'old-token-2',
             'platform' => 'ios',
-            'device_name' => 'Job ClickOn',
+            'device_name' => 'Jobs ClickOn',
             'last_seen_at' => now()->subMinutes(30),
         ]);
 
@@ -35,7 +35,7 @@ class DeviceTokenControllerTest extends TestCase
         $res = $this->postJson('/api/v1/device-tokens', [
             'token' => 'new-token-abc',
             'platform' => 'android',
-            'device_name' => 'Job ClickOn',
+            'device_name' => 'Jobs ClickOn',
             'notifications_enabled' => true,
         ]);
 
@@ -45,7 +45,7 @@ class DeviceTokenControllerTest extends TestCase
             'user_id' => $user->id,
             'token' => 'new-token-abc',
             'platform' => 'android',
-            'device_name' => 'Job ClickOn',
+            'device_name' => 'Jobs ClickOn',
             'notifications_enabled' => true,
         ]);
         $this->assertDatabaseMissing('user_device_tokens', ['token' => 'old-token-1']);
@@ -61,7 +61,7 @@ class DeviceTokenControllerTest extends TestCase
             'user_id' => $oldOwner->id,
             'token' => 'shared-token-123',
             'platform' => 'android',
-            'device_name' => 'Job ClickOn',
+            'device_name' => 'Jobs ClickOn',
             'last_seen_at' => now()->subMinutes(10),
         ]);
 
@@ -69,7 +69,7 @@ class DeviceTokenControllerTest extends TestCase
         $res = $this->postJson('/api/v1/device-tokens', [
             'token' => 'shared-token-123',
             'platform' => 'android',
-            'device_name' => 'Job ClickOn',
+            'device_name' => 'Jobs ClickOn',
             'notifications_enabled' => true,
         ]);
 

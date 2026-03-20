@@ -8,15 +8,21 @@ export default function Authenticated({ auth, header, children }) {
     const { settings } = usePage().props;
     const [showSidebar, setShowSidebar] = useState(false);
     const currentRole = auth?.user?.role || '';
-    const brandName = settings?.brand_name || 'Job ClickOn';
+    const canUseChatbot = ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'].includes(currentRole);
+    const brandName = settings?.brand_name || 'Jobs ClickOn';
     const brandSubtitle = settings?.brand_subtitle || 'Khách hàng • Phòng ban • Kế toán';
     const logoUrl = settings?.logo_url;
     const [avatarUrl, setAvatarUrl] = useState(auth?.user?.avatar_url || '');
     const fileInputRef = useRef(null);
+    const botButtonRef = useRef(null);
+    const botPanelRef = useRef(null);
     const notificationButtonRef = useRef(null);
     const notificationPanelRef = useRef(null);
     const chatButtonRef = useRef(null);
     const chatPanelRef = useRef(null);
+    const [botOpen, setBotOpen] = useState(false);
+    const [botLoading, setBotLoading] = useState(false);
+    const [botItems, setBotItems] = useState([]);
     const [notificationOpen, setNotificationOpen] = useState(false);
     const [notificationTab, setNotificationTab] = useState('all');
     const [notificationLoading, setNotificationLoading] = useState(false);
@@ -165,36 +171,57 @@ export default function Authenticated({ auth, header, children }) {
         }
     };
 
+    const fetchChatbotBots = async ({ silent = false } = {}) => {
+        if (!silent) setBotLoading(true);
+        try {
+            const response = await axios.get('/api/v1/chatbot/bots');
+            setBotItems(response.data?.bots || []);
+        } catch (error) {
+            console.error(error);
+        } finally {
+            if (!silent) setBotLoading(false);
+        }
+    };
+
     useEffect(() => {
         fetchNotifications();
         fetchChatConversations();
+        if (canUseChatbot) {
+            fetchChatbotBots();
+        }
         const timer = setInterval(() => {
             fetchNotifications({ silent: true });
             fetchChatConversations({ silent: true });
+            if (canUseChatbot) {
+                fetchChatbotBots({ silent: true });
+            }
         }, 30000);
         return () => clearInterval(timer);
-    }, []);
+    }, [canUseChatbot]);
 
     useEffect(() => {
-        if (!notificationOpen && !chatOpen) return;
+        if (!notificationOpen && !chatOpen && !botOpen) return;
 
         const onClickOutside = (event) => {
             const target = event.target;
             if (
-                notificationPanelRef.current?.contains(target)
+                botPanelRef.current?.contains(target)
+                || botButtonRef.current?.contains(target)
+                || notificationPanelRef.current?.contains(target)
                 || notificationButtonRef.current?.contains(target)
                 || chatPanelRef.current?.contains(target)
                 || chatButtonRef.current?.contains(target)
             ) {
                 return;
             }
+            setBotOpen(false);
             setNotificationOpen(false);
             setChatOpen(false);
         };
 
         document.addEventListener('mousedown', onClickOutside);
         return () => document.removeEventListener('mousedown', onClickOutside);
-    }, [notificationOpen, chatOpen]);
+    }, [notificationOpen, chatOpen, botOpen]);
 
     const roleLabels = {
         admin: 'Quản trị',
@@ -286,6 +313,7 @@ export default function Authenticated({ auth, header, children }) {
                     { label: 'Trạng thái khách hàng', icon: 'tag', routeName: 'lead-types.index', href: route('lead-types.index'), roles: ['admin'] },
                     { label: 'Hạng doanh thu', icon: 'award', routeName: 'revenue-tiers.index', href: route('revenue-tiers.index'), roles: ['admin'] },
                     { label: 'Quy trình dịch vụ', icon: 'workflow', routeName: 'services.workflows', href: route('services.workflows'), roles: ['admin', 'quan_ly', 'nhan_vien'] },
+                    { label: 'Trợ lý AI', icon: 'assistant', routeName: 'chatbot.assistant', href: route('chatbot.assistant'), roles: ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'] },
                     { label: 'Thông báo', icon: 'bell', routeName: 'notifications.center', href: route('notifications.center'), roles: ['admin', 'quan_ly', 'nhan_vien', 'ke_toan'] },
                     { label: 'Nhật ký hệ thống', icon: 'history', routeName: 'activity.logs', href: route('activity.logs'), roles: ['admin', 'quan_ly'] },
                     { label: 'Tài khoản người dùng', icon: 'users', routeName: 'accounts.dashboard', href: route('accounts.dashboard'), roles: ['admin'] },
@@ -552,12 +580,106 @@ export default function Authenticated({ auth, header, children }) {
                                 <span className="hidden md:inline-flex rounded-full bg-emerald-100 text-emerald-700 px-2.5 py-1 text-xs">
                                     {roleLabels[currentRole] || currentRole || 'user'}
                                 </span>
+                                {canUseChatbot && (
+                                    <div className="relative">
+                                        <button
+                                            ref={botButtonRef}
+                                            type="button"
+                                            className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 hover:bg-slate-100"
+                                            onClick={() => {
+                                                setNotificationOpen(false);
+                                                setChatOpen(false);
+                                                setBotOpen((prev) => !prev);
+                                                if (!botOpen) {
+                                                    fetchChatbotBots({ silent: true });
+                                                }
+                                            }}
+                                            aria-label="Mở danh sách chatbot"
+                                        >
+                                            <AppIcon name="assistant" className="h-5 w-5" />
+                                        </button>
+
+                                        {botOpen && (
+                                            <div
+                                                ref={botPanelRef}
+                                                className="absolute right-0 mt-2 w-[360px] max-w-[92vw] rounded-2xl border border-slate-200 bg-white shadow-2xl z-50"
+                                            >
+                                                <div className="border-b border-slate-100 px-4 pt-4 pb-3">
+                                                    <div className="flex items-center justify-between gap-3">
+                                                        <p className="text-xl font-bold text-slate-900">Danh sách chatbot</p>
+                                                        <Link
+                                                            href={route('chatbot.assistant')}
+                                                            className="text-xs font-semibold text-primary"
+                                                            onClick={() => setBotOpen(false)}
+                                                        >
+                                                            Mở trợ lý AI
+                                                        </Link>
+                                                    </div>
+                                                    <p className="mt-1 text-xs text-slate-500">
+                                                        Chọn nhanh chatbot để mở đúng bot trên trang chat.
+                                                    </p>
+                                                </div>
+
+                                                <div className="max-h-[420px] overflow-y-auto p-2">
+                                                    {botLoading && (
+                                                        <div className="px-3 py-8 text-center text-sm text-slate-500">
+                                                            Đang tải chatbot...
+                                                        </div>
+                                                    )}
+
+                                                    {!botLoading && botItems.length === 0 && (
+                                                        <div className="px-3 py-8 text-center text-sm text-slate-500">
+                                                            Chưa có chatbot nào đang bật.
+                                                        </div>
+                                                    )}
+
+                                                    {!botLoading && botItems.map((bot) => (
+                                                        <Link
+                                                            key={bot.id}
+                                                            href={`${route('chatbot.assistant')}?bot_id=${bot.id}`}
+                                                            className="flex items-start gap-3 rounded-xl px-3 py-3 transition hover:bg-slate-50"
+                                                            onClick={() => setBotOpen(false)}
+                                                        >
+                                                            <span
+                                                                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-base"
+                                                                style={{ backgroundColor: `${bot.accent_color || '#6366F1'}1A`, color: bot.accent_color || '#6366F1' }}
+                                                            >
+                                                                {bot.icon || '🤖'}
+                                                            </span>
+                                                            <span className="min-w-0 flex-1">
+                                                                <span className="block truncate text-sm font-semibold text-slate-900">
+                                                                    {bot.name}
+                                                                </span>
+                                                                <span className="mt-0.5 block truncate text-xs text-slate-500">
+                                                                    {bot.description || `${bot.provider || 'gemini'} • ${bot.model || 'chưa có model'}`}
+                                                                </span>
+                                                            </span>
+                                                            <span className="flex flex-col items-end gap-1">
+                                                                {bot.is_default && (
+                                                                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                                                                        Mặc định
+                                                                    </span>
+                                                                )}
+                                                                {!bot.configured && (
+                                                                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                                                                        Thiếu key/model
+                                                                    </span>
+                                                                )}
+                                                            </span>
+                                                        </Link>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                                 <div className="relative">
                                     <button
                                         ref={notificationButtonRef}
                                         type="button"
                                         className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 hover:bg-slate-100"
                                         onClick={() => {
+                                            setBotOpen(false);
                                             setChatOpen(false);
                                             setNotificationOpen((prev) => !prev);
                                             if (!notificationOpen) {
@@ -685,6 +807,7 @@ export default function Authenticated({ auth, header, children }) {
                                         type="button"
                                         className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 hover:bg-slate-100"
                                         onClick={() => {
+                                            setBotOpen(false);
                                             setNotificationOpen(false);
                                             setChatOpen((prev) => !prev);
                                             if (!chatOpen) {

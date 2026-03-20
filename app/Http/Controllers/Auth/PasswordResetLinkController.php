@@ -57,7 +57,7 @@ class PasswordResetLinkController extends Controller
             $settings = $this->mailSettings();
             $this->applyMailConfiguration($settings);
 
-            $brandName = (string) ($settings['brand_name'] ?: config('app.name', 'Job ClickOn'));
+            $brandName = (string) ($settings['brand_name'] ?: config('app.name', 'Jobs ClickOn'));
             $body = implode("\n\n", [
                 'Xin chào '.$user->name.',',
                 'Hệ thống '.$brandName.' đã tạo mật khẩu mới cho tài khoản của bạn.',

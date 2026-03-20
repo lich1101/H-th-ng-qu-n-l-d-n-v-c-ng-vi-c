@@ -1,0 +1,1035 @@
+<?php
+
+namespace App\Http\Controllers\Api\V1;
+
+use App\Http\Controllers\Controller;
+use App\Models\AppSetting;
+use App\Models\ChatbotBot;
+use App\Models\ChatbotMessage;
+use App\Models\ChatbotUserState;
+use App\Services\GeminiChatService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+
+class ChatbotController extends Controller
+{
+    /** @var GeminiChatService */
+    private $geminiChatService;
+
+    public function __construct(GeminiChatService $geminiChatService)
+    {
+        $this->geminiChatService = $geminiChatService;
+    }
+
+    public function bots(Request $request): JsonResponse
+    {
+        $setting = $this->resolveSettings();
+        $this->ensureDefaultBot($setting, $request->user() ? $request->user()->id : null);
+
+        return response()->json([
+            'chatbot' => [
+                'enabled' => (bool) ($setting->chatbot_enabled ?? false),
+                'provider' => (string) ($setting->chatbot_provider ?? 'gemini'),
+            ],
+            'bots' => $this->botListPayload(false, false),
+        ]);
+    }
+
+    public function manageBots(Request $request): JsonResponse
+    {
+        $this->assertAdministrator($request);
+
+        $setting = $this->resolveSettings();
+        $this->ensureDefaultBot($setting, $request->user() ? $request->user()->id : null);
+
+        return response()->json([
+            'bots' => $this->botListPayload(true, true),
+        ]);
+    }
+
+    public function storeBot(Request $request): JsonResponse
+    {
+        $this->assertAdministrator($request);
+
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:120'],
+            'description' => ['nullable', 'string', 'max:255'],
+            'provider' => ['nullable', 'string', 'in:gemini'],
+            'model' => ['required', 'string', 'max:120'],
+            'api_key' => ['nullable', 'string', 'max:4096'],
+            'system_message_markdown' => ['nullable', 'string', 'max:120000'],
+            'history_pairs' => ['nullable', 'integer', 'min:1', 'max:40'],
+            'accent_color' => ['nullable', 'regex:/^#([0-9A-Fa-f]{6})$/'],
+            'icon' => ['nullable', 'string', 'max:32'],
+            'sort_order' => ['nullable', 'integer', 'min:0', 'max:100000'],
+            'is_active' => ['nullable', 'boolean'],
+            'is_default' => ['nullable', 'boolean'],
+        ]);
+
+        $user = $request->user();
+
+        $bot = null;
+        DB::transaction(function () use ($validated, $user, &$bot) {
+            $hasAny = ChatbotBot::query()->exists();
+            $isDefault = array_key_exists('is_default', $validated)
+                ? (bool) $validated['is_default']
+                : ! $hasAny;
+            $isActive = array_key_exists('is_active', $validated)
+                ? (bool) $validated['is_active']
+                : true;
+
+            if ($isDefault) {
+                $isActive = true;
+                ChatbotBot::query()->update(['is_default' => false]);
+            }
+
+            $bot = ChatbotBot::query()->create([
+                'name' => trim((string) $validated['name']),
+                'description' => $validated['description'] ?? null,
+                'provider' => $validated['provider'] ?? 'gemini',
+                'model' => trim((string) $validated['model']),
+                'api_key' => $this->nullableTrim($validated['api_key'] ?? null),
+                'system_message_markdown' => $validated['system_message_markdown'] ?? null,
+                'history_pairs' => array_key_exists('history_pairs', $validated) ? (int) $validated['history_pairs'] : 8,
+                'accent_color' => $validated['accent_color'] ?? '#6366F1',
+                'icon' => $this->nullableTrim($validated['icon'] ?? null),
+                'sort_order' => array_key_exists('sort_order', $validated) ? (int) $validated['sort_order'] : 0,
+                'is_active' => $isActive,
+                'is_default' => $isDefault,
+                'created_by' => $user ? $user->id : null,
+                'updated_by' => $user ? $user->id : null,
+            ]);
+
+            $this->ensureOneDefaultBot();
+        });
+
+        return response()->json([
+            'message' => 'Đã tạo chatbot mới.',
+            'bot' => $this->mapBot($bot, true),
+            'bots' => $this->botListPayload(true, true),
+        ]);
+    }
+
+    public function updateBot(Request $request, ChatbotBot $bot): JsonResponse
+    {
+        $this->assertAdministrator($request);
+
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:120'],
+            'description' => ['nullable', 'string', 'max:255'],
+            'provider' => ['nullable', 'string', 'in:gemini'],
+            'model' => ['required', 'string', 'max:120'],
+            'api_key' => ['nullable', 'string', 'max:4096'],
+            'system_message_markdown' => ['nullable', 'string', 'max:120000'],
+            'history_pairs' => ['nullable', 'integer', 'min:1', 'max:40'],
+            'accent_color' => ['nullable', 'regex:/^#([0-9A-Fa-f]{6})$/'],
+            'icon' => ['nullable', 'string', 'max:32'],
+            'sort_order' => ['nullable', 'integer', 'min:0', 'max:100000'],
+            'is_active' => ['nullable', 'boolean'],
+            'is_default' => ['nullable', 'boolean'],
+        ]);
+
+        $nextActive = array_key_exists('is_active', $validated)
+            ? (bool) $validated['is_active']
+            : (bool) $bot->is_active;
+        $nextDefault = array_key_exists('is_default', $validated)
+            ? (bool) $validated['is_default']
+            : (bool) $bot->is_default;
+
+        if ($nextDefault) {
+            $nextActive = true;
+        }
+
+        if (! $nextActive && (bool) $bot->is_active) {
+            $activeCount = (int) ChatbotBot::query()->where('is_active', true)->count();
+            if ($activeCount <= 1) {
+                return response()->json([
+                    'message' => 'Cần giữ ít nhất 1 chatbot đang bật để người dùng có thể sử dụng.',
+                ], 422);
+            }
+        }
+
+        $user = $request->user();
+        DB::transaction(function () use ($validated, $bot, $nextActive, $nextDefault, $user) {
+            if ($nextDefault) {
+                ChatbotBot::query()->where('id', '!=', $bot->id)->update(['is_default' => false]);
+            }
+
+            $bot->update([
+                'name' => trim((string) $validated['name']),
+                'description' => $validated['description'] ?? null,
+                'provider' => $validated['provider'] ?? 'gemini',
+                'model' => trim((string) $validated['model']),
+                'api_key' => array_key_exists('api_key', $validated)
+                    ? $this->nullableTrim($validated['api_key'])
+                    : $bot->api_key,
+                'system_message_markdown' => array_key_exists('system_message_markdown', $validated)
+                    ? $validated['system_message_markdown']
+                    : $bot->system_message_markdown,
+                'history_pairs' => array_key_exists('history_pairs', $validated)
+                    ? (int) $validated['history_pairs']
+                    : (int) $bot->history_pairs,
+                'accent_color' => array_key_exists('accent_color', $validated)
+                    ? $validated['accent_color']
+                    : $bot->accent_color,
+                'icon' => array_key_exists('icon', $validated)
+                    ? $this->nullableTrim($validated['icon'])
+                    : $bot->icon,
+                'sort_order' => array_key_exists('sort_order', $validated)
+                    ? (int) $validated['sort_order']
+                    : (int) $bot->sort_order,
+                'is_active' => $nextActive,
+                'is_default' => $nextDefault,
+                'updated_by' => $user ? $user->id : null,
+            ]);
+
+            $this->ensureOneDefaultBot();
+        });
+
+        return response()->json([
+            'message' => 'Đã cập nhật chatbot.',
+            'bot' => $this->mapBot($bot->fresh(), true),
+            'bots' => $this->botListPayload(true, true),
+        ]);
+    }
+
+    public function destroyBot(Request $request, ChatbotBot $bot): JsonResponse
+    {
+        $this->assertAdministrator($request);
+
+        $allCount = (int) ChatbotBot::query()->count();
+        if ($allCount <= 1) {
+            return response()->json([
+                'message' => 'Phải giữ lại ít nhất 1 chatbot trong hệ thống.',
+            ], 422);
+        }
+
+        $activeCount = (int) ChatbotBot::query()->where('is_active', true)->count();
+        if ((bool) $bot->is_active && $activeCount <= 1) {
+            return response()->json([
+                'message' => 'Không thể xoá chatbot đang bật cuối cùng.',
+            ], 422);
+        }
+
+        DB::transaction(function () use ($bot) {
+            $bot->delete();
+            $this->ensureOneDefaultBot();
+        });
+
+        return response()->json([
+            'message' => 'Đã xoá chatbot.',
+            'bots' => $this->botListPayload(true, true),
+        ]);
+    }
+
+    public function index(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $limit = max(40, min((int) $request->integer('limit', 160), 400));
+        $bot = $this->resolveSelectedBot($request);
+
+        if ($bot) {
+            $this->processQueue($user->id, (int) $bot->id, 1);
+        }
+
+        return response()->json($this->conversationPayload($user->id, $bot, $limit));
+    }
+
+    public function store(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $validated = $request->validate([
+            'content' => ['required', 'string', 'max:12000'],
+            'bot_id' => ['nullable', 'integer', 'min:1'],
+        ]);
+
+        $bot = $this->resolveSelectedBot($request, true);
+        if (! $bot) {
+            return response()->json([
+                'message' => 'Không tìm thấy chatbot được chọn hoặc bot đang tắt.',
+            ], 422);
+        }
+
+        $content = trim((string) $validated['content']);
+        if ($content === '') {
+            return response()->json([
+                'message' => 'Nội dung câu hỏi không được để trống.',
+            ], 422);
+        }
+
+        $message = null;
+
+        DB::transaction(function () use ($user, $bot, $content, &$message) {
+            $state = $this->lockState($user->id, (int) $bot->id);
+            if ($state->stop_requested && ! $state->is_processing) {
+                $state->stop_requested = false;
+                $state->save();
+            }
+
+            $message = ChatbotMessage::query()->create([
+                'user_id' => $user->id,
+                'bot_id' => $bot->id,
+                'role' => ChatbotMessage::ROLE_USER,
+                'status' => ChatbotMessage::STATUS_QUEUED,
+                'content' => $content,
+                'queued_at' => now(),
+            ]);
+        });
+
+        $this->processQueue($user->id, (int) $bot->id, 1);
+
+        return response()->json(array_merge(
+            $this->conversationPayload($user->id, $bot, 180),
+            ['queued_message_id' => $message ? $message->id : null]
+        ));
+    }
+
+    public function updateQueued(Request $request, ChatbotMessage $message): JsonResponse
+    {
+        $user = $request->user();
+        if ((int) $message->user_id !== (int) $user->id) {
+            return response()->json(['message' => 'Không thể sửa tin nhắn của tài khoản khác.'], 403);
+        }
+
+        if ($message->role !== ChatbotMessage::ROLE_USER || $message->status !== ChatbotMessage::STATUS_QUEUED) {
+            return response()->json(['message' => 'Chỉ có thể sửa tin nhắn đang nằm trong hàng chờ.'], 422);
+        }
+
+        $validated = $request->validate([
+            'content' => ['required', 'string', 'max:12000'],
+        ]);
+
+        $content = trim((string) $validated['content']);
+        if ($content === '') {
+            return response()->json([
+                'message' => 'Nội dung hàng chờ không được để trống.',
+            ], 422);
+        }
+
+        $message->update([
+            'content' => $content,
+        ]);
+
+        $bot = $message->bot_id
+            ? ChatbotBot::query()->find($message->bot_id)
+            : $this->resolveSelectedBot($request);
+
+        return response()->json($this->conversationPayload($user->id, $bot, 180));
+    }
+
+    public function destroyQueued(Request $request, ChatbotMessage $message): JsonResponse
+    {
+        $user = $request->user();
+        if ((int) $message->user_id !== (int) $user->id) {
+            return response()->json(['message' => 'Không thể xoá tin nhắn của tài khoản khác.'], 403);
+        }
+
+        if ($message->role !== ChatbotMessage::ROLE_USER || $message->status !== ChatbotMessage::STATUS_QUEUED) {
+            return response()->json(['message' => 'Chỉ có thể xoá tin nhắn đang chờ gửi.'], 422);
+        }
+
+        $bot = $message->bot_id
+            ? ChatbotBot::query()->find($message->bot_id)
+            : $this->resolveSelectedBot($request);
+        $message->delete();
+
+        return response()->json($this->conversationPayload($user->id, $bot, 180));
+    }
+
+    public function stop(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $clearQueue = $request->boolean('clear_queue', false);
+        $bot = $this->resolveSelectedBot($request, true);
+
+        if (! $bot) {
+            return response()->json([
+                'message' => 'Không tìm thấy chatbot được chọn hoặc bot đang tắt.',
+            ], 422);
+        }
+
+        DB::transaction(function () use ($user, $bot, $clearQueue) {
+            $state = $this->lockState($user->id, (int) $bot->id);
+            $state->stop_requested = (bool) $state->is_processing;
+
+            if ($clearQueue) {
+                ChatbotMessage::query()
+                    ->where('user_id', $user->id)
+                    ->where('bot_id', $bot->id)
+                    ->where('role', ChatbotMessage::ROLE_USER)
+                    ->where('status', ChatbotMessage::STATUS_QUEUED)
+                    ->update([
+                        'status' => ChatbotMessage::STATUS_CANCELLED,
+                        'cancelled_at' => now(),
+                        'completed_at' => now(),
+                    ]);
+            }
+
+            $state->save();
+        });
+
+        return response()->json($this->conversationPayload($user->id, $bot, 180));
+    }
+
+    public function history(Request $request): JsonResponse
+    {
+        $viewer = $request->user();
+        $bot = $this->resolveSelectedBot($request);
+        if (! $bot) {
+            return response()->json([
+                'pairs' => [],
+                'pairs_limit' => 0,
+                'user_id' => (int) $viewer->id,
+                'bot' => null,
+            ]);
+        }
+
+        $pairs = max(1, min((int) $request->integer('pairs', (int) ($bot->history_pairs ?? 8)), 40));
+        $targetUserId = (int) $viewer->id;
+        $requestedUserId = (int) $request->integer('user_id', 0);
+        if ($requestedUserId > 0 && in_array((string) $viewer->role, ['administrator', 'admin'], true)) {
+            $targetUserId = $requestedUserId;
+        }
+
+        return response()->json([
+            'user_id' => $targetUserId,
+            'pairs_limit' => $pairs,
+            'bot' => $this->mapBot($bot, false),
+            'pairs' => $this->buildHistoryPairs($targetUserId, (int) $bot->id, $pairs),
+        ]);
+    }
+
+    private function processQueue(int $userId, int $botId, int $maxLoops = 4): void
+    {
+        $loops = max(1, min($maxLoops, 12));
+
+        for ($i = 0; $i < $loops; $i++) {
+            $messageId = $this->claimNextQueuedMessage($userId, $botId);
+            if (! $messageId) {
+                break;
+            }
+
+            $this->processSingleMessage($userId, $botId, $messageId);
+        }
+    }
+
+    private function claimNextQueuedMessage(int $userId, int $botId): ?int
+    {
+        return DB::transaction(function () use ($userId, $botId) {
+            $state = $this->lockState($userId, $botId);
+
+            if ($state->is_processing) {
+                $current = $state->current_message_id
+                    ? ChatbotMessage::query()->where('bot_id', $botId)->find($state->current_message_id)
+                    : null;
+
+                if ($current && $current->status === ChatbotMessage::STATUS_PROCESSING) {
+                    return null;
+                }
+
+                $state->is_processing = false;
+                $state->current_message_id = null;
+                $state->processing_started_at = null;
+                $state->save();
+            }
+
+            if ($state->stop_requested) {
+                return null;
+            }
+
+            $queued = ChatbotMessage::query()
+                ->where('user_id', $userId)
+                ->where('bot_id', $botId)
+                ->where('role', ChatbotMessage::ROLE_USER)
+                ->where('status', ChatbotMessage::STATUS_QUEUED)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->first();
+
+            if (! $queued) {
+                return null;
+            }
+
+            $queued->status = ChatbotMessage::STATUS_PROCESSING;
+            $queued->started_at = now();
+            $queued->save();
+
+            $state->is_processing = true;
+            $state->current_message_id = $queued->id;
+            $state->processing_started_at = now();
+            $state->last_error = null;
+            $state->save();
+
+            return (int) $queued->id;
+        });
+    }
+
+    private function processSingleMessage(int $userId, int $botId, int $messageId): void
+    {
+        $message = ChatbotMessage::query()
+            ->where('bot_id', $botId)
+            ->find($messageId);
+        if (! $message || $message->status !== ChatbotMessage::STATUS_PROCESSING) {
+            $this->releaseState($userId, $botId, $messageId);
+            return;
+        }
+
+        $setting = $this->resolveSettings();
+        if (! $setting || ! $setting->chatbot_enabled) {
+            $this->markMessageFailed(
+                $userId,
+                $botId,
+                $messageId,
+                'chatbot_disabled',
+                'Chatbot đang tắt trong cài đặt hệ thống.'
+            );
+            return;
+        }
+
+        $bot = ChatbotBot::query()->find($botId);
+        if (! $bot) {
+            $this->markMessageFailed(
+                $userId,
+                $botId,
+                $messageId,
+                'bot_not_found',
+                'Không tìm thấy chatbot được chọn.'
+            );
+            return;
+        }
+
+        if (! $bot->is_active) {
+            $this->markMessageFailed(
+                $userId,
+                $botId,
+                $messageId,
+                'bot_inactive',
+                'Chatbot này đang tắt.'
+            );
+            return;
+        }
+
+        $apiKey = trim((string) ($bot->api_key ?? ''));
+        $model = trim((string) ($bot->model ?? ''));
+        if ($apiKey === '' || $model === '') {
+            $this->markMessageFailed(
+                $userId,
+                $botId,
+                $messageId,
+                'chatbot_not_configured',
+                'Chatbot chưa có API key hoặc model.'
+            );
+            return;
+        }
+
+        if ($this->isStopRequested($userId, $botId)) {
+            $this->markMessageCancelled($userId, $botId, $messageId, 'Đã dừng bởi người dùng.');
+            return;
+        }
+
+        $historyPairs = max(1, min((int) ($bot->history_pairs ?: 8), 40));
+        $conversation = $this->buildConversationForModel($userId, $botId, $historyPairs, $message);
+        $systemMessage = (string) ($bot->system_message_markdown ?? '');
+
+        $result = $this->geminiChatService->generateReply(
+            $apiKey,
+            $model,
+            $systemMessage,
+            $conversation
+        );
+
+        if ($this->isStopRequested($userId, $botId)) {
+            $this->markMessageCancelled($userId, $botId, $messageId, 'Đã dừng bởi người dùng.');
+            return;
+        }
+
+        if (! ($result['ok'] ?? false)) {
+            $this->markMessageFailed(
+                $userId,
+                $botId,
+                $messageId,
+                (string) ($result['error'] ?? 'gemini_failed'),
+                (string) ($result['message'] ?? 'Gemini trả lỗi không xác định.')
+            );
+            return;
+        }
+
+        DB::transaction(function () use ($userId, $botId, $messageId, $message, $model, $result) {
+            $state = $this->lockState($userId, $botId);
+            $target = ChatbotMessage::query()->where('bot_id', $botId)->lockForUpdate()->find($messageId);
+            if (! $target) {
+                $this->resetStateFields($state, $messageId);
+                return;
+            }
+
+            $target->status = ChatbotMessage::STATUS_COMPLETED;
+            $target->completed_at = now();
+            $target->model = $model;
+            $target->meta = is_array($result['usage'] ?? null)
+                ? ['usage' => $result['usage']]
+                : null;
+            $target->save();
+
+            ChatbotMessage::query()->create([
+                'user_id' => $userId,
+                'bot_id' => $botId,
+                'parent_id' => $target->id,
+                'role' => ChatbotMessage::ROLE_ASSISTANT,
+                'status' => ChatbotMessage::STATUS_COMPLETED,
+                'content' => (string) $result['text'],
+                'model' => $model,
+                'meta' => is_array($result['usage'] ?? null)
+                    ? ['usage' => $result['usage']]
+                    : null,
+                'queued_at' => $target->started_at ?? $message->created_at ?? now(),
+                'started_at' => $target->started_at ?? now(),
+                'completed_at' => now(),
+            ]);
+
+            $this->resetStateFields($state, $messageId);
+        });
+    }
+
+    private function markMessageFailed(
+        int $userId,
+        int $botId,
+        int $messageId,
+        string $errorCode,
+        string $errorMessage
+    ): void {
+        DB::transaction(function () use ($userId, $botId, $messageId, $errorCode, $errorMessage) {
+            $state = $this->lockState($userId, $botId);
+            $message = ChatbotMessage::query()->where('bot_id', $botId)->lockForUpdate()->find($messageId);
+            if ($message) {
+                $message->status = ChatbotMessage::STATUS_FAILED;
+                $message->error_message = trim($errorMessage);
+                $message->completed_at = now();
+                $message->meta = [
+                    'error_code' => $errorCode,
+                ];
+                $message->save();
+            }
+
+            $state->last_error = trim($errorCode.': '.$errorMessage);
+            $this->resetStateFields($state, $messageId);
+        });
+    }
+
+    private function markMessageCancelled(int $userId, int $botId, int $messageId, string $reason): void
+    {
+        DB::transaction(function () use ($userId, $botId, $messageId, $reason) {
+            $state = $this->lockState($userId, $botId);
+            $message = ChatbotMessage::query()->where('bot_id', $botId)->lockForUpdate()->find($messageId);
+            if ($message) {
+                $message->status = ChatbotMessage::STATUS_CANCELLED;
+                $message->error_message = $reason;
+                $message->cancelled_at = now();
+                $message->completed_at = now();
+                $message->save();
+            }
+
+            $state->last_error = $reason;
+            $this->resetStateFields($state, $messageId);
+        });
+    }
+
+    private function isStopRequested(int $userId, int $botId): bool
+    {
+        $state = ChatbotUserState::query()
+            ->where('user_id', $userId)
+            ->where('bot_id', $botId)
+            ->first();
+
+        return (bool) ($state->stop_requested ?? false);
+    }
+
+    private function releaseState(int $userId, int $botId, int $messageId): void
+    {
+        DB::transaction(function () use ($userId, $botId, $messageId) {
+            $state = $this->lockState($userId, $botId);
+            $this->resetStateFields($state, $messageId);
+        });
+    }
+
+    private function resetStateFields(
+        ChatbotUserState $state,
+        int $messageId,
+        bool $keepStopRequested = false
+    ): void {
+        if ((int) ($state->current_message_id ?? 0) === $messageId) {
+            $state->is_processing = false;
+            $state->current_message_id = null;
+            $state->processing_started_at = null;
+            if (! $keepStopRequested) {
+                $state->stop_requested = false;
+            }
+            $state->save();
+        }
+    }
+
+    private function lockState(int $userId, int $botId): ChatbotUserState
+    {
+        $state = ChatbotUserState::query()
+            ->where('user_id', $userId)
+            ->where('bot_id', $botId)
+            ->lockForUpdate()
+            ->first();
+
+        if ($state) {
+            return $state;
+        }
+
+        $created = ChatbotUserState::query()->create([
+            'user_id' => $userId,
+            'bot_id' => $botId,
+            'is_processing' => false,
+            'stop_requested' => false,
+        ]);
+
+        return ChatbotUserState::query()
+            ->whereKey($created->id)
+            ->lockForUpdate()
+            ->firstOrFail();
+    }
+
+    private function buildConversationForModel(
+        int $userId,
+        int $botId,
+        int $historyPairs,
+        ChatbotMessage $currentMessage
+    ): array {
+        $historyRows = ChatbotMessage::query()
+            ->where('user_id', $userId)
+            ->where('bot_id', $botId)
+            ->where('id', '<', $currentMessage->id)
+            ->whereIn('role', [ChatbotMessage::ROLE_USER, ChatbotMessage::ROLE_ASSISTANT])
+            ->where('status', ChatbotMessage::STATUS_COMPLETED)
+            ->orderByDesc('id')
+            ->limit(max(2, $historyPairs * 2))
+            ->get()
+            ->reverse()
+            ->values();
+
+        $conversation = [];
+        foreach ($historyRows as $row) {
+            $conversation[] = [
+                'role' => $row->role,
+                'content' => (string) $row->content,
+            ];
+        }
+
+        $conversation[] = [
+            'role' => ChatbotMessage::ROLE_USER,
+            'content' => (string) $currentMessage->content,
+        ];
+
+        return $conversation;
+    }
+
+    private function conversationPayload(int $userId, ?ChatbotBot $bot, int $limit = 160): array
+    {
+        $setting = $this->resolveSettings();
+        $state = $bot
+            ? ChatbotUserState::query()
+                ->where('user_id', $userId)
+                ->where('bot_id', $bot->id)
+                ->first()
+            : null;
+
+        $rows = $bot
+            ? ChatbotMessage::query()
+                ->where('user_id', $userId)
+                ->where('bot_id', $bot->id)
+                ->orderByDesc('id')
+                ->limit(max(40, min($limit, 500)))
+                ->get()
+                ->sortBy('id')
+                ->values()
+            : collect([]);
+
+        $messages = $rows->map(function (ChatbotMessage $row) {
+            return [
+                'id' => (int) $row->id,
+                'bot_id' => $row->bot_id ? (int) $row->bot_id : null,
+                'parent_id' => $row->parent_id ? (int) $row->parent_id : null,
+                'role' => $row->role,
+                'status' => $row->status,
+                'content' => (string) $row->content,
+                'model' => $row->model,
+                'error_message' => $row->error_message,
+                'created_at' => optional($row->created_at)->toIso8601String(),
+                'queued_at' => optional($row->queued_at)->toIso8601String(),
+                'started_at' => optional($row->started_at)->toIso8601String(),
+                'completed_at' => optional($row->completed_at)->toIso8601String(),
+                'cancelled_at' => optional($row->cancelled_at)->toIso8601String(),
+            ];
+        })->values()->all();
+
+        $queued = collect($messages)
+            ->filter(function ($msg) {
+                return $msg['role'] === ChatbotMessage::ROLE_USER
+                    && $msg['status'] === ChatbotMessage::STATUS_QUEUED;
+            })
+            ->values()
+            ->all();
+
+        return [
+            'chatbot' => [
+                'enabled' => (bool) ($setting->chatbot_enabled ?? false),
+                'provider' => (string) ($setting->chatbot_provider ?? 'gemini'),
+                'configured' => $bot ? $this->botConfigured($bot) : false,
+            ],
+            'bot' => $bot ? $this->mapBot($bot, false) : null,
+            'bots' => $this->botListPayload(false, false),
+            'state' => [
+                'is_processing' => (bool) ($state->is_processing ?? false),
+                'stop_requested' => (bool) ($state->stop_requested ?? false),
+                'current_message_id' => $state && $state->current_message_id ? (int) $state->current_message_id : null,
+                'last_error' => $state ? $state->last_error : null,
+                'processing_started_at' => $state && $state->processing_started_at
+                    ? $state->processing_started_at->toIso8601String()
+                    : null,
+            ],
+            'messages' => $messages,
+            'queue' => $queued,
+            'server_time' => Carbon::now()->toIso8601String(),
+        ];
+    }
+
+    private function resolveSettings(): AppSetting
+    {
+        $setting = AppSetting::query()->first();
+        if ($setting) {
+            return $setting;
+        }
+
+        return AppSetting::query()->create(AppSetting::defaults());
+    }
+
+    private function buildHistoryPairs(int $userId, int $botId, int $pairs): array
+    {
+        $rows = ChatbotMessage::query()
+            ->where('user_id', $userId)
+            ->where('bot_id', $botId)
+            ->whereIn('role', [ChatbotMessage::ROLE_USER, ChatbotMessage::ROLE_ASSISTANT])
+            ->where('status', ChatbotMessage::STATUS_COMPLETED)
+            ->orderBy('id')
+            ->get();
+
+        $result = [];
+        $pendingQuestion = null;
+
+        foreach ($rows as $row) {
+            if ($row->role === ChatbotMessage::ROLE_USER) {
+                $pendingQuestion = [
+                    'question_id' => (int) $row->id,
+                    'question' => (string) $row->content,
+                    'question_at' => optional($row->created_at)->toIso8601String(),
+                    'answer_id' => null,
+                    'answer' => null,
+                    'answer_at' => null,
+                ];
+                continue;
+            }
+
+            if (! $pendingQuestion) {
+                continue;
+            }
+
+            $pendingQuestion['answer_id'] = (int) $row->id;
+            $pendingQuestion['answer'] = (string) $row->content;
+            $pendingQuestion['answer_at'] = optional($row->created_at)->toIso8601String();
+            $result[] = $pendingQuestion;
+            $pendingQuestion = null;
+        }
+
+        return collect($result)
+            ->reverse()
+            ->take($pairs)
+            ->reverse()
+            ->values()
+            ->all();
+    }
+
+    private function requestedBotId(Request $request): int
+    {
+        $raw = $request->input('bot_id', $request->query('bot_id'));
+        if ($raw === null || $raw === '') {
+            return 0;
+        }
+        if (! is_numeric($raw)) {
+            return 0;
+        }
+
+        return max(0, (int) $raw);
+    }
+
+    private function resolveSelectedBot(
+        Request $request,
+        bool $strictRequested = false,
+        bool $includeInactive = false
+    ): ?ChatbotBot {
+        $setting = $this->resolveSettings();
+        $this->ensureDefaultBot($setting, $request->user() ? $request->user()->id : null);
+
+        $query = $this->botListQuery($includeInactive);
+        $requestedId = $this->requestedBotId($request);
+        if ($requestedId > 0) {
+            $selected = (clone $query)->where('id', $requestedId)->first();
+            if ($selected) {
+                return $selected;
+            }
+
+            if ($strictRequested) {
+                return null;
+            }
+        }
+
+        return $query->first();
+    }
+
+    private function botListQuery(bool $includeInactive = false)
+    {
+        $query = ChatbotBot::query();
+        if (! $includeInactive) {
+            $query->where('is_active', true);
+        }
+
+        return $query
+            ->orderByDesc('is_default')
+            ->orderBy('sort_order')
+            ->orderBy('id');
+    }
+
+    private function botListPayload(bool $includeInactive = false, bool $includeSecrets = false): array
+    {
+        return $this->botListQuery($includeInactive)
+            ->get()
+            ->map(function (ChatbotBot $bot) use ($includeSecrets) {
+                return $this->mapBot($bot, $includeSecrets);
+            })
+            ->values()
+            ->all();
+    }
+
+    private function mapBot(ChatbotBot $bot, bool $includeSecrets = false): array
+    {
+        $payload = [
+            'id' => (int) $bot->id,
+            'name' => (string) $bot->name,
+            'description' => $bot->description,
+            'provider' => (string) ($bot->provider ?: 'gemini'),
+            'model' => (string) ($bot->model ?: ''),
+            'history_pairs' => (int) ($bot->history_pairs ?: 8),
+            'accent_color' => $bot->accent_color ?: '#6366F1',
+            'icon' => $bot->icon ?: '🤖',
+            'sort_order' => (int) ($bot->sort_order ?: 0),
+            'is_active' => (bool) $bot->is_active,
+            'is_default' => (bool) $bot->is_default,
+            'configured' => $this->botConfigured($bot),
+            'created_at' => optional($bot->created_at)->toIso8601String(),
+            'updated_at' => optional($bot->updated_at)->toIso8601String(),
+        ];
+
+        if ($includeSecrets) {
+            $payload['api_key'] = $bot->api_key;
+            $payload['system_message_markdown'] = $bot->system_message_markdown;
+        }
+
+        return $payload;
+    }
+
+    private function botConfigured(ChatbotBot $bot): bool
+    {
+        return trim((string) ($bot->api_key ?? '')) !== ''
+            && trim((string) ($bot->model ?? '')) !== '';
+    }
+
+    private function ensureDefaultBot(AppSetting $setting, ?int $userId = null): ?ChatbotBot
+    {
+        $default = ChatbotBot::query()
+            ->where('is_default', true)
+            ->orderBy('id')
+            ->first();
+
+        if ($default) {
+            return $default;
+        }
+
+        $first = ChatbotBot::query()->orderBy('id')->first();
+        if ($first) {
+            $first->is_default = true;
+            if (! $first->is_active) {
+                $first->is_active = true;
+            }
+            $first->save();
+            return $first;
+        }
+
+        return ChatbotBot::query()->create([
+            'name' => 'Trợ lý mặc định',
+            'description' => 'Bot mặc định dùng cho hệ thống nội bộ.',
+            'provider' => (string) ($setting->chatbot_provider ?: 'gemini'),
+            'model' => (string) ($setting->chatbot_model ?: 'gemini-2.0-flash'),
+            'api_key' => $setting->chatbot_api_key,
+            'system_message_markdown' => $setting->chatbot_system_message_markdown,
+            'history_pairs' => (int) ($setting->chatbot_history_pairs ?: 8),
+            'accent_color' => '#6366F1',
+            'icon' => '🤖',
+            'sort_order' => 0,
+            'is_active' => true,
+            'is_default' => true,
+            'created_by' => $userId,
+            'updated_by' => $userId,
+        ]);
+    }
+
+    private function ensureOneDefaultBot(): void
+    {
+        $defaultId = ChatbotBot::query()
+            ->where('is_default', true)
+            ->orderBy('id')
+            ->value('id');
+        if ($defaultId) {
+            return;
+        }
+
+        $fallbackId = ChatbotBot::query()
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->value('id');
+        if (! $fallbackId) {
+            $fallbackId = ChatbotBot::query()
+                ->orderBy('sort_order')
+                ->orderBy('id')
+                ->value('id');
+        }
+
+        if ($fallbackId) {
+            ChatbotBot::query()->where('id', $fallbackId)->update([
+                'is_default' => true,
+                'is_active' => true,
+            ]);
+        }
+    }
+
+    private function assertAdministrator(Request $request): void
+    {
+        if (! $request->user() || (string) $request->user()->role !== 'administrator') {
+            abort(response()->json(['message' => 'Không có quyền quản lý chatbot.'], 403));
+        }
+    }
+
+    private function nullableTrim($value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $trimmed = trim((string) $value);
+        return $trimmed === '' ? null : $trimmed;
+    }
+}

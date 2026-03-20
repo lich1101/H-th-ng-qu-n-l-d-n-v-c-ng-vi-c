@@ -87,6 +87,15 @@ const iconNodes = {
             <path d="M6.75 18.75 3.75 21V6.75A2.25 2.25 0 0 1 6 4.5h12a2.25 2.25 0 0 1 2.25 2.25v9A2.25 2.25 0 0 1 18 18H6.75Z" />
         </>
     ),
+    assistant: () => (
+        <>
+            <rect x="4.5" y="6" width="15" height="10.5" rx="3" />
+            <path d="M9 3.75h6M12 16.5v3.75" />
+            <circle cx="9.75" cy="11.25" r="0.75" fill="currentColor" stroke="none" />
+            <circle cx="14.25" cy="11.25" r="0.75" fill="currentColor" stroke="none" />
+            <path d="M10.5 13.5h3" />
+        </>
+    ),
     chart: () => (
         <>
             <path d="M4.5 19.5h15" />

@@ -482,7 +482,7 @@ class NotificationService
             'smtp_password' => $setting->smtp_password,
             'smtp_from_address' => $setting->smtp_from_address,
             'smtp_from_name' => $setting->smtp_from_name,
-            'brand_name' => $setting->brand_name ?: config('app.name', 'Job ClickOn'),
+            'brand_name' => $setting->brand_name ?: config('app.name', 'Jobs ClickOn'),
         ];
 
         return $this->cachedSettings;

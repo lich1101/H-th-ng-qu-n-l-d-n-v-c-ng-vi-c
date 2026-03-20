@@ -66,6 +66,12 @@ class AppSettingController extends Controller
             'smtp_password' => ['nullable', 'string', 'max:255'],
             'smtp_from_address' => ['nullable', 'email', 'max:120'],
             'smtp_from_name' => ['nullable', 'string', 'max:120'],
+            'chatbot_enabled' => ['nullable', 'boolean'],
+            'chatbot_provider' => ['nullable', 'string', 'in:gemini'],
+            'chatbot_model' => ['nullable', 'string', 'max:120'],
+            'chatbot_api_key' => ['nullable', 'string', 'max:4096'],
+            'chatbot_system_message_markdown' => ['nullable', 'string', 'max:120000'],
+            'chatbot_history_pairs' => ['nullable', 'integer', 'min:1', 'max:40'],
             'logo' => ['nullable', 'file', 'max:5120'],
         ]);
 
@@ -165,6 +171,24 @@ class AppSettingController extends Controller
             'smtp_from_name' => array_key_exists('smtp_from_name', $validated)
                 ? $validated['smtp_from_name']
                 : $setting->smtp_from_name,
+            'chatbot_enabled' => array_key_exists('chatbot_enabled', $validated)
+                ? (bool) $validated['chatbot_enabled']
+                : $setting->chatbot_enabled,
+            'chatbot_provider' => array_key_exists('chatbot_provider', $validated)
+                ? (string) $validated['chatbot_provider']
+                : ($setting->chatbot_provider ?: 'gemini'),
+            'chatbot_model' => array_key_exists('chatbot_model', $validated)
+                ? $validated['chatbot_model']
+                : $setting->chatbot_model,
+            'chatbot_api_key' => array_key_exists('chatbot_api_key', $validated)
+                ? $validated['chatbot_api_key']
+                : $setting->chatbot_api_key,
+            'chatbot_system_message_markdown' => array_key_exists('chatbot_system_message_markdown', $validated)
+                ? $validated['chatbot_system_message_markdown']
+                : $setting->chatbot_system_message_markdown,
+            'chatbot_history_pairs' => array_key_exists('chatbot_history_pairs', $validated)
+                ? (int) $validated['chatbot_history_pairs']
+                : (int) ($setting->chatbot_history_pairs ?: 8),
             'updated_by' => $request->user()->id,
         ]);
 
@@ -175,7 +199,7 @@ class AppSettingController extends Controller
     {
         $defaults = AppSetting::defaults();
         return [
-            'brand_name' => $setting && $setting->brand_name ? $setting->brand_name : config('app.name', 'Job ClickOn'),
+            'brand_name' => $setting && $setting->brand_name ? $setting->brand_name : config('app.name', 'Jobs ClickOn'),
             'primary_color' => $setting && $setting->primary_color ? $setting->primary_color : '#04BC5C',
             'logo_url' => $setting && $setting->logo_url ? $setting->logo_url : $defaults['logo_url'],
             'support_email' => $setting ? $setting->support_email : null,
@@ -198,6 +222,10 @@ class AppSettingController extends Controller
             'contract_expiry_reminder_time' => $setting && $setting->contract_expiry_reminder_time ? (string) $setting->contract_expiry_reminder_time : '09:00',
             'contract_expiry_reminder_days_before' => $setting ? (int) ($setting->contract_expiry_reminder_days_before ?? 3) : 3,
             'project_handover_min_progress_percent' => $setting ? (int) ($setting->project_handover_min_progress_percent ?? 90) : 90,
+            'chatbot_enabled' => $setting ? (bool) ($setting->chatbot_enabled ?? false) : false,
+            'chatbot_provider' => $setting && $setting->chatbot_provider ? (string) $setting->chatbot_provider : 'gemini',
+            'chatbot_model' => $setting && $setting->chatbot_model ? (string) $setting->chatbot_model : (string) ($defaults['chatbot_model'] ?? 'gemini-2.0-flash'),
+            'chatbot_history_pairs' => $setting ? (int) ($setting->chatbot_history_pairs ?? 8) : 8,
         ];
     }
 
@@ -216,6 +244,8 @@ class AppSettingController extends Controller
             'smtp_password' => $setting ? $setting->smtp_password : null,
             'smtp_from_address' => $setting ? $setting->smtp_from_address : null,
             'smtp_from_name' => $setting ? $setting->smtp_from_name : null,
+            'chatbot_api_key' => $setting ? $setting->chatbot_api_key : null,
+            'chatbot_system_message_markdown' => $setting ? $setting->chatbot_system_message_markdown : null,
         ]);
     }
 }

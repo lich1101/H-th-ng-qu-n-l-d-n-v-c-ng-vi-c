@@ -7,6 +7,7 @@ import { useToast } from '@/Contexts/ToastContext';
 const TABS = [
     { key: 'branding', label: 'Thương hiệu' },
     { key: 'contact', label: 'Liên hệ & pháp lý' },
+    { key: 'chatbot', label: 'AI Chatbot' },
     { key: 'notifications', label: 'Thông báo thiết bị' },
     { key: 'diagnostics', label: 'Kết nối & thiết bị' },
     { key: 'mobile_devices', label: 'Thiết bị di động người dùng' },
@@ -47,6 +48,27 @@ const initialSettings = (settings) => ({
     smtp_password: settings?.smtp_password || '',
     smtp_from_address: settings?.smtp_from_address || '',
     smtp_from_name: settings?.smtp_from_name || '',
+    chatbot_enabled: settings?.chatbot_enabled ?? false,
+    chatbot_provider: settings?.chatbot_provider || 'gemini',
+    chatbot_model: settings?.chatbot_model || 'gemini-2.0-flash',
+    chatbot_api_key: settings?.chatbot_api_key || '',
+    chatbot_system_message_markdown: settings?.chatbot_system_message_markdown || '',
+    chatbot_history_pairs: settings?.chatbot_history_pairs ?? 8,
+});
+
+const initialBotForm = (bot = null) => ({
+    name: bot?.name || '',
+    description: bot?.description || '',
+    provider: bot?.provider || 'gemini',
+    model: bot?.model || 'gemini-2.0-flash',
+    api_key: bot?.api_key || '',
+    history_pairs: bot?.history_pairs ?? 8,
+    accent_color: bot?.accent_color || '#6366F1',
+    icon: bot?.icon || '🤖',
+    sort_order: bot?.sort_order ?? 0,
+    is_active: bot?.is_active ?? true,
+    is_default: bot?.is_default ?? false,
+    system_message_markdown: bot?.system_message_markdown || '',
 });
 
 function ToggleSwitch({ checked, onChange, label, description = '' }) {
@@ -141,6 +163,12 @@ export default function SystemSettings(props) {
     const [showPreview, setShowPreview] = useState(false);
     const [statusLoading, setStatusLoading] = useState(false);
     const [settingsLoading, setSettingsLoading] = useState(false);
+    const [botLoading, setBotLoading] = useState(false);
+    const [botSaving, setBotSaving] = useState(false);
+    const [botDeletingId, setBotDeletingId] = useState(null);
+    const [botRows, setBotRows] = useState([]);
+    const [editingBotId, setEditingBotId] = useState(null);
+    const [botForm, setBotForm] = useState(initialBotForm());
     const [systemStatus, setSystemStatus] = useState(null);
     const [deviceLoading, setDeviceLoading] = useState(false);
     const [deviceRows, setDeviceRows] = useState([]);
@@ -211,6 +239,39 @@ export default function SystemSettings(props) {
         }
     };
 
+    const applyBotRows = (rows, preferredId = null) => {
+        const list = Array.isArray(rows) ? rows : [];
+        setBotRows(list);
+        if (list.length === 0) {
+            setEditingBotId(null);
+            setBotForm(initialBotForm());
+            return;
+        }
+
+        const preferred = preferredId
+            ? list.find((bot) => Number(bot.id) === Number(preferredId))
+            : null;
+        const current = editingBotId
+            ? list.find((bot) => Number(bot.id) === Number(editingBotId))
+            : null;
+        const selected = preferred || current || list.find((bot) => bot.is_default) || list[0];
+
+        setEditingBotId(Number(selected.id));
+        setBotForm(initialBotForm(selected));
+    };
+
+    const loadChatbotBots = async ({ preferredId = null, silent = false } = {}) => {
+        if (!silent) setBotLoading(true);
+        try {
+            const res = await axios.get('/api/v1/chatbot/bots/manage');
+            applyBotRows(res.data?.bots || [], preferredId);
+        } catch (e) {
+            toast.error(e?.response?.data?.message || 'Không tải được danh sách chatbot.');
+        } finally {
+            if (!silent) setBotLoading(false);
+        }
+    };
+
     const fetchDevices = async (page = 1, nextFilters = deviceFilters) => {
         setDeviceLoading(true);
         try {
@@ -237,6 +298,91 @@ export default function SystemSettings(props) {
         }
     };
 
+    const startCreateBot = () => {
+        setEditingBotId(null);
+        setBotForm(initialBotForm());
+    };
+
+    const selectBot = (bot) => {
+        setEditingBotId(Number(bot.id));
+        setBotForm(initialBotForm(bot));
+    };
+
+    const saveBot = async () => {
+        if (!botForm.name.trim()) {
+            toast.error('Vui lòng nhập tên chatbot.');
+            return;
+        }
+        if (!botForm.model.trim()) {
+            toast.error('Vui lòng nhập model Gemini.');
+            return;
+        }
+
+        setBotSaving(true);
+        try {
+            const payload = {
+                name: botForm.name.trim(),
+                description: botForm.description?.trim() || null,
+                provider: botForm.provider || 'gemini',
+                model: botForm.model.trim(),
+                api_key: botForm.api_key || '',
+                history_pairs: Number(botForm.history_pairs || 8),
+                accent_color: botForm.accent_color || '#6366F1',
+                icon: botForm.icon || '🤖',
+                sort_order: Number(botForm.sort_order || 0),
+                is_active: !!botForm.is_active,
+                is_default: !!botForm.is_default,
+                system_message_markdown: botForm.system_message_markdown || '',
+            };
+
+            let res;
+            if (editingBotId) {
+                res = await axios.put(`/api/v1/chatbot/bots/${editingBotId}`, payload);
+            } else {
+                res = await axios.post('/api/v1/chatbot/bots', payload);
+            }
+
+            const savedBotId = res.data?.bot?.id || editingBotId;
+            applyBotRows(res.data?.bots || [], savedBotId);
+
+            if (savedBotId) {
+                const selected = (res.data?.bots || []).find((row) => Number(row.id) === Number(savedBotId));
+                if (selected) {
+                    setForm((s) => ({
+                        ...s,
+                        chatbot_provider: selected.provider || s.chatbot_provider,
+                        chatbot_model: selected.model || s.chatbot_model,
+                        chatbot_api_key: selected.api_key || '',
+                        chatbot_system_message_markdown: selected.system_message_markdown || '',
+                        chatbot_history_pairs: Number(selected.history_pairs || 8),
+                    }));
+                }
+            }
+
+            toast.success(editingBotId ? 'Đã cập nhật chatbot.' : 'Đã tạo chatbot mới.');
+        } catch (e) {
+            toast.error(e?.response?.data?.message || 'Không lưu được chatbot.');
+        } finally {
+            setBotSaving(false);
+        }
+    };
+
+    const deleteBot = async (botId) => {
+        if (!botId) return;
+        if (!window.confirm('Xoá chatbot này? Lịch sử hội thoại gắn với bot sẽ bị xóa theo.')) return;
+
+        setBotDeletingId(botId);
+        try {
+            const res = await axios.delete(`/api/v1/chatbot/bots/${botId}`);
+            applyBotRows(res.data?.bots || []);
+            toast.success('Đã xoá chatbot.');
+        } catch (e) {
+            toast.error(e?.response?.data?.message || 'Không xoá được chatbot.');
+        } finally {
+            setBotDeletingId(null);
+        }
+    };
+
     useEffect(() => {
         if (!logoFile) return undefined;
         const url = URL.createObjectURL(logoFile);
@@ -255,6 +401,7 @@ export default function SystemSettings(props) {
         reloadSystemStatus();
         fetchUsers();
         loadAdminSettings();
+        loadChatbotBots();
         fetchDevices();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -309,6 +456,12 @@ export default function SystemSettings(props) {
             formData.append('smtp_password', form.smtp_password || '');
             formData.append('smtp_from_address', form.smtp_from_address || '');
             formData.append('smtp_from_name', form.smtp_from_name || '');
+            formData.append('chatbot_enabled', form.chatbot_enabled ? '1' : '0');
+            formData.append('chatbot_provider', form.chatbot_provider || 'gemini');
+            formData.append('chatbot_model', form.chatbot_model || '');
+            formData.append('chatbot_api_key', form.chatbot_api_key || '');
+            formData.append('chatbot_system_message_markdown', form.chatbot_system_message_markdown || '');
+            formData.append('chatbot_history_pairs', String(form.chatbot_history_pairs ?? 8));
             if (logoFile) {
                 formData.append('logo', logoFile);
             }
@@ -427,6 +580,12 @@ export default function SystemSettings(props) {
         rows.push({ key: 'Nhắc công nợ hợp đồng', value: notificationConfig?.contract_unpaid_reminder_enabled ? `${notificationConfig?.contract_unpaid_reminder_time || '08:00'} mỗi ngày` : 'Tắt' });
         rows.push({ key: 'Nhắc hết hạn hợp đồng', value: notificationConfig?.contract_expiry_reminder_enabled ? `${notificationConfig?.contract_expiry_reminder_time || '09:00'} mỗi ngày, trước ${notificationConfig?.contract_expiry_reminder_days_before ?? 3} ngày` : 'Tắt' });
         rows.push({ key: 'Ngưỡng gửi duyệt bàn giao', value: `${notificationConfig?.project_handover_min_progress_percent ?? form.project_handover_min_progress_percent ?? 90}%` });
+        rows.push({ key: 'AI chatbot enabled', value: form.chatbot_enabled ? 'Bật' : 'Tắt' });
+        rows.push({ key: 'AI chatbot total bots', value: String(botRows.length) });
+        rows.push({ key: 'AI chatbot provider', value: form.chatbot_provider || 'gemini' });
+        rows.push({ key: 'AI chatbot model', value: form.chatbot_model || '—' });
+        rows.push({ key: 'AI chatbot history pairs', value: String(form.chatbot_history_pairs ?? 8) });
+        rows.push({ key: 'AI chatbot key configured', value: form.chatbot_api_key ? 'Có' : 'Chưa' });
         rows.push({ key: 'Mail configured', value: notificationConfig?.mail_configured ? 'Có' : 'Chưa' });
         rows.push({ key: 'Device tokens total', value: String(pushTokens.total ?? 0) });
         rows.push({ key: 'Tokens iOS', value: String(pushTokens?.by_platform?.ios ?? 0) });
@@ -439,7 +598,19 @@ export default function SystemSettings(props) {
         rows.push({ key: 'Token update gần nhất', value: pushTokens.last_updated_at || '—' });
 
         return rows;
-    }, [systemStatus, form.notifications_dedupe_seconds, form.meeting_reminder_minutes_before, form.task_item_progress_reminder_time, form.project_handover_min_progress_percent]);
+    }, [
+        systemStatus,
+        form.notifications_dedupe_seconds,
+        form.meeting_reminder_minutes_before,
+        form.task_item_progress_reminder_time,
+        form.project_handover_min_progress_percent,
+        form.chatbot_enabled,
+        form.chatbot_provider,
+        form.chatbot_model,
+        form.chatbot_history_pairs,
+        form.chatbot_api_key,
+        botRows.length,
+    ]);
 
     const firebaseStatus = systemStatus?.firebase || {};
     const pushTokens = systemStatus?.push_tokens || {};
@@ -589,6 +760,279 @@ export default function SystemSettings(props) {
                                 onChange={(e) => setForm((s) => ({ ...s, support_address: e.target.value }))}
                                 placeholder="Địa chỉ doanh nghiệp"
                             />
+                        </div>
+                    </div>
+                )}
+
+                {activeTab === 'chatbot' && (
+                    <div className="space-y-4">
+                        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
+                            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                <div className="max-w-3xl">
+                                    <h3 className="text-sm font-semibold text-slate-900">Cấu hình AI Chatbot (đa bot)</h3>
+                                    <p className="mt-1 text-xs text-text-muted">
+                                        Administrator có thể tạo nhiều chatbot, mỗi bot có model/API key/system message riêng.
+                                        Lịch sử được tách theo từng người dùng và từng bot để không bị lẫn ngữ cảnh.
+                                    </p>
+                                </div>
+                                <div className="w-full max-w-[280px] lg:w-auto">
+                                    <ToggleSwitch
+                                        checked={!!form.chatbot_enabled}
+                                        onChange={(value) => setForm((s) => ({ ...s, chatbot_enabled: value }))}
+                                        label={form.chatbot_enabled ? 'Chatbot đang bật' : 'Chatbot đang tắt'}
+                                        description="Tắt/bật trợ lý AI trên cả web và app."
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
+                            <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-card">
+                                <div className="flex items-center justify-between gap-2">
+                                    <h4 className="text-sm font-semibold text-slate-900">Danh sách chatbot</h4>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700"
+                                            onClick={() => loadChatbotBots({ preferredId: editingBotId })}
+                                        >
+                                            Tải lại
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="rounded-xl bg-primary px-3 py-1.5 text-xs font-semibold text-white"
+                                            onClick={startCreateBot}
+                                        >
+                                            Tạo bot mới
+                                        </button>
+                                    </div>
+                                </div>
+                                <p className="mt-1 text-xs text-text-muted">
+                                    Chọn 1 bot để sửa nhanh, hoặc bấm tạo mới.
+                                </p>
+
+                                <div className="mt-3 space-y-2">
+                                    {botLoading && (
+                                        <div className="rounded-xl border border-slate-200/80 bg-slate-50 px-3 py-6 text-center text-sm text-slate-500">
+                                            Đang tải danh sách chatbot...
+                                        </div>
+                                    )}
+                                    {!botLoading && botRows.length === 0 && (
+                                        <div className="rounded-xl border border-slate-200/80 bg-slate-50 px-3 py-6 text-center text-sm text-slate-500">
+                                            Chưa có chatbot nào.
+                                        </div>
+                                    )}
+                                    {!botLoading && botRows.map((bot) => (
+                                        <button
+                                            key={bot.id}
+                                            type="button"
+                                            className={`w-full rounded-xl border px-3 py-2 text-left transition ${
+                                                Number(editingBotId) === Number(bot.id)
+                                                    ? 'border-primary bg-primary/5'
+                                                    : 'border-slate-200/80 bg-white hover:bg-slate-50'
+                                            }`}
+                                            onClick={() => selectBot(bot)}
+                                        >
+                                            <div className="flex items-center justify-between gap-2">
+                                                <div className="flex items-center gap-2 min-w-0">
+                                                    <span
+                                                        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm"
+                                                        style={{ backgroundColor: `${bot.accent_color || '#6366F1'}1A`, color: bot.accent_color || '#6366F1' }}
+                                                    >
+                                                        {bot.icon || '🤖'}
+                                                    </span>
+                                                    <div className="min-w-0">
+                                                        <p className="truncate text-sm font-semibold text-slate-900">{bot.name}</p>
+                                                        <p className="truncate text-xs text-slate-500">{bot.model || 'Chưa có model'}</p>
+                                                    </div>
+                                                </div>
+                                                <div className="flex flex-col items-end gap-1">
+                                                    {bot.is_default && (
+                                                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                                                            Mặc định
+                                                        </span>
+                                                    )}
+                                                    {!bot.is_active && (
+                                                        <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                                                            Đang tắt
+                                                        </span>
+                                                    )}
+                                                    {!bot.configured && (
+                                                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                                                            Thiếu key/model
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
+                                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                    <div>
+                                        <h4 className="text-sm font-semibold text-slate-900">
+                                            {editingBotId ? `Chỉnh chatbot #${editingBotId}` : 'Tạo chatbot mới'}
+                                        </h4>
+                                        <p className="mt-1 text-xs text-text-muted">
+                                            Giao diện tối giản: nhập tên bot, model, key, prompt hệ thống là chạy.
+                                        </p>
+                                    </div>
+                                    {editingBotId && (
+                                        <button
+                                            type="button"
+                                            className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700"
+                                            onClick={() => deleteBot(editingBotId)}
+                                            disabled={botDeletingId === editingBotId}
+                                        >
+                                            {botDeletingId === editingBotId ? 'Đang xoá...' : 'Xoá chatbot'}
+                                        </button>
+                                    )}
+                                </div>
+
+                                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                                    <div>
+                                        <label className="text-xs text-text-muted">Tên chatbot</label>
+                                        <input
+                                            className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                            value={botForm.name}
+                                            onChange={(e) => setBotForm((s) => ({ ...s, name: e.target.value }))}
+                                            placeholder="VD: Trợ lý SEO"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-text-muted">Mô tả ngắn</label>
+                                        <input
+                                            className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                            value={botForm.description}
+                                            onChange={(e) => setBotForm((s) => ({ ...s, description: e.target.value }))}
+                                            placeholder="Bot hỗ trợ trả lời nghiệp vụ nội bộ."
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-text-muted">Provider</label>
+                                        <select
+                                            className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                            value={botForm.provider}
+                                            onChange={(e) => setBotForm((s) => ({ ...s, provider: e.target.value }))}
+                                        >
+                                            <option value="gemini">Gemini</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-text-muted">Model Gemini</label>
+                                        <input
+                                            className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                            value={botForm.model}
+                                            onChange={(e) => setBotForm((s) => ({ ...s, model: e.target.value }))}
+                                            placeholder="gemini-2.0-flash"
+                                        />
+                                    </div>
+                                    <div className="md:col-span-2">
+                                        <label className="text-xs text-text-muted">Gemini API key</label>
+                                        <input
+                                            type="password"
+                                            className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                            value={botForm.api_key}
+                                            onChange={(e) => setBotForm((s) => ({ ...s, api_key: e.target.value }))}
+                                            placeholder="AIza..."
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-text-muted">Số cặp Q&A đưa vào ngữ cảnh</label>
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            max="40"
+                                            className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                            value={botForm.history_pairs}
+                                            onChange={(e) => setBotForm((s) => ({ ...s, history_pairs: Number(e.target.value || 8) }))}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-text-muted">Thứ tự hiển thị</label>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                            value={botForm.sort_order}
+                                            onChange={(e) => setBotForm((s) => ({ ...s, sort_order: Number(e.target.value || 0) }))}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-text-muted">Màu nhận diện</label>
+                                        <input
+                                            type="color"
+                                            className="mt-2 h-[42px] w-full rounded-2xl border border-slate-200/80 px-2 py-1"
+                                            value={botForm.accent_color || '#6366F1'}
+                                            onChange={(e) => setBotForm((s) => ({ ...s, accent_color: e.target.value }))}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-text-muted">Icon (emoji)</label>
+                                        <input
+                                            className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                            value={botForm.icon}
+                                            onChange={(e) => setBotForm((s) => ({ ...s, icon: e.target.value }))}
+                                            placeholder="🤖"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                                    <ToggleSwitch
+                                        checked={!!botForm.is_active}
+                                        onChange={(value) => setBotForm((s) => ({ ...s, is_active: value }))}
+                                        label={botForm.is_active ? 'Bot đang bật' : 'Bot đang tắt'}
+                                        description="Bot tắt sẽ không xuất hiện cho người dùng chat."
+                                    />
+                                    <ToggleSwitch
+                                        checked={!!botForm.is_default}
+                                        onChange={(value) => setBotForm((s) => ({ ...s, is_default: value }))}
+                                        label={botForm.is_default ? 'Bot mặc định' : 'Không phải mặc định'}
+                                        description="Bot mặc định sẽ tự được chọn khi user mở trang chat."
+                                    />
+                                </div>
+
+                                <div className="mt-4">
+                                    <label className="text-xs text-text-muted">System message (Markdown)</label>
+                                    <textarea
+                                        className="mt-2 min-h-[220px] w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm leading-6"
+                                        value={botForm.system_message_markdown}
+                                        onChange={(e) => setBotForm((s) => ({ ...s, system_message_markdown: e.target.value }))}
+                                        placeholder={`# Vai trò trợ lý
+- Trả lời theo tài liệu nội bộ.
+- Nếu thiếu dữ liệu thì hỏi lại ngắn gọn.
+- Không trộn lịch sử giữa các người dùng.`}
+                                    />
+                                </div>
+
+                                <div className="mt-4 rounded-2xl bg-slate-50 px-4 py-3">
+                                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-subtle">Luồng chat tuần tự</div>
+                                    <div className="mt-1 text-sm text-slate-700">
+                                        Mỗi user chat tuần tự từng câu. Trong lúc bot đang trả lời, câu mới sẽ vào hàng chờ và vẫn có thể chỉnh sửa trước khi gửi.
+                                    </div>
+                                </div>
+
+                                <div className="mt-4 flex flex-wrap items-center gap-2">
+                                    <button
+                                        type="button"
+                                        className="rounded-2xl bg-primary px-4 py-2 text-sm font-semibold text-white"
+                                        onClick={saveBot}
+                                        disabled={botSaving}
+                                    >
+                                        {botSaving ? 'Đang lưu...' : (editingBotId ? 'Cập nhật chatbot' : 'Tạo chatbot')}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
+                                        onClick={() => loadChatbotBots({ preferredId: editingBotId })}
+                                    >
+                                        Đồng bộ danh sách
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 )}
@@ -932,7 +1376,7 @@ export default function SystemSettings(props) {
                                         className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
                                         value={form.smtp_from_name}
                                         onChange={(e) => setForm((s) => ({ ...s, smtp_from_name: e.target.value }))}
-                                        placeholder="Job ClickOn"
+                                        placeholder="Jobs ClickOn"
                                         disabled={!form.smtp_custom_enabled}
                                     />
                                 </div>

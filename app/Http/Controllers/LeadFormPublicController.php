@@ -31,7 +31,7 @@ class LeadFormPublicController extends Controller
             'fields' => $form->resolvedFieldSchema(),
             'style' => $style,
             'mapping' => $form->resolvedSubmissionMapping(),
-            'brandName' => optional($setting)->brand_name ?: config('app.name', 'Job ClickOn'),
+            'brandName' => optional($setting)->brand_name ?: config('app.name', 'Jobs ClickOn'),
             'primaryColor' => $style['primary_color'] ?: (optional($setting)->primary_color ?: $defaultPrimaryColor),
             'brandLogoUrl' => optional($setting)->logo_url ?: AppSetting::defaults()['logo_url'],
         ]);

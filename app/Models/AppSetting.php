@@ -39,6 +39,12 @@ class AppSetting extends Model
         'smtp_password',
         'smtp_from_address',
         'smtp_from_name',
+        'chatbot_enabled',
+        'chatbot_provider',
+        'chatbot_model',
+        'chatbot_api_key',
+        'chatbot_system_message_markdown',
+        'chatbot_history_pairs',
         'updated_by',
     ];
 
@@ -60,12 +66,14 @@ class AppSetting extends Model
         'project_handover_min_progress_percent' => 'integer',
         'smtp_custom_enabled' => 'boolean',
         'smtp_port' => 'integer',
+        'chatbot_enabled' => 'boolean',
+        'chatbot_history_pairs' => 'integer',
     ];
 
     public static function defaults(): array
     {
         return [
-            'brand_name' => config('app.name', 'Job ClickOn'),
+            'brand_name' => config('app.name', 'Jobs ClickOn'),
             'primary_color' => '#04BC5C',
             'logo_url' => '/brand/icon.png',
             'support_email' => null,
@@ -97,6 +105,12 @@ class AppSetting extends Model
             'smtp_password' => null,
             'smtp_from_address' => null,
             'smtp_from_name' => null,
+            'chatbot_enabled' => false,
+            'chatbot_provider' => 'gemini',
+            'chatbot_model' => 'gemini-2.0-flash',
+            'chatbot_api_key' => null,
+            'chatbot_system_message_markdown' => null,
+            'chatbot_history_pairs' => 8,
         ];
     }
 }
