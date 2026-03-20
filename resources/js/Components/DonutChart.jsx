@@ -48,6 +48,24 @@ const describeDonutSegment = (cx, cy, outerRadius, innerRadius, startAngle, endA
     ].join(' ');
 };
 
+const describeArcPath = (cx, cy, radius, startAngle, endAngle) => {
+    const sweep = endAngle - startAngle;
+    if (sweep >= 359.999) {
+        const start = polarToCartesian(cx, cy, radius, -90);
+        const mid = polarToCartesian(cx, cy, radius, 90);
+        return [
+            `M ${start.x} ${start.y}`,
+            `A ${radius} ${radius} 0 1 1 ${mid.x} ${mid.y}`,
+            `A ${radius} ${radius} 0 1 1 ${start.x} ${start.y}`,
+        ].join(' ');
+    }
+
+    const start = polarToCartesian(cx, cy, radius, startAngle);
+    const end = polarToCartesian(cx, cy, radius, endAngle);
+    const largeArcFlag = sweep > 180 ? 1 : 0;
+    return `M ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArcFlag} 1 ${end.x} ${end.y}`;
+};
+
 export default function DonutChart({
     data = [],
     size = 160,
@@ -79,6 +97,7 @@ export default function DonutChart({
                 startAngle,
                 endAngle,
                 path: describeDonutSegment(size / 2, size / 2, outerRadius, innerRadius, startAngle, endAngle),
+                hoverPath: describeArcPath(size / 2, size / 2, outerRadius - thickness / 2, startAngle, endAngle),
             };
             accumulatedAngle = endAngle;
             return segment;
@@ -94,7 +113,7 @@ export default function DonutChart({
             >
                 <div className="relative" style={{ width: size, height: size }}>
                 {hoveredSegment ? (
-                    <div className="absolute left-1/2 top-2 z-20 -translate-x-1/2 rounded-xl bg-slate-900/95 px-3 py-2 text-center text-[11px] text-white shadow-xl">
+                    <div className="pointer-events-none absolute left-1/2 top-2 z-20 -translate-x-1/2 rounded-xl bg-slate-900/95 px-3 py-2 text-center text-[11px] text-white shadow-xl">
                         <div className="font-semibold">{hoveredSegment.label}</div>
                         <div>{hoveredSegment.value.toLocaleString('vi-VN')}</div>
                         <div className="text-slate-200">
@@ -116,8 +135,20 @@ export default function DonutChart({
                             key={seg.label}
                             d={seg.path}
                             fill={seg.color}
-                            className="cursor-pointer transition-opacity duration-150 hover:opacity-90"
+                            className="pointer-events-none transition-opacity duration-150"
+                        />
+                    )) : null}
+                    {total > 0 ? segments.map((seg) => (
+                        <path
+                            key={`${seg.label}-hover`}
+                            d={seg.hoverPath}
+                            fill="none"
+                            stroke="transparent"
+                            strokeWidth={Math.max(thickness + 14, 30)}
+                            strokeLinecap="round"
+                            className="cursor-pointer"
                             onMouseEnter={() => setHoveredSegment(seg)}
+                            onMouseMove={() => setHoveredSegment(seg)}
                             onMouseLeave={() => setHoveredSegment((current) => (current?.label === seg.label ? null : current))}
                         />
                     )) : null}
