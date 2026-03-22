@@ -180,6 +180,9 @@ export default function SystemSettings(props) {
     const [modelLoading, setModelLoading] = useState(false);
     const [modelOptions, setModelOptions] = useState(DEFAULT_GEMINI_MODEL_OPTIONS);
     const [modelError, setModelError] = useState('');
+    const [botAvatarFile, setBotAvatarFile] = useState(null);
+    const [botAvatarPreview, setBotAvatarPreview] = useState('');
+    const [botAvatarRemoved, setBotAvatarRemoved] = useState(false);
     const [systemStatus, setSystemStatus] = useState(null);
     const [deviceLoading, setDeviceLoading] = useState(false);
     const [deviceRows, setDeviceRows] = useState([]);
@@ -258,6 +261,9 @@ export default function SystemSettings(props) {
             setBotForm(initialBotForm());
             setModelOptions(DEFAULT_GEMINI_MODEL_OPTIONS);
             setModelError('');
+            setBotAvatarFile(null);
+            setBotAvatarPreview('');
+            setBotAvatarRemoved(false);
             return;
         }
 
@@ -274,6 +280,9 @@ export default function SystemSettings(props) {
         setBotForm(selectedForm);
         setModelOptions(DEFAULT_GEMINI_MODEL_OPTIONS);
         setModelError('');
+        setBotAvatarFile(null);
+        setBotAvatarPreview((selected?.avatar_url || '').toString());
+        setBotAvatarRemoved(false);
     };
 
     const loadGeminiModels = async ({
@@ -379,6 +388,9 @@ export default function SystemSettings(props) {
         setBotForm(initialBotForm());
         setModelOptions(DEFAULT_GEMINI_MODEL_OPTIONS);
         setModelError('');
+        setBotAvatarFile(null);
+        setBotAvatarPreview('');
+        setBotAvatarRemoved(false);
     };
 
     const selectBot = (bot) => {
@@ -387,6 +399,9 @@ export default function SystemSettings(props) {
         setBotForm(selectedForm);
         setModelOptions(DEFAULT_GEMINI_MODEL_OPTIONS);
         setModelError('');
+        setBotAvatarFile(null);
+        setBotAvatarPreview((bot?.avatar_url || '').toString());
+        setBotAvatarRemoved(false);
     };
 
     const saveBot = async () => {
@@ -401,26 +416,34 @@ export default function SystemSettings(props) {
 
         setBotSaving(true);
         try {
-            const payload = {
-                name: botForm.name.trim(),
-                description: botForm.description?.trim() || null,
-                provider: botForm.provider || 'gemini',
-                model: botForm.model.trim(),
-                api_key: botForm.api_key || '',
-                history_pairs: Number(botForm.history_pairs || 8),
-                accent_color: botForm.accent_color || '#6366F1',
-                icon: botForm.icon || '🤖',
-                sort_order: Number(botForm.sort_order || 0),
-                is_active: !!botForm.is_active,
-                is_default: !!botForm.is_default,
-                system_message_markdown: botForm.system_message_markdown || '',
-            };
+            const payload = new FormData();
+            payload.append('name', botForm.name.trim());
+            payload.append('description', botForm.description?.trim() || '');
+            payload.append('provider', botForm.provider || 'gemini');
+            payload.append('model', botForm.model.trim());
+            payload.append('api_key', botForm.api_key || '');
+            payload.append('history_pairs', String(Number(botForm.history_pairs || 8)));
+            payload.append('accent_color', botForm.accent_color || '#6366F1');
+            payload.append('icon', botForm.icon || '🤖');
+            payload.append('sort_order', String(Number(botForm.sort_order || 0)));
+            payload.append('is_active', botForm.is_active ? '1' : '0');
+            payload.append('is_default', botForm.is_default ? '1' : '0');
+            payload.append('system_message_markdown', botForm.system_message_markdown || '');
+            payload.append('remove_avatar', botAvatarRemoved ? '1' : '0');
+            if (botAvatarFile) {
+                payload.append('avatar', botAvatarFile);
+            }
 
             let res;
             if (editingBotId) {
-                res = await axios.put(`/api/v1/chatbot/bots/${editingBotId}`, payload);
+                payload.append('_method', 'PUT');
+                res = await axios.post(`/api/v1/chatbot/bots/${editingBotId}`, payload, {
+                    headers: { 'Content-Type': 'multipart/form-data' },
+                });
             } else {
-                res = await axios.post('/api/v1/chatbot/bots', payload);
+                res = await axios.post('/api/v1/chatbot/bots', payload, {
+                    headers: { 'Content-Type': 'multipart/form-data' },
+                });
             }
 
             const savedBotId = res.data?.bot?.id || editingBotId;
@@ -470,6 +493,13 @@ export default function SystemSettings(props) {
         setPreview(url);
         return () => URL.revokeObjectURL(url);
     }, [logoFile]);
+
+    useEffect(() => {
+        if (!botAvatarFile) return undefined;
+        const url = URL.createObjectURL(botAvatarFile);
+        setBotAvatarPreview(url);
+        return () => URL.revokeObjectURL(url);
+    }, [botAvatarFile]);
 
     useEffect(() => {
         const next = initialSettings(props.settings);
@@ -948,12 +978,20 @@ export default function SystemSettings(props) {
                                         >
                                             <div className="flex items-center justify-between gap-2">
                                                 <div className="flex items-center gap-2 min-w-0">
-                                                    <span
-                                                        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm"
-                                                        style={{ backgroundColor: `${bot.accent_color || '#6366F1'}1A`, color: bot.accent_color || '#6366F1' }}
-                                                    >
-                                                        {bot.icon || '🤖'}
-                                                    </span>
+                                                    {bot.avatar_url ? (
+                                                        <img
+                                                            src={bot.avatar_url}
+                                                            alt={bot.name}
+                                                            className="h-8 w-8 shrink-0 rounded-full border border-slate-200 object-cover"
+                                                        />
+                                                    ) : (
+                                                        <span
+                                                            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm"
+                                                            style={{ backgroundColor: `${bot.accent_color || '#6366F1'}1A`, color: bot.accent_color || '#6366F1' }}
+                                                        >
+                                                            {bot.icon || '🤖'}
+                                                        </span>
+                                                    )}
                                                     <div className="min-w-0">
                                                         <p className="truncate text-sm font-semibold text-slate-900">{bot.name}</p>
                                                         <p className="truncate text-xs text-slate-500">{bot.model || 'Chưa có model'}</p>
@@ -1126,7 +1164,7 @@ export default function SystemSettings(props) {
                                             onChange={(e) => setBotForm((s) => ({ ...s, accent_color: e.target.value }))}
                                         />
                                     </div>
-                                    <div>
+                                    <div className="space-y-2">
                                         <label className="text-xs text-text-muted">Icon (emoji)</label>
                                         <input
                                             className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
@@ -1134,6 +1172,56 @@ export default function SystemSettings(props) {
                                             onChange={(e) => setBotForm((s) => ({ ...s, icon: e.target.value }))}
                                             placeholder="🤖"
                                         />
+                                        <p className="text-[11px] text-text-muted">Nếu đã upload avatar ảnh thì icon emoji chỉ dùng làm fallback.</p>
+                                    </div>
+                                    <div className="md:col-span-2">
+                                        <label className="text-xs text-text-muted">Avatar chatbot (upload ảnh)</label>
+                                        <div className="mt-2 flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200/80 bg-slate-50/60 px-3 py-3">
+                                            {botAvatarPreview ? (
+                                                <img
+                                                    src={botAvatarPreview}
+                                                    alt="Avatar chatbot"
+                                                    className="h-14 w-14 rounded-full border border-slate-200 object-cover"
+                                                />
+                                            ) : (
+                                                <span
+                                                    className="inline-flex h-14 w-14 items-center justify-center rounded-full text-xl font-semibold"
+                                                    style={{ backgroundColor: `${botForm.accent_color || '#6366F1'}1A`, color: botForm.accent_color || '#6366F1' }}
+                                                >
+                                                    {botForm.icon || '🤖'}
+                                                </span>
+                                            )}
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <label className="cursor-pointer rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100">
+                                                    Chọn ảnh
+                                                    <input
+                                                        type="file"
+                                                        accept="image/png,image/jpeg,image/webp"
+                                                        className="hidden"
+                                                        onChange={(e) => {
+                                                            const file = e.target.files?.[0] || null;
+                                                            setBotAvatarFile(file);
+                                                            setBotAvatarRemoved(false);
+                                                        }}
+                                                    />
+                                                </label>
+                                                <button
+                                                    type="button"
+                                                    className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                                    disabled={!botAvatarPreview && !botAvatarFile}
+                                                    onClick={() => {
+                                                        setBotAvatarFile(null);
+                                                        setBotAvatarPreview('');
+                                                        setBotAvatarRemoved(true);
+                                                    }}
+                                                >
+                                                    Gỡ avatar
+                                                </button>
+                                            </div>
+                                            <p className="w-full text-[11px] text-text-muted">
+                                                Định dạng hỗ trợ: JPG, PNG, WEBP. Kích thước tối đa 5MB.
+                                            </p>
+                                        </div>
                                     </div>
                                 </div>
 

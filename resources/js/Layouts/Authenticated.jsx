@@ -20,15 +20,13 @@ export default function Authenticated({ auth, header, children }) {
     const notificationPanelRef = useRef(null);
     const chatButtonRef = useRef(null);
     const chatPanelRef = useRef(null);
-    const [botOpen, setBotOpen] = useState(false);
+    const [activeQuickPanel, setActiveQuickPanel] = useState(null);
     const [botLoading, setBotLoading] = useState(false);
     const [botItems, setBotItems] = useState([]);
-    const [notificationOpen, setNotificationOpen] = useState(false);
     const [notificationTab, setNotificationTab] = useState('all');
     const [notificationLoading, setNotificationLoading] = useState(false);
     const [notificationItems, setNotificationItems] = useState([]);
     const [notificationUnread, setNotificationUnread] = useState(0);
-    const [chatOpen, setChatOpen] = useState(false);
     const [chatTab, setChatTab] = useState('all');
     const [chatSearch, setChatSearch] = useState('');
     const [chatItems, setChatItems] = useState([]);
@@ -38,6 +36,9 @@ export default function Authenticated({ auth, header, children }) {
         () => new Set(['task_chat_message', 'task_comment_tag']),
         []
     );
+    const botOpen = activeQuickPanel === 'bot';
+    const notificationOpen = activeQuickPanel === 'notification';
+    const chatOpen = activeQuickPanel === 'chat';
 
     useEffect(() => {
         if (!settings?.primary_color) return;
@@ -73,6 +74,12 @@ export default function Authenticated({ auth, header, children }) {
         const numeric = Number(value);
         if (!Number.isFinite(numeric) || numeric < 0) return null;
         return Math.trunc(numeric);
+    };
+
+    const closeQuickPanels = () => setActiveQuickPanel(null);
+
+    const toggleQuickPanel = (panelKey) => {
+        setActiveQuickPanel((prev) => (prev === panelKey ? null : panelKey));
     };
 
     const buildNotificationCollections = (payload) => {
@@ -214,14 +221,25 @@ export default function Authenticated({ auth, header, children }) {
             ) {
                 return;
             }
-            setBotOpen(false);
-            setNotificationOpen(false);
-            setChatOpen(false);
+            setActiveQuickPanel(null);
         };
 
         document.addEventListener('mousedown', onClickOutside);
         return () => document.removeEventListener('mousedown', onClickOutside);
     }, [notificationOpen, chatOpen, botOpen]);
+
+    useEffect(() => {
+        if (!activeQuickPanel) return undefined;
+
+        const onEscape = (event) => {
+            if (event.key === 'Escape') {
+                setActiveQuickPanel(null);
+            }
+        };
+
+        window.addEventListener('keydown', onEscape);
+        return () => window.removeEventListener('keydown', onEscape);
+    }, [activeQuickPanel]);
 
     const roleLabels = {
         admin: 'Quản trị',
@@ -416,6 +434,7 @@ export default function Authenticated({ auth, header, children }) {
     };
 
     const openTaskChatFromItem = (item) => {
+        closeQuickPanels();
         const taskId = extractTaskId(item);
         if (taskId) {
             window.location.href = `/cong-viec?chat_task_id=${taskId}`;
@@ -587,10 +606,9 @@ export default function Authenticated({ auth, header, children }) {
                                             type="button"
                                             className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 hover:bg-slate-100"
                                             onClick={() => {
-                                                setNotificationOpen(false);
-                                                setChatOpen(false);
-                                                setBotOpen((prev) => !prev);
-                                                if (!botOpen) {
+                                                const shouldOpen = !botOpen;
+                                                toggleQuickPanel('bot');
+                                                if (shouldOpen) {
                                                     fetchChatbotBots({ silent: true });
                                                 }
                                             }}
@@ -610,7 +628,7 @@ export default function Authenticated({ auth, header, children }) {
                                                         <Link
                                                             href={route('chatbot.assistant')}
                                                             className="text-xs font-semibold text-primary"
-                                                            onClick={() => setBotOpen(false)}
+                                                            onClick={closeQuickPanels}
                                                         >
                                                             Mở trợ lý AI
                                                         </Link>
@@ -638,14 +656,22 @@ export default function Authenticated({ auth, header, children }) {
                                                             key={bot.id}
                                                             href={`${route('chatbot.assistant')}?bot_id=${bot.id}`}
                                                             className="flex items-start gap-3 rounded-xl px-3 py-3 transition hover:bg-slate-50"
-                                                            onClick={() => setBotOpen(false)}
+                                                            onClick={closeQuickPanels}
                                                         >
-                                                            <span
-                                                                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-base"
-                                                                style={{ backgroundColor: `${bot.accent_color || '#6366F1'}1A`, color: bot.accent_color || '#6366F1' }}
-                                                            >
-                                                                {bot.icon || '🤖'}
-                                                            </span>
+                                                            {bot.avatar_url ? (
+                                                                <img
+                                                                    src={bot.avatar_url}
+                                                                    alt={bot.name}
+                                                                    className="h-10 w-10 shrink-0 rounded-full border border-slate-200 object-cover"
+                                                                />
+                                                            ) : (
+                                                                <span
+                                                                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-base"
+                                                                    style={{ backgroundColor: `${bot.accent_color || '#6366F1'}1A`, color: bot.accent_color || '#6366F1' }}
+                                                                >
+                                                                    {bot.icon || '🤖'}
+                                                                </span>
+                                                            )}
                                                             <span className="min-w-0 flex-1">
                                                                 <span className="block truncate text-sm font-semibold text-slate-900">
                                                                     {bot.name}
@@ -679,10 +705,9 @@ export default function Authenticated({ auth, header, children }) {
                                         type="button"
                                         className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 hover:bg-slate-100"
                                         onClick={() => {
-                                            setBotOpen(false);
-                                            setChatOpen(false);
-                                            setNotificationOpen((prev) => !prev);
-                                            if (!notificationOpen) {
+                                            const shouldOpen = !notificationOpen;
+                                            toggleQuickPanel('notification');
+                                            if (shouldOpen) {
                                                 fetchNotifications({ silent: true });
                                             }
                                         }}
@@ -807,10 +832,9 @@ export default function Authenticated({ auth, header, children }) {
                                         type="button"
                                         className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 hover:bg-slate-100"
                                         onClick={() => {
-                                            setBotOpen(false);
-                                            setNotificationOpen(false);
-                                            setChatOpen((prev) => !prev);
-                                            if (!chatOpen) {
+                                            const shouldOpen = !chatOpen;
+                                            toggleQuickPanel('chat');
+                                            if (shouldOpen) {
                                                 fetchNotifications({ silent: true });
                                                 fetchChatConversations({ silent: true });
                                             }
@@ -828,18 +852,33 @@ export default function Authenticated({ auth, header, children }) {
                                     {chatOpen && (
                                         <div
                                             ref={chatPanelRef}
-                                            className="absolute right-0 mt-2 w-[380px] max-w-[92vw] rounded-2xl border border-slate-200 bg-white shadow-2xl z-50"
+                                            className="fixed bottom-3 left-3 right-3 z-[60] flex max-h-[78vh] min-h-[420px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl sm:bottom-5 sm:left-auto sm:right-5 sm:w-[420px]"
                                         >
-                                            <div className="px-4 pt-4 pb-3 border-b border-slate-100">
-                                                <div className="flex items-center justify-between">
-                                                    <p className="text-2xl font-bold text-slate-900">Đoạn chat</p>
-                                                    <button
-                                                        type="button"
-                                                        className="text-xs text-primary font-semibold"
-                                                        onClick={markAllChatsRead}
-                                                    >
-                                                        Đọc tất cả
-                                                    </button>
+                                            <div className="border-b border-slate-100 bg-white px-4 pt-4 pb-3">
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <div className="min-w-0">
+                                                        <p className="truncate text-xl font-bold text-slate-900">Đoạn chat nhóm công việc</p>
+                                                        <p className="mt-0.5 text-xs text-slate-500">
+                                                            Tự đóng popup hiện tại khi bạn mở popup khác từ header.
+                                                        </p>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <button
+                                                            type="button"
+                                                            className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-200"
+                                                            onClick={markAllChatsRead}
+                                                        >
+                                                            Đọc tất cả
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 hover:bg-slate-100"
+                                                            onClick={closeQuickPanels}
+                                                            aria-label="Đóng popup chat"
+                                                        >
+                                                            <AppIcon name="x-mark" className="h-4 w-4" />
+                                                        </button>
+                                                    </div>
                                                 </div>
                                                 <div className="mt-3">
                                                     <input
@@ -875,13 +914,14 @@ export default function Authenticated({ auth, header, children }) {
                                                     <Link
                                                         href={route('tasks.board')}
                                                         className="ml-auto text-xs text-primary font-semibold"
+                                                        onClick={closeQuickPanels}
                                                     >
                                                         Xem công việc
                                                     </Link>
                                                 </div>
                                             </div>
 
-                                            <div className="max-h-[440px] overflow-y-auto p-2">
+                                            <div className="flex-1 overflow-y-auto bg-slate-50/40 p-2">
                                                 {chatLoading && (
                                                     <div className="px-3 py-8 text-sm text-center text-slate-500">
                                                         Đang tải đoạn chat...
@@ -892,10 +932,10 @@ export default function Authenticated({ auth, header, children }) {
                                                     <button
                                                         key={item.key}
                                                         type="button"
-                                                        className={`w-full text-left flex items-start gap-3 rounded-xl px-3 py-3 transition ${
+                                                        className={`mb-1 w-full text-left flex items-start gap-3 rounded-xl border px-3 py-3 transition ${
                                                             Number(item.unread_count || 0) <= 0
-                                                                ? 'hover:bg-slate-50'
-                                                                : 'bg-blue-50/60 hover:bg-blue-50'
+                                                                ? 'border-slate-200/80 bg-white hover:border-slate-300'
+                                                                : 'border-blue-200 bg-blue-50/80 hover:border-blue-300'
                                                         }`}
                                                         onClick={() => handleChatItemClick(item)}
                                                     >
@@ -938,7 +978,7 @@ export default function Authenticated({ auth, header, children }) {
                                                 )}
                                             </div>
 
-                                            <div className="px-4 py-3 border-t border-slate-100 text-xs text-slate-500">
+                                            <div className="border-t border-slate-100 bg-white px-4 py-3 text-xs text-slate-500">
                                                 Đoạn chat chưa đọc: <span className="font-semibold text-slate-700">{quickChatUnreadCount}</span>
                                             </div>
                                         </div>

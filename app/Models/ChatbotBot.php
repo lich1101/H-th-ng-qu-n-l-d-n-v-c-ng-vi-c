@@ -19,6 +19,7 @@ class ChatbotBot extends Model
         'history_pairs',
         'accent_color',
         'icon',
+        'avatar_url',
         'sort_order',
         'is_active',
         'is_default',

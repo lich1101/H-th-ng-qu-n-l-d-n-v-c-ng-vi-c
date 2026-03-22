@@ -25,6 +25,11 @@ class ChatbotMessage extends Model
         'role',
         'status',
         'content',
+        'attachment_path',
+        'attachment_url',
+        'attachment_name',
+        'attachment_mime',
+        'attachment_size',
         'model',
         'error_message',
         'meta',
@@ -36,6 +41,7 @@ class ChatbotMessage extends Model
 
     protected $casts = [
         'meta' => 'array',
+        'attachment_size' => 'integer',
         'queued_at' => 'datetime',
         'started_at' => 'datetime',
         'completed_at' => 'datetime',

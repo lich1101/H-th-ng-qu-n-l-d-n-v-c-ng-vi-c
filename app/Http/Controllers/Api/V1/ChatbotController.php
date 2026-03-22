@@ -10,11 +10,16 @@ use App\Models\ChatbotUserState;
 use App\Services\GeminiChatService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class ChatbotController extends Controller
 {
+    private const MAX_CHAT_SESSIONS_PER_USER = 10;
+
     /** @var GeminiChatService */
     private $geminiChatService;
 
@@ -96,44 +101,54 @@ class ChatbotController extends Controller
             'sort_order' => ['nullable', 'integer', 'min:0', 'max:100000'],
             'is_active' => ['nullable', 'boolean'],
             'is_default' => ['nullable', 'boolean'],
+            'avatar' => ['nullable', 'image', 'mimes:jpeg,jpg,png,webp', 'max:5120'],
         ]);
 
         $user = $request->user();
+        $avatarUrl = $request->hasFile('avatar')
+            ? $this->storeChatbotAvatar($request->file('avatar'))
+            : null;
 
         $bot = null;
-        DB::transaction(function () use ($validated, $user, &$bot) {
-            $hasAny = ChatbotBot::query()->exists();
-            $isDefault = array_key_exists('is_default', $validated)
-                ? (bool) $validated['is_default']
-                : ! $hasAny;
-            $isActive = array_key_exists('is_active', $validated)
-                ? (bool) $validated['is_active']
-                : true;
+        try {
+            DB::transaction(function () use ($validated, $user, $avatarUrl, &$bot) {
+                $hasAny = ChatbotBot::query()->exists();
+                $isDefault = array_key_exists('is_default', $validated)
+                    ? (bool) $validated['is_default']
+                    : ! $hasAny;
+                $isActive = array_key_exists('is_active', $validated)
+                    ? (bool) $validated['is_active']
+                    : true;
 
-            if ($isDefault) {
-                $isActive = true;
-                ChatbotBot::query()->update(['is_default' => false]);
-            }
+                if ($isDefault) {
+                    $isActive = true;
+                    ChatbotBot::query()->update(['is_default' => false]);
+                }
 
-            $bot = ChatbotBot::query()->create([
-                'name' => trim((string) $validated['name']),
-                'description' => $validated['description'] ?? null,
-                'provider' => $validated['provider'] ?? 'gemini',
-                'model' => trim((string) $validated['model']),
-                'api_key' => $this->nullableTrim($validated['api_key'] ?? null),
-                'system_message_markdown' => $validated['system_message_markdown'] ?? null,
-                'history_pairs' => array_key_exists('history_pairs', $validated) ? (int) $validated['history_pairs'] : 8,
-                'accent_color' => $validated['accent_color'] ?? '#6366F1',
-                'icon' => $this->nullableTrim($validated['icon'] ?? null),
-                'sort_order' => array_key_exists('sort_order', $validated) ? (int) $validated['sort_order'] : 0,
-                'is_active' => $isActive,
-                'is_default' => $isDefault,
-                'created_by' => $user ? $user->id : null,
-                'updated_by' => $user ? $user->id : null,
-            ]);
+                $bot = ChatbotBot::query()->create([
+                    'name' => trim((string) $validated['name']),
+                    'description' => $validated['description'] ?? null,
+                    'provider' => $validated['provider'] ?? 'gemini',
+                    'model' => trim((string) $validated['model']),
+                    'api_key' => $this->nullableTrim($validated['api_key'] ?? null),
+                    'system_message_markdown' => $validated['system_message_markdown'] ?? null,
+                    'history_pairs' => array_key_exists('history_pairs', $validated) ? (int) $validated['history_pairs'] : 8,
+                    'accent_color' => $validated['accent_color'] ?? '#6366F1',
+                    'icon' => $this->nullableTrim($validated['icon'] ?? null),
+                    'avatar_url' => $avatarUrl,
+                    'sort_order' => array_key_exists('sort_order', $validated) ? (int) $validated['sort_order'] : 0,
+                    'is_active' => $isActive,
+                    'is_default' => $isDefault,
+                    'created_by' => $user ? $user->id : null,
+                    'updated_by' => $user ? $user->id : null,
+                ]);
 
-            $this->ensureOneDefaultBot();
-        });
+                $this->ensureOneDefaultBot();
+            });
+        } catch (\Throwable $e) {
+            $this->deleteStoredPublicFile($avatarUrl);
+            throw $e;
+        }
 
         return response()->json([
             'message' => 'Đã tạo chatbot mới.',
@@ -159,6 +174,8 @@ class ChatbotController extends Controller
             'sort_order' => ['nullable', 'integer', 'min:0', 'max:100000'],
             'is_active' => ['nullable', 'boolean'],
             'is_default' => ['nullable', 'boolean'],
+            'avatar' => ['nullable', 'image', 'mimes:jpeg,jpg,png,webp', 'max:5120'],
+            'remove_avatar' => ['nullable', 'boolean'],
         ]);
 
         $nextActive = array_key_exists('is_active', $validated)
@@ -182,41 +199,73 @@ class ChatbotController extends Controller
         }
 
         $user = $request->user();
-        DB::transaction(function () use ($validated, $bot, $nextActive, $nextDefault, $user) {
-            if ($nextDefault) {
-                ChatbotBot::query()->where('id', '!=', $bot->id)->update(['is_default' => false]);
+        $removeAvatar = $request->boolean('remove_avatar', false);
+        $newAvatarUrl = $request->hasFile('avatar')
+            ? $this->storeChatbotAvatar($request->file('avatar'))
+            : null;
+        $oldAvatarUrl = null;
+        try {
+            DB::transaction(function () use (
+                $validated,
+                $bot,
+                $nextActive,
+                $nextDefault,
+                $user,
+                $removeAvatar,
+                $newAvatarUrl,
+                &$oldAvatarUrl
+            ) {
+                if ($nextDefault) {
+                    ChatbotBot::query()->where('id', '!=', $bot->id)->update(['is_default' => false]);
+                }
+
+                $avatarUrl = $bot->avatar_url;
+                if ($newAvatarUrl !== null) {
+                    $oldAvatarUrl = $bot->avatar_url;
+                    $avatarUrl = $newAvatarUrl;
+                } elseif ($removeAvatar) {
+                    $oldAvatarUrl = $bot->avatar_url;
+                    $avatarUrl = null;
+                }
+
+                $bot->update([
+                    'name' => trim((string) $validated['name']),
+                    'description' => $validated['description'] ?? null,
+                    'provider' => $validated['provider'] ?? 'gemini',
+                    'model' => trim((string) $validated['model']),
+                    'api_key' => array_key_exists('api_key', $validated)
+                        ? $this->nullableTrim($validated['api_key'])
+                        : $bot->api_key,
+                    'system_message_markdown' => array_key_exists('system_message_markdown', $validated)
+                        ? $validated['system_message_markdown']
+                        : $bot->system_message_markdown,
+                    'history_pairs' => array_key_exists('history_pairs', $validated)
+                        ? (int) $validated['history_pairs']
+                        : (int) $bot->history_pairs,
+                    'accent_color' => array_key_exists('accent_color', $validated)
+                        ? $validated['accent_color']
+                        : $bot->accent_color,
+                    'icon' => array_key_exists('icon', $validated)
+                        ? $this->nullableTrim($validated['icon'])
+                        : $bot->icon,
+                    'avatar_url' => $avatarUrl,
+                    'sort_order' => array_key_exists('sort_order', $validated)
+                        ? (int) $validated['sort_order']
+                        : (int) $bot->sort_order,
+                    'is_active' => $nextActive,
+                    'is_default' => $nextDefault,
+                    'updated_by' => $user ? $user->id : null,
+                ]);
+
+                $this->ensureOneDefaultBot();
+            });
+        } catch (\Throwable $e) {
+            if ($newAvatarUrl) {
+                $this->deleteStoredPublicFile($newAvatarUrl);
             }
-
-            $bot->update([
-                'name' => trim((string) $validated['name']),
-                'description' => $validated['description'] ?? null,
-                'provider' => $validated['provider'] ?? 'gemini',
-                'model' => trim((string) $validated['model']),
-                'api_key' => array_key_exists('api_key', $validated)
-                    ? $this->nullableTrim($validated['api_key'])
-                    : $bot->api_key,
-                'system_message_markdown' => array_key_exists('system_message_markdown', $validated)
-                    ? $validated['system_message_markdown']
-                    : $bot->system_message_markdown,
-                'history_pairs' => array_key_exists('history_pairs', $validated)
-                    ? (int) $validated['history_pairs']
-                    : (int) $bot->history_pairs,
-                'accent_color' => array_key_exists('accent_color', $validated)
-                    ? $validated['accent_color']
-                    : $bot->accent_color,
-                'icon' => array_key_exists('icon', $validated)
-                    ? $this->nullableTrim($validated['icon'])
-                    : $bot->icon,
-                'sort_order' => array_key_exists('sort_order', $validated)
-                    ? (int) $validated['sort_order']
-                    : (int) $bot->sort_order,
-                'is_active' => $nextActive,
-                'is_default' => $nextDefault,
-                'updated_by' => $user ? $user->id : null,
-            ]);
-
-            $this->ensureOneDefaultBot();
-        });
+            throw $e;
+        }
+        $this->deleteStoredPublicFile($oldAvatarUrl);
 
         return response()->json([
             'message' => 'Đã cập nhật chatbot.',
@@ -243,10 +292,22 @@ class ChatbotController extends Controller
             ], 422);
         }
 
+        $avatarUrl = $bot->avatar_url;
+        $attachmentPaths = ChatbotMessage::query()
+            ->where('bot_id', $bot->id)
+            ->whereNotNull('attachment_path')
+            ->pluck('attachment_path')
+            ->filter()
+            ->unique()
+            ->values();
         DB::transaction(function () use ($bot) {
             $bot->delete();
             $this->ensureOneDefaultBot();
         });
+        $this->deleteStoredPublicFile($avatarUrl);
+        foreach ($attachmentPaths as $path) {
+            $this->deleteStoredPublicRelativePath((string) $path);
+        }
 
         return response()->json([
             'message' => 'Đã xoá chatbot.',
@@ -262,6 +323,7 @@ class ChatbotController extends Controller
 
         if ($bot) {
             $this->processQueue($user->id, (int) $bot->id, 1);
+            $this->pruneUserChatHistory($user->id, (int) $bot->id);
         }
 
         return response()->json($this->conversationPayload($user->id, $bot, $limit));
@@ -271,8 +333,9 @@ class ChatbotController extends Controller
     {
         $user = $request->user();
         $validated = $request->validate([
-            'content' => ['required', 'string', 'max:12000'],
+            'content' => ['nullable', 'string', 'max:12000'],
             'bot_id' => ['nullable', 'integer', 'min:1'],
+            'attachment' => ['nullable', 'file', 'max:30720'],
         ]);
 
         $bot = $this->resolveSelectedBot($request, true);
@@ -282,31 +345,47 @@ class ChatbotController extends Controller
             ], 422);
         }
 
-        $content = trim((string) $validated['content']);
-        if ($content === '') {
+        $content = trim((string) ($validated['content'] ?? ''));
+        $attachmentPayload = $request->hasFile('attachment')
+            ? $this->storeChatbotAttachment($request->file('attachment'))
+            : null;
+
+        if ($content === '' && ! $attachmentPayload) {
             return response()->json([
-                'message' => 'Nội dung câu hỏi không được để trống.',
+                'message' => 'Cần nhập nội dung hoặc gửi kèm ít nhất 1 tệp/ảnh.',
             ], 422);
         }
 
         $message = null;
+        try {
+            DB::transaction(function () use ($user, $bot, $content, $attachmentPayload, &$message) {
+                $state = $this->lockState($user->id, (int) $bot->id);
+                if ($state->stop_requested && ! $state->is_processing) {
+                    $state->stop_requested = false;
+                    $state->save();
+                }
 
-        DB::transaction(function () use ($user, $bot, $content, &$message) {
-            $state = $this->lockState($user->id, (int) $bot->id);
-            if ($state->stop_requested && ! $state->is_processing) {
-                $state->stop_requested = false;
-                $state->save();
+                $message = ChatbotMessage::query()->create([
+                    'user_id' => $user->id,
+                    'bot_id' => $bot->id,
+                    'role' => ChatbotMessage::ROLE_USER,
+                    'status' => ChatbotMessage::STATUS_QUEUED,
+                    'content' => $content,
+                    'attachment_path' => $attachmentPayload['path'] ?? null,
+                    'attachment_url' => $attachmentPayload['url'] ?? null,
+                    'attachment_name' => $attachmentPayload['name'] ?? null,
+                    'attachment_mime' => $attachmentPayload['mime'] ?? null,
+                    'attachment_size' => $attachmentPayload['size'] ?? null,
+                    'queued_at' => now(),
+                ]);
+            });
+        } catch (\Throwable $e) {
+            if (is_array($attachmentPayload)) {
+                $this->deleteStoredPublicRelativePath($attachmentPayload['path'] ?? null);
             }
-
-            $message = ChatbotMessage::query()->create([
-                'user_id' => $user->id,
-                'bot_id' => $bot->id,
-                'role' => ChatbotMessage::ROLE_USER,
-                'status' => ChatbotMessage::STATUS_QUEUED,
-                'content' => $content,
-                'queued_at' => now(),
-            ]);
-        });
+            throw $e;
+        }
+        $this->pruneUserChatHistory($user->id, (int) $bot->id);
 
         $this->processQueue($user->id, (int) $bot->id, 1);
 
@@ -363,7 +442,9 @@ class ChatbotController extends Controller
         $bot = $message->bot_id
             ? ChatbotBot::query()->find($message->bot_id)
             : $this->resolveSelectedBot($request);
+        $attachmentPath = $message->attachment_path;
         $message->delete();
+        $this->deleteStoredPublicRelativePath($attachmentPath);
 
         return response()->json($this->conversationPayload($user->id, $bot, 180));
     }
@@ -620,6 +701,7 @@ class ChatbotController extends Controller
 
             $this->resetStateFields($state, $messageId);
         });
+        $this->pruneUserChatHistory($userId, $botId);
     }
 
     private function markMessageFailed(
@@ -645,6 +727,7 @@ class ChatbotController extends Controller
             $state->last_error = trim($errorCode.': '.$errorMessage);
             $this->resetStateFields($state, $messageId);
         });
+        $this->pruneUserChatHistory($userId, $botId);
     }
 
     private function markMessageCancelled(int $userId, int $botId, int $messageId, string $reason): void
@@ -663,6 +746,7 @@ class ChatbotController extends Controller
             $state->last_error = $reason;
             $this->resetStateFields($state, $messageId);
         });
+        $this->pruneUserChatHistory($userId, $botId);
     }
 
     private function isStopRequested(int $userId, int $botId): bool
@@ -744,15 +828,21 @@ class ChatbotController extends Controller
 
         $conversation = [];
         foreach ($historyRows as $row) {
+            $content = (string) $row->content;
+            if ($row->role === ChatbotMessage::ROLE_USER && $row->attachment_name) {
+                $attachmentLine = '[Người dùng đã gửi tệp đính kèm trước đó: '.$row->attachment_name.']';
+                $content = trim($content) === '' ? $attachmentLine : trim($content)."\n\n".$attachmentLine;
+            }
             $conversation[] = [
                 'role' => $row->role,
-                'content' => (string) $row->content,
+                'content' => $content,
             ];
         }
 
         $conversation[] = [
             'role' => ChatbotMessage::ROLE_USER,
             'content' => (string) $currentMessage->content,
+            'attachment' => $this->attachmentContextForModel($currentMessage),
         ];
 
         return $conversation;
@@ -789,6 +879,7 @@ class ChatbotController extends Controller
                 'content' => (string) $row->content,
                 'model' => $row->model,
                 'error_message' => $row->error_message,
+                'attachment' => $this->attachmentPayload($row),
                 'created_at' => optional($row->created_at)->toIso8601String(),
                 'queued_at' => optional($row->queued_at)->toIso8601String(),
                 'started_at' => optional($row->started_at)->toIso8601String(),
@@ -955,6 +1046,7 @@ class ChatbotController extends Controller
             'history_pairs' => (int) ($bot->history_pairs ?: 8),
             'accent_color' => $bot->accent_color ?: '#6366F1',
             'icon' => $bot->icon ?: '🤖',
+            'avatar_url' => $bot->avatar_url,
             'sort_order' => (int) ($bot->sort_order ?: 0),
             'is_active' => (bool) $bot->is_active,
             'is_default' => (bool) $bot->is_default,
@@ -1074,5 +1166,207 @@ class ChatbotController extends Controller
         }
 
         return $default;
+    }
+
+    private function attachmentPayload(ChatbotMessage $message): ?array
+    {
+        if (! $message->attachment_url && ! $message->attachment_name) {
+            return null;
+        }
+
+        $mime = trim((string) ($message->attachment_mime ?? ''));
+        return [
+            'url' => $message->attachment_url,
+            'name' => $message->attachment_name,
+            'mime' => $mime,
+            'size' => $message->attachment_size ? (int) $message->attachment_size : null,
+            'is_image' => $mime !== '' ? str_starts_with(strtolower($mime), 'image/') : false,
+        ];
+    }
+
+    private function attachmentContextForModel(ChatbotMessage $message): ?array
+    {
+        $relativePath = trim((string) ($message->attachment_path ?? ''));
+        if ($relativePath === '') {
+            return null;
+        }
+
+        $safeRelativePath = ltrim(str_replace(['..\\', '../', '\\'], ['', '', '/'], $relativePath), '/');
+        if ($safeRelativePath === '') {
+            return null;
+        }
+
+        $absolutePath = storage_path('app/public/'.$safeRelativePath);
+        if (! is_file($absolutePath)) {
+            return null;
+        }
+
+        $mime = trim((string) ($message->attachment_mime ?? ''));
+        if ($mime === '') {
+            $mime = 'application/octet-stream';
+        }
+
+        return [
+            'path' => $absolutePath,
+            'mime' => $mime,
+            'name' => $message->attachment_name ?: basename($absolutePath),
+            'size' => $message->attachment_size ? (int) $message->attachment_size : (int) filesize($absolutePath),
+        ];
+    }
+
+    private function storeChatbotAttachment(?UploadedFile $file): ?array
+    {
+        if (! $file) {
+            return null;
+        }
+
+        $originalName = trim((string) $file->getClientOriginalName());
+        if ($originalName === '') {
+            $originalName = 'attachment';
+        }
+
+        $extension = strtolower((string) $file->getClientOriginalExtension());
+        if ($extension === '') {
+            $extension = strtolower((string) $file->extension());
+        }
+
+        $basename = pathinfo($originalName, PATHINFO_FILENAME);
+        $basename = preg_replace('/[^A-Za-z0-9_\-]+/', '_', (string) $basename);
+        $basename = trim((string) $basename, '_-');
+        if ($basename === '') {
+            $basename = 'file';
+        }
+
+        $targetName = sprintf(
+            '%s_%s_%s%s',
+            Str::snake($basename),
+            now()->format('Ymd_His'),
+            Str::lower(Str::random(6)),
+            $extension !== '' ? '.'.$extension : ''
+        );
+        $folder = 'chatbots/messages/'.now()->format('Y/m');
+        $storedPath = $file->storeAs($folder, $targetName, 'public');
+
+        return [
+            'path' => $storedPath,
+            'url' => Storage::url($storedPath),
+            'name' => $originalName,
+            'mime' => trim((string) ($file->getMimeType() ?? 'application/octet-stream')),
+            'size' => $file->getSize(),
+        ];
+    }
+
+    private function storeChatbotAvatar(?UploadedFile $file): ?string
+    {
+        if (! $file) {
+            return null;
+        }
+
+        $storedPath = $file->store('chatbots', 'public');
+        return Storage::url($storedPath);
+    }
+
+    private function deleteStoredPublicFile(?string $publicUrl): void
+    {
+        $url = trim((string) $publicUrl);
+        if ($url === '') {
+            return;
+        }
+
+        $path = (string) parse_url($url, PHP_URL_PATH);
+        if ($path === '' || ! str_starts_with($path, '/storage/')) {
+            return;
+        }
+
+        $relative = ltrim(substr($path, strlen('/storage/')), '/');
+        if ($relative === '') {
+            return;
+        }
+
+        Storage::disk('public')->delete($relative);
+    }
+
+    private function deleteStoredPublicRelativePath(?string $relativePath): void
+    {
+        $path = trim((string) $relativePath);
+        if ($path === '') {
+            return;
+        }
+
+        $normalized = ltrim(str_replace(['..\\', '../', '\\'], ['', '', '/'], $path), '/');
+        if ($normalized === '') {
+            return;
+        }
+
+        Storage::disk('public')->delete($normalized);
+    }
+
+    private function pruneUserChatHistory(int $userId, int $botId): void
+    {
+        $recentIds = ChatbotMessage::query()
+            ->where('user_id', $userId)
+            ->where('bot_id', $botId)
+            ->where('role', ChatbotMessage::ROLE_USER)
+            ->orderByDesc('id')
+            ->limit(self::MAX_CHAT_SESSIONS_PER_USER)
+            ->pluck('id');
+
+        $activeQueueIds = ChatbotMessage::query()
+            ->where('user_id', $userId)
+            ->where('bot_id', $botId)
+            ->where('role', ChatbotMessage::ROLE_USER)
+            ->whereIn('status', [
+                ChatbotMessage::STATUS_QUEUED,
+                ChatbotMessage::STATUS_PROCESSING,
+            ])
+            ->pluck('id');
+
+        $keepIds = $recentIds
+            ->merge($activeQueueIds)
+            ->unique()
+            ->values();
+
+        if ($keepIds->isEmpty()) {
+            return;
+        }
+
+        $staleUserIds = ChatbotMessage::query()
+            ->where('user_id', $userId)
+            ->where('bot_id', $botId)
+            ->where('role', ChatbotMessage::ROLE_USER)
+            ->whereNotIn('id', $keepIds)
+            ->pluck('id');
+
+        if ($staleUserIds->isEmpty()) {
+            return;
+        }
+
+        $staleAttachmentPaths = ChatbotMessage::query()
+            ->where('user_id', $userId)
+            ->where('bot_id', $botId)
+            ->where(function ($query) use ($staleUserIds) {
+                $query
+                    ->whereIn('id', $staleUserIds)
+                    ->orWhereIn('parent_id', $staleUserIds);
+            })
+            ->whereNotNull('attachment_path')
+            ->pluck('attachment_path')
+            ->filter()
+            ->unique()
+            ->values();
+
+        ChatbotMessage::query()
+            ->where('user_id', $userId)
+            ->where('bot_id', $botId)
+            ->where(function ($query) use ($staleUserIds) {
+                $query
+                    ->whereIn('id', $staleUserIds)
+                    ->orWhereIn('parent_id', $staleUserIds);
+            })
+            ->delete();
+
+        foreach ($staleAttachmentPaths as $path) {
+            $this->deleteStoredPublicRelativePath((string) $path);
+        }
     }
 }
