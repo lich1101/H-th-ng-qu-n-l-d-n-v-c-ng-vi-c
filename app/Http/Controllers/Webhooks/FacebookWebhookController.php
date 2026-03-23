@@ -17,7 +17,7 @@ class FacebookWebhookController extends Controller
 {
     public function verify(Request $request)
     {
-        $verifyToken = (string) env('FACEBOOK_VERIFY_TOKEN');
+        $verifyToken = (string) config('services.facebook.verify_token', '');
         $mode = $request->query('hub_mode');
         $token = $request->query('hub_verify_token');
         $challenge = $request->query('hub_challenge');
@@ -137,7 +137,7 @@ class FacebookWebhookController extends Controller
 
     private function verifySignature(Request $request): bool
     {
-        $secret = (string) env('FACEBOOK_APP_SECRET');
+        $secret = (string) config('services.facebook.app_secret', '');
         if ($secret === '') {
             return true;
         }
@@ -172,7 +172,7 @@ class FacebookWebhookController extends Controller
             return [];
         }
 
-        $version = env('FACEBOOK_GRAPH_VERSION', 'v23.0');
+        $version = (string) config('services.facebook.graph_version', 'v23.0');
         $response = Http::get("https://graph.facebook.com/{$version}/{$psid}", [
             'fields' => 'first_name,last_name,name,profile_pic',
             'access_token' => $pageToken,
