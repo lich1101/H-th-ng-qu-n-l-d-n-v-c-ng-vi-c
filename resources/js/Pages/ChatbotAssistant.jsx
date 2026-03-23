@@ -210,7 +210,7 @@ const renderInlineContent = ({ text, isUser, keyPrefix }) => {
                     className={`rounded-md border px-1.5 py-0.5 font-mono text-[12px] ${
                         isUser
                             ? 'border-white/25 bg-white/20 text-white'
-                            : 'border-slate-700 bg-slate-800 text-slate-100'
+                            : 'border-slate-200 bg-slate-100 text-slate-800'
                     }`}
                 >
                     {chunk}
@@ -264,7 +264,7 @@ const renderInlineContent = ({ text, isUser, keyPrefix }) => {
                         rel="noreferrer"
                         className={isUser
                             ? 'underline decoration-white/70 underline-offset-2 hover:text-white'
-                            : 'font-medium text-sky-300 underline underline-offset-2 hover:text-sky-200'}
+                            : 'font-medium text-primary underline underline-offset-2 hover:text-primary/80'}
                     >
                         {part.value}
                     </a>
@@ -291,7 +291,7 @@ const renderMessageMarkdown = ({ content, isUser }) => {
     if (blocks.length === 0) return null;
 
     return (
-        <div className={`space-y-2.5 ${isUser ? 'text-white' : 'text-slate-100'}`}>
+        <div className={`space-y-2.5 ${isUser ? 'text-white' : 'text-slate-900'}`}>
             {blocks.map((block, blockIndex) => {
                 const key = `block-${blockIndex}`;
                 if (block.type === 'spacer') {
@@ -348,21 +348,21 @@ const renderMessageMarkdown = ({ content, isUser }) => {
                             className={`overflow-x-auto rounded-xl border ${
                                 isUser
                                     ? 'border-white/25 bg-black/35'
-                                    : 'border-slate-700 bg-slate-950/90'
+                                    : 'border-slate-200 bg-slate-100'
                             }`}
                         >
                             {block.language ? (
                                 <div className={`border-b px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide ${
                                     isUser
                                         ? 'border-white/20 text-white/80'
-                                        : 'border-slate-700 text-slate-400'
+                                        : 'border-slate-200 text-slate-500'
                                 }`}
                                 >
                                     {block.language}
                                 </div>
                             ) : null}
                             <pre className={`px-3 py-2.5 font-mono text-[12px] leading-5 ${
-                                isUser ? 'text-white' : 'text-slate-100'
+                                isUser ? 'text-white' : 'text-slate-800'
                             }`}
                             >
                                 <code>{block.content}</code>
@@ -788,16 +788,16 @@ export default function ChatbotAssistant({ auth }) {
 
                             <div
                                 ref={scrollRef}
-                                className="h-[56vh] min-h-[360px] max-h-[620px] space-y-4 overflow-y-auto bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 px-5 py-5"
+                                className="h-[56vh] min-h-[360px] max-h-[620px] space-y-4 overflow-y-auto bg-gradient-to-b from-slate-50 via-white to-slate-100/70 px-5 py-5"
                             >
                             {loading ? (
-                                <div className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-300 shadow-sm">
+                                <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 shadow-sm">
                                     Đang tải hội thoại...
                                 </div>
                             ) : null}
 
                             {!loading && messages.length === 0 ? (
-                                <div className="rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-300 shadow-sm">
+                                <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm">
                                     Chưa có hội thoại. Hãy gửi câu hỏi đầu tiên.
                                 </div>
                             ) : null}
@@ -820,10 +820,10 @@ export default function ChatbotAssistant({ auth }) {
                                                 <img
                                                     src={assistantAvatarUrl}
                                                     alt={displayName}
-                                                    className="mt-1 h-9 w-9 flex-none rounded-full border border-slate-700 object-cover shadow-sm"
+                                                    className="mt-1 h-9 w-9 flex-none rounded-full border border-slate-200 object-cover shadow-sm"
                                                 />
                                             ) : (
-                                                <div className="mt-1 flex h-9 w-9 flex-none items-center justify-center rounded-full border border-slate-700 bg-slate-800 text-xs font-semibold text-slate-200 shadow-sm">
+                                                <div className="mt-1 flex h-9 w-9 flex-none items-center justify-center rounded-full border border-slate-200 bg-white text-xs font-semibold text-slate-700 shadow-sm">
                                                     {avatarLabel}
                                                 </div>
                                             )
@@ -833,10 +833,10 @@ export default function ChatbotAssistant({ auth }) {
                                             className={`max-w-[min(90%,780px)] rounded-2xl px-4 py-3 text-sm shadow-sm ${
                                                 isUser
                                                     ? 'bg-primary text-white shadow-[0_12px_32px_-20px_rgba(14,116,144,0.9)]'
-                                                    : 'border border-slate-700 bg-slate-900 text-slate-100 shadow-[0_12px_32px_-20px_rgba(15,23,42,0.95)]'
+                                                    : 'border border-slate-200 bg-white text-slate-900 shadow-[0_12px_32px_-20px_rgba(15,23,42,0.35)]'
                                             }`}
                                         >
-                                            <div className={`mb-1 text-[11px] font-semibold ${isUser ? 'text-white/85' : 'text-slate-400'}`}>
+                                            <div className={`mb-1 text-[11px] font-semibold ${isUser ? 'text-white/85' : 'text-slate-500'}`}>
                                                 {displayName}
                                             </div>
                                             {hasText ? (
@@ -847,12 +847,12 @@ export default function ChatbotAssistant({ auth }) {
                                                     })}
                                                 </div>
                                             ) : (
-                                                <div className={`${isUser ? 'text-white/85' : 'text-slate-400'} text-sm`}>
+                                                <div className={`${isUser ? 'text-white/85' : 'text-slate-500'} text-sm`}>
                                                     Tin nhắn chỉ có tệp đính kèm.
                                                 </div>
                                             )}
                                             {attachment?.url ? (
-                                                <div className={`mt-2 rounded-xl border p-2.5 ${isUser ? 'border-white/30 bg-white/10' : 'border-slate-700 bg-slate-800/80'}`}>
+                                                <div className={`mt-2 rounded-xl border p-2.5 ${isUser ? 'border-white/30 bg-white/10' : 'border-slate-200 bg-slate-50'}`}>
                                                     {attachment.is_image ? (
                                                         <a href={attachment.url} target="_blank" rel="noreferrer" className="block">
                                                             <img
@@ -867,21 +867,21 @@ export default function ChatbotAssistant({ auth }) {
                                                             target="_blank"
                                                             rel="noreferrer"
                                                             className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs font-semibold ${
-                                                                isUser ? 'text-white hover:bg-white/10' : 'text-slate-100 hover:bg-slate-700/70'
+                                                                isUser ? 'text-white hover:bg-white/10' : 'text-slate-700 hover:bg-slate-100'
                                                             }`}
                                                         >
-                                                            <span className={`inline-flex h-6 w-6 items-center justify-center rounded-md ${isUser ? 'bg-black/10' : 'bg-slate-700'}`}>📎</span>
+                                                            <span className={`inline-flex h-6 w-6 items-center justify-center rounded-md ${isUser ? 'bg-black/10' : 'bg-slate-200'}`}>📎</span>
                                                             <span className="min-w-0 flex-1 truncate">{attachment.name || 'Tệp đính kèm'}</span>
                                                             <span className="text-[10px] opacity-80">{formatBytes(attachment.size)}</span>
                                                         </a>
                                                     )}
-                                                    <div className={`mt-1 text-[11px] ${isUser ? 'text-white/80' : 'text-slate-400'}`}>
+                                                    <div className={`mt-1 text-[11px] ${isUser ? 'text-white/80' : 'text-slate-500'}`}>
                                                         {attachment.name || 'Tệp đính kèm'}
                                                         {attachment.size ? ` • ${formatBytes(attachment.size)}` : ''}
                                                     </div>
                                                 </div>
                                             ) : null}
-                                            <div className={`mt-2 flex flex-wrap items-center gap-2 text-[11px] ${isUser ? 'text-white/85' : 'text-slate-400'}`}>
+                                            <div className={`mt-2 flex flex-wrap items-center gap-2 text-[11px] ${isUser ? 'text-white/85' : 'text-slate-500'}`}>
                                                 <span>{formatTime(message.created_at)}</span>
                                                 <span className={`rounded-full px-2 py-0.5 font-semibold ${isUser ? 'bg-white/20 text-white' : statusTone(message.status)}`}>
                                                     {STATUS_LABELS[message.status] || message.status}
