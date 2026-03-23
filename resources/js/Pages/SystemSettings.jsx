@@ -8,6 +8,7 @@ const TABS = [
     { key: 'branding', label: 'Thương hiệu' },
     { key: 'contact', label: 'Liên hệ & pháp lý' },
     { key: 'chatbot', label: 'AI Chatbot' },
+    { key: 'gsc', label: 'Google Search Console' },
     { key: 'notifications', label: 'Thông báo thiết bị' },
     { key: 'diagnostics', label: 'Kết nối & thiết bị' },
     { key: 'mobile_devices', label: 'Thiết bị di động người dùng' },
@@ -62,6 +63,16 @@ const initialSettings = (settings) => ({
     chatbot_api_key: settings?.chatbot_api_key || '',
     chatbot_system_message_markdown: settings?.chatbot_system_message_markdown || '',
     chatbot_history_pairs: settings?.chatbot_history_pairs ?? 8,
+    gsc_enabled: settings?.gsc_enabled ?? false,
+    gsc_client_id: settings?.gsc_client_id || '',
+    gsc_client_secret: settings?.gsc_client_secret || '',
+    gsc_refresh_token: settings?.gsc_refresh_token || '',
+    gsc_row_limit: settings?.gsc_row_limit ?? 2500,
+    gsc_data_state: settings?.gsc_data_state || 'all',
+    gsc_alert_threshold_percent: settings?.gsc_alert_threshold_percent ?? 30,
+    gsc_recipes_path_token: settings?.gsc_recipes_path_token || '/recipes',
+    gsc_brand_terms: Array.isArray(settings?.gsc_brand_terms) ? settings.gsc_brand_terms.join('\n') : '',
+    gsc_sync_time: settings?.gsc_sync_time || '11:17',
 });
 
 const initialBotForm = (bot = null) => ({
@@ -605,6 +616,16 @@ export default function SystemSettings(props) {
             formData.append('chatbot_api_key', form.chatbot_api_key || '');
             formData.append('chatbot_system_message_markdown', form.chatbot_system_message_markdown || '');
             formData.append('chatbot_history_pairs', String(form.chatbot_history_pairs ?? 8));
+            formData.append('gsc_enabled', form.gsc_enabled ? '1' : '0');
+            formData.append('gsc_client_id', form.gsc_client_id || '');
+            formData.append('gsc_client_secret', form.gsc_client_secret || '');
+            formData.append('gsc_refresh_token', form.gsc_refresh_token || '');
+            formData.append('gsc_row_limit', String(form.gsc_row_limit ?? 2500));
+            formData.append('gsc_data_state', form.gsc_data_state || 'all');
+            formData.append('gsc_alert_threshold_percent', String(form.gsc_alert_threshold_percent ?? 30));
+            formData.append('gsc_recipes_path_token', form.gsc_recipes_path_token || '/recipes');
+            formData.append('gsc_brand_terms', form.gsc_brand_terms || '');
+            formData.append('gsc_sync_time', form.gsc_sync_time || '11:17');
             if (logoFile) {
                 formData.append('logo', logoFile);
             }
@@ -688,6 +709,7 @@ export default function SystemSettings(props) {
     const configRows = useMemo(() => {
         const rows = [];
         const firebase = systemStatus?.firebase || {};
+        const gscStatus = systemStatus?.gsc || {};
         const pushTokens = systemStatus?.push_tokens || {};
         const notificationConfig = systemStatus?.notification_config || {};
 
@@ -695,6 +717,13 @@ export default function SystemSettings(props) {
         rows.push({ key: 'Firebase DB realtime', value: firebase.database_enabled ? 'Sẵn sàng' : 'Chưa cấu hình' });
         rows.push({ key: 'Firebase access token', value: firebase.access_token ? 'OK' : 'Chưa sẵn sàng' });
         rows.push({ key: 'Firebase project', value: firebase.project_id || '—' });
+        rows.push({ key: 'GSC enabled', value: gscStatus.enabled ? 'Bật' : 'Tắt' });
+        rows.push({ key: 'GSC credential ready', value: gscStatus.credentials_ready ? 'Đủ' : 'Thiếu' });
+        rows.push({ key: 'GSC access token', value: gscStatus.access_token_available ? 'Có' : 'Chưa có' });
+        rows.push({ key: 'GSC sync time', value: gscStatus.sync_time || form.gsc_sync_time || '11:17' });
+        rows.push({ key: 'GSC row limit', value: String(gscStatus.row_limit ?? form.gsc_row_limit ?? 2500) });
+        rows.push({ key: 'GSC data state', value: gscStatus.data_state || form.gsc_data_state || 'all' });
+        rows.push({ key: 'GSC brand terms', value: String(gscStatus.brand_terms_count ?? 0) });
         rows.push({ key: 'Push channel', value: notificationConfig?.channels?.push_enabled ? 'Bật' : 'Tắt' });
         rows.push({ key: 'In-app channel', value: notificationConfig?.channels?.in_app_enabled ? 'Bật' : 'Tắt' });
         rows.push({ key: 'Email fallback', value: notificationConfig?.channels?.email_fallback_enabled ? 'Bật' : 'Tắt' });
@@ -752,6 +781,9 @@ export default function SystemSettings(props) {
         form.chatbot_model,
         form.chatbot_history_pairs,
         form.chatbot_api_key,
+        form.gsc_sync_time,
+        form.gsc_row_limit,
+        form.gsc_data_state,
         botRows.length,
     ]);
 
@@ -1277,6 +1309,143 @@ export default function SystemSettings(props) {
                                         Đồng bộ danh sách
                                     </button>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {activeTab === 'gsc' && (
+                    <div className="space-y-4">
+                        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
+                            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                <div className="max-w-3xl">
+                                    <h3 className="text-sm font-semibold text-slate-900">Google Search Console theo dự án</h3>
+                                    <p className="mt-1 text-xs text-text-muted">
+                                        Khi dự án có URL website, trang chi tiết dự án sẽ tự đồng bộ dữ liệu Search Console
+                                        (clicks/impressions/biến động) và hiển thị biểu đồ cột + thống kê theo ngày.
+                                    </p>
+                                </div>
+                                <div className="w-full max-w-[280px] lg:w-auto">
+                                    <ToggleSwitch
+                                        checked={!!form.gsc_enabled}
+                                        onChange={(value) => setForm((s) => ({ ...s, gsc_enabled: value }))}
+                                        label={form.gsc_enabled ? 'GSC đang bật' : 'GSC đang tắt'}
+                                        description="Chỉ administrator mới được bật/tắt và cấu hình."
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
+                            <h4 className="text-sm font-semibold text-slate-900">Credential OAuth2 (Refresh Token)</h4>
+                            <div className="mt-4 grid gap-4 md:grid-cols-2">
+                                <div>
+                                    <label className="text-xs text-text-muted">Google OAuth Client ID</label>
+                                    <input
+                                        className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                        value={form.gsc_client_id}
+                                        onChange={(e) => setForm((s) => ({ ...s, gsc_client_id: e.target.value }))}
+                                        placeholder="xxx.apps.googleusercontent.com"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs text-text-muted">Google OAuth Client Secret</label>
+                                    <input
+                                        className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                        value={form.gsc_client_secret}
+                                        onChange={(e) => setForm((s) => ({ ...s, gsc_client_secret: e.target.value }))}
+                                        placeholder="GOCSPX-..."
+                                    />
+                                </div>
+                            </div>
+                            <div className="mt-4">
+                                <label className="text-xs text-text-muted">Refresh Token (được dùng để tự refresh access token)</label>
+                                <textarea
+                                    className="mt-2 min-h-[90px] w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                    value={form.gsc_refresh_token}
+                                    onChange={(e) => setForm((s) => ({ ...s, gsc_refresh_token: e.target.value }))}
+                                    placeholder="1//0g...."
+                                />
+                            </div>
+                        </div>
+
+                        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
+                            <h4 className="text-sm font-semibold text-slate-900">Cấu hình đồng bộ & phân đoạn</h4>
+                            <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                                <div>
+                                    <label className="text-xs text-text-muted">Giờ đồng bộ mỗi ngày (HH:mm)</label>
+                                    <input
+                                        type="time"
+                                        className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                        value={form.gsc_sync_time}
+                                        onChange={(e) => setForm((s) => ({ ...s, gsc_sync_time: e.target.value }))}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs text-text-muted">Row limit / ngày</label>
+                                    <input
+                                        type="number"
+                                        min={100}
+                                        max={25000}
+                                        className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                        value={form.gsc_row_limit}
+                                        onChange={(e) => setForm((s) => ({ ...s, gsc_row_limit: Number(e.target.value || 2500) }))}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs text-text-muted">Data state</label>
+                                    <select
+                                        className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                        value={form.gsc_data_state}
+                                        onChange={(e) => setForm((s) => ({ ...s, gsc_data_state: e.target.value }))}
+                                    >
+                                        <option value="all">all</option>
+                                        <option value="final">final</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-xs text-text-muted">Ngưỡng alert % clicks</label>
+                                    <input
+                                        type="number"
+                                        min={1}
+                                        max={100}
+                                        className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                        value={form.gsc_alert_threshold_percent}
+                                        onChange={(e) => setForm((s) => ({ ...s, gsc_alert_threshold_percent: Number(e.target.value || 30) }))}
+                                    />
+                                </div>
+                                <div className="md:col-span-2">
+                                    <label className="text-xs text-text-muted">Token path phân đoạn Recipes</label>
+                                    <input
+                                        className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                        value={form.gsc_recipes_path_token}
+                                        onChange={(e) => setForm((s) => ({ ...s, gsc_recipes_path_token: e.target.value }))}
+                                        placeholder="/recipes"
+                                    />
+                                </div>
+                            </div>
+                            <div className="mt-4">
+                                <label className="text-xs text-text-muted">Brand terms (mỗi dòng 1 term hoặc phân tách bằng dấu phẩy)</label>
+                                <textarea
+                                    className="mt-2 min-h-[120px] w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                    value={form.gsc_brand_terms}
+                                    onChange={(e) => setForm((s) => ({ ...s, gsc_brand_terms: e.target.value }))}
+                                    placeholder={'an phat glass\nanphatglass'}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
+                            <h4 className="text-sm font-semibold text-slate-900">Hướng dẫn lấy credential GSC</h4>
+                            <div className="mt-3 space-y-2 text-sm text-slate-700">
+                                <p>1. Tạo OAuth Client (Web application) trên Google Cloud Console và bật Search Console API.</p>
+                                <p>2. Dùng OAuth consent + scope `https://www.googleapis.com/auth/webmasters.readonly` để lấy refresh token.</p>
+                                <p>3. Điền `client_id`, `client_secret`, `refresh_token` vào đây và bấm <span className="font-semibold">Lưu cài đặt</span>.</p>
+                                <p>4. Thêm URL website vào từng dự án. Khi mở trang chi tiết dự án, hệ thống sẽ tự sync và hiển thị biểu đồ theo ngày.</p>
+                            </div>
+                            <div className="mt-4 rounded-2xl bg-slate-50 px-4 py-3 text-xs text-text-muted">
+                                Trạng thái token hiện tại: {systemStatus?.gsc?.access_token_available ? 'Đã có access token' : 'Chưa có access token'} •
+                                Hết hạn lúc: {systemStatus?.gsc?.access_token_expires_at ? formatDateTime(systemStatus.gsc.access_token_expires_at) : '—'}
                             </div>
                         </div>
                     </div>

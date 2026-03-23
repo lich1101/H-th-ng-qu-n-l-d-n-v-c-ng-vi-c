@@ -30,6 +30,7 @@ class Project extends Model
         'approved_at',
         'owner_id',
         'repo_url',
+        'website_url',
         'progress_percent',
     ];
 
@@ -80,5 +81,10 @@ class Project extends Model
     public function handoverRequester()
     {
         return $this->belongsTo(User::class, 'handover_requested_by');
+    }
+
+    public function gscDailyStats()
+    {
+        return $this->hasMany(ProjectGscDailyStat::class);
     }
 }

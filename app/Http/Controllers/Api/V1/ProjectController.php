@@ -327,6 +327,7 @@ class ProjectController extends Controller
             'customer_requirement' => ['nullable', 'string'],
             'owner_id' => ['nullable', 'integer', 'exists:users,id'],
             'repo_url' => ['nullable', 'string', 'max:255'],
+            'website_url' => ['nullable', 'string', 'max:255'],
         ];
     }
 

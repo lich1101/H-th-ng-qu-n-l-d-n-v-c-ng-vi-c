@@ -72,6 +72,16 @@ class AppSettingController extends Controller
             'chatbot_api_key' => ['nullable', 'string', 'max:4096'],
             'chatbot_system_message_markdown' => ['nullable', 'string', 'max:120000'],
             'chatbot_history_pairs' => ['nullable', 'integer', 'min:1', 'max:40'],
+            'gsc_enabled' => ['nullable', 'boolean'],
+            'gsc_client_id' => ['nullable', 'string', 'max:255'],
+            'gsc_client_secret' => ['nullable', 'string', 'max:255'],
+            'gsc_refresh_token' => ['nullable', 'string', 'max:4096'],
+            'gsc_row_limit' => ['nullable', 'integer', 'min:100', 'max:25000'],
+            'gsc_data_state' => ['nullable', 'string', 'in:all,final'],
+            'gsc_alert_threshold_percent' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'gsc_recipes_path_token' => ['nullable', 'string', 'max:120'],
+            'gsc_brand_terms' => ['nullable', 'string', 'max:12000'],
+            'gsc_sync_time' => ['nullable', 'regex:/^\d{2}:\d{2}$/'],
             'logo' => ['nullable', 'file', 'max:5120'],
         ]);
 
@@ -79,6 +89,10 @@ class AppSettingController extends Controller
         if (! $setting) {
             $setting = AppSetting::create(AppSetting::defaults());
         }
+
+        $brandTerms = array_key_exists('gsc_brand_terms', $validated)
+            ? $this->normalizeBrandTerms($validated['gsc_brand_terms'] ?? null)
+            : $this->extractBrandTermsFromSetting($setting);
 
         $logoUrl = $validated['logo_url'] ?? $setting->logo_url ?? AppSetting::defaults()['logo_url'];
         if ($request->hasFile('logo')) {
@@ -189,6 +203,34 @@ class AppSettingController extends Controller
             'chatbot_history_pairs' => array_key_exists('chatbot_history_pairs', $validated)
                 ? (int) $validated['chatbot_history_pairs']
                 : (int) ($setting->chatbot_history_pairs ?: 8),
+            'gsc_enabled' => array_key_exists('gsc_enabled', $validated)
+                ? (bool) $validated['gsc_enabled']
+                : (bool) ($setting->gsc_enabled ?? false),
+            'gsc_client_id' => array_key_exists('gsc_client_id', $validated)
+                ? trim((string) ($validated['gsc_client_id'] ?? ''))
+                : $setting->gsc_client_id,
+            'gsc_client_secret' => array_key_exists('gsc_client_secret', $validated)
+                ? trim((string) ($validated['gsc_client_secret'] ?? ''))
+                : $setting->gsc_client_secret,
+            'gsc_refresh_token' => array_key_exists('gsc_refresh_token', $validated)
+                ? trim((string) ($validated['gsc_refresh_token'] ?? ''))
+                : $setting->gsc_refresh_token,
+            'gsc_row_limit' => array_key_exists('gsc_row_limit', $validated)
+                ? (int) $validated['gsc_row_limit']
+                : (int) ($setting->gsc_row_limit ?? 2500),
+            'gsc_data_state' => array_key_exists('gsc_data_state', $validated)
+                ? (string) $validated['gsc_data_state']
+                : (string) ($setting->gsc_data_state ?: 'all'),
+            'gsc_alert_threshold_percent' => array_key_exists('gsc_alert_threshold_percent', $validated)
+                ? (int) $validated['gsc_alert_threshold_percent']
+                : (int) ($setting->gsc_alert_threshold_percent ?? 30),
+            'gsc_recipes_path_token' => array_key_exists('gsc_recipes_path_token', $validated)
+                ? trim((string) ($validated['gsc_recipes_path_token'] ?? '/recipes'))
+                : (string) ($setting->gsc_recipes_path_token ?: '/recipes'),
+            'gsc_brand_terms' => $brandTerms,
+            'gsc_sync_time' => array_key_exists('gsc_sync_time', $validated)
+                ? (string) $validated['gsc_sync_time']
+                : (string) ($setting->gsc_sync_time ?: '11:17'),
             'updated_by' => $request->user()->id,
         ]);
 
@@ -226,6 +268,7 @@ class AppSettingController extends Controller
             'chatbot_provider' => $setting && $setting->chatbot_provider ? (string) $setting->chatbot_provider : 'gemini',
             'chatbot_model' => $setting && $setting->chatbot_model ? (string) $setting->chatbot_model : (string) ($defaults['chatbot_model'] ?? 'gemini-2.0-flash'),
             'chatbot_history_pairs' => $setting ? (int) ($setting->chatbot_history_pairs ?? 8) : 8,
+            'gsc_enabled' => $setting ? (bool) ($setting->gsc_enabled ?? false) : false,
         ];
     }
 
@@ -246,6 +289,57 @@ class AppSettingController extends Controller
             'smtp_from_name' => $setting ? $setting->smtp_from_name : null,
             'chatbot_api_key' => $setting ? $setting->chatbot_api_key : null,
             'chatbot_system_message_markdown' => $setting ? $setting->chatbot_system_message_markdown : null,
+            'gsc_client_id' => $setting ? (string) ($setting->gsc_client_id ?? '') : '',
+            'gsc_client_secret' => $setting ? (string) ($setting->gsc_client_secret ?? '') : '',
+            'gsc_refresh_token' => $setting ? (string) ($setting->gsc_refresh_token ?? '') : '',
+            'gsc_row_limit' => $setting ? (int) ($setting->gsc_row_limit ?? 2500) : 2500,
+            'gsc_data_state' => $setting ? (string) ($setting->gsc_data_state ?? 'all') : 'all',
+            'gsc_alert_threshold_percent' => $setting ? (int) ($setting->gsc_alert_threshold_percent ?? 30) : 30,
+            'gsc_recipes_path_token' => $setting ? (string) ($setting->gsc_recipes_path_token ?? '/recipes') : '/recipes',
+            'gsc_brand_terms' => $this->extractBrandTermsFromSetting($setting),
+            'gsc_sync_time' => $setting ? (string) ($setting->gsc_sync_time ?? '11:17') : '11:17',
+            'gsc_access_token_expires_at' => $setting && $setting->gsc_access_token_expires_at
+                ? $setting->gsc_access_token_expires_at->toIso8601String()
+                : null,
         ]);
+    }
+
+    private function normalizeBrandTerms(?string $raw): array
+    {
+        $value = trim((string) $raw);
+        if ($value === '') {
+            return [];
+        }
+
+        $segments = preg_split('/[\r\n,]+/', $value) ?: [];
+        $terms = [];
+        foreach ($segments as $segment) {
+            $term = trim((string) $segment);
+            if ($term === '') {
+                continue;
+            }
+            $terms[] = mb_strtolower($term);
+        }
+
+        return array_values(array_unique($terms));
+    }
+
+    private function extractBrandTermsFromSetting(?AppSetting $setting): array
+    {
+        $terms = $setting ? $setting->gsc_brand_terms : [];
+        if (! is_array($terms)) {
+            return [];
+        }
+
+        $clean = [];
+        foreach ($terms as $term) {
+            $value = trim((string) $term);
+            if ($value === '') {
+                continue;
+            }
+            $clean[] = mb_strtolower($value);
+        }
+
+        return array_values(array_unique($clean));
     }
 }

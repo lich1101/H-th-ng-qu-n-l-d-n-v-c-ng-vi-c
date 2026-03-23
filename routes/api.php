@@ -30,6 +30,7 @@ use App\Http\Controllers\Api\V1\NotificationCenterController;
 use App\Http\Controllers\Api\V1\ProjectController;
 use App\Http\Controllers\Api\V1\ProjectFileController;
 use App\Http\Controllers\Api\V1\ProjectFlowController;
+use App\Http\Controllers\Api\V1\ProjectSearchConsoleController;
 use App\Http\Controllers\Api\V1\ImportController;
 use App\Http\Controllers\Api\V1\ProfileController;
 use App\Http\Controllers\Api\V1\PublicMobileController;
@@ -101,6 +102,9 @@ Route::prefix('v1')->group(function () {
 
         Route::get('/projects', [ProjectController::class, 'index']);
         Route::get('/projects/{project}', [ProjectController::class, 'show']);
+        Route::get('/projects/{project}/search-console', [ProjectSearchConsoleController::class, 'show']);
+        Route::post('/projects/{project}/search-console/sync', [ProjectSearchConsoleController::class, 'sync'])
+            ->middleware('role:admin,quan_ly');
         Route::get('/project-handovers', [ProjectController::class, 'handoverQueue'])
             ->middleware('role:admin,quan_ly,nhan_vien');
         Route::post('/projects/{project}/handover-submit', [ProjectController::class, 'submitHandover'])

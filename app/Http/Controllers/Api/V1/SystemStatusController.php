@@ -94,6 +94,27 @@ class SystemStatusController extends Controller
                 'project_id' => (string) config('firebase.project_id'),
                 'database_url_configured' => (string) config('firebase.database_url') !== '',
             ],
+            'gsc' => [
+                'enabled' => $setting ? (bool) ($setting->gsc_enabled ?? false) : false,
+                'credentials_ready' => $setting
+                    ? (trim((string) ($setting->gsc_client_id ?? '')) !== ''
+                        && trim((string) ($setting->gsc_client_secret ?? '')) !== ''
+                        && trim((string) ($setting->gsc_refresh_token ?? '')) !== '')
+                    : false,
+                'sync_time' => $setting ? (string) ($setting->gsc_sync_time ?: '11:17') : '11:17',
+                'row_limit' => $setting ? (int) ($setting->gsc_row_limit ?? 2500) : 2500,
+                'data_state' => $setting ? (string) ($setting->gsc_data_state ?? 'all') : 'all',
+                'recipes_path_token' => $setting ? (string) ($setting->gsc_recipes_path_token ?? '/recipes') : '/recipes',
+                'brand_terms_count' => $setting && is_array($setting->gsc_brand_terms)
+                    ? count($setting->gsc_brand_terms)
+                    : 0,
+                'access_token_available' => $setting
+                    ? (trim((string) ($setting->gsc_access_token ?? '')) !== '')
+                    : false,
+                'access_token_expires_at' => $setting && $setting->gsc_access_token_expires_at
+                    ? $setting->gsc_access_token_expires_at->toIso8601String()
+                    : null,
+            ],
             'push_tokens' => [
                 'total' => $totalTokens,
                 'by_platform' => [

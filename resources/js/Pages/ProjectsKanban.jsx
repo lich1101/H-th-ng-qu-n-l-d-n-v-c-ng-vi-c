@@ -93,6 +93,7 @@ export default function ProjectsKanban(props) {
         customer_requirement: '',
         owner_id: '',
         repo_url: '',
+        website_url: '',
     });
 
     const statusOptions = useMemo(() => {
@@ -268,6 +269,7 @@ export default function ProjectsKanban(props) {
             customer_requirement: '',
             owner_id: '',
             repo_url: '',
+            website_url: '',
         });
         fetchContracts();
     };
@@ -298,6 +300,7 @@ export default function ProjectsKanban(props) {
             customer_requirement: p.customer_requirement || '',
             owner_id: p.owner_id || '',
             repo_url: p.repo_url || '',
+            website_url: p.website_url || '',
         });
         setShowForm(true);
         fetchContracts(p.id);
@@ -327,6 +330,7 @@ export default function ProjectsKanban(props) {
                 service_type_other: form.service_type === 'khac' ? form.service_type_other : null,
                 owner_id: form.owner_id ? Number(form.owner_id) : null,
                 repo_url: form.repo_url?.trim() ? form.repo_url.trim() : null,
+                website_url: form.website_url?.trim() ? form.website_url.trim() : null,
             };
             if (editingId) {
                 await axios.put(`/api/v1/projects/${editingId}`, payload);
@@ -374,6 +378,7 @@ export default function ProjectsKanban(props) {
                 customer_requirement: p.customer_requirement,
                 owner_id: p.owner_id,
                 repo_url: p.repo_url,
+                website_url: p.website_url,
             });
             toast.success('Đã cập nhật trạng thái.');
             await fetchProjects();
@@ -862,6 +867,18 @@ export default function ProjectsKanban(props) {
                             value={form.repo_url}
                             onChange={(e) => setForm((s) => ({ ...s, repo_url: e.target.value }))}
                         />
+                    </div>
+                    <div>
+                        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Website dự án (Google Search Console)</label>
+                        <input
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            placeholder="VD: https://anphatglass.com/"
+                            value={form.website_url}
+                            onChange={(e) => setForm((s) => ({ ...s, website_url: e.target.value }))}
+                        />
+                        <p className="mt-1 text-xs text-text-muted">
+                            Nếu có URL này, trang chi tiết dự án sẽ tự đồng bộ thống kê Google Search Console hằng ngày.
+                        </p>
                     </div>
                     <div>
                         <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Trạng thái dự án</label>

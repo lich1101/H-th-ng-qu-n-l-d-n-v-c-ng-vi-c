@@ -45,6 +45,18 @@ class AppSetting extends Model
         'chatbot_api_key',
         'chatbot_system_message_markdown',
         'chatbot_history_pairs',
+        'gsc_enabled',
+        'gsc_client_id',
+        'gsc_client_secret',
+        'gsc_refresh_token',
+        'gsc_access_token',
+        'gsc_access_token_expires_at',
+        'gsc_row_limit',
+        'gsc_data_state',
+        'gsc_alert_threshold_percent',
+        'gsc_recipes_path_token',
+        'gsc_brand_terms',
+        'gsc_sync_time',
         'updated_by',
     ];
 
@@ -68,6 +80,11 @@ class AppSetting extends Model
         'smtp_port' => 'integer',
         'chatbot_enabled' => 'boolean',
         'chatbot_history_pairs' => 'integer',
+        'gsc_enabled' => 'boolean',
+        'gsc_access_token_expires_at' => 'datetime',
+        'gsc_row_limit' => 'integer',
+        'gsc_alert_threshold_percent' => 'integer',
+        'gsc_brand_terms' => 'array',
     ];
 
     public static function defaults(): array
@@ -111,6 +128,18 @@ class AppSetting extends Model
             'chatbot_api_key' => null,
             'chatbot_system_message_markdown' => null,
             'chatbot_history_pairs' => 8,
+            'gsc_enabled' => false,
+            'gsc_client_id' => null,
+            'gsc_client_secret' => null,
+            'gsc_refresh_token' => null,
+            'gsc_access_token' => null,
+            'gsc_access_token_expires_at' => null,
+            'gsc_row_limit' => 2500,
+            'gsc_data_state' => 'all',
+            'gsc_alert_threshold_percent' => 30,
+            'gsc_recipes_path_token' => '/recipes',
+            'gsc_brand_terms' => [],
+            'gsc_sync_time' => '11:17',
         ];
     }
 }
