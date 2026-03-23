@@ -305,13 +305,6 @@ export default function CompanyRevenueReport(props) {
                         >
                             Toàn thời gian
                         </button>
-                        <button
-                            type="button"
-                            onClick={fetchReport}
-                            className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700"
-                        >
-                            Làm mới
-                        </button>
                     </FilterActionGroup>
                 )}
             >

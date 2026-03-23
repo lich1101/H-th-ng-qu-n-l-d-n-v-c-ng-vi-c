@@ -51,13 +51,6 @@ export default function RevenueReport(props) {
             <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card p-5">
                 <div className="flex items-center justify-between mb-4">
                     <h3 className="font-semibold">Doanh thu theo phòng ban</h3>
-                    <button
-                        type="button"
-                        onClick={fetchReport}
-                        className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
-                    >
-                        Làm mới
-                    </button>
                 </div>
                 <div className="overflow-x-auto">
                     <table className="min-w-full text-sm">

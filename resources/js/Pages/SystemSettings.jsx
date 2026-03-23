@@ -1054,13 +1054,6 @@ export default function SystemSettings(props) {
                                     <div className="flex items-center gap-2">
                                         <button
                                             type="button"
-                                            className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700"
-                                            onClick={() => loadChatbotBots({ preferredId: editingBotId })}
-                                        >
-                                            Tải lại
-                                        </button>
-                                        <button
-                                            type="button"
                                             className="rounded-xl bg-primary px-3 py-1.5 text-xs font-semibold text-white"
                                             onClick={startCreateBot}
                                         >
@@ -1906,14 +1899,6 @@ export default function SystemSettings(props) {
                                     <h3 className="text-sm font-semibold text-slate-900">Test bắn thông báo thiết bị</h3>
                                     <p className="text-xs text-text-muted mt-1">Chọn tài khoản đích và gửi ngay một push test.</p>
                                 </div>
-                                <button
-                                    type="button"
-                                    className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600"
-                                    onClick={reloadSystemStatus}
-                                    disabled={statusLoading}
-                                >
-                                    {statusLoading ? 'Đang tải...' : 'Làm mới config'}
-                                </button>
                             </div>
 
                             <div className="mt-4 grid gap-3 md:grid-cols-3">
@@ -2025,14 +2010,6 @@ export default function SystemSettings(props) {
                                         <h3 className="text-sm font-semibold text-slate-900">Trạng thái kết nối hệ thống</h3>
                                         <p className="mt-1 text-xs text-text-muted">Di chuyển từ dashboard sang đây để administrator kiểm tra tập trung.</p>
                                     </div>
-                                    <button
-                                        type="button"
-                                        className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600"
-                                        onClick={reloadSystemStatus}
-                                        disabled={statusLoading}
-                                    >
-                                        {statusLoading ? 'Đang tải...' : 'Làm mới'}
-                                    </button>
                                 </div>
 
                                 <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -2133,14 +2110,6 @@ export default function SystemSettings(props) {
                                         Theo dõi token push, môi trường iOS, trạng thái quyền thông báo và thiết bị đang gắn với từng tài khoản.
                                     </p>
                                 </div>
-                                <button
-                                    type="button"
-                                    className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600"
-                                    onClick={() => fetchDevices(1)}
-                                    disabled={deviceLoading}
-                                >
-                                    {deviceLoading ? 'Đang tải...' : 'Làm mới'}
-                                </button>
                             </div>
 
                             <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">

@@ -310,9 +310,6 @@ export default function TaskDetail(props) {
                     <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card">
                         <div className="mb-4 flex items-center justify-between">
                             <h4 className="font-semibold text-slate-900">Danh sách đầu việc</h4>
-                            <button className="text-sm font-semibold text-primary" onClick={fetchData} type="button">
-                                Tải lại
-                            </button>
                         </div>
                         {message && <p className="mb-4 text-sm text-rose-500">{message}</p>}
                         {items.length === 0 && (

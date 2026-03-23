@@ -445,9 +445,6 @@ export default function ProjectsKanban(props) {
                                     {tab.label}
                                 </button>
                             ))}
-                            <button className="rounded-2xl px-3 py-2 text-sm font-semibold text-primary" onClick={fetchProjects} type="button">
-                                Tải lại
-                            </button>
                         </FilterActionGroup>
                     )}
                 >

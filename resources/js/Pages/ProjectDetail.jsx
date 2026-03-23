@@ -199,11 +199,6 @@ export default function ProjectDetail(props) {
                     {syncing ? 'Đang đồng bộ...' : 'Đồng bộ ngay'}
                   </button>
                 )}
-                {project.website_url && (
-                  <button className="text-sm text-slate-600 font-semibold" onClick={() => fetchGsc({ force: false })} type="button">
-                    Tải lại
-                  </button>
-                )}
               </div>
             </div>
 
@@ -336,7 +331,6 @@ export default function ProjectDetail(props) {
           <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
             <div className="flex items-center justify-between mb-4">
               <h4 className="font-semibold text-slate-900">Danh sách công việc</h4>
-              <button className="text-sm text-primary font-semibold" onClick={fetchData} type="button">Tải lại</button>
             </div>
             {tasks.length === 0 && (
               <p className="text-sm text-text-muted">Chưa có công việc nào.</p>

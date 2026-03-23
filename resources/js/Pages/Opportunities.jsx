@@ -129,17 +129,7 @@ export default function Opportunities(props) {
                 <FilterToolbar
                     title="Danh sách cơ hội"
                     description="Lọc nhanh theo khách hàng tiềm năng, trạng thái và phạm vi theo dõi hiện tại."
-                    actions={(
-                        <FilterActionGroup>
-                            <button
-                                type="button"
-                                onClick={fetchData}
-                                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                            >
-                                Làm mới
-                            </button>
-                        </FilterActionGroup>
-                    )}
+                    actions={null}
                 >
                     <FilterField label="Tìm kiếm">
                         <input

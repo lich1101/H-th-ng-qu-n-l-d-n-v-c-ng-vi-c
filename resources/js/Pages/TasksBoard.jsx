@@ -1659,9 +1659,6 @@ export default function TasksBoard(props) {
                                     {tab.label}
                                 </button>
                             ))}
-                            <button className="rounded-2xl px-3 py-2 text-sm font-semibold text-primary" onClick={() => fetchTasks(1, { ...filters, page: 1 })} type="button">
-                                Tải lại
-                            </button>
                         </FilterActionGroup>
                     )}
                 >
@@ -1985,15 +1982,6 @@ export default function TasksBoard(props) {
                             </div>
                         </div>
                         <div className="flex items-center gap-2">
-                            <button
-                                type="button"
-                                className="text-xs font-semibold text-primary"
-                                onClick={() => {
-                                    if (chatTask?.id) fetchTaskChat(chatTask.id);
-                                }}
-                            >
-                                Làm mới
-                            </button>
                             <button
                                 type="button"
                                 className="h-8 w-8 rounded-full border border-slate-200 text-slate-500 hover:bg-slate-100"
@@ -2588,7 +2576,7 @@ export default function TasksBoard(props) {
                                             className="flex-1 rounded-2xl px-3 py-2.5 border border-slate-200 text-sm font-semibold"
                                             onClick={resetItemForm}
                                         >
-                                            Làm mới
+                                            Đặt lại
                                         </button>
                                     </div>
                                 </div>

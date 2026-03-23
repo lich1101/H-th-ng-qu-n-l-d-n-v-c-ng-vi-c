@@ -462,7 +462,6 @@ export default function ProjectFiles(props) {
                       </ToolbarButton>
                     </>
                   )}
-                  <ToolbarButton onClick={fetchItems}>Tải lại</ToolbarButton>
                   <input
                     ref={fileInputRef}
                     type="file"

@@ -926,13 +926,6 @@ export default function ProjectFlow({ auth, projectId }) {
                             </div>
                         </div>
                         <div className="pointer-events-auto flex items-center gap-2">
-                            <button
-                                type="button"
-                                className="rounded-2xl border border-slate-200 bg-white/95 px-4 py-2 text-sm font-semibold text-slate-700 backdrop-blur hover:bg-slate-50"
-                                onClick={fetchData}
-                            >
-                                Tải lại
-                            </button>
                             <Link
                                 href={route('projects.detail', projectId)}
                                 className="rounded-2xl bg-primary px-4 py-2 text-sm font-semibold text-white"

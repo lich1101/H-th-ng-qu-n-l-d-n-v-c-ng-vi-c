@@ -196,17 +196,7 @@ export default function DepartmentAssignments(props) {
                 <FilterToolbar
                     title="Bộ lọc điều phối"
                     description="Lọc nhanh theo phòng ban và trạng thái triển khai để theo dõi nhóm đang xử lý."
-                    actions={(
-                        <FilterActionGroup>
-                            <button
-                                type="button"
-                                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                                onClick={fetchData}
-                            >
-                                Làm mới
-                            </button>
-                        </FilterActionGroup>
-                    )}
+                    actions={null}
                 >
                     <FilterField label="Phòng ban">
                         <select
