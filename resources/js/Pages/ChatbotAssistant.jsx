@@ -453,6 +453,13 @@ export default function ChatbotAssistant({ auth }) {
         return 'Đang trả lời. Bạn có thể bấm Dừng để ngắt phản hồi hiện tại.';
     }, [isProcessing, inputTrimmed.length, hasPendingAttachment]);
 
+    const selectedBotSummary = useMemo(() => {
+        const description = String(selectedBot?.description || '').trim();
+        if (description) return description;
+        if (selectedBot?.is_default) return 'Trợ lý mặc định cho hội thoại nội bộ.';
+        return 'Trợ lý AI cho hội thoại nội bộ.';
+    }, [selectedBot]);
+
     useEffect(() => {
         if (queueCount > 0) {
             setQueueOpen(true);
@@ -463,7 +470,7 @@ export default function ChatbotAssistant({ auth }) {
         <PageContainer
             auth={auth}
             title="Trợ lý AI"
-            description="Trợ lý nội bộ dùng Gemini. Chat theo từng người dùng, có hàng chờ và dừng phản hồi."
+            description="Trợ lý nội bộ theo từng người dùng, có hàng chờ và dừng phản hồi."
             stats={[]}
         >
             <div className="lg:col-span-2">
@@ -481,7 +488,7 @@ export default function ChatbotAssistant({ auth }) {
                                         {chatbotEnabled ? 'Đang bật' : 'Đang tắt'}
                                     </span>
                                     <span className={`rounded-full px-3 py-1 text-xs font-semibold ${chatbotConfigured ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
-                                        {chatbotConfigured ? 'Đủ cấu hình' : 'Thiếu key/model'}
+                                        {chatbotConfigured ? 'Đủ cấu hình' : 'Thiếu cấu hình'}
                                     </span>
                                     <span className={`rounded-full px-3 py-1 text-xs font-semibold ${isProcessing ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600'}`}>
                                         {isProcessing ? 'Đang trả lời tuần tự' : 'Sẵn sàng'}
@@ -510,7 +517,7 @@ export default function ChatbotAssistant({ auth }) {
                                             {selectedBot?.name || 'Chưa chọn bot'}
                                         </div>
                                         <div className="truncate text-xs text-slate-500">
-                                            {(selectedBot?.provider || payload?.chatbot?.provider || 'gemini').toUpperCase()} · {selectedBot?.model || 'chưa cấu hình'} · {selectedBot?.history_pairs || payload?.chatbot?.history_pairs || 0} cặp ngữ cảnh
+                                            {selectedBotSummary}
                                         </div>
                                     </div>
                                 </div>
@@ -539,7 +546,7 @@ export default function ChatbotAssistant({ auth }) {
 
                             {!chatbotEnabled || !chatbotConfigured ? (
                                 <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                                    Chatbot chưa sẵn sàng. Administrator vào <strong>Cài đặt hệ thống</strong> để bật chatbot, nhập Gemini API key, model và system message.
+                                    Chatbot chưa sẵn sàng. Administrator vào <strong>Cài đặt hệ thống</strong> để hoàn tất cấu hình.
                                 </div>
                             ) : null}
                             {connectionError ? (
@@ -912,16 +919,6 @@ export default function ChatbotAssistant({ auth }) {
                                     </div>
                                 ))}
                             </div>
-                            </div>
-
-                            <div className="rounded-[20px] border border-slate-200/80 bg-white p-4 shadow-card">
-                            <h3 className="text-sm font-semibold text-slate-900">Quy tắc vận hành</h3>
-                            <ul className="mt-2 list-disc space-y-1.5 pl-4 text-xs text-slate-600">
-                                <li>Mỗi tài khoản có lịch sử hội thoại riêng, không trộn dữ liệu với user khác.</li>
-                                <li>Mỗi bot tách lịch sử riêng theo từng user + bot, tránh lẫn ngữ cảnh giữa các trợ lý.</li>
-                                <li>System message dạng Markdown do administrator quản lý tại Cài đặt hệ thống.</li>
-                                <li>Lượt chat xử lý tuần tự 1-1 để đảm bảo ngữ cảnh ổn định.</li>
-                            </ul>
                             </div>
                         </div>
                     </div>

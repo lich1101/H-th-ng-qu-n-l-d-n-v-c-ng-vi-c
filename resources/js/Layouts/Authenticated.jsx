@@ -677,7 +677,7 @@ export default function Authenticated({ auth, header, children }) {
                                                                     {bot.name}
                                                                 </span>
                                                                 <span className="mt-0.5 block truncate text-xs text-slate-500">
-                                                                    {bot.description || `${bot.provider || 'gemini'} • ${bot.model || 'chưa có model'}`}
+                                                                    {bot.description || 'Trợ lý AI cho hội thoại nội bộ'}
                                                                 </span>
                                                             </span>
                                                             <span className="flex flex-col items-end gap-1">
@@ -688,7 +688,7 @@ export default function Authenticated({ auth, header, children }) {
                                                                 )}
                                                                 {!bot.configured && (
                                                                     <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
-                                                                        Thiếu key/model
+                                                                        Thiếu cấu hình
                                                                     </span>
                                                                 )}
                                                             </span>
