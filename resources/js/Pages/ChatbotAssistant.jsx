@@ -87,7 +87,11 @@ const nameInitial = (name, fallback = 'U') => {
     return text.charAt(0).toUpperCase();
 };
 
-const URL_REGEX = /((?:https?:\/\/|www\.)[^\s<]+)/gi;
+const INLINE_TOKEN_REGEX = /(\*\*[^*]+\*\*|(?:https?:\/\/|www\.)[^\s<]+)/g;
+const CODE_FENCE_REGEX = /^```([\w-]+)?\s*$/;
+const UNORDERED_ITEM_REGEX = /^\s*[-*]\s+(.+)$/;
+const ORDERED_ITEM_REGEX = /^\s*(\d+)\.\s+(.+)$/;
+const HEADING_REGEX = /^(#{1,3})\s+(.+)$/;
 
 const sanitizeDisplayUrl = (value) => {
     return String(value || '').replace(/[),.;!?]+$/g, '');
@@ -99,66 +103,292 @@ const normalizeHref = (value) => {
     return /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
 };
 
-const renderTextWithLinks = (value, { linkClassName = '', textClassName = '' } = {}) => {
-    const text = String(value || '');
-    if (!text) return null;
-
+const parseMarkdownBlocks = (value) => {
+    const text = String(value || '').replace(/\r\n?/g, '\n');
+    if (!text.trim()) return [];
     const lines = text.split('\n');
-    return lines.map((line, lineIndex) => {
-        const parts = [];
+    const blocks = [];
+
+    let i = 0;
+    while (i < lines.length) {
+        const line = lines[i] || '';
+        const trimmed = line.trim();
+
+        const codeOpen = line.match(CODE_FENCE_REGEX);
+        if (codeOpen) {
+            const lang = (codeOpen[1] || '').trim();
+            const codeLines = [];
+            i += 1;
+            while (i < lines.length && !CODE_FENCE_REGEX.test(lines[i] || '')) {
+                codeLines.push(lines[i]);
+                i += 1;
+            }
+            if (i < lines.length) i += 1;
+            blocks.push({
+                type: 'code',
+                language: lang,
+                content: codeLines.join('\n'),
+            });
+            continue;
+        }
+
+        if (!trimmed) {
+            blocks.push({ type: 'spacer' });
+            i += 1;
+            continue;
+        }
+
+        const headingMatch = line.match(HEADING_REGEX);
+        if (headingMatch) {
+            blocks.push({
+                type: 'heading',
+                level: headingMatch[1].length,
+                text: headingMatch[2].trim(),
+            });
+            i += 1;
+            continue;
+        }
+
+        if (UNORDERED_ITEM_REGEX.test(line)) {
+            const items = [];
+            while (i < lines.length) {
+                const itemMatch = (lines[i] || '').match(UNORDERED_ITEM_REGEX);
+                if (!itemMatch) break;
+                items.push(itemMatch[1].trim());
+                i += 1;
+            }
+            blocks.push({ type: 'ul', items });
+            continue;
+        }
+
+        if (ORDERED_ITEM_REGEX.test(line)) {
+            const items = [];
+            while (i < lines.length) {
+                const itemMatch = (lines[i] || '').match(ORDERED_ITEM_REGEX);
+                if (!itemMatch) break;
+                items.push({
+                    index: Number(itemMatch[1]),
+                    text: itemMatch[2].trim(),
+                });
+                i += 1;
+            }
+            blocks.push({ type: 'ol', items });
+            continue;
+        }
+
+        const paraLines = [line];
+        i += 1;
+        while (i < lines.length) {
+            const next = lines[i] || '';
+            if (!next.trim()) break;
+            if (CODE_FENCE_REGEX.test(next) || HEADING_REGEX.test(next) || UNORDERED_ITEM_REGEX.test(next) || ORDERED_ITEM_REGEX.test(next)) {
+                break;
+            }
+            paraLines.push(next);
+            i += 1;
+        }
+        blocks.push({
+            type: 'paragraph',
+            text: paraLines.join('\n'),
+        });
+    }
+
+    return blocks;
+};
+
+const renderInlineContent = ({ text, isUser, keyPrefix }) => {
+    const raw = String(text || '');
+    if (!raw) return null;
+
+    const chunks = raw.split(/`([^`]+)`/g);
+    return chunks.map((chunk, idx) => {
+        const tokenKey = `${keyPrefix}-chunk-${idx}`;
+        if (idx % 2 === 1) {
+            return (
+                <code
+                    key={tokenKey}
+                    className={`rounded-md border px-1.5 py-0.5 font-mono text-[12px] ${
+                        isUser
+                            ? 'border-white/25 bg-white/20 text-white'
+                            : 'border-slate-700 bg-slate-800 text-slate-100'
+                    }`}
+                >
+                    {chunk}
+                </code>
+            );
+        }
+
+        const pieces = [];
         let lastIndex = 0;
         let match;
-        URL_REGEX.lastIndex = 0;
-        while ((match = URL_REGEX.exec(line)) !== null) {
-            const rawUrl = match[0];
+        INLINE_TOKEN_REGEX.lastIndex = 0;
+        while ((match = INLINE_TOKEN_REGEX.exec(chunk)) !== null) {
+            const token = match[0];
             const start = match.index;
-            const end = start + rawUrl.length;
+            const end = start + token.length;
             if (start > lastIndex) {
-                parts.push({
+                pieces.push({
                     type: 'text',
-                    value: line.slice(lastIndex, start),
+                    value: chunk.slice(lastIndex, start),
                 });
             }
-            parts.push({
-                type: 'link',
-                value: sanitizeDisplayUrl(rawUrl),
-            });
+            if (/^\*\*[^*]+\*\*$/.test(token)) {
+                pieces.push({
+                    type: 'strong',
+                    value: token.slice(2, -2),
+                });
+            } else {
+                pieces.push({
+                    type: 'link',
+                    value: sanitizeDisplayUrl(token),
+                });
+            }
             lastIndex = end;
         }
-        if (lastIndex < line.length) {
-            parts.push({
+        if (lastIndex < chunk.length) {
+            pieces.push({
                 type: 'text',
-                value: line.slice(lastIndex),
+                value: chunk.slice(lastIndex),
             });
         }
 
-        return (
-            <React.Fragment key={`line-${lineIndex}`}>
-                {parts.map((part, partIndex) => {
-                    if (part.type === 'link') {
-                        const href = normalizeHref(part.value);
-                        return (
-                            <a
-                                key={`part-${lineIndex}-${partIndex}`}
-                                href={href}
-                                target="_blank"
-                                rel="noreferrer"
-                                className={linkClassName}
-                            >
-                                {part.value}
-                            </a>
-                        );
-                    }
-                    return (
-                        <span key={`part-${lineIndex}-${partIndex}`} className={textClassName}>
-                            {part.value}
-                        </span>
-                    );
-                })}
-                {lineIndex < lines.length - 1 ? <br /> : null}
-            </React.Fragment>
-        );
+        return pieces.map((part, partIndex) => {
+            const partKey = `${tokenKey}-part-${partIndex}`;
+            if (part.type === 'link') {
+                const href = normalizeHref(part.value);
+                return (
+                    <a
+                        key={partKey}
+                        href={href}
+                        target="_blank"
+                        rel="noreferrer"
+                        className={isUser
+                            ? 'underline decoration-white/70 underline-offset-2 hover:text-white'
+                            : 'font-medium text-sky-300 underline underline-offset-2 hover:text-sky-200'}
+                    >
+                        {part.value}
+                    </a>
+                );
+            }
+            if (part.type === 'strong') {
+                return (
+                    <strong key={partKey} className="font-semibold">
+                        {part.value}
+                    </strong>
+                );
+            }
+            return (
+                <span key={partKey}>
+                    {part.value}
+                </span>
+            );
+        });
     });
+};
+
+const renderMessageMarkdown = ({ content, isUser }) => {
+    const blocks = parseMarkdownBlocks(content);
+    if (blocks.length === 0) return null;
+
+    return (
+        <div className={`space-y-2.5 ${isUser ? 'text-white' : 'text-slate-100'}`}>
+            {blocks.map((block, blockIndex) => {
+                const key = `block-${blockIndex}`;
+                if (block.type === 'spacer') {
+                    return <div key={key} className="h-1.5" />;
+                }
+                if (block.type === 'heading') {
+                    const sizeClass = block.level === 1
+                        ? 'text-[15px]'
+                        : (block.level === 2 ? 'text-[14px]' : 'text-[13px]');
+                    return (
+                        <p key={key} className={`font-semibold leading-6 ${sizeClass}`}>
+                            {renderInlineContent({
+                                text: block.text,
+                                isUser,
+                                keyPrefix: `${key}-heading`,
+                            })}
+                        </p>
+                    );
+                }
+                if (block.type === 'ul') {
+                    return (
+                        <ul key={key} className="list-disc space-y-1.5 pl-5 leading-6">
+                            {block.items.map((item, itemIndex) => (
+                                <li key={`${key}-item-${itemIndex}`}>
+                                    {renderInlineContent({
+                                        text: item,
+                                        isUser,
+                                        keyPrefix: `${key}-item-${itemIndex}`,
+                                    })}
+                                </li>
+                            ))}
+                        </ul>
+                    );
+                }
+                if (block.type === 'ol') {
+                    return (
+                        <ol key={key} className="list-decimal space-y-1.5 pl-5 leading-6">
+                            {block.items.map((item, itemIndex) => (
+                                <li key={`${key}-item-${itemIndex}`} value={item.index}>
+                                    {renderInlineContent({
+                                        text: item.text,
+                                        isUser,
+                                        keyPrefix: `${key}-item-${itemIndex}`,
+                                    })}
+                                </li>
+                            ))}
+                        </ol>
+                    );
+                }
+                if (block.type === 'code') {
+                    return (
+                        <div
+                            key={key}
+                            className={`overflow-x-auto rounded-xl border ${
+                                isUser
+                                    ? 'border-white/25 bg-black/35'
+                                    : 'border-slate-700 bg-slate-950/90'
+                            }`}
+                        >
+                            {block.language ? (
+                                <div className={`border-b px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide ${
+                                    isUser
+                                        ? 'border-white/20 text-white/80'
+                                        : 'border-slate-700 text-slate-400'
+                                }`}
+                                >
+                                    {block.language}
+                                </div>
+                            ) : null}
+                            <pre className={`px-3 py-2.5 font-mono text-[12px] leading-5 ${
+                                isUser ? 'text-white' : 'text-slate-100'
+                            }`}
+                            >
+                                <code>{block.content}</code>
+                            </pre>
+                        </div>
+                    );
+                }
+
+                const paraLines = String(block.text || '').split('\n');
+                return (
+                    <p key={key} className="break-words leading-7">
+                        {paraLines.map((line, lineIndex) => (
+                            <React.Fragment key={`${key}-line-${lineIndex}`}>
+                                {renderInlineContent({
+                                    text: line,
+                                    isUser,
+                                    keyPrefix: `${key}-line-${lineIndex}`,
+                                })}
+                                {lineIndex < paraLines.length - 1 ? <br /> : null}
+                            </React.Fragment>
+                        ))}
+                    </p>
+                );
+            })}
+        </div>
+    );
 };
 
 export default function ChatbotAssistant({ auth }) {
@@ -558,16 +788,16 @@ export default function ChatbotAssistant({ auth }) {
 
                             <div
                                 ref={scrollRef}
-                                className="h-[56vh] min-h-[360px] max-h-[620px] space-y-4 overflow-y-auto bg-gradient-to-b from-slate-50/75 to-slate-100/40 px-5 py-5"
+                                className="h-[56vh] min-h-[360px] max-h-[620px] space-y-4 overflow-y-auto bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 px-5 py-5"
                             >
                             {loading ? (
-                                <div className="rounded-xl border border-slate-200/80 bg-white px-3 py-2 text-sm text-slate-600 shadow-sm">
+                                <div className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-300 shadow-sm">
                                     Đang tải hội thoại...
                                 </div>
                             ) : null}
 
                             {!loading && messages.length === 0 ? (
-                                <div className="rounded-xl border border-slate-200/80 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm">
+                                <div className="rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-300 shadow-sm">
                                     Chưa có hội thoại. Hãy gửi câu hỏi đầu tiên.
                                 </div>
                             ) : null}
@@ -590,41 +820,39 @@ export default function ChatbotAssistant({ auth }) {
                                                 <img
                                                     src={assistantAvatarUrl}
                                                     alt={displayName}
-                                                    className="mt-1 h-9 w-9 flex-none rounded-full border border-slate-200 object-cover shadow-sm"
+                                                    className="mt-1 h-9 w-9 flex-none rounded-full border border-slate-700 object-cover shadow-sm"
                                                 />
                                             ) : (
-                                                <div className="mt-1 flex h-9 w-9 flex-none items-center justify-center rounded-full border border-slate-200 bg-white text-xs font-semibold text-slate-700 shadow-sm">
+                                                <div className="mt-1 flex h-9 w-9 flex-none items-center justify-center rounded-full border border-slate-700 bg-slate-800 text-xs font-semibold text-slate-200 shadow-sm">
                                                     {avatarLabel}
                                                 </div>
                                             )
                                         ) : null}
 
                                         <div
-                                            className={`max-w-[min(88%,760px)] rounded-2xl px-4 py-3 text-sm shadow-sm ${
+                                            className={`max-w-[min(90%,780px)] rounded-2xl px-4 py-3 text-sm shadow-sm ${
                                                 isUser
-                                                    ? 'bg-primary text-white'
-                                                    : 'border border-slate-200/80 bg-white text-slate-900'
+                                                    ? 'bg-primary text-white shadow-[0_12px_32px_-20px_rgba(14,116,144,0.9)]'
+                                                    : 'border border-slate-700 bg-slate-900 text-slate-100 shadow-[0_12px_32px_-20px_rgba(15,23,42,0.95)]'
                                             }`}
                                         >
-                                            <div className={`mb-1 text-[11px] font-semibold ${isUser ? 'text-white/85' : 'text-slate-500'}`}>
+                                            <div className={`mb-1 text-[11px] font-semibold ${isUser ? 'text-white/85' : 'text-slate-400'}`}>
                                                 {displayName}
                                             </div>
                                             {hasText ? (
-                                                <div className="whitespace-pre-wrap break-words leading-6">
-                                                    {renderTextWithLinks(message.content, {
-                                                        linkClassName: isUser
-                                                            ? 'underline decoration-white/70 underline-offset-2 hover:text-white'
-                                                            : 'font-medium text-primary underline underline-offset-2 hover:text-primary/80',
-                                                        textClassName: isUser ? 'text-white' : 'text-slate-900',
+                                                <div className="break-words">
+                                                    {renderMessageMarkdown({
+                                                        content: message.content,
+                                                        isUser,
                                                     })}
                                                 </div>
                                             ) : (
-                                                <div className={`${isUser ? 'text-white/85' : 'text-slate-500'} text-sm`}>
+                                                <div className={`${isUser ? 'text-white/85' : 'text-slate-400'} text-sm`}>
                                                     Tin nhắn chỉ có tệp đính kèm.
                                                 </div>
                                             )}
                                             {attachment?.url ? (
-                                                <div className={`mt-2 rounded-xl border p-2.5 ${isUser ? 'border-white/30 bg-white/10' : 'border-slate-200 bg-slate-50'}`}>
+                                                <div className={`mt-2 rounded-xl border p-2.5 ${isUser ? 'border-white/30 bg-white/10' : 'border-slate-700 bg-slate-800/80'}`}>
                                                     {attachment.is_image ? (
                                                         <a href={attachment.url} target="_blank" rel="noreferrer" className="block">
                                                             <img
@@ -639,21 +867,21 @@ export default function ChatbotAssistant({ auth }) {
                                                             target="_blank"
                                                             rel="noreferrer"
                                                             className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs font-semibold ${
-                                                                isUser ? 'text-white hover:bg-white/10' : 'text-slate-700 hover:bg-slate-100'
+                                                                isUser ? 'text-white hover:bg-white/10' : 'text-slate-100 hover:bg-slate-700/70'
                                                             }`}
                                                         >
-                                                            <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-black/10">📎</span>
+                                                            <span className={`inline-flex h-6 w-6 items-center justify-center rounded-md ${isUser ? 'bg-black/10' : 'bg-slate-700'}`}>📎</span>
                                                             <span className="min-w-0 flex-1 truncate">{attachment.name || 'Tệp đính kèm'}</span>
                                                             <span className="text-[10px] opacity-80">{formatBytes(attachment.size)}</span>
                                                         </a>
                                                     )}
-                                                    <div className={`mt-1 text-[11px] ${isUser ? 'text-white/80' : 'text-slate-500'}`}>
+                                                    <div className={`mt-1 text-[11px] ${isUser ? 'text-white/80' : 'text-slate-400'}`}>
                                                         {attachment.name || 'Tệp đính kèm'}
                                                         {attachment.size ? ` • ${formatBytes(attachment.size)}` : ''}
                                                     </div>
                                                 </div>
                                             ) : null}
-                                            <div className={`mt-2 flex flex-wrap items-center gap-2 text-[11px] ${isUser ? 'text-white/85' : 'text-slate-500'}`}>
+                                            <div className={`mt-2 flex flex-wrap items-center gap-2 text-[11px] ${isUser ? 'text-white/85' : 'text-slate-400'}`}>
                                                 <span>{formatTime(message.created_at)}</span>
                                                 <span className={`rounded-full px-2 py-0.5 font-semibold ${isUser ? 'bg-white/20 text-white' : statusTone(message.status)}`}>
                                                     {STATUS_LABELS[message.status] || message.status}
@@ -686,8 +914,11 @@ export default function ChatbotAssistant({ auth }) {
                                 <div className="chat-fade flex justify-end gap-2.5">
                                     <div className="max-w-[min(88%,760px)] rounded-2xl bg-primary px-4 py-3 text-sm text-white shadow-[0_12px_30px_-18px_rgba(15,23,42,0.65)] ring-2 ring-primary/25">
                                         {sendingPreview.content ? (
-                                            <div className="whitespace-pre-wrap break-words leading-6">
-                                                {sendingPreview.content}
+                                            <div className="break-words">
+                                                {renderMessageMarkdown({
+                                                    content: sendingPreview.content,
+                                                    isUser: true,
+                                                })}
                                             </div>
                                         ) : (
                                             <div className="text-white/85">Tin nhắn chỉ có tệp đính kèm.</div>
