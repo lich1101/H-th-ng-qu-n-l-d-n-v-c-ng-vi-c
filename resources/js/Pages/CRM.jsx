@@ -4,7 +4,6 @@ import { Link } from '@inertiajs/inertia-react';
 import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
-import Dropdown from '@/Components/Dropdown';
 import AppIcon from '@/Components/AppIcon';
 import { useToast } from '@/Contexts/ToastContext';
 
@@ -37,6 +36,7 @@ export default function CRM(props) {
     const canDeleteClients = userRole === 'admin';
     const canDeletePayments = userRole === 'admin';
     const canAssignClientOwner = ['admin', 'quan_ly'].includes(userRole);
+    const canBulkClientActions = canManageClients || canDeleteClients;
 
     const [activeTab, setActiveTab] = useState('clients');
     const [clients, setClients] = useState([]);
@@ -49,6 +49,12 @@ export default function CRM(props) {
     const [paymentMeta, setPaymentMeta] = useState({ current_page: 1, last_page: 1, total: 0 });
     const [clientPage, setClientPage] = useState(1);
     const [paymentPage, setPaymentPage] = useState(1);
+    const [selectedClientIds, setSelectedClientIds] = useState([]);
+    const [bulkLoading, setBulkLoading] = useState(false);
+    const [bulkForm, setBulkForm] = useState({
+        lead_type_id: '',
+        assigned_staff_id: '',
+    });
     const [clientFilters, setClientFilters] = useState({ search: '', per_page: 10, lead_type_id: '', type: '' });
     const [paymentFilters, setPaymentFilters] = useState({ status: '', per_page: 10 });
     const [editingClientId, setEditingClientId] = useState(null);
@@ -124,13 +130,18 @@ export default function CRM(props) {
                 },
             });
             const resolvedPage = clientsRes.data.current_page || 1;
-            setClients(clientsRes.data.data || []);
+            const rows = clientsRes.data.data || [];
+            setClients(rows);
             setClientMeta({
                 current_page: resolvedPage,
                 last_page: clientsRes.data.last_page || 1,
                 total: clientsRes.data.total || 0,
             });
             setClientPage(resolvedPage);
+            setSelectedClientIds((prev) => {
+                const visible = new Set(rows.map((row) => Number(row.id)));
+                return prev.filter((id) => visible.has(Number(id)));
+            });
         } catch (error) {
             toast.error(getErrorMessage(error, 'Không tải được danh sách khách hàng.'));
         }
@@ -292,6 +303,161 @@ export default function CRM(props) {
             toast.success('Xóa khách hàng thành công.');
         } catch (error) {
             toast.error(getErrorMessage(error, 'Xóa khách hàng thất bại.'));
+        }
+    };
+
+    const buildClientPayload = (client, overrides = {}) => {
+        const assignedStaffId = client.assigned_staff_id ? Number(client.assigned_staff_id) : null;
+        const salesOwnerId = client.sales_owner_id ? Number(client.sales_owner_id) : assignedStaffId;
+        return {
+            name: client.name || '',
+            company: client.company || null,
+            email: client.email || null,
+            phone: client.phone || null,
+            notes: client.notes || null,
+            sales_owner_id: salesOwnerId,
+            assigned_department_id: client.assigned_department_id ? Number(client.assigned_department_id) : null,
+            assigned_staff_id: assignedStaffId,
+            lead_type_id: client.lead_type_id ? Number(client.lead_type_id) : null,
+            lead_source: client.lead_source || null,
+            lead_channel: client.lead_channel || null,
+            lead_message: client.lead_message || null,
+            ...overrides,
+        };
+    };
+
+    const selectedClientSet = useMemo(
+        () => new Set(selectedClientIds.map((id) => Number(id))),
+        [selectedClientIds]
+    );
+
+    const visibleClientIds = useMemo(
+        () => clients.map((client) => Number(client.id)).filter((id) => id > 0),
+        [clients]
+    );
+
+    const selectedClients = useMemo(
+        () => clients.filter((client) => selectedClientSet.has(Number(client.id))),
+        [clients, selectedClientSet]
+    );
+
+    const allVisibleSelected = visibleClientIds.length > 0
+        && visibleClientIds.every((id) => selectedClientSet.has(id));
+
+    const toggleClientSelect = (id) => {
+        const numericId = Number(id);
+        setSelectedClientIds((prev) => (
+            prev.includes(numericId)
+                ? prev.filter((item) => Number(item) !== numericId)
+                : [...prev, numericId]
+        ));
+    };
+
+    const toggleSelectAllVisibleClients = () => {
+        if (allVisibleSelected) {
+            setSelectedClientIds((prev) => (
+                prev.filter((id) => !visibleClientIds.includes(Number(id)))
+            ));
+            return;
+        }
+
+        setSelectedClientIds((prev) => {
+            const merged = new Set(prev.map((id) => Number(id)));
+            visibleClientIds.forEach((id) => merged.add(Number(id)));
+            return Array.from(merged);
+        });
+    };
+
+    const runBulkClientUpdate = async (overrides, successLabel) => {
+        if (!selectedClients.length) {
+            toast.error('Vui lòng chọn ít nhất 1 khách hàng.');
+            return;
+        }
+        setBulkLoading(true);
+        try {
+            const results = await Promise.allSettled(
+                selectedClients.map((client) => axios.put(
+                    `/api/v1/crm/clients/${client.id}`,
+                    buildClientPayload(client, overrides)
+                ))
+            );
+            const success = results.filter((result) => result.status === 'fulfilled').length;
+            const failed = results.length - success;
+
+            if (success > 0) {
+                await fetchClients(clientPage);
+                toast.success(`${success} khách hàng đã được ${successLabel}.`);
+            }
+            if (failed > 0) {
+                toast.error(`${failed} khách hàng xử lý thất bại. Kiểm tra quyền hoặc dữ liệu.`);
+            }
+
+            setSelectedClientIds([]);
+        } finally {
+            setBulkLoading(false);
+        }
+    };
+
+    const bulkApplyLeadType = async () => {
+        if (!bulkForm.lead_type_id) {
+            toast.error('Chọn trạng thái lead để áp dụng.');
+            return;
+        }
+        await runBulkClientUpdate(
+            { lead_type_id: Number(bulkForm.lead_type_id) },
+            'cập nhật trạng thái lead'
+        );
+    };
+
+    const bulkAssignStaff = async () => {
+        if (!bulkForm.assigned_staff_id) {
+            toast.error('Chọn nhân sự phụ trách để áp dụng.');
+            return;
+        }
+        const user = staffUsers.find((item) => Number(item.id) === Number(bulkForm.assigned_staff_id));
+        const deptId = user?.department_id ? Number(user.department_id) : null;
+        await runBulkClientUpdate(
+            {
+                assigned_staff_id: Number(bulkForm.assigned_staff_id),
+                assigned_department_id: deptId,
+                sales_owner_id: Number(bulkForm.assigned_staff_id),
+            },
+            'gán phụ trách'
+        );
+    };
+
+    const bulkDeleteClients = async () => {
+        if (!canDeleteClients) {
+            toast.error('Bạn không có quyền xóa khách hàng.');
+            return;
+        }
+        if (!selectedClients.length) {
+            toast.error('Vui lòng chọn ít nhất 1 khách hàng.');
+            return;
+        }
+        if (!window.confirm(`Xóa ${selectedClients.length} khách hàng đã chọn?`)) {
+            return;
+        }
+
+        setBulkLoading(true);
+        try {
+            const results = await Promise.allSettled(
+                selectedClients.map((client) => axios.delete(`/api/v1/crm/clients/${client.id}`))
+            );
+            const success = results.filter((result) => result.status === 'fulfilled').length;
+            const failed = results.length - success;
+
+            if (success > 0) {
+                await fetchClients(clientPage);
+                toast.success(`Đã xóa ${success} khách hàng.`);
+            }
+            if (failed > 0) {
+                toast.error(`${failed} khách hàng xóa thất bại.`);
+            }
+
+            setSelectedClientIds([]);
+        } finally {
+            setBulkLoading(false);
         }
     };
 
@@ -514,10 +680,100 @@ export default function CRM(props) {
                                     ? 'Bạn chỉ nhìn thấy khách hàng của nhân sự trong phòng ban mình quản lý, và có thể giao lại trong phạm vi phòng ban đó.'
                                     : 'Bạn chỉ nhìn thấy khách hàng do chính mình phụ trách. Khi thêm khách mới, hệ thống sẽ tự gắn khách cho bạn.'}
                         </div>
+                        {canBulkClientActions && selectedClientIds.length > 0 && (
+                            <div className="mb-4 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3">
+                                <div className="flex flex-wrap items-center gap-2 text-sm">
+                                    <span className="font-semibold text-slate-900">
+                                        Đã chọn {selectedClientIds.length} khách hàng
+                                    </span>
+                                    <button
+                                        type="button"
+                                        className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600"
+                                        onClick={() => setSelectedClientIds([])}
+                                        disabled={bulkLoading}
+                                    >
+                                        Bỏ chọn
+                                    </button>
+                                </div>
+                                <div className="mt-3 grid gap-2 xl:grid-cols-[minmax(0,0.9fr)_auto_minmax(0,1fr)_auto_auto]">
+                                    {canManageClients && (
+                                        <select
+                                            className={filterControlClass}
+                                            value={bulkForm.lead_type_id}
+                                            onChange={(e) => setBulkForm((s) => ({ ...s, lead_type_id: e.target.value }))}
+                                            disabled={bulkLoading}
+                                        >
+                                            <option value="">Áp dụng trạng thái lead...</option>
+                                            {leadTypes.map((type) => (
+                                                <option key={type.id} value={type.id}>
+                                                    {type.name}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    )}
+                                    {canManageClients && (
+                                        <button
+                                            type="button"
+                                            className="rounded-2xl border border-slate-200/80 bg-white px-4 py-2 text-xs font-semibold text-slate-700 disabled:opacity-60"
+                                            onClick={bulkApplyLeadType}
+                                            disabled={bulkLoading}
+                                        >
+                                            Cập nhật lead
+                                        </button>
+                                    )}
+                                    {canAssignClientOwner && (
+                                        <select
+                                            className={filterControlClass}
+                                            value={bulkForm.assigned_staff_id}
+                                            onChange={(e) => setBulkForm((s) => ({ ...s, assigned_staff_id: e.target.value }))}
+                                            disabled={bulkLoading}
+                                        >
+                                            <option value="">Gán nhân sự phụ trách...</option>
+                                            {staffUsers.map((user) => (
+                                                <option key={user.id} value={user.id}>
+                                                    {user.name}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    )}
+                                    {canAssignClientOwner && (
+                                        <button
+                                            type="button"
+                                            className="rounded-2xl border border-slate-200/80 bg-white px-4 py-2 text-xs font-semibold text-slate-700 disabled:opacity-60"
+                                            onClick={bulkAssignStaff}
+                                            disabled={bulkLoading}
+                                        >
+                                            Gán phụ trách
+                                        </button>
+                                    )}
+                                    {canDeleteClients && (
+                                        <button
+                                            type="button"
+                                            className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-700 disabled:opacity-60"
+                                            onClick={bulkDeleteClients}
+                                            disabled={bulkLoading}
+                                        >
+                                            {bulkLoading ? 'Đang xử lý...' : 'Xóa đã chọn'}
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        )}
                         <div className="overflow-x-auto">
                             <table className="min-w-full text-sm">
                                 <thead>
                                     <tr className="text-left text-xs uppercase tracking-wider text-text-subtle border-b border-slate-200">
+                                        {canBulkClientActions && (
+                                            <th className="py-2 pr-2 w-10">
+                                                <input
+                                                    type="checkbox"
+                                                    className="rounded border-slate-300 text-primary focus:ring-primary/20"
+                                                    checked={allVisibleSelected}
+                                                    onChange={toggleSelectAllVisibleClients}
+                                                    aria-label="Chọn tất cả khách hàng trang hiện tại"
+                                                />
+                                            </th>
+                                        )}
                                         <th className="py-2">Khách hàng</th>
                                         <th className="py-2">SĐT</th>
                                         <th className="py-2">Trạng thái</th>
@@ -531,7 +787,21 @@ export default function CRM(props) {
                                 </thead>
                                 <tbody>
                                     {clients.map((client) => (
-                                        <tr key={client.id} className="border-b border-slate-100">
+                                        <tr
+                                            key={client.id}
+                                            className={`border-b border-slate-100 ${selectedClientSet.has(Number(client.id)) ? 'bg-primary/5' : ''}`}
+                                        >
+                                            {canBulkClientActions && (
+                                                <td className="py-2 pr-2 align-top">
+                                                    <input
+                                                        type="checkbox"
+                                                        className="mt-1 rounded border-slate-300 text-primary focus:ring-primary/20"
+                                                        checked={selectedClientSet.has(Number(client.id))}
+                                                        onChange={() => toggleClientSelect(client.id)}
+                                                        aria-label={`Chọn khách hàng ${client.name}`}
+                                                    />
+                                                </td>
+                                            )}
                                             <td className="py-2">
                                                 <div className="font-medium text-slate-900">{client.name}</div>
                                                 <div className="text-xs text-text-muted">{client.company || '—'}</div>
@@ -583,58 +853,35 @@ export default function CRM(props) {
                                                     {client.has_purchased || Number(client.total_revenue || 0) > 0 ? (
                                                         <Link
                                                             href={route('crm.flow', client.id)}
-                                                            className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700"
+                                                            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                                                            title="Mở luồng khách hàng"
                                                         >
-                                                            Xem luồng
+                                                            <AppIcon name="eye" className="h-4 w-4" />
                                                         </Link>
                                                     ) : (
                                                         <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-500">
                                                             Lead mới
                                                         </span>
                                                     )}
-                                                    {(canManageClients || canDeleteClients) && (
-                                                        <Dropdown>
-                                                            <Dropdown.Trigger>
-                                                                <button
-                                                                    type="button"
-                                                                    className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700"
-                                                                    aria-label="Thao tác khách hàng"
-                                                                >
-                                                                    <AppIcon name="ellipsis-horizontal" className="h-4 w-4" />
-                                                                </button>
-                                                            </Dropdown.Trigger>
-                                                            <Dropdown.Content align="right" width="48" contentClasses="py-2 bg-white rounded-2xl border border-slate-200 shadow-xl">
-                                                                {canManageClients && (
-                                                                    <button
-                                                                        type="button"
-                                                                        className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
-                                                                        onClick={() => editClient(client)}
-                                                                    >
-                                                                        <AppIcon name="pencil" className="h-4 w-4 text-slate-400" />
-                                                                        Sửa khách hàng
-                                                                    </button>
-                                                                )}
-                                                                {client.has_purchased || Number(client.total_revenue || 0) > 0 ? (
-                                                                    <Link
-                                                                        href={route('crm.flow', client.id)}
-                                                                        className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
-                                                                    >
-                                                                        <AppIcon name="eye" className="h-4 w-4 text-slate-400" />
-                                                                        Mở luồng khách hàng
-                                                                    </Link>
-                                                                ) : null}
-                                                                {canDeleteClients && (
-                                                                    <button
-                                                                        type="button"
-                                                                        className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-rose-600 hover:bg-rose-50"
-                                                                        onClick={() => deleteClient(client.id)}
-                                                                    >
-                                                                        <AppIcon name="trash" className="h-4 w-4" />
-                                                                        Xóa khách hàng
-                                                                    </button>
-                                                                )}
-                                                            </Dropdown.Content>
-                                                        </Dropdown>
+                                                    {canManageClients && (
+                                                        <button
+                                                            type="button"
+                                                            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-600 hover:bg-slate-50"
+                                                            onClick={() => editClient(client)}
+                                                            title="Sửa khách hàng"
+                                                        >
+                                                            <AppIcon name="pencil" className="h-4 w-4" />
+                                                        </button>
+                                                    )}
+                                                    {canDeleteClients && (
+                                                        <button
+                                                            type="button"
+                                                            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-rose-200 text-rose-600 hover:bg-rose-50"
+                                                            onClick={() => deleteClient(client.id)}
+                                                            title="Xóa khách hàng"
+                                                        >
+                                                            <AppIcon name="trash" className="h-4 w-4" />
+                                                        </button>
                                                     )}
                                                 </div>
                                             </td>
@@ -642,7 +889,7 @@ export default function CRM(props) {
                                     ))}
                                     {clients.length === 0 && (
                                         <tr>
-                                            <td className="py-6 text-center text-sm text-text-muted" colSpan={9}>
+                                            <td className="py-6 text-center text-sm text-text-muted" colSpan={canBulkClientActions ? 10 : 9}>
                                                 Chưa có khách hàng nào.
                                             </td>
                                         </tr>
@@ -929,39 +1176,28 @@ export default function CRM(props) {
                                             </td>
                                             <td className="py-2 text-right">
                                                 {(canManagePayments || canDeletePayments) ? (
-                                                    <Dropdown>
-                                                        <Dropdown.Trigger>
+                                                    <div className="flex items-center justify-end gap-2">
+                                                        {canManagePayments && (
                                                             <button
                                                                 type="button"
-                                                                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700"
-                                                                aria-label="Thao tác thanh toán"
+                                                                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-600 hover:bg-slate-50"
+                                                                onClick={() => editPayment(payment)}
+                                                                title="Sửa thanh toán"
                                                             >
-                                                                <AppIcon name="ellipsis-horizontal" className="h-4 w-4" />
+                                                                <AppIcon name="pencil" className="h-4 w-4" />
                                                             </button>
-                                                        </Dropdown.Trigger>
-                                                        <Dropdown.Content align="right" width="48" contentClasses="py-2 bg-white rounded-2xl border border-slate-200 shadow-xl">
-                                                            {canManagePayments && (
-                                                                <button
-                                                                    type="button"
-                                                                    className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
-                                                                    onClick={() => editPayment(payment)}
-                                                                >
-                                                                    <AppIcon name="pencil" className="h-4 w-4 text-slate-400" />
-                                                                    Sửa thanh toán
-                                                                </button>
-                                                            )}
-                                                            {canDeletePayments && (
-                                                                <button
-                                                                    type="button"
-                                                                    className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-rose-600 hover:bg-rose-50"
-                                                                    onClick={() => deletePayment(payment.id)}
-                                                                >
-                                                                    <AppIcon name="trash" className="h-4 w-4" />
-                                                                    Xóa thanh toán
-                                                                </button>
-                                                            )}
-                                                        </Dropdown.Content>
-                                                    </Dropdown>
+                                                        )}
+                                                        {canDeletePayments && (
+                                                            <button
+                                                                type="button"
+                                                                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-rose-200 text-rose-600 hover:bg-rose-50"
+                                                                onClick={() => deletePayment(payment.id)}
+                                                                title="Xóa thanh toán"
+                                                            >
+                                                                <AppIcon name="trash" className="h-4 w-4" />
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 ) : (
                                                     <span className="text-xs text-text-muted">—</span>
                                                 )}
