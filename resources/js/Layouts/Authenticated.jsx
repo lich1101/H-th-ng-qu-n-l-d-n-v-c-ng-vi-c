@@ -380,7 +380,7 @@ export default function Authenticated({ auth, header, children }) {
 
     const quickUnreadCount = notificationUnread;
     const quickReadCount = useMemo(
-        () => notificationItems.filter((item) => item.is_read).length,
+        () => notificationItems.filter((item) => item.source_type === 'in_app' && item.is_read).length,
         [notificationItems]
     );
 
@@ -490,9 +490,7 @@ export default function Authenticated({ auth, header, children }) {
     const clearReadNotifications = async () => {
         try {
             if (quickReadCount <= 0) return;
-            const ok = window.confirm('Xóa toàn bộ thông báo đã xem trong danh sách này?');
-            if (!ok) return;
-            await axios.post('/api/v1/notifications/in-app/clear-read', { source_type: 'all' });
+            await axios.post('/api/v1/notifications/in-app/clear-read', { source_type: 'in_app' });
             await fetchNotifications({ silent: true });
         } catch (error) {
             console.error(error);

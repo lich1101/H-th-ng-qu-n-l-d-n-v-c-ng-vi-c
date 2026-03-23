@@ -5,7 +5,7 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <link rel="icon" type="image/png" href="/brand/favicon-32x32.png">
         <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
-
+        <link rel="shortcut icon" href="/brand/icon.png" type="image/x-icon">
         <title inertia>{{ config('app.name', 'Jobs ClickOn') }}</title>
 
         <!-- Fonts -->
