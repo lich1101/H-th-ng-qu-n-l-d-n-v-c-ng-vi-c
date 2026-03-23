@@ -107,9 +107,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         return Inertia::render('Meetings');
     })->name('meetings.index')->middleware('role:admin,quan_ly');
 
-    Route::get('/thong-bao', function () {
-        return Inertia::render('NotificationCenter');
-    })->name('notifications.center');
+    Route::redirect('/thong-bao', '/dashboard');
 
     Route::get('/tro-ly-ai', function () {
         return Inertia::render('ChatbotAssistant');

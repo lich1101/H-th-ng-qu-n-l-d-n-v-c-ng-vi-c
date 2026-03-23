@@ -332,7 +332,6 @@ export default function Authenticated({ auth, header, children }) {
                     { label: 'Hạng doanh thu', icon: 'award', routeName: 'revenue-tiers.index', href: route('revenue-tiers.index'), roles: ['admin'] },
                     { label: 'Quy trình dịch vụ', icon: 'workflow', routeName: 'services.workflows', href: route('services.workflows'), roles: ['admin', 'quan_ly', 'nhan_vien'] },
                     { label: 'Trợ lý AI', icon: 'assistant', routeName: 'chatbot.assistant', href: route('chatbot.assistant'), roles: ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'] },
-                    { label: 'Thông báo', icon: 'bell', routeName: 'notifications.center', href: route('notifications.center'), roles: ['admin', 'quan_ly', 'nhan_vien', 'ke_toan'] },
                     { label: 'Nhật ký hệ thống', icon: 'history', routeName: 'activity.logs', href: route('activity.logs'), roles: ['admin', 'quan_ly'] },
                     { label: 'Tài khoản người dùng', icon: 'users', routeName: 'accounts.dashboard', href: route('accounts.dashboard'), roles: ['admin'] },
                     { label: 'Phân quyền', icon: 'shield', routeName: 'roles.permissions', href: route('roles.permissions'), roles: ['admin'] },
@@ -380,6 +379,10 @@ export default function Authenticated({ auth, header, children }) {
     }, [notificationItems, notificationTab]);
 
     const quickUnreadCount = notificationUnread;
+    const quickReadCount = useMemo(
+        () => notificationItems.filter((item) => item.is_read).length,
+        [notificationItems]
+    );
 
     const filteredChatItems = useMemo(() => {
         const source = chatTab === 'unread'
@@ -484,6 +487,18 @@ export default function Authenticated({ auth, header, children }) {
         }
     };
 
+    const clearReadNotifications = async () => {
+        try {
+            if (quickReadCount <= 0) return;
+            const ok = window.confirm('Xóa toàn bộ thông báo đã xem trong danh sách này?');
+            if (!ok) return;
+            await axios.post('/api/v1/notifications/in-app/clear-read', { source_type: 'all' });
+            await fetchNotifications({ silent: true });
+        } catch (error) {
+            console.error(error);
+        }
+    };
+
     const markAllChatsRead = async () => {
         try {
             if (chatUnread <= 0) return;
@@ -506,7 +521,7 @@ export default function Authenticated({ auth, header, children }) {
                     } lg:translate-x-0`}
                 >
                     <div className="h-full flex flex-col">
-                        <div className="px-6 py-6 border-b border-slate-200">
+                        <div className="px-6 py-6 border-slate-200">
                             <div className="flex items-center gap-3">
                                 {logoUrl ? (
                                     <img src={logoUrl} alt={brandName} className="h-9 w-9 rounded-xl object-contain" />
@@ -736,6 +751,14 @@ export default function Authenticated({ auth, header, children }) {
                                                     >
                                                         Đọc tất cả
                                                     </button>
+                                                    <button
+                                                        type="button"
+                                                        className="text-xs text-slate-500 font-semibold disabled:opacity-50"
+                                                        onClick={clearReadNotifications}
+                                                        disabled={quickReadCount <= 0}
+                                                    >
+                                                        Xóa đã xem
+                                                    </button>
                                                 </div>
                                                 <div className="mt-3 flex items-center gap-2">
                                                     <button
@@ -760,12 +783,9 @@ export default function Authenticated({ auth, header, children }) {
                                                     >
                                                         Chưa đọc
                                                     </button>
-                                                    <Link
-                                                        href={route('notifications.center')}
-                                                        className="ml-auto text-xs text-primary font-semibold"
-                                                    >
-                                                        Xem tất cả
-                                                    </Link>
+                                                    <span className="ml-auto text-xs text-slate-400 font-semibold">
+                                                        {filteredNotificationItems.length} mục
+                                                    </span>
                                                 </div>
                                             </div>
 
@@ -852,7 +872,7 @@ export default function Authenticated({ auth, header, children }) {
                                     {chatOpen && (
                                         <div
                                             ref={chatPanelRef}
-                                            className="fixed bottom-3 left-3 right-3 z-[60] flex max-h-[78vh] min-h-[420px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl sm:bottom-5 sm:left-auto sm:right-5 sm:w-[420px]"
+                                            className="absolute right-0 mt-2 z-[60] flex w-[420px] max-h-[72vh] min-h-[360px] max-w-[92vw] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
                                         >
                                             <div className="border-b border-slate-100 bg-white px-4 pt-4 pb-3">
                                                 <div className="flex items-center justify-between gap-2">
