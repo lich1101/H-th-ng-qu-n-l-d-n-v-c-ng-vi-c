@@ -6,6 +6,7 @@ use Inertia\Inertia;
 use Illuminate\Support\Carbon;
 use App\Http\Controllers\LeadFormPublicController;
 use App\Http\Controllers\FacebookAuthController;
+use App\Http\Controllers\GscOAuthController;
 use App\Http\Controllers\Webhooks\FacebookWebhookController;
 use App\Models\Client;
 
@@ -189,6 +190,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/cai-dat-he-thong', function () {
         return Inertia::render('SystemSettings');
     })->name('settings.system')->middleware('role:administrator');
+    Route::get('/cai-dat-he-thong/gsc/oauth/connect', [GscOAuthController::class, 'connect'])
+        ->name('settings.gsc.oauth.connect')
+        ->middleware('role:administrator');
+    Route::get('/cai-dat-he-thong/gsc/oauth/callback', [GscOAuthController::class, 'callback'])
+        ->name('settings.gsc.oauth.callback')
+        ->middleware('role:administrator');
 });
 
 require __DIR__.'/auth.php';

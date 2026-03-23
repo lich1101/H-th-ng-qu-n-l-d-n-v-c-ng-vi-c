@@ -13,6 +13,7 @@ const TABS = [
     { key: 'diagnostics', label: 'Kết nối & thiết bị' },
     { key: 'mobile_devices', label: 'Thiết bị di động người dùng' },
 ];
+const TAB_KEYS = new Set(TABS.map((tab) => tab.key));
 
 const DEFAULT_GEMINI_MODEL_OPTIONS = [
     { id: 'gemini-2.0-flash', name: 'gemini-2.0-flash', display_name: 'Gemini 2.0 Flash' },
@@ -212,6 +213,12 @@ export default function SystemSettings(props) {
         title: 'Test thông báo',
         body: 'Kiểm tra gửi push từ trang cài đặt.',
     });
+    const gscOauthRedirectUrl = useMemo(() => {
+        if (typeof window === 'undefined') {
+            return '/cai-dat-he-thong/gsc/oauth/callback';
+        }
+        return `${window.location.origin}/cai-dat-he-thong/gsc/oauth/callback`;
+    }, []);
 
     const applyPrimary = (hex) => {
         if (!hex) return;
@@ -262,6 +269,48 @@ export default function SystemSettings(props) {
         } finally {
             setSettingsLoading(false);
         }
+    };
+
+    const connectGoogleSearchConsole = async () => {
+        const clientId = String(form.gsc_client_id || '').trim();
+        const clientSecret = String(form.gsc_client_secret || '').trim();
+        if (clientId === '' || clientSecret === '') {
+            toast.error('Hãy nhập Client ID và Client Secret trước khi bấm Connect.');
+            return;
+        }
+
+        const baseClientId = String(baseSettings.gsc_client_id || '').trim();
+        const baseClientSecret = String(baseSettings.gsc_client_secret || '').trim();
+        if (clientId !== baseClientId || clientSecret !== baseClientSecret) {
+            try {
+                const formData = new FormData();
+                formData.append('gsc_client_id', clientId);
+                formData.append('gsc_client_secret', clientSecret);
+
+                const res = await axios.post('/api/v1/settings', formData, {
+                    headers: { 'Content-Type': 'multipart/form-data' },
+                });
+                const data = res.data || {};
+                const next = initialSettings(data);
+                setBaseSettings((prev) => ({
+                    ...prev,
+                    gsc_client_id: next.gsc_client_id,
+                    gsc_client_secret: next.gsc_client_secret,
+                    gsc_refresh_token: next.gsc_refresh_token,
+                }));
+                setForm((prev) => ({
+                    ...prev,
+                    gsc_client_id: next.gsc_client_id,
+                    gsc_client_secret: next.gsc_client_secret,
+                    gsc_refresh_token: next.gsc_refresh_token,
+                }));
+            } catch (e) {
+                toast.error(e?.response?.data?.message || 'Không lưu được Client ID/Secret trước khi Connect.');
+                return;
+            }
+        }
+
+        window.location.assign('/cai-dat-he-thong/gsc/oauth/connect');
     };
 
     const applyBotRows = (rows, preferredId = null) => {
@@ -520,11 +569,48 @@ export default function SystemSettings(props) {
     }, [props.settings]);
 
     useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const tab = String(params.get('tab') || '').trim();
+        if (tab && TAB_KEYS.has(tab)) {
+            setActiveTab(tab);
+        }
+    }, []);
+
+    useEffect(() => {
         reloadSystemStatus();
         fetchUsers();
         loadAdminSettings();
         loadChatbotBots();
         fetchDevices();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const oauthStatus = String(params.get('gsc_oauth') || '').trim();
+        if (oauthStatus === '') {
+            return;
+        }
+
+        setActiveTab('gsc');
+        const message = String(params.get('gsc_oauth_message') || '').trim();
+        if (oauthStatus === 'success') {
+            toast.success(message || 'Đã kết nối Google Search Console thành công.');
+        } else {
+            toast.error(message || 'Kết nối Google Search Console thất bại.');
+        }
+
+        const tab = String(params.get('tab') || '').trim();
+        const nextParams = new URLSearchParams();
+        if (tab && TAB_KEYS.has(tab)) {
+            nextParams.set('tab', tab);
+        }
+
+        const nextQuery = nextParams.toString();
+        const nextUrl = nextQuery ? `${window.location.pathname}?${nextQuery}` : window.location.pathname;
+        window.history.replaceState({}, document.title, nextUrl);
+        void reloadSystemStatus();
+        void loadAdminSettings();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -1367,6 +1453,22 @@ export default function SystemSettings(props) {
                                     placeholder="1//0g...."
                                 />
                             </div>
+                            <div className="mt-4 flex flex-wrap items-center gap-2">
+                                <button
+                                    type="button"
+                                    className="rounded-2xl bg-primary px-4 py-2 text-sm font-semibold text-white"
+                                    onClick={connectGoogleSearchConsole}
+                                >
+                                    Connect Google (tự lấy refresh token)
+                                </button>
+                                <div className="text-xs text-text-muted">
+                                    Nếu vừa đổi Client ID/Secret, hệ thống sẽ tự lưu trước khi chuyển sang Google.
+                                </div>
+                            </div>
+                            <div className="mt-3 rounded-2xl bg-slate-50 px-4 py-3 text-xs text-text-muted">
+                                OAuth Redirect URL cần khai báo trong Google Cloud:
+                                <div className="mt-1 break-all font-mono text-[11px] text-slate-700">{gscOauthRedirectUrl}</div>
+                            </div>
                         </div>
 
                         <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
@@ -1439,9 +1541,10 @@ export default function SystemSettings(props) {
                             <h4 className="text-sm font-semibold text-slate-900">Hướng dẫn lấy credential GSC</h4>
                             <div className="mt-3 space-y-2 text-sm text-slate-700">
                                 <p>1. Tạo OAuth Client (Web application) trên Google Cloud Console và bật Search Console API.</p>
-                                <p>2. Dùng OAuth consent + scope `https://www.googleapis.com/auth/webmasters.readonly` để lấy refresh token.</p>
-                                <p>3. Điền `client_id`, `client_secret`, `refresh_token` vào đây và bấm <span className="font-semibold">Lưu cài đặt</span>.</p>
-                                <p>4. Thêm URL website vào từng dự án. Khi mở trang chi tiết dự án, hệ thống sẽ tự sync và hiển thị biểu đồ theo ngày.</p>
+                                <p>2. Điền `client_id`, `client_secret`, bấm <span className="font-semibold">Lưu cài đặt</span>.</p>
+                                <p>3. Bấm <span className="font-semibold">Connect Google (tự lấy refresh token)</span> để hệ thống tự lưu refresh token.</p>
+                                <p>4. Scope sử dụng: `https://www.googleapis.com/auth/webmasters.readonly`.</p>
+                                <p>5. Thêm URL website vào từng dự án. Khi mở trang chi tiết dự án, hệ thống sẽ tự sync và hiển thị biểu đồ theo ngày.</p>
                             </div>
                             <div className="mt-4 rounded-2xl bg-slate-50 px-4 py-3 text-xs text-text-muted">
                                 Trạng thái token hiện tại: {systemStatus?.gsc?.access_token_available ? 'Đã có access token' : 'Chưa có access token'} •
