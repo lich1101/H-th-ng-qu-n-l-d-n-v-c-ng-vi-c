@@ -104,39 +104,16 @@ export default function Authenticated({ auth, header, children }) {
         });
 
         const notifyRows = inAppRows.filter((item) => !CHAT_NOTIFICATION_TYPES.has(item.notification_type));
-
-        const reminderRows = (payload?.reminders || []).map((item) => ({
-            key: `deadline_reminder:${item.id}`,
-            source_type: 'deadline_reminder',
-            source_id: item.id,
-            notification_type: 'deadline_reminder',
-            title: item.task_title || 'Nhắc hạn công việc',
-            body: `${item.trigger_type || 'nhắc hạn'} • ${item.status || 'pending'}`,
-            task_id: item?.task_id ? Number(item.task_id) : null,
-            created_at: item.sent_at || item.scheduled_at,
-            is_read: !!item.is_read,
-            kind: 'Nhắc hạn',
-        }));
-
-        const logRows = (payload?.logs || []).map((item) => ({
-            key: `activity_log:${item.id}`,
-            source_type: 'activity_log',
-            source_id: item.id,
-            notification_type: 'activity_log',
-            title: item.actor ? `${item.actor} vừa thao tác` : 'Hoạt động hệ thống',
-            body: `${item.action || 'activity'} • ${item.subject_type || 'object'} #${item.subject_id || ''}`,
-            created_at: item.created_at,
-            is_read: !!item.is_read,
-            kind: 'Hoạt động',
-        }));
-
-        const notificationRows = [...notifyRows, ...reminderRows, ...logRows]
+        const notificationRows = [...notifyRows]
             .sort((a, b) => toTimestamp(b.created_at) - toTimestamp(a.created_at))
             .slice(0, 40);
 
+        const unreadNonChatFromApi = parseCount(payload?.unread_breakdown?.in_app_non_chat);
+
         return {
             notificationRows,
-            unreadNotificationCount: notificationRows.filter((item) => !item.is_read).length,
+            unreadNotificationCount:
+                unreadNonChatFromApi ?? notificationRows.filter((item) => !item.is_read).length,
             unreadChatCount: inAppRows.filter((item) => (
                 CHAT_NOTIFICATION_TYPES.has(item.notification_type) && !item.is_read
             )).length,
@@ -147,11 +124,13 @@ export default function Authenticated({ auth, header, children }) {
         if (!silent) setNotificationLoading(true);
         try {
             const response = await axios.get('/api/v1/notifications/in-app', {
-                params: { notify_limit: 30, reminder_limit: 20, log_limit: 20 },
+                params: { notify_limit: 80, reminder_limit: 0, log_limit: 0 },
             });
             const collections = buildNotificationCollections(response.data || {});
             setNotificationItems(collections.notificationRows);
-            const unreadNotificationFromApi = parseCount(response.data?.unread_notification);
+            const unreadNotificationFromApi = parseCount(
+                response.data?.unread_breakdown?.in_app_non_chat
+            );
             const unreadChatFromApi = parseCount(response.data?.unread_chat);
             setNotificationUnread(
                 unreadNotificationFromApi ?? collections.unreadNotificationCount
@@ -476,11 +455,9 @@ export default function Authenticated({ auth, header, children }) {
     const markAllNotificationsRead = async () => {
         try {
             if (notificationUnread <= 0) return;
-            await Promise.all([
-                axios.post('/api/v1/notifications/in-app/read-all', { source_type: 'non_chat_in_app' }),
-                axios.post('/api/v1/notifications/in-app/read-all', { source_type: 'deadline_reminder' }),
-                axios.post('/api/v1/notifications/in-app/read-all', { source_type: 'activity_log' }),
-            ]);
+            await axios.post('/api/v1/notifications/in-app/read-all', {
+                source_type: 'non_chat_in_app',
+            });
             await fetchNotifications({ silent: true });
         } catch (error) {
             console.error(error);

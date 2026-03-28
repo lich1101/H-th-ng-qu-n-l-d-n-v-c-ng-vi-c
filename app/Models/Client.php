@@ -66,6 +66,18 @@ class Client extends Model
         return $this->belongsTo(User::class, 'assigned_staff_id');
     }
 
+    public function careStaffUsers()
+    {
+        return $this->belongsToMany(User::class, 'client_care_staff')
+            ->withPivot('assigned_by')
+            ->withTimestamps();
+    }
+
+    public function careNotes()
+    {
+        return $this->hasMany(ClientCareNote::class)->latest();
+    }
+
     public function opportunities()
     {
         return $this->hasMany(Opportunity::class);

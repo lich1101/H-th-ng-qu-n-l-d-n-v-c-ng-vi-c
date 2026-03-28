@@ -64,6 +64,7 @@ export default function CRM(props) {
     const [showClientImport, setShowClientImport] = useState(false);
     const [clientImportFile, setClientImportFile] = useState(null);
     const [importingClients, setImportingClients] = useState(false);
+    const [clientImportReport, setClientImportReport] = useState(null);
     const [clientForm, setClientForm] = useState({
         name: '',
         company: '',
@@ -73,6 +74,7 @@ export default function CRM(props) {
         sales_owner_id: '',
         assigned_department_id: '',
         assigned_staff_id: '',
+        care_staff_ids: [],
         lead_type_id: '',
         lead_source: '',
         lead_channel: '',
@@ -88,6 +90,14 @@ export default function CRM(props) {
     });
 
     const getErrorMessage = (error, fallback) => error?.response?.data?.message || fallback;
+
+    const normalizeCareStaffIds = (rawValue) => (
+        Array.isArray(rawValue)
+            ? rawValue
+                .map((item) => Number(item?.id ?? item))
+                .filter((id) => Number.isInteger(id) && id > 0)
+            : []
+    );
 
     const fetchLookups = async () => {
         try {
@@ -180,13 +190,19 @@ export default function CRM(props) {
             formData.append('file', clientImportFile);
             const res = await axios.post('/api/v1/imports/clients', formData);
             const report = res.data || {};
+            setClientImportReport(report);
             toast.success(
                 `Import hoàn tất: ${report.created || 0} tạo mới, ${report.updated || 0} cập nhật, ${report.skipped || 0} bỏ qua.`
             );
-            setShowClientImport(false);
-            setClientImportFile(null);
             await fetchClients(1, clientFilters);
         } catch (error) {
+            setClientImportReport({
+                created: 0,
+                updated: 0,
+                skipped: 0,
+                warnings: [],
+                errors: [{ row: '-', message: getErrorMessage(error, 'Import thất bại.') }],
+            });
             toast.error(getErrorMessage(error, 'Import thất bại.'));
         } finally {
             setImportingClients(false);
@@ -235,6 +251,7 @@ export default function CRM(props) {
                 lead_source: clientForm.lead_source || null,
                 lead_channel: clientForm.lead_channel || null,
                 lead_message: clientForm.lead_message || null,
+                care_staff_ids: normalizeCareStaffIds(clientForm.care_staff_ids),
             };
             if (editingClientId) {
                 await axios.put(`/api/v1/crm/clients/${editingClientId}`, payload);
@@ -260,6 +277,7 @@ export default function CRM(props) {
             sales_owner_id: client.sales_owner_id || '',
             assigned_department_id: client.assigned_department_id || '',
             assigned_staff_id: client.assigned_staff_id || '',
+            care_staff_ids: normalizeCareStaffIds(client.care_staff_users || []),
             lead_type_id: client.lead_type_id || '',
             lead_source: client.lead_source || '',
             lead_channel: client.lead_channel || '',
@@ -279,6 +297,7 @@ export default function CRM(props) {
             sales_owner_id: '',
             assigned_department_id: '',
             assigned_staff_id: '',
+            care_staff_ids: [],
             lead_type_id: leadTypes[0]?.id || '',
             lead_source: '',
             lead_channel: '',
@@ -318,6 +337,7 @@ export default function CRM(props) {
             sales_owner_id: salesOwnerId,
             assigned_department_id: client.assigned_department_id ? Number(client.assigned_department_id) : null,
             assigned_staff_id: assignedStaffId,
+            care_staff_ids: normalizeCareStaffIds(client.care_staff_users || []),
             lead_type_id: client.lead_type_id ? Number(client.lead_type_id) : null,
             lead_source: client.lead_source || null,
             lead_channel: client.lead_channel || null,
@@ -658,7 +678,11 @@ export default function CRM(props) {
                                         <button
                                             type="button"
                                             className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
-                                            onClick={() => setShowClientImport(true)}
+                                            onClick={() => {
+                                                setClientImportReport(null);
+                                                setClientImportFile(null);
+                                                setShowClientImport(true);
+                                            }}
                                         >
                                             Import Excel
                                         </button>
@@ -780,6 +804,7 @@ export default function CRM(props) {
                                         <th className="py-2">Hạng</th>
                                         <th className="py-2">Phòng ban</th>
                                         <th className="py-2">Phụ trách</th>
+                                        <th className="py-2">Chăm sóc</th>
                                         <th className="py-2">Doanh thu</th>
                                         <th className="py-2">Nguồn</th>
                                         <th className="py-2"></th>
@@ -837,6 +862,12 @@ export default function CRM(props) {
                                             <td className="py-2 text-xs text-text-muted">
                                                 {client.assigned_staff?.name || client.sales_owner?.name || '—'}
                                             </td>
+                                            <td className="py-2 text-xs text-text-muted">
+                                                {Array.isArray(client.care_staff_users) && client.care_staff_users.length > 0
+                                                    ? client.care_staff_users.map((item) => item?.name).filter(Boolean).slice(0, 2).join(', ')
+                                                        + (client.care_staff_users.length > 2 ? ` +${client.care_staff_users.length - 2}` : '')
+                                                    : '—'}
+                                            </td>
                                             <td className="py-2 text-slate-700">
                                                 {Number(client.total_revenue || 0).toLocaleString('vi-VN')}
                                             </td>
@@ -889,7 +920,7 @@ export default function CRM(props) {
                                     ))}
                                     {clients.length === 0 && (
                                         <tr>
-                                            <td className="py-6 text-center text-sm text-text-muted" colSpan={canBulkClientActions ? 10 : 9}>
+                                            <td className="py-6 text-center text-sm text-text-muted" colSpan={canBulkClientActions ? 11 : 10}>
                                                 Chưa có khách hàng nào.
                                             </td>
                                         </tr>
@@ -1027,6 +1058,33 @@ export default function CRM(props) {
                                                     </option>
                                                 ))}
                                             </select>
+                                        </LabeledField>
+                                        <LabeledField
+                                            label="Danh sách nhân viên chăm sóc"
+                                            hint="Nhóm này chỉ có quyền xem thông tin khách hàng, hợp đồng, dự án, công việc và thêm ghi chú chăm sóc."
+                                            className={isAdminRole ? 'md:col-span-2' : ''}
+                                        >
+                                            <select
+                                                multiple
+                                                className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2 min-h-[110px]"
+                                                value={(clientForm.care_staff_ids || []).map((id) => String(id))}
+                                                onChange={(e) => {
+                                                    const selectedIds = Array.from(e.target.selectedOptions).map((option) => Number(option.value));
+                                                    setClientForm((s) => ({ ...s, care_staff_ids: selectedIds }));
+                                                }}
+                                            >
+                                                {staffUsers.map((user) => (
+                                                    <option key={user.id} value={user.id}>
+                                                        {user.name}
+                                                        {user.department_id
+                                                            ? ` • ${visibleDepartmentOptions.find((dept) => Number(dept.id) === Number(user.department_id))?.name || user.role}`
+                                                            : ` • ${user.role}`}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            <p className="mt-1.5 text-xs text-text-muted">
+                                                Giữ Ctrl/Cmd để chọn nhiều nhân sự.
+                                            </p>
                                         </LabeledField>
                                     </div>
                                 </div>
@@ -1310,7 +1368,11 @@ export default function CRM(props) {
 
             <Modal
                 open={showClientImport}
-                onClose={() => setShowClientImport(false)}
+                onClose={() => {
+                    setShowClientImport(false);
+                    setClientImportFile(null);
+                    setClientImportReport(null);
+                }}
                 title="Import khách hàng"
                 description="Tải file Excel (.xls/.xlsx/.csv) để nhập khách hàng."
                 size="md"
@@ -1333,7 +1395,10 @@ export default function CRM(props) {
                                 id="import-client-file"
                                 type="file"
                                 accept=".xls,.xlsx,.csv"
-                                onChange={(e) => setClientImportFile(e.target.files?.[0] || null)}
+                                onChange={(e) => {
+                                    setClientImportFile(e.target.files?.[0] || null);
+                                    setClientImportReport(null);
+                                }}
                                 className="hidden"
                             />
                             <label
@@ -1347,6 +1412,42 @@ export default function CRM(props) {
                             </p>
                         </div>
                     </LabeledField>
+                    {clientImportReport && (
+                        <div className="rounded-2xl border border-slate-200/80 bg-slate-50 p-3 space-y-2">
+                            <div className="text-xs font-semibold uppercase tracking-[0.14em] text-text-subtle">
+                                Kết quả import
+                            </div>
+                            <p className="text-xs text-slate-700">
+                                Tạo mới: {clientImportReport.created || 0} • Cập nhật: {clientImportReport.updated || 0} • Bỏ qua: {clientImportReport.skipped || 0}
+                            </p>
+
+                            {Array.isArray(clientImportReport.errors) && clientImportReport.errors.length > 0 && (
+                                <div className="rounded-xl border border-rose-200 bg-rose-50 p-2.5">
+                                    <div className="text-xs font-semibold text-rose-700">Dòng lỗi không import được</div>
+                                    <div className="mt-1 max-h-32 space-y-1 overflow-y-auto text-xs text-rose-700">
+                                        {clientImportReport.errors.map((item, idx) => (
+                                            <div key={`err-${idx}`}>
+                                                Dòng {item.row ?? '-'}: {item.message || 'Lỗi không xác định'}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {Array.isArray(clientImportReport.warnings) && clientImportReport.warnings.length > 0 && (
+                                <div className="rounded-xl border border-amber-200 bg-amber-50 p-2.5">
+                                    <div className="text-xs font-semibold text-amber-700">Cảnh báo dữ liệu (đã import nhưng có trường để trống)</div>
+                                    <div className="mt-1 max-h-28 space-y-1 overflow-y-auto text-xs text-amber-700">
+                                        {clientImportReport.warnings.map((item, idx) => (
+                                            <div key={`warn-${idx}`}>
+                                                Dòng {item.row ?? '-'}: {item.message || 'Cảnh báo dữ liệu'}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
                     <div className="flex items-center gap-2">
                         <button
                             type="submit"
@@ -1358,7 +1459,11 @@ export default function CRM(props) {
                         <button
                             type="button"
                             className="flex-1 rounded-2xl px-3 py-2.5 border border-slate-200 text-sm font-semibold"
-                            onClick={() => setShowClientImport(false)}
+                            onClick={() => {
+                                setShowClientImport(false);
+                                setClientImportFile(null);
+                                setClientImportReport(null);
+                            }}
                         >
                             Hủy
                         </button>

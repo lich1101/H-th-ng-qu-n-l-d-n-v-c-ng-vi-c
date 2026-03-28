@@ -168,6 +168,7 @@ export default function Contracts(props) {
     const [showImport, setShowImport] = useState(false);
     const [importFile, setImportFile] = useState(null);
     const [importing, setImporting] = useState(false);
+    const [importReport, setImportReport] = useState(null);
 
     const itemsTotal = useMemo(() => {
         return items.reduce((sum, item) => {
@@ -553,13 +554,19 @@ export default function Contracts(props) {
             formData.append('file', importFile);
             const res = await axios.post('/api/v1/imports/contracts', formData);
             const report = res.data || {};
+            setImportReport(report);
             toast.success(
                 `Import hoàn tất: ${report.created || 0} tạo mới, ${report.updated || 0} cập nhật, ${report.skipped || 0} bỏ qua.`
             );
-            setShowImport(false);
-            setImportFile(null);
             await fetchContracts();
         } catch (e) {
+            setImportReport({
+                created: 0,
+                updated: 0,
+                skipped: 0,
+                warnings: [],
+                errors: [{ row: '-', message: e?.response?.data?.message || 'Import thất bại.' }],
+            });
             toast.error(e?.response?.data?.message || 'Import thất bại.');
         } finally {
             setImporting(false);
@@ -683,7 +690,11 @@ export default function Contracts(props) {
                                 <button
                                     type="button"
                                     className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
-                                    onClick={() => setShowImport(true)}
+                                    onClick={() => {
+                                        setImportFile(null);
+                                        setImportReport(null);
+                                        setShowImport(true);
+                                    }}
                                 >
                                     Import Excel
                                 </button>
@@ -1555,7 +1566,11 @@ export default function Contracts(props) {
 
             <Modal
                 open={showImport}
-                onClose={() => setShowImport(false)}
+                onClose={() => {
+                    setShowImport(false);
+                    setImportFile(null);
+                    setImportReport(null);
+                }}
                 title="Import hợp đồng"
                 description="Tải file Excel (.xls/.xlsx/.csv) để nhập hợp đồng và tự nối khách hàng trùng tên."
                 size="md"
@@ -1578,7 +1593,10 @@ export default function Contracts(props) {
                                 id="import-contract-file"
                                 type="file"
                                 accept=".xls,.xlsx,.csv"
-                                onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                                onChange={(e) => {
+                                    setImportFile(e.target.files?.[0] || null);
+                                    setImportReport(null);
+                                }}
                                 className="hidden"
                             />
                             <label
@@ -1592,6 +1610,40 @@ export default function Contracts(props) {
                             </p>
                         </div>
                     </LabeledField>
+                    {importReport && (
+                        <div className="rounded-2xl border border-slate-200/80 bg-slate-50 p-3 space-y-2">
+                            <div className="text-xs font-semibold uppercase tracking-[0.14em] text-text-subtle">
+                                Kết quả import
+                            </div>
+                            <p className="text-xs text-slate-700">
+                                Tạo mới: {importReport.created || 0} • Cập nhật: {importReport.updated || 0} • Bỏ qua: {importReport.skipped || 0}
+                            </p>
+                            {Array.isArray(importReport.errors) && importReport.errors.length > 0 && (
+                                <div className="rounded-xl border border-rose-200 bg-rose-50 p-2.5">
+                                    <div className="text-xs font-semibold text-rose-700">Dòng lỗi không import được</div>
+                                    <div className="mt-1 max-h-32 space-y-1 overflow-y-auto text-xs text-rose-700">
+                                        {importReport.errors.map((item, idx) => (
+                                            <div key={`err-${idx}`}>
+                                                Dòng {item.row ?? '-'}: {item.message || 'Lỗi không xác định'}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                            {Array.isArray(importReport.warnings) && importReport.warnings.length > 0 && (
+                                <div className="rounded-xl border border-amber-200 bg-amber-50 p-2.5">
+                                    <div className="text-xs font-semibold text-amber-700">Cảnh báo dữ liệu (đã import nhưng có trường để trống)</div>
+                                    <div className="mt-1 max-h-28 space-y-1 overflow-y-auto text-xs text-amber-700">
+                                        {importReport.warnings.map((item, idx) => (
+                                            <div key={`warn-${idx}`}>
+                                                Dòng {item.row ?? '-'}: {item.message || 'Cảnh báo dữ liệu'}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
                     <div className="flex items-center gap-2">
                         <button
                             type="submit"
@@ -1600,7 +1652,15 @@ export default function Contracts(props) {
                         >
                             {importing ? 'Đang import...' : 'Import'}
                         </button>
-                        <button type="button" className="flex-1 rounded-2xl px-3 py-2.5 border border-slate-200 text-sm font-semibold" onClick={() => setShowImport(false)}>
+                        <button
+                            type="button"
+                            className="flex-1 rounded-2xl px-3 py-2.5 border border-slate-200 text-sm font-semibold"
+                            onClick={() => {
+                                setShowImport(false);
+                                setImportFile(null);
+                                setImportReport(null);
+                            }}
+                        >
                             Hủy
                         </button>
                     </div>

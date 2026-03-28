@@ -74,6 +74,13 @@ const formatDate = (raw) => {
     return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
 };
 
+const formatDateTime = (raw) => {
+    if (!raw) return '—';
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) return String(raw);
+    return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+};
+
 const formatCurrency = (value) => Number(value || 0).toLocaleString('vi-VN');
 
 const serviceLabel = (project) => {
@@ -273,6 +280,8 @@ export default function ClientFlow({ auth, clientId }) {
     const [flow, setFlow] = useState(null);
     const [loading, setLoading] = useState(true);
     const [activeHint, setActiveHint] = useState(null);
+    const [careNoteForm, setCareNoteForm] = useState({ title: '', detail: '' });
+    const [submittingCareNote, setSubmittingCareNote] = useState(false);
     const flowSurfaceRef = useRef(null);
 
     const fetchFlow = async () => {
@@ -292,6 +301,43 @@ export default function ClientFlow({ auth, clientId }) {
         fetchFlow();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [clientId]);
+
+    const submitCareNote = async (event) => {
+        event.preventDefault();
+        if (!flow?.client?.id) {
+            return;
+        }
+
+        const title = (careNoteForm.title || '').trim();
+        const detail = (careNoteForm.detail || '').trim();
+        if (!title || !detail) {
+            toast.error('Vui lòng nhập tiêu đề và chi tiết ghi chú chăm sóc.');
+            return;
+        }
+
+        setSubmittingCareNote(true);
+        try {
+            const res = await axios.post(`/api/v1/crm/clients/${flow.client.id}/care-notes`, {
+                title,
+                detail,
+            });
+            const note = res?.data?.note;
+            if (note) {
+                setFlow((prev) => ({
+                    ...(prev || {}),
+                    care_notes: [note, ...((prev?.care_notes || []))],
+                }));
+            } else {
+                await fetchFlow();
+            }
+            setCareNoteForm({ title: '', detail: '' });
+            toast.success('Đã thêm ghi chú chăm sóc khách hàng.');
+        } catch (e) {
+            toast.error(e?.response?.data?.message || 'Không thể thêm ghi chú chăm sóc.');
+        } finally {
+            setSubmittingCareNote(false);
+        }
+    };
 
     useEffect(() => {
         if (!activeHint) {
@@ -691,33 +737,106 @@ export default function ClientFlow({ auth, clientId }) {
                         )}
                     </div>
 
-                    <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card p-5 space-y-4">
+                    <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card p-5 space-y-5">
                         <div>
-                            <p className="text-xs uppercase tracking-[0.2em] text-text-subtle">Timeline mốc chính</p>
-                            <p className="text-sm text-text-muted mt-1">
-                                Giữ khung này để theo dõi timeline, còn chi tiết node nằm ở chú thích ngay trong sơ đồ.
-                            </p>
-                        </div>
-
-                        <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
-                            {timeline.length === 0 && (
-                                <p className="text-sm text-text-muted">Chưa có mốc timeline.</p>
-                            )}
-                            {timeline.map((row) => (
-                                <div key={row.id} className="flex items-start gap-3">
-                                    <span
-                                        className="mt-1 h-2.5 w-2.5 rounded-full"
-                                        style={{ backgroundColor: statusColor(row.status) }}
-                                    />
-                                    <div className="flex-1">
-                                        <div className="text-[11px] uppercase tracking-[0.2em] text-text-subtle">
-                                            {formatDate(row.date)}
-                                        </div>
-                                        <div className="text-sm font-semibold text-slate-900">{row.title}</div>
-                                        <div className="text-xs text-text-muted">{statusLabel(row.status)}</div>
+                            <p className="text-xs uppercase tracking-[0.2em] text-text-subtle">Nhân sự chăm sóc</p>
+                            <div className="mt-2 space-y-2">
+                                <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-3">
+                                    <div className="text-[11px] uppercase tracking-[0.18em] text-text-subtle">Phụ trách chính</div>
+                                    <div className="mt-1 text-sm font-semibold text-slate-900">
+                                        {flow?.client?.assigned_staff?.name || flow?.client?.sales_owner?.name || '—'}
                                     </div>
                                 </div>
-                            ))}
+                                <div className="rounded-xl border border-slate-200/80 bg-white p-3">
+                                    <div className="text-[11px] uppercase tracking-[0.18em] text-text-subtle">Nhân viên chăm sóc</div>
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                        {(flow?.client?.care_staff_users || []).length > 0 ? (
+                                            flow.client.care_staff_users.map((staff) => (
+                                                <span
+                                                    key={staff.id}
+                                                    className="inline-flex items-center rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-700"
+                                                >
+                                                    {staff.name}
+                                                </span>
+                                            ))
+                                        ) : (
+                                            <span className="text-xs text-text-muted">Chưa có nhân viên chăm sóc.</span>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <p className="text-xs uppercase tracking-[0.2em] text-text-subtle">Ghi chú chăm sóc khách hàng</p>
+                            <p className="mt-1 text-xs text-text-muted">
+                                Nhân viên chăm sóc có thể thêm ghi chú gồm tiêu đề và chi tiết, tên nhân viên được lấy tự động theo người thao tác.
+                            </p>
+                            {flow?.permissions?.can_add_care_note && (
+                                <form className="mt-3 space-y-2" onSubmit={submitCareNote}>
+                                    <input
+                                        className="w-full rounded-xl border border-slate-200/80 px-3 py-2 text-sm"
+                                        placeholder="Tiêu đề ghi chú"
+                                        value={careNoteForm.title}
+                                        onChange={(event) => setCareNoteForm((prev) => ({ ...prev, title: event.target.value }))}
+                                    />
+                                    <textarea
+                                        className="w-full rounded-xl border border-slate-200/80 px-3 py-2 text-sm"
+                                        rows={3}
+                                        placeholder="Chi tiết ghi chú chăm sóc khách hàng"
+                                        value={careNoteForm.detail}
+                                        onChange={(event) => setCareNoteForm((prev) => ({ ...prev, detail: event.target.value }))}
+                                    />
+                                    <button
+                                        type="submit"
+                                        className="w-full rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                                        disabled={submittingCareNote}
+                                    >
+                                        {submittingCareNote ? 'Đang lưu...' : 'Thêm ghi chú chăm sóc'}
+                                    </button>
+                                </form>
+                            )}
+                            <div className="mt-3 space-y-2 max-h-[260px] overflow-y-auto pr-1">
+                                {(flow?.care_notes || []).length === 0 && (
+                                    <div className="rounded-xl border border-slate-200/80 bg-slate-50 px-3 py-2 text-xs text-text-muted">
+                                        Chưa có ghi chú chăm sóc.
+                                    </div>
+                                )}
+                                {(flow?.care_notes || []).map((note) => (
+                                    <div key={note.id} className="rounded-xl border border-slate-200/80 bg-white p-3">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="text-sm font-semibold text-slate-900">{note.title || 'Ghi chú'}</div>
+                                            <div className="text-[11px] text-text-subtle">{formatDateTime(note.created_at)}</div>
+                                        </div>
+                                        <div className="mt-1 text-xs text-text-muted">Nhân viên: {note?.user?.name || '—'}</div>
+                                        <div className="mt-2 text-sm leading-6 text-slate-700 whitespace-pre-wrap">{note.detail || '—'}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div>
+                            <p className="text-xs uppercase tracking-[0.2em] text-text-subtle">Timeline mốc chính</p>
+                            <div className="mt-2 space-y-3 max-h-[220px] overflow-y-auto pr-1">
+                                {timeline.length === 0 && (
+                                    <p className="text-sm text-text-muted">Chưa có mốc timeline.</p>
+                                )}
+                                {timeline.map((row) => (
+                                    <div key={row.id} className="flex items-start gap-3">
+                                        <span
+                                            className="mt-1 h-2.5 w-2.5 rounded-full"
+                                            style={{ backgroundColor: statusColor(row.status) }}
+                                        />
+                                        <div className="flex-1">
+                                            <div className="text-[11px] uppercase tracking-[0.2em] text-text-subtle">
+                                                {formatDate(row.date)}
+                                            </div>
+                                            <div className="text-sm font-semibold text-slate-900">{row.title}</div>
+                                            <div className="text-xs text-text-muted">{statusLabel(row.status)}</div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     </div>
                 </div>

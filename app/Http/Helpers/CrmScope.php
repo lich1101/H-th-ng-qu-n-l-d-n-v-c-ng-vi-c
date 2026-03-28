@@ -18,10 +18,21 @@ class CrmScope
 
         if ($user->role === 'quan_ly') {
             $deptIds = $user->managedDepartments()->pluck('id');
-            return $query->whereIn('assigned_department_id', $deptIds);
+            return $query->where(function (Builder $builder) use ($deptIds, $user) {
+                $builder->whereIn('assigned_department_id', $deptIds)
+                    ->orWhereHas('careStaffUsers', function (Builder $careQuery) use ($user) {
+                        $careQuery->where('users.id', $user->id);
+                    });
+            });
         }
 
-        return $query->where('assigned_staff_id', $user->id);
+        return $query->where(function (Builder $builder) use ($user) {
+            $builder->where('assigned_staff_id', $user->id)
+                ->orWhere('sales_owner_id', $user->id)
+                ->orWhereHas('careStaffUsers', function (Builder $careQuery) use ($user) {
+                    $careQuery->where('users.id', $user->id);
+                });
+        });
     }
 
     public static function applyContractScope(Builder $query, User $user): Builder

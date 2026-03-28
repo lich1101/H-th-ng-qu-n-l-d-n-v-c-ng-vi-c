@@ -16,7 +16,15 @@ class CRMController extends Controller
 {
     public function clients(Request $request): JsonResponse
     {
-        $query = Client::query()->with(['leadType', 'salesOwner', 'revenueTier', 'assignedDepartment', 'assignedStaff', 'facebookPage']);
+        $query = Client::query()->with([
+            'leadType',
+            'salesOwner',
+            'revenueTier',
+            'assignedDepartment',
+            'assignedStaff',
+            'facebookPage',
+            'careStaffUsers:id,name,email',
+        ]);
         CrmScope::applyClientScope($query, $request->user());
         if ($request->filled('search')) {
             $search = (string) $request->input('search');
@@ -63,6 +71,8 @@ class CRMController extends Controller
             'lead_source' => ['nullable', 'string', 'max:100'],
             'lead_channel' => ['nullable', 'string', 'max:50'],
             'lead_message' => ['nullable', 'string'],
+            'care_staff_ids' => ['sometimes', 'array'],
+            'care_staff_ids.*' => ['integer', 'exists:users,id'],
         ]);
 
         if (empty($validated['lead_type_id'])) {
@@ -85,17 +95,29 @@ class CRMController extends Controller
         }
 
         $client = Client::create($validated);
+        $this->syncClientCareStaff(
+            $client,
+            $validated['care_staff_ids'] ?? [],
+            (int) $user->id
+        );
         app(LeadNotificationService::class)->notifyNewLead(
             $client,
             $this->resolveSourceLabel($client)
         );
 
-        return response()->json($client->load(['leadType', 'salesOwner', 'revenueTier', 'assignedDepartment', 'assignedStaff']), 201);
+        return response()->json($client->load([
+            'leadType',
+            'salesOwner',
+            'revenueTier',
+            'assignedDepartment',
+            'assignedStaff',
+            'careStaffUsers:id,name,email',
+        ]), 201);
     }
 
     public function updateClient(Request $request, Client $client): JsonResponse
     {
-        if (! $this->canAccessClient($request->user(), $client)) {
+        if (! $this->canManageClient($request->user(), $client)) {
             return response()->json(['message' => 'Không có quyền cập nhật khách hàng.'], 403);
         }
         $validated = $request->validate([
@@ -111,6 +133,8 @@ class CRMController extends Controller
             'lead_source' => ['nullable', 'string', 'max:100'],
             'lead_channel' => ['nullable', 'string', 'max:50'],
             'lead_message' => ['nullable', 'string'],
+            'care_staff_ids' => ['sometimes', 'array'],
+            'care_staff_ids.*' => ['integer', 'exists:users,id'],
         ]);
         $user = $request->user();
         $validated = $this->resolveClientAssignment($user, $validated, $client);
@@ -119,7 +143,22 @@ class CRMController extends Controller
             $validated['sales_owner_id'] = $validated['assigned_staff_id'];
         }
         $client->update($validated);
-        return response()->json($client->load(['leadType', 'salesOwner', 'revenueTier', 'assignedDepartment', 'assignedStaff']));
+        if (array_key_exists('care_staff_ids', $validated)) {
+            $this->syncClientCareStaff(
+                $client,
+                $validated['care_staff_ids'] ?? [],
+                (int) $user->id
+            );
+        }
+
+        return response()->json($client->load([
+            'leadType',
+            'salesOwner',
+            'revenueTier',
+            'assignedDepartment',
+            'assignedStaff',
+            'careStaffUsers:id,name,email',
+        ]));
     }
 
     public function destroyClient(Client $client): JsonResponse
@@ -128,7 +167,7 @@ class CRMController extends Controller
         if ($user->role !== 'admin') {
             return response()->json(['message' => 'Không có quyền xóa khách hàng.'], 403);
         }
-        if (! $this->canAccessClient($user, $client)) {
+        if (! $this->canManageClient($user, $client)) {
             return response()->json(['message' => 'Không có quyền xóa khách hàng.'], 403);
         }
         $client->delete();
@@ -198,6 +237,32 @@ class CRMController extends Controller
         }
         if ($user->role === 'quan_ly') {
             $deptIds = $user->managedDepartments()->pluck('id');
+            if ($client->assigned_department_id && $deptIds->contains($client->assigned_department_id)) {
+                return true;
+            }
+        }
+
+        if ((int) $client->assigned_staff_id === (int) $user->id) {
+            return true;
+        }
+
+        if ((int) $client->sales_owner_id === (int) $user->id) {
+            return true;
+        }
+
+        return $client->careStaffUsers()
+            ->where('users.id', $user->id)
+            ->exists();
+    }
+
+    private function canManageClient(User $user, Client $client): bool
+    {
+        if (in_array($user->role, ['admin'], true)) {
+            return true;
+        }
+
+        if ($user->role === 'quan_ly') {
+            $deptIds = $user->managedDepartments()->pluck('id');
             return $client->assigned_department_id && $deptIds->contains($client->assigned_department_id);
         }
 
@@ -212,6 +277,17 @@ class CRMController extends Controller
         $requestedDepartmentId = ! empty($validated['assigned_department_id'])
             ? (int) $validated['assigned_department_id']
             : null;
+        $requestedCareStaffIds = array_key_exists('care_staff_ids', $validated)
+            ? collect((array) $validated['care_staff_ids'])
+                ->map(function ($id) {
+                    return (int) $id;
+                })
+                ->filter(function ($id) {
+                    return $id > 0;
+                })
+                ->values()
+                ->all()
+            : null;
 
         if (! empty($validated['sales_owner_id']) && ! $requestedStaffId) {
             $requestedStaffId = (int) $validated['sales_owner_id'];
@@ -220,6 +296,7 @@ class CRMController extends Controller
         if ($user->role === 'nhan_vien') {
             $validated['assigned_staff_id'] = (int) $user->id;
             $validated['assigned_department_id'] = (int) ($user->department_id ?: $requestedDepartmentId);
+            $validated['care_staff_ids'] = [(int) $user->id];
             return $validated;
         }
 
@@ -245,6 +322,18 @@ class CRMController extends Controller
             $validated['assigned_staff_id'] = $requestedStaffId;
             $resolvedDepartmentId = optional($allowedUsers->get($requestedStaffId))->department_id;
             $validated['assigned_department_id'] = $resolvedDepartmentId ? (int) $resolvedDepartmentId : null;
+            $careIds = collect($requestedCareStaffIds ?? [])
+                ->filter(function ($id) use ($allowedUsers) {
+                    return $allowedUsers->has((int) $id);
+                })
+                ->map(function ($id) {
+                    return (int) $id;
+                })
+                ->values();
+            if ($requestedStaffId) {
+                $careIds->push((int) $requestedStaffId);
+            }
+            $validated['care_staff_ids'] = $careIds->unique()->values()->all();
             return $validated;
         }
 
@@ -259,10 +348,45 @@ class CRMController extends Controller
                 $validated['assigned_department_id'] = $requestedDepartmentId;
             }
 
+            $careIds = collect($requestedCareStaffIds ?? [])
+                ->map(function ($id) {
+                    return (int) $id;
+                })
+                ->filter(function ($id) {
+                    return $id > 0;
+                });
+            if ($requestedStaffId) {
+                $careIds->push((int) $requestedStaffId);
+            }
+            $validated['care_staff_ids'] = $careIds->unique()->values()->all();
+
             return $validated;
         }
 
         return $validated;
+    }
+
+    private function syncClientCareStaff(Client $client, array $careStaffIds, int $assignedBy): void
+    {
+        $ids = collect($careStaffIds)
+            ->map(function ($id) {
+                return (int) $id;
+            })
+            ->filter(function ($id) {
+                return $id > 0;
+            })
+            ->unique()
+            ->values();
+
+        $syncPayload = $ids
+            ->mapWithKeys(function ($id) use ($assignedBy) {
+                return [
+                    $id => ['assigned_by' => $assignedBy],
+                ];
+            })
+            ->all();
+
+        $client->careStaffUsers()->sync($syncPayload);
     }
 
     private function resolveSourceLabel(Client $client): string

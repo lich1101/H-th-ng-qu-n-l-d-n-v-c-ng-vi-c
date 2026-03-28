@@ -54,8 +54,18 @@ class ImportController extends Controller
                 DB::beginTransaction();
 
                 $leadTypeId = $this->resolveLeadTypeId($data['lead_type_name'] ?? null);
-                $salesOwnerId = $this->resolveUserId($data['manager_name'] ?? null);
-                $assignedStaffId = $this->resolveUserId($data['watcher_name'] ?? null);
+
+                $salesOwnerRaw = $data['manager_name'] ?? null;
+                $salesOwnerId = $this->resolveUserId($salesOwnerRaw);
+                if ($this->hasText($salesOwnerRaw) && ! $salesOwnerId) {
+                    $this->pushWarning($report, $rowNumber, 'Không tìm thấy người quản lý "' . trim((string) $salesOwnerRaw) . '", hệ thống để trống.');
+                }
+
+                $assignedStaffRaw = $data['watcher_name'] ?? null;
+                $assignedStaffId = $this->resolveUserId($assignedStaffRaw);
+                if ($this->hasText($assignedStaffRaw) && ! $assignedStaffId) {
+                    $this->pushWarning($report, $rowNumber, 'Không tìm thấy người theo dõi "' . trim((string) $assignedStaffRaw) . '", hệ thống để trống.');
+                }
                 if (! $assignedStaffId) {
                     $assignedStaffId = $salesOwnerId;
                 }
@@ -66,13 +76,35 @@ class ImportController extends Controller
                 }
 
                 $assignedDepartmentId = $assignedStaffId ? $this->getUserDepartmentId($assignedStaffId) : null;
-                $totalRevenue = $this->parseNumber($data['total_revenue'] ?? null);
+                $totalRevenueRaw = $data['total_revenue'] ?? null;
+                $totalRevenue = $this->parseNumber($totalRevenueRaw);
+                if ($this->hasText($totalRevenueRaw) && $totalRevenue === null) {
+                    $this->pushWarning($report, $rowNumber, 'Doanh số lũy kế không hợp lệ, hệ thống để trống.');
+                }
+
+                $legacyDebtRaw = $data['legacy_debt_amount'] ?? null;
+                $legacyDebtAmount = $this->parseNumber($legacyDebtRaw);
+                if ($this->hasText($legacyDebtRaw) && $legacyDebtAmount === null) {
+                    $this->pushWarning($report, $rowNumber, 'Công nợ không hợp lệ, hệ thống để mặc định.');
+                }
+
+                $createdAtRaw = $data['created_at'] ?? null;
+                $createdAt = $this->parseDateTime($createdAtRaw);
+                if ($this->hasText($createdAtRaw) && ! $createdAt) {
+                    $this->pushWarning($report, $rowNumber, 'Ngày tạo không hợp lệ, hệ thống để trống.');
+                }
+
+                $normalizedPhone = $this->normalizePhoneForStorage($data['phone'] ?? null);
+                if ($this->hasText($data['phone'] ?? null) && ! $normalizedPhone) {
+                    $this->pushWarning($report, $rowNumber, 'Số điện thoại không hợp lệ, hệ thống để trống.');
+                }
+
                 $payload = [
                     'name' => $data['name'],
                     'external_code' => $data['external_code'] ?? null,
                     'company' => $data['company'] ?? null,
-                    'email' => $data['email'] ?? null,
-                    'phone' => $data['phone'] ?? null,
+                    'email' => $this->normalizeEmailForStorage($data['email'] ?? null),
+                    'phone' => $normalizedPhone,
                     'notes' => $data['notes'] ?? null,
                     'lead_type_id' => $leadTypeId,
                     'sales_owner_id' => $salesOwnerId,
@@ -83,7 +115,7 @@ class ImportController extends Controller
                     'lead_message' => $data['lead_message'] ?? null,
                     'customer_status_label' => $data['customer_status_label'] ?? null,
                     'customer_level' => $data['customer_level'] ?? null,
-                    'legacy_debt_amount' => $this->parseNumber($data['legacy_debt_amount'] ?? null) ?: 0,
+                    'legacy_debt_amount' => $legacyDebtAmount,
                     'company_size' => $data['company_size'] ?? null,
                     'product_categories' => $data['product_categories'] ?? null,
                 ];
@@ -96,12 +128,10 @@ class ImportController extends Controller
 
                 $client = $this->findClientByIdentity(
                     $data['name'],
-                    $data['phone'] ?? null,
-                    $data['email'] ?? null,
+                    $normalizedPhone,
+                    $payload['email'] ?? null,
                     $data['external_code'] ?? null
                 );
-
-                $createdAt = $this->parseDateTime($data['created_at'] ?? null);
 
                 if ($client) {
                     $client->update($this->filterNullValues($payload));
@@ -116,7 +146,7 @@ class ImportController extends Controller
                     if (empty($payload['lead_type_id'])) {
                         $payload['lead_type_id'] = $this->resolveLeadTypeId('Khách hàng tiềm năng');
                     }
-                    $client = Client::create($payload);
+                    $client = Client::create($this->filterNullValues($payload));
                     if ($createdAt) {
                         $client->timestamps = false;
                         $client->created_at = $createdAt;
@@ -126,6 +156,12 @@ class ImportController extends Controller
                     }
                     $report['created']++;
                 }
+
+                $careStaffIds = array_values(array_filter([
+                    $assignedStaffId ? (int) $assignedStaffId : null,
+                    $salesOwnerId ? (int) $salesOwnerId : null,
+                ]));
+                $this->syncClientCareStaffFromImport($client, $careStaffIds, (int) $user->id);
 
                 DB::commit();
             } catch (\Throwable $e) {
@@ -162,12 +198,55 @@ class ImportController extends Controller
             try {
                 DB::beginTransaction();
 
-                $collectorId = $this->resolveUserId($data['collector_name'] ?? null);
+                $collectorNameRaw = $data['collector_name'] ?? null;
+                $collectorId = $this->resolveUserId($collectorNameRaw);
+                if ($this->hasText($collectorNameRaw) && ! $collectorId) {
+                    $this->pushWarning($report, $rowNumber, 'Không tìm thấy người quản lý hợp đồng "' . trim((string) $collectorNameRaw) . '", hệ thống để trống.');
+                }
+
                 $client = $this->resolveOrCreateClientForContract($data, $collectorId);
+                $this->syncClientCareStaffFromImport($client, [$collectorId], (int) $user->id);
+
                 $status = $this->normalizeContractStatus($data['status'] ?? '');
                 $approval = $this->resolveApproval($user);
-                $value = $this->parseNumber($data['value'] ?? null);
-                $debt = $this->parseNumber($data['debt'] ?? null);
+                $valueRaw = $data['value'] ?? null;
+                $value = $this->parseNumber($valueRaw);
+                if ($this->hasText($valueRaw) && $value === null) {
+                    $this->pushWarning($report, $rowNumber, 'Giá trị hợp đồng không hợp lệ, hệ thống để trống.');
+                }
+
+                $debtRaw = $data['debt'] ?? null;
+                $debt = $this->parseNumber($debtRaw);
+                if ($this->hasText($debtRaw) && $debt === null) {
+                    $this->pushWarning($report, $rowNumber, 'Số tiền chưa thanh toán không hợp lệ, hệ thống để trống.');
+                }
+
+                $signedAt = $this->parseDate($data['signed_at'] ?? null);
+                if ($this->hasText($data['signed_at'] ?? null) && ! $signedAt) {
+                    $this->pushWarning($report, $rowNumber, 'Ngày ký không hợp lệ, hệ thống để trống.');
+                }
+                $startDate = $this->parseDate($data['start_date'] ?? null);
+                if ($this->hasText($data['start_date'] ?? null) && ! $startDate) {
+                    $this->pushWarning($report, $rowNumber, 'Ngày bắt đầu không hợp lệ, hệ thống để trống.');
+                }
+                $endDate = $this->parseDate($data['end_date'] ?? null);
+                if ($this->hasText($data['end_date'] ?? null) && ! $endDate) {
+                    $this->pushWarning($report, $rowNumber, 'Ngày kết thúc không hợp lệ, hệ thống để trống.');
+                }
+
+                $durationMonths = $this->parseInteger($data['duration_months'] ?? null);
+                if ($this->hasText($data['duration_months'] ?? null) && $durationMonths === null) {
+                    $this->pushWarning($report, $rowNumber, 'Số tháng không hợp lệ, hệ thống để trống.');
+                }
+
+                $importedPaidPeriods = $this->parseInteger($data['collected_periods'] ?? null);
+                if ($this->hasText($data['collected_periods'] ?? null) && $importedPaidPeriods === null) {
+                    $this->pushWarning($report, $rowNumber, 'Kỳ đã thu không hợp lệ, hệ thống để trống.');
+                } elseif ($importedPaidPeriods !== null && $importedPaidPeriods > 480) {
+                    $importedPaidPeriods = null;
+                    $this->pushWarning($report, $rowNumber, 'Kỳ đã thu vượt ngưỡng hợp lệ, hệ thống để trống.');
+                }
+
                 $paidTotal = $value !== null
                     ? max(0, min($value, $value - max(0, (float) ($debt ?: 0))))
                     : null;
@@ -181,16 +260,16 @@ class ImportController extends Controller
                     'approval_status' => $approval['approval_status'],
                     'approved_by' => $approval['approved_by'],
                     'approved_at' => $approval['approved_at'],
-                    'signed_at' => $this->parseDate($data['signed_at'] ?? null),
-                    'start_date' => $this->parseDate($data['start_date'] ?? null),
-                    'end_date' => $this->parseDate($data['end_date'] ?? null),
+                    'signed_at' => $signedAt,
+                    'start_date' => $startDate,
+                    'end_date' => $endDate,
                     'notes' => $data['notes'] ?? null,
                     'created_by' => $user->id,
                     'collector_user_id' => $collectorId,
                     'care_schedule' => $data['care_schedule'] ?? null,
-                    'duration_months' => $this->parseInteger($data['duration_months'] ?? null),
+                    'duration_months' => $durationMonths,
                     'payment_cycle' => $data['payment_cycle'] ?? null,
-                    'imported_paid_periods' => $this->parseInteger($data['collected_periods'] ?? null),
+                    'imported_paid_periods' => $importedPaidPeriods,
                 ];
 
                 $contract = Contract::query()->where('code', $code)->first();
@@ -211,10 +290,29 @@ class ImportController extends Controller
                     $this->parseNumber($data['unit_price'] ?? null)
                 );
 
-                $quantity = $this->parseInteger($data['quantity'] ?? null) ?: 1;
-                $unitPrice = $this->parseNumber($data['unit_price'] ?? null) ?: 0;
-                $discountAmount = $this->parseNumber($data['discount_amount'] ?? null) ?: 0;
-                $vatAmount = $this->parseNumber($data['vat_amount'] ?? null) ?: 0;
+                $quantity = $this->parseInteger($data['quantity'] ?? null);
+                if ($this->hasText($data['quantity'] ?? null) && $quantity === null) {
+                    $this->pushWarning($report, $rowNumber, 'Số lượng không hợp lệ, hệ thống mặc định 1.');
+                }
+                $quantity = $quantity ?: 1;
+
+                $unitPrice = $this->parseNumber($data['unit_price'] ?? null);
+                if ($this->hasText($data['unit_price'] ?? null) && $unitPrice === null) {
+                    $this->pushWarning($report, $rowNumber, 'Đơn giá không hợp lệ, hệ thống mặc định 0.');
+                }
+                $unitPrice = $unitPrice ?: 0;
+
+                $discountAmount = $this->parseNumber($data['discount_amount'] ?? null);
+                if ($this->hasText($data['discount_amount'] ?? null) && $discountAmount === null) {
+                    $this->pushWarning($report, $rowNumber, 'Giảm giá không hợp lệ, hệ thống mặc định 0.');
+                }
+                $discountAmount = $discountAmount ?: 0;
+
+                $vatAmount = $this->parseNumber($data['vat_amount'] ?? null);
+                if ($this->hasText($data['vat_amount'] ?? null) && $vatAmount === null) {
+                    $this->pushWarning($report, $rowNumber, 'VAT không hợp lệ, hệ thống mặc định 0.');
+                }
+                $vatAmount = $vatAmount ?: 0;
                 $itemTotal = $this->parseNumber($data['value'] ?? null);
                 if ($itemTotal === null) {
                     $itemTotal = max(0, ($unitPrice * $quantity) - $discountAmount + $vatAmount);
@@ -244,6 +342,7 @@ class ImportController extends Controller
 
                 $paymentNote = 'Import Excel: tổng đã thu';
                 if ($paidTotal !== null && $paidTotal > 0) {
+                    $paidAt = $this->parseDate($data['signed_at'] ?? $data['start_date'] ?? null);
                     $payment = ContractPayment::query()
                         ->firstOrNew([
                             'contract_id' => $contract->id,
@@ -251,7 +350,7 @@ class ImportController extends Controller
                         ]);
                     $payment->fill([
                         'amount' => $paidTotal,
-                        'paid_at' => $this->parseDate($data['signed_at'] ?? $data['start_date'] ?? null),
+                        'paid_at' => $paidAt,
                         'method' => 'import_excel',
                         'created_by' => $user->id,
                     ]);
@@ -305,7 +404,11 @@ class ImportController extends Controller
                     $description = trim($description . ($description !== '' ? "\n\n" : '') . 'Ghi chú import: ' . $data['comments']);
                 }
 
-                $assigneeId = $this->resolveUserId($data['assignee'] ?? null);
+                $assigneeRaw = $data['assignee'] ?? null;
+                $assigneeId = $this->resolveUserId($assigneeRaw);
+                if ($this->hasText($assigneeRaw) && ! $assigneeId) {
+                    $this->pushWarning($report, $rowNumber, 'Không tìm thấy người thực hiện "' . trim((string) $assigneeRaw) . '", hệ thống để trống.');
+                }
                 $identity = Task::query()
                     ->where('project_id', $project->id)
                     ->where('title', $data['title']);
@@ -318,6 +421,16 @@ class ImportController extends Controller
                 }
 
                 $task = $identity->first();
+                $startAt = $this->parseDateTime($data['start_at'] ?? null);
+                if ($this->hasText($data['start_at'] ?? null) && ! $startAt) {
+                    $this->pushWarning($report, $rowNumber, 'Ngày bắt đầu công việc không hợp lệ, hệ thống để trống.');
+                }
+
+                $deadline = $this->parseDateTime($data['deadline'] ?? null);
+                if ($this->hasText($data['deadline'] ?? null) && ! $deadline) {
+                    $this->pushWarning($report, $rowNumber, 'Deadline công việc không hợp lệ, hệ thống để trống.');
+                }
+
                 $payload = [
                     'project_id' => $project->id,
                     'department_id' => $assigneeId ? $this->getUserDepartmentId($assigneeId) : null,
@@ -325,8 +438,8 @@ class ImportController extends Controller
                     'description' => $description,
                     'priority' => $this->normalizeTaskPriority($data['priority'] ?? 'medium'),
                     'status' => $this->normalizeTaskStatus($data['status'] ?? 'todo'),
-                    'start_at' => $this->parseDateTime($data['start_at'] ?? null),
-                    'deadline' => $this->parseDateTime($data['deadline'] ?? null),
+                    'start_at' => $startAt,
+                    'deadline' => $deadline,
                     'created_by' => $user->id,
                     'assigned_by' => $user->id,
                     'assignee_id' => $assigneeId,
@@ -820,7 +933,7 @@ class ImportController extends Controller
             }
 
             $normalized = trim((string) $value);
-            $normalized = preg_replace('/\s*-\s*/', ' ', $normalized);
+            $normalized = preg_replace('/\s+-\s+/', ' ', $normalized);
             $normalized = preg_replace('/(\d{1,2})h(\d{1,2})/i', '$1:$2', $normalized);
             $normalized = preg_replace('/\s+/', ' ', $normalized);
 
@@ -882,6 +995,7 @@ class ImportController extends Controller
             'sohopdong' => 'code',
             'khachhang' => 'client_name',
             'makhachhang' => 'client_code',
+            'loaihopdong' => 'contract_type',
             'loaikhopdong' => 'contract_type',
             'ngayky' => 'signed_at',
             'ngayketthuc' => 'end_date',
@@ -1006,6 +1120,10 @@ class ImportController extends Controller
     private function findClientByIdentity(string $name, ?string $phone, ?string $email, ?string $externalCode): ?Client
     {
         $query = Client::query();
+        $name = trim($name);
+        $externalCode = $externalCode ? trim((string) $externalCode) : null;
+        $normalizedPhone = $this->normalizePhoneForStorage($phone);
+        $normalizedEmail = $this->normalizeEmailForStorage($email);
 
         if ($externalCode) {
             $client = (clone $query)->where('external_code', $externalCode)->first();
@@ -1014,15 +1132,21 @@ class ImportController extends Controller
             }
         }
 
-        if ($phone) {
-            $client = (clone $query)->where('phone', $phone)->first();
+        if ($normalizedPhone) {
+            $phoneExpression = $this->normalizedPhoneSqlExpression('phone');
+            $client = (clone $query)
+                ->where(function ($builder) use ($normalizedPhone, $phoneExpression) {
+                    $builder->where('phone', $normalizedPhone)
+                        ->orWhereRaw($phoneExpression . ' = ?', [$normalizedPhone]);
+                })
+                ->first();
             if ($client) {
                 return $client;
             }
         }
 
-        if ($email) {
-            $client = (clone $query)->where('email', Str::lower($email))->first();
+        if ($normalizedEmail) {
+            $client = (clone $query)->where('email', $normalizedEmail)->first();
             if ($client) {
                 return $client;
             }
@@ -1230,9 +1354,10 @@ class ImportController extends Controller
 
     private function resolveOrCreateClientForContract(array $data, ?int $collectorId): Client
     {
+        $phone = $this->normalizePhoneForStorage($data['phone'] ?? null);
         $client = $this->findClientByIdentity(
             $data['client_name'],
-            $data['phone'] ?? null,
+            $phone,
             null,
             $data['client_code'] ?? null
         );
@@ -1240,7 +1365,7 @@ class ImportController extends Controller
         $payload = [
             'name' => $data['client_name'],
             'external_code' => $data['client_code'] ?? null,
-            'phone' => $data['phone'] ?? null,
+            'phone' => $phone,
             'assigned_staff_id' => $collectorId,
             'sales_owner_id' => $collectorId,
             'assigned_department_id' => $collectorId ? $this->getUserDepartmentId($collectorId) : null,
@@ -1500,5 +1625,67 @@ class ImportController extends Controller
             'has_purchased' => $totalRevenue > 0,
             'revenue_tier_id' => $tier ? $tier->id : null,
         ]);
+    }
+
+    private function normalizeEmailForStorage(?string $email): ?string
+    {
+        if (! $email) {
+            return null;
+        }
+
+        $normalized = Str::lower(trim((string) $email));
+
+        return $normalized !== '' ? $normalized : null;
+    }
+
+    private function normalizePhoneForStorage(?string $phone): ?string
+    {
+        if (! $phone) {
+            return null;
+        }
+
+        $digits = preg_replace('/\D+/', '', (string) $phone);
+        if (! $digits) {
+            return null;
+        }
+
+        return trim((string) $digits) !== '' ? trim((string) $digits) : null;
+    }
+
+    private function normalizedPhoneSqlExpression(string $column): string
+    {
+        return "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE({$column}, ' ', ''), '.', ''), '-', ''), '(', ''), ')', ''), '+', '')";
+    }
+
+    private function hasText($value): bool
+    {
+        return trim((string) ($value ?? '')) !== '';
+    }
+
+    private function syncClientCareStaffFromImport(Client $client, array $userIds, int $assignedBy): void
+    {
+        $ids = collect($userIds)
+            ->map(function ($id) {
+                return (int) $id;
+            })
+            ->filter(function ($id) {
+                return $id > 0;
+            })
+            ->unique()
+            ->values();
+
+        if ($ids->isEmpty()) {
+            return;
+        }
+
+        $payload = $ids
+            ->mapWithKeys(function ($id) use ($assignedBy) {
+                return [
+                    $id => ['assigned_by' => $assignedBy],
+                ];
+            })
+            ->all();
+
+        $client->careStaffUsers()->syncWithoutDetaching($payload);
     }
 }
