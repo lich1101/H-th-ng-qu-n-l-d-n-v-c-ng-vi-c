@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
 import PageContainer from '@/Components/PageContainer';
+import PaginationControls from '@/Components/PaginationControls';
 import { useToast } from '@/Contexts/ToastContext';
 
 const LABELS = {
@@ -33,6 +34,7 @@ export default function TaskItemsBoard(props) {
         start_to: searchParams.get('start_to') || '',
         deadline_from: searchParams.get('deadline_from') || '',
         deadline_to: searchParams.get('deadline_to') || '',
+        per_page: 30,
         page: 1,
     });
     const [items, setItems] = useState([]);
@@ -79,7 +81,7 @@ export default function TaskItemsBoard(props) {
         try {
             const res = await axios.get('/api/v1/task-items', {
                 params: {
-                    per_page: 30,
+                    per_page: nextFilters.per_page || 30,
                     page,
                     ...(nextFilters.project_id ? { project_id: nextFilters.project_id } : {}),
                     ...(nextFilters.task_id ? { task_id: nextFilters.task_id } : {}),
@@ -287,25 +289,20 @@ export default function TaskItemsBoard(props) {
                             </tbody>
                         </table>
                     </div>
-                    <div className="mt-3 flex items-center justify-between text-sm">
-                        <button
-                            type="button"
-                            className="rounded-xl border border-slate-200 px-3 py-1.5 text-slate-600 disabled:opacity-50"
-                            disabled={paging.current_page <= 1}
-                            onClick={() => fetchItems(Math.max(1, paging.current_page - 1))}
-                        >
-                            Trang trước
-                        </button>
-                        <span className="text-slate-500">Trang {paging.current_page}/{paging.last_page}</span>
-                        <button
-                            type="button"
-                            className="rounded-xl border border-slate-200 px-3 py-1.5 text-slate-600 disabled:opacity-50"
-                            disabled={paging.current_page >= paging.last_page}
-                            onClick={() => fetchItems(Math.min(paging.last_page, paging.current_page + 1))}
-                        >
-                            Trang sau
-                        </button>
-                    </div>
+                    <PaginationControls
+                        page={paging.current_page}
+                        lastPage={paging.last_page}
+                        total={paging.total}
+                        perPage={filters.per_page}
+                        label="đầu việc"
+                        loading={loading}
+                        onPageChange={(page) => fetchItems(page, filters)}
+                        onPerPageChange={(perPage) => {
+                            const next = { ...filters, per_page: perPage, page: 1 };
+                            setFilters(next);
+                            fetchItems(1, next);
+                        }}
+                    />
                 </div>
             </div>
         </PageContainer>

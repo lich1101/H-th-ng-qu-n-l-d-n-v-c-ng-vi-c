@@ -3,6 +3,7 @@ import axios from 'axios';
 import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
+import PaginationControls from '@/Components/PaginationControls';
 import { useToast } from '@/Contexts/ToastContext';
 
 const DEFAULT_STATUSES = [
@@ -71,6 +72,7 @@ export default function ProjectsKanban(props) {
     const [contracts, setContracts] = useState([]);
     const [owners, setOwners] = useState([]);
     const [meta, setMeta] = useState({});
+    const [paging, setPaging] = useState({ current_page: 1, last_page: 1, total: 0 });
     const [editingId, setEditingId] = useState(null);
     const [showForm, setShowForm] = useState(false);
     const [viewMode, setViewMode] = useState('list');
@@ -78,6 +80,8 @@ export default function ProjectsKanban(props) {
         search: '',
         status: '',
         service_type: '',
+        per_page: 20,
+        page: 1,
     });
     const [form, setForm] = useState({
         code: '',
@@ -117,18 +121,31 @@ export default function ProjectsKanban(props) {
         }
     };
 
-    const fetchProjects = async () => {
+    const fetchProjects = async (pageOrFilters = filters.page, maybeFilters = filters) => {
+        const nextFilters = typeof pageOrFilters === 'object' && pageOrFilters !== null
+            ? pageOrFilters
+            : maybeFilters;
+        const nextPage = typeof pageOrFilters === 'object' && pageOrFilters !== null
+            ? Number(pageOrFilters.page || 1)
+            : Number(pageOrFilters || 1);
         setLoading(true);
         try {
             const res = await axios.get('/api/v1/projects', {
                 params: {
-                    per_page: 200,
-                    ...(filters.search ? { search: filters.search } : {}),
-                    ...(filters.status ? { status: filters.status } : {}),
-                    ...(filters.service_type ? { service_type: filters.service_type } : {}),
+                    per_page: nextFilters.per_page || 20,
+                    page: nextPage,
+                    ...(nextFilters.search ? { search: nextFilters.search } : {}),
+                    ...(nextFilters.status ? { status: nextFilters.status } : {}),
+                    ...(nextFilters.service_type ? { service_type: nextFilters.service_type } : {}),
                 },
             });
             setProjects(res.data?.data || []);
+            setPaging({
+                current_page: res.data?.current_page || 1,
+                last_page: res.data?.last_page || 1,
+                total: res.data?.total || 0,
+            });
+            setFilters((prev) => ({ ...prev, page: res.data?.current_page || nextPage }));
         } catch (e) {
             toast.error(e?.response?.data?.message || 'Không tải được danh sách dự án.');
         } finally {
@@ -232,7 +249,7 @@ export default function ProjectsKanban(props) {
     ), [projects]);
 
     const stats = useMemo(() => {
-        const total = projects.length;
+        const total = paging.total || projects.length;
         const inProgress = projects.filter((p) => p.status === 'dang_trien_khai').length;
         const waiting = projects.filter((p) => p.status === 'cho_duyet').length;
         const risky = projects.filter((p) => {
@@ -251,7 +268,7 @@ export default function ProjectsKanban(props) {
             { label: 'Chờ duyệt', value: String(waiting) },
             { label: 'Nguy cơ trễ', value: String(risky), note: risky ? 'Cần họp điều phối' : '' },
         ];
-    }, [projects]);
+    }, [paging.total, projects]);
 
     const resetForm = () => {
         setEditingId(null);
@@ -487,6 +504,17 @@ export default function ProjectsKanban(props) {
                                     Thêm mới
                                 </button>
                             )}
+                            <button
+                                type="button"
+                                className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+                                onClick={() => {
+                                    const next = { ...filters, page: 1 };
+                                    setFilters(next);
+                                    fetchProjects(1, next);
+                                }}
+                            >
+                                Lọc
+                            </button>
                         </FilterActionGroup>
                     </div>
                 </FilterToolbar>
@@ -779,7 +807,22 @@ export default function ProjectsKanban(props) {
                             })}
                         </div>
                     )}
-            </div>
+
+                    <PaginationControls
+                        page={paging.current_page}
+                        lastPage={paging.last_page}
+                        total={paging.total}
+                        perPage={filters.per_page}
+                        label="dự án"
+                        loading={loading}
+                        onPageChange={(page) => fetchProjects(page, filters)}
+                        onPerPageChange={(perPage) => {
+                            const next = { ...filters, per_page: perPage, page: 1 };
+                            setFilters(next);
+                            fetchProjects(1, next);
+                        }}
+                    />
+                </div>
 
             <Modal
                 open={showForm}

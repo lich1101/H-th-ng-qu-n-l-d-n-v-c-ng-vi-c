@@ -4,6 +4,7 @@ import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } fro
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import AppIcon from '@/Components/AppIcon';
+import PaginationControls from '@/Components/PaginationControls';
 import { useToast } from '@/Contexts/ToastContext';
 
 const STATUS_OPTIONS = [
@@ -110,8 +111,8 @@ export default function Contracts(props) {
     const toast = useToast();
     const userRole = props?.auth?.user?.role || '';
     const currentUserId = Number(props?.auth?.user?.id || 0) || null;
-    const canManage = ['admin', 'quan_ly', 'nhan_vien', 'ke_toan'].includes(userRole);
-    const canDelete = userRole === 'admin';
+    const canManage = ['admin', 'quan_ly', 'ke_toan'].includes(userRole);
+    const canDelete = ['admin', 'quan_ly', 'ke_toan'].includes(userRole);
     const canApprove = ['admin', 'ke_toan'].includes(userRole);
     const canFinance = ['admin', 'ke_toan'].includes(userRole);
     const isEmployee = userRole === 'nhan_vien';
@@ -125,19 +126,24 @@ export default function Contracts(props) {
     const [projects, setProjects] = useState([]);
     const [products, setProducts] = useState([]);
     const [collectors, setCollectors] = useState([]);
+    const [careStaffUsers, setCareStaffUsers] = useState([]);
     const [loading, setLoading] = useState(false);
     const [editingId, setEditingId] = useState(null);
     const [showForm, setShowForm] = useState(false);
     const [showDetail, setShowDetail] = useState(false);
     const [detailLoading, setDetailLoading] = useState(false);
     const [detailContract, setDetailContract] = useState(null);
-    const [filters, setFilters] = useState({ search: '', status: '', client_id: '', approval_status: '' });
+    const [careNoteForm, setCareNoteForm] = useState({ title: '', detail: '' });
+    const [savingCareNote, setSavingCareNote] = useState(false);
+    const [contractMeta, setContractMeta] = useState({ current_page: 1, last_page: 1, total: 0 });
+    const [filters, setFilters] = useState({ search: '', status: '', client_id: '', approval_status: '', per_page: 20, page: 1 });
     const [form, setForm] = useState({
         code: '',
         title: '',
         client_id: '',
         project_id: '',
         collector_user_id: defaultCollectorUserId,
+        care_staff_ids: [],
         value: '',
         payment_times: '1',
         status: 'draft',
@@ -228,6 +234,39 @@ export default function Contracts(props) {
             || Number(client?.sales_owner_id || 0) === uid;
     };
 
+    const canDeleteContract = (contract) => {
+        if (!canDelete) return false;
+
+        const apiPermission = readBoolean(contract?.can_delete);
+        if (apiPermission !== null) {
+            return apiPermission;
+        }
+
+        return canManageContract(contract);
+    };
+
+    const normalizeCareStaffIds = (values) => {
+        return Array.from(new Set((values || [])
+            .map((value) => Number(typeof value === 'object' && value !== null ? value.id : value))
+            .filter((value) => Number.isInteger(value) && value > 0)));
+    };
+
+    const toggleCareStaffId = (staffId) => {
+        setForm((current) => {
+            const nextIds = new Set(normalizeCareStaffIds(current.care_staff_ids));
+            if (nextIds.has(staffId)) {
+                nextIds.delete(staffId);
+            } else {
+                nextIds.add(staffId);
+            }
+
+            return {
+                ...current,
+                care_staff_ids: Array.from(nextIds).sort((a, b) => a - b),
+            };
+        });
+    };
+
     const itemsTotal = useMemo(() => {
         return items.reduce((sum, item) => {
             return sum + calculateItemTotal(item);
@@ -295,12 +334,30 @@ export default function Contracts(props) {
         }
     };
 
-    const fetchContracts = async (nextFilters = filters) => {
+    const fetchCareStaffUsers = async () => {
+        try {
+            const res = await axios.get('/api/v1/users/lookup', {
+                params: { purpose: 'contract_care_staff' },
+            });
+            setCareStaffUsers(res.data?.data || []);
+        } catch {
+            setCareStaffUsers([]);
+        }
+    };
+
+    const fetchContracts = async (pageOrFilters = filters.page, maybeFilters = filters) => {
+        const nextFilters = typeof pageOrFilters === 'object' && pageOrFilters !== null
+            ? pageOrFilters
+            : maybeFilters;
+        const nextPage = typeof pageOrFilters === 'object' && pageOrFilters !== null
+            ? Number(pageOrFilters.page || 1)
+            : Number(pageOrFilters || 1);
         setLoading(true);
         try {
             const res = await axios.get('/api/v1/contracts', {
                 params: {
-                    per_page: 50,
+                    per_page: nextFilters.per_page || 20,
+                    page: nextPage,
                     with_items: true,
                     ...(nextFilters.search ? { search: nextFilters.search } : {}),
                     ...(nextFilters.status ? { status: nextFilters.status } : {}),
@@ -309,6 +366,12 @@ export default function Contracts(props) {
                 },
             });
             setContracts(res.data?.data || []);
+            setContractMeta({
+                current_page: res.data?.current_page || 1,
+                last_page: res.data?.last_page || 1,
+                total: res.data?.total || 0,
+            });
+            setFilters((prev) => ({ ...prev, page: res.data?.current_page || nextPage }));
         } catch (e) {
             toast.error(e?.response?.data?.message || 'Không tải được danh sách hợp đồng.');
         } finally {
@@ -321,12 +384,13 @@ export default function Contracts(props) {
         fetchProjects();
         fetchProducts();
         fetchCollectors();
+        fetchCareStaffUsers();
         fetchContracts();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const stats = useMemo(() => {
-        const total = contracts.length;
+        const total = contractMeta.total || contracts.length;
         const active = contracts.filter((c) => c.status === 'active').length;
         const signed = contracts.filter((c) => c.status === 'signed').length;
         const pendingApproval = contracts.filter((c) => c.approval_status === 'pending').length;
@@ -336,7 +400,7 @@ export default function Contracts(props) {
             { label: 'Đã ký', value: String(signed) },
             { label: 'Chờ duyệt', value: String(pendingApproval) },
         ];
-    }, [contracts]);
+    }, [contractMeta.total, contracts]);
 
     const resetForm = () => {
         setEditingId(null);
@@ -347,6 +411,7 @@ export default function Contracts(props) {
             client_id: '',
             project_id: '',
             collector_user_id: defaultCollectorUserId,
+            care_staff_ids: [],
             value: '',
             payment_times: '1',
             status: 'draft',
@@ -384,6 +449,7 @@ export default function Contracts(props) {
                 client_id: detail.client_id || '',
                 project_id: detail.project_id || '',
                 collector_user_id: detail.collector_user_id ? String(detail.collector_user_id) : (currentUserId ? String(currentUserId) : ''),
+                care_staff_ids: normalizeCareStaffIds(detail.care_staff_users || []),
                 value: String(resolveContractValue(detail)),
                 payment_times: String(detail.payment_times ?? 1),
                 status: detail.status || 'draft',
@@ -424,6 +490,7 @@ export default function Contracts(props) {
     const openDetail = async (contractId) => {
         setDetailLoading(true);
         setShowDetail(true);
+        setCareNoteForm({ title: '', detail: '' });
         try {
             const res = await axios.get(`/api/v1/contracts/${contractId}`);
             setDetailContract(res.data || null);
@@ -439,6 +506,8 @@ export default function Contracts(props) {
         setShowDetail(false);
         setDetailContract(null);
         setDetailLoading(false);
+        setCareNoteForm({ title: '', detail: '' });
+        setSavingCareNote(false);
     };
 
     const addItem = () => {
@@ -664,6 +733,7 @@ export default function Contracts(props) {
             client_id: Number(form.client_id),
             project_id: form.project_id ? Number(form.project_id) : null,
             collector_user_id: form.collector_user_id ? Number(form.collector_user_id) : null,
+            care_staff_ids: normalizeCareStaffIds(form.care_staff_ids),
             value: items.length ? itemsTotal : form.value === '' ? null : parseNumberInput(form.value),
             payment_times: form.payment_times === '' ? 1 : Number(form.payment_times),
             status: form.status,
@@ -721,7 +791,40 @@ export default function Contracts(props) {
         }
     };
 
-    const applyFilters = () => fetchContracts(filters);
+    const applyFilters = () => {
+        const next = { ...filters, page: 1 };
+        setFilters(next);
+        fetchContracts(1, next);
+    };
+
+    const submitCareNote = async () => {
+        if (!detailContract) return;
+        if (!careNoteForm.title.trim() || !careNoteForm.detail.trim()) {
+            toast.error('Vui lòng nhập tiêu đề và nội dung chăm sóc.');
+            return;
+        }
+
+        setSavingCareNote(true);
+        try {
+            const res = await axios.post(`/api/v1/contracts/${detailContract.id}/care-notes`, {
+                title: careNoteForm.title.trim(),
+                detail: careNoteForm.detail.trim(),
+            });
+            const note = res.data?.note || null;
+            if (note) {
+                setDetailContract((current) => current ? ({
+                    ...current,
+                    care_notes: [note, ...(current.care_notes || [])],
+                }) : current);
+            }
+            setCareNoteForm({ title: '', detail: '' });
+            toast.success('Đã cập nhật tiến độ chăm sóc hợp đồng.');
+        } catch (e) {
+            toast.error(getErrorMessage(e, 'Không thể thêm ghi chú chăm sóc.'));
+        } finally {
+            setSavingCareNote(false);
+        }
+    };
 
     return (
         <PageContainer
@@ -785,11 +888,11 @@ export default function Contracts(props) {
                 </FilterToolbar>
                 <div className="mb-4 rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3 text-xs text-slate-600">
                     {isEmployee
-                        ? 'Bạn chỉ được tạo hợp đồng cho khách hàng mình phụ trách và hệ thống sẽ tự gắn bạn là nhân viên thu theo hợp đồng.'
+                        ? 'Nhân viên chăm sóc chỉ có quyền xem hợp đồng được giao và thêm nhật ký chăm sóc, không được sửa hoặc xóa hợp đồng.'
                         : userRole === 'quan_ly'
-                            ? 'Trưởng phòng được thao tác trong phạm vi phòng ban, đồng thời có thể chọn nhân viên trong phòng làm người thu hợp đồng.'
+                            ? 'Trưởng phòng được sửa/xóa hợp đồng trong phạm vi phòng ban, đồng thời có thể gắn nhân viên thu và nhóm chăm sóc theo tag.'
                             : canApprove
-                                ? 'Admin và Kế toán có thể theo dõi toàn bộ hợp đồng, duyệt nhanh và quản lý công nợ trên cùng một màn.'
+                                ? 'Admin và Kế toán có thể theo dõi toàn bộ hợp đồng, duyệt nhanh, gắn nhóm chăm sóc và quản lý công nợ trên cùng một màn.'
                                 : 'Theo dõi hợp đồng theo phạm vi khách hàng bạn đang quản lý.'}
                 </div>
                 <div className="overflow-x-auto">
@@ -879,7 +982,7 @@ export default function Contracts(props) {
                                                         <AppIcon name="check" className="h-4 w-4" />
                                                     </button>
                                                 )}
-                                                {canDelete && (
+                                                {canDeleteContract(c) && (
                                                     <button
                                                         type="button"
                                                         className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-rose-200 bg-rose-50 text-rose-600 transition hover:border-rose-300 hover:bg-rose-100 hover:text-rose-700"
@@ -904,6 +1007,20 @@ export default function Contracts(props) {
                             </tbody>
                         </table>
                 </div>
+                <PaginationControls
+                    page={contractMeta.current_page}
+                    lastPage={contractMeta.last_page}
+                    total={contractMeta.total}
+                    perPage={filters.per_page}
+                    label="hợp đồng"
+                    loading={loading}
+                    onPageChange={(page) => fetchContracts(page, filters)}
+                    onPerPageChange={(perPage) => {
+                        const next = { ...filters, per_page: perPage, page: 1 };
+                        setFilters(next);
+                        fetchContracts(1, next);
+                    }}
+                />
             </div>
 
             <Modal
@@ -985,6 +1102,39 @@ export default function Contracts(props) {
                                     </option>
                                 ))}
                             </select>
+                        </div>
+                    </div>
+                    <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-4">
+                        <div className="mb-3">
+                            <p className="text-xs uppercase tracking-[0.16em] text-text-subtle">Nhân viên chăm sóc hợp đồng</p>
+                            <p className="mt-1 text-xs text-text-muted">
+                                Chỉ admin, kế toán và quản lý được gắn nhóm chăm sóc. Nhân viên được gắn ở đây có quyền xem hợp đồng và cập nhật nhật ký chăm sóc.
+                            </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            {careStaffUsers.map((user) => {
+                                const selected = normalizeCareStaffIds(form.care_staff_ids).includes(Number(user.id));
+                                return (
+                                    <button
+                                        key={user.id}
+                                        type="button"
+                                        className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                                            selected
+                                                ? 'border-cyan-300 bg-cyan-50 text-cyan-700'
+                                                : 'border-slate-200 bg-white text-slate-600 hover:border-cyan-200 hover:text-cyan-700'
+                                        }`}
+                                        onClick={() => toggleCareStaffId(Number(user.id))}
+                                    >
+                                        {user.name}
+                                        {user.email ? ` • ${user.email}` : ''}
+                                    </button>
+                                );
+                            })}
+                            {careStaffUsers.length === 0 && (
+                                <div className="text-xs text-text-muted">
+                                    Chưa có nhân viên chăm sóc phù hợp trong phạm vi được phép gán.
+                                </div>
+                            )}
                         </div>
                     </div>
                     <div className="rounded-2xl border border-slate-200/80 bg-slate-50 p-4">
@@ -1389,6 +1539,19 @@ export default function Contracts(props) {
                                         <span className="text-text-muted">Số kỳ thanh toán</span>
                                         <span className="font-semibold text-slate-900">{detailContract.payments_count || 0}/{detailContract.payment_times || 1}</span>
                                     </div>
+                                    <div className="pt-2">
+                                        <div className="text-text-muted">Nhóm chăm sóc hợp đồng</div>
+                                        <div className="mt-2 flex flex-wrap gap-2">
+                                            {(detailContract.care_staff_users || []).map((staff) => (
+                                                <span key={staff.id} className="rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-xs font-medium text-cyan-700">
+                                                    {staff.name}
+                                                </span>
+                                            ))}
+                                            {(detailContract.care_staff_users || []).length === 0 && (
+                                                <span className="text-xs text-text-muted">Chưa gắn nhân viên chăm sóc riêng cho hợp đồng này.</span>
+                                            )}
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 
@@ -1424,6 +1587,75 @@ export default function Contracts(props) {
                                         </div>
                                     </div>
                                 </div>
+                            </div>
+                        </div>
+
+                        <div className="rounded-2xl border border-slate-200/80 bg-white p-4">
+                            <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+                                <div>
+                                    <h4 className="text-sm font-semibold text-slate-900">Nhật ký chăm sóc hợp đồng</h4>
+                                    <p className="mt-1 text-xs text-text-muted">
+                                        Theo dõi ai đã chăm sóc, đang đẩy tiến độ tới đâu và những việc đã xử lý trên hợp đồng này.
+                                    </p>
+                                </div>
+                                {readBoolean(detailContract.can_add_care_note) && (
+                                    <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                                        Bạn có thể cập nhật tiến độ
+                                    </span>
+                                )}
+                            </div>
+
+                            {readBoolean(detailContract.can_add_care_note) && (
+                                <div className="mt-4 rounded-2xl border border-slate-200/80 bg-slate-50 p-4">
+                                    <div className="grid gap-3 md:grid-cols-2">
+                                        <input
+                                            className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
+                                            placeholder="Tiêu đề chăm sóc"
+                                            value={careNoteForm.title}
+                                            onChange={(e) => setCareNoteForm((current) => ({ ...current, title: e.target.value }))}
+                                        />
+                                        <div className="flex items-center justify-end">
+                                            <button
+                                                type="button"
+                                                className="rounded-2xl bg-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                                                onClick={submitCareNote}
+                                                disabled={savingCareNote}
+                                            >
+                                                {savingCareNote ? 'Đang lưu...' : 'Cập nhật chăm sóc'}
+                                            </button>
+                                        </div>
+                                        <textarea
+                                            className="md:col-span-2 w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
+                                            rows={4}
+                                            placeholder="Mô tả đã chăm sóc gì, phản hồi của khách, vướng mắc và bước tiếp theo"
+                                            value={careNoteForm.detail}
+                                            onChange={(e) => setCareNoteForm((current) => ({ ...current, detail: e.target.value }))}
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="mt-4 space-y-3">
+                                {(detailContract.care_notes || []).map((note) => (
+                                    <div key={note.id} className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">
+                                        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                                            <div>
+                                                <div className="font-semibold text-slate-900">{note.title}</div>
+                                                <div className="mt-1 text-xs text-text-muted">
+                                                    {note.user?.name || 'Không rõ người cập nhật'}
+                                                    {' • '}
+                                                    {formatDateDisplay(note.created_at)}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{note.detail}</div>
+                                    </div>
+                                ))}
+                                {(detailContract.care_notes || []).length === 0 && (
+                                    <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm text-text-muted">
+                                        Chưa có cập nhật chăm sóc nào cho hợp đồng này.
+                                    </div>
+                                )}
                             </div>
                         </div>
 

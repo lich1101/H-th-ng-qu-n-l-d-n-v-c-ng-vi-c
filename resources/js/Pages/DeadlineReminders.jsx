@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
+import PaginationControls from '@/Components/PaginationControls';
 import { useToast } from '@/Contexts/ToastContext';
 
 const CHANNELS = [
@@ -38,6 +39,8 @@ export default function DeadlineReminders(props) {
     const [tasks, setTasks] = useState([]);
     const [selectedTaskId, setSelectedTaskId] = useState('');
     const [reminders, setReminders] = useState([]);
+    const [reminderMeta, setReminderMeta] = useState({ current_page: 1, last_page: 1, total: 0 });
+    const [reminderFilters, setReminderFilters] = useState({ per_page: 20, page: 1 });
     const [loading, setLoading] = useState(false);
     const [editingId, setEditingId] = useState(null);
     const [showForm, setShowForm] = useState(false);
@@ -57,17 +60,27 @@ export default function DeadlineReminders(props) {
         }
     };
 
-    const fetchReminders = async (taskId) => {
+    const fetchReminders = async (taskId, page = reminderFilters.page, nextFilters = reminderFilters) => {
         if (!taskId) {
             setReminders([]);
+            setReminderMeta({ current_page: 1, last_page: 1, total: 0 });
             return;
         }
         setLoading(true);
         try {
             const res = await axios.get(`/api/v1/tasks/${taskId}/reminders`, {
-                params: { per_page: 50 },
+                params: {
+                    page,
+                    per_page: nextFilters.per_page || 20,
+                },
             });
             setReminders(res.data?.data || []);
+            setReminderMeta({
+                current_page: res.data?.current_page || 1,
+                last_page: res.data?.last_page || 1,
+                total: res.data?.total || 0,
+            });
+            setReminderFilters((prev) => ({ ...prev, page: res.data?.current_page || page }));
         } catch (e) {
             toast.error(e?.response?.data?.message || 'Không tải được nhắc hạn.');
         } finally {
@@ -128,7 +141,7 @@ export default function DeadlineReminders(props) {
                 toast.success('Đã tạo nhắc hạn.');
             }
             closeForm();
-            await fetchReminders(selectedTaskId);
+            await fetchReminders(selectedTaskId, reminderFilters.page, reminderFilters);
         } catch (e) {
             toast.error(e?.response?.data?.message || 'Lưu nhắc hạn thất bại.');
         }
@@ -144,7 +157,7 @@ export default function DeadlineReminders(props) {
         try {
             await axios.delete(`/api/v1/tasks/${selectedTaskId}/reminders/${r.id}`);
             toast.success('Đã xóa nhắc hạn.');
-            await fetchReminders(selectedTaskId);
+            await fetchReminders(selectedTaskId, reminderFilters.page, reminderFilters);
         } catch (e) {
             toast.error(e?.response?.data?.message || 'Xóa nhắc hạn thất bại.');
         }
@@ -216,6 +229,20 @@ export default function DeadlineReminders(props) {
                         <p className="text-sm text-text-muted">Chưa có nhắc hạn cho công việc này.</p>
                     )}
                 </div>
+                <PaginationControls
+                    page={reminderMeta.current_page}
+                    lastPage={reminderMeta.last_page}
+                    total={reminderMeta.total}
+                    perPage={reminderFilters.per_page}
+                    label="nhắc hạn"
+                    loading={loading}
+                    onPageChange={(page) => fetchReminders(selectedTaskId, page, reminderFilters)}
+                    onPerPageChange={(perPage) => {
+                        const next = { ...reminderFilters, per_page: perPage, page: 1 };
+                        setReminderFilters(next);
+                        fetchReminders(selectedTaskId, 1, next);
+                    }}
+                />
             </div>
 
             <Modal
@@ -232,8 +259,10 @@ export default function DeadlineReminders(props) {
                             value={selectedTaskId}
                             onChange={(e) => {
                                 const value = e.target.value;
+                                const nextReminderFilters = { ...reminderFilters, page: 1 };
                                 setSelectedTaskId(value);
-                                fetchReminders(value);
+                                setReminderFilters(nextReminderFilters);
+                                fetchReminders(value, 1, nextReminderFilters);
                             }}
                         >
                             <option value="">-- Chọn công việc --</option>

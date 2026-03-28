@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
 import PageContainer from '@/Components/PageContainer';
+import PaginationControls from '@/Components/PaginationControls';
 import { useToast } from '@/Contexts/ToastContext';
 
 const LABELS = {
@@ -29,6 +30,7 @@ export default function TasksByStaff(props) {
     const [tasks, setTasks] = useState([]);
     const [users, setUsers] = useState([]);
     const [projects, setProjects] = useState([]);
+    const [paging, setPaging] = useState({ current_page: 1, last_page: 1, total: 0 });
     const [filters, setFilters] = useState({
         project_id: '',
         assignee_id: '',
@@ -36,6 +38,8 @@ export default function TasksByStaff(props) {
         search: '',
         deadline_from: '',
         deadline_to: '',
+        per_page: 20,
+        page: 1,
     });
 
     const fetchUsers = async () => {
@@ -56,21 +60,28 @@ export default function TasksByStaff(props) {
         }
     };
 
-    const fetchTasks = async () => {
+    const fetchTasks = async (page = filters.page, nextFilters = filters) => {
         setLoading(true);
         try {
             const res = await axios.get('/api/v1/tasks', {
                 params: {
-                    per_page: 200,
-                    ...(filters.project_id ? { project_id: filters.project_id } : {}),
-                    ...(filters.assignee_id ? { assignee_id: filters.assignee_id } : {}),
-                    ...(filters.status ? { status: filters.status } : {}),
-                    ...(filters.search ? { search: filters.search } : {}),
-                    ...(filters.deadline_from ? { deadline_from: filters.deadline_from } : {}),
-                    ...(filters.deadline_to ? { deadline_to: filters.deadline_to } : {}),
+                    page,
+                    per_page: nextFilters.per_page || 20,
+                    ...(nextFilters.project_id ? { project_id: nextFilters.project_id } : {}),
+                    ...(nextFilters.assignee_id ? { assignee_id: nextFilters.assignee_id } : {}),
+                    ...(nextFilters.status ? { status: nextFilters.status } : {}),
+                    ...(nextFilters.search ? { search: nextFilters.search } : {}),
+                    ...(nextFilters.deadline_from ? { deadline_from: nextFilters.deadline_from } : {}),
+                    ...(nextFilters.deadline_to ? { deadline_to: nextFilters.deadline_to } : {}),
                 },
             });
             setTasks(res.data?.data || []);
+            setPaging({
+                current_page: res.data?.current_page || 1,
+                last_page: res.data?.last_page || 1,
+                total: res.data?.total || 0,
+            });
+            setFilters((prev) => ({ ...prev, page: res.data?.current_page || page }));
         } catch (e) {
             toast.error(e?.response?.data?.message || 'Không tải được công việc theo nhân sự.');
         } finally {
@@ -117,7 +128,11 @@ export default function TasksByStaff(props) {
                             <button
                                 type="button"
                                 className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white"
-                                onClick={fetchTasks}
+                                onClick={() => {
+                                    const next = { ...filters, page: 1 };
+                                    setFilters(next);
+                                    fetchTasks(1, next);
+                                }}
                             >
                                 Lọc
                             </button>
@@ -247,6 +262,21 @@ export default function TasksByStaff(props) {
                         Chưa có công việc theo bộ lọc hiện tại.
                     </div>
                 )}
+
+                <PaginationControls
+                    page={paging.current_page}
+                    lastPage={paging.last_page}
+                    total={paging.total}
+                    perPage={filters.per_page}
+                    label="công việc"
+                    loading={loading}
+                    onPageChange={(page) => fetchTasks(page, filters)}
+                    onPerPageChange={(perPage) => {
+                        const next = { ...filters, per_page: perPage, page: 1 };
+                        setFilters(next);
+                        fetchTasks(1, next);
+                    }}
+                />
             </div>
         </PageContainer>
     );

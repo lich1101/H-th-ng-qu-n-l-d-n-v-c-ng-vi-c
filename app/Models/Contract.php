@@ -98,6 +98,18 @@ class Contract extends Model
         return $this->hasMany(ContractItem::class);
     }
 
+    public function careStaffUsers()
+    {
+        return $this->belongsToMany(User::class, 'contract_care_staff')
+            ->withPivot('assigned_by')
+            ->withTimestamps();
+    }
+
+    public function careNotes()
+    {
+        return $this->hasMany(ContractCareNote::class)->latest();
+    }
+
     public function payments()
     {
         return $this->hasMany(ContractPayment::class);

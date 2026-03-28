@@ -3,6 +3,7 @@ import axios from 'axios';
 import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
+import PaginationControls from '@/Components/PaginationControls';
 import { useToast } from '@/Contexts/ToastContext';
 
 const statusLabels = {
@@ -33,7 +34,8 @@ export default function DepartmentAssignments(props) {
     const [clients, setClients] = useState([]);
     const [contracts, setContracts] = useState([]);
     const [departments, setDepartments] = useState([]);
-    const [filters, setFilters] = useState({ department_id: '', status: '' });
+    const [paging, setPaging] = useState({ current_page: 1, last_page: 1, total: 0 });
+    const [filters, setFilters] = useState({ department_id: '', status: '', per_page: 20, page: 1 });
     const [showForm, setShowForm] = useState(false);
     const [progressModal, setProgressModal] = useState({ open: false, assignment: null });
     const [form, setForm] = useState({
@@ -50,15 +52,33 @@ export default function DepartmentAssignments(props) {
         progress_note: '',
     });
 
-    const fetchData = async () => {
+    const fetchData = async (pageOrFilters = filters.page, maybeFilters = filters) => {
+        const nextFilters = typeof pageOrFilters === 'object' && pageOrFilters !== null
+            ? pageOrFilters
+            : maybeFilters;
+        const nextPage = typeof pageOrFilters === 'object' && pageOrFilters !== null
+            ? Number(pageOrFilters.page || 1)
+            : Number(pageOrFilters || 1);
         try {
             const [assignRes, deptRes, clientRes, contractRes] = await Promise.all([
-                axios.get('/api/v1/department-assignments', { params: { per_page: 50, ...filters } }),
+                axios.get('/api/v1/department-assignments', {
+                    params: {
+                        ...nextFilters,
+                        page: nextPage,
+                        per_page: nextFilters.per_page || 20,
+                    },
+                }),
                 axios.get('/api/v1/departments'),
                 axios.get('/api/v1/crm/clients', { params: { per_page: 200 } }),
                 axios.get('/api/v1/contracts', { params: { per_page: 200 } }),
             ]);
             setAssignments(assignRes.data?.data || []);
+            setPaging({
+                current_page: assignRes.data?.current_page || 1,
+                last_page: assignRes.data?.last_page || 1,
+                total: assignRes.data?.total || 0,
+            });
+            setFilters((prev) => ({ ...prev, page: assignRes.data?.current_page || nextPage }));
             setDepartments(deptRes.data || []);
             setClients(clientRes.data?.data || []);
             setContracts(contractRes.data?.data || []);
@@ -73,7 +93,7 @@ export default function DepartmentAssignments(props) {
     }, []);
 
     const stats = useMemo(() => {
-        const total = assignments.length;
+        const total = paging.total || assignments.length;
         const inProgress = assignments.filter((a) => a.status === 'in_progress').length;
         const done = assignments.filter((a) => a.status === 'done').length;
         return [
@@ -82,7 +102,7 @@ export default function DepartmentAssignments(props) {
             { label: 'Hoàn tất', value: String(done) },
             { label: 'Vai trò', value: userRole || '—' },
         ];
-    }, [assignments, userRole]);
+    }, [assignments, paging.total, userRole]);
 
     const resetForm = () => {
         setForm({
@@ -122,7 +142,7 @@ export default function DepartmentAssignments(props) {
             await axios.post('/api/v1/department-assignments', payload);
             toast.success('Đã tạo điều phối.');
             closeForm();
-            await fetchData();
+            await fetchData(filters.page, filters);
         } catch (error) {
             toast.error(error?.response?.data?.message || 'Tạo điều phối thất bại.');
         }
@@ -134,7 +154,7 @@ export default function DepartmentAssignments(props) {
         try {
             await axios.delete(`/api/v1/department-assignments/${assignment.id}`);
             toast.success('Đã xóa điều phối.');
-            await fetchData();
+            await fetchData(filters.page, filters);
         } catch (error) {
             toast.error(error?.response?.data?.message || 'Xóa điều phối thất bại.');
         }
@@ -151,7 +171,7 @@ export default function DepartmentAssignments(props) {
             });
             toast.success('Đã cập nhật tiến độ.');
             setProgressModal({ open: false, assignment: null });
-            await fetchData();
+            await fetchData(filters.page, filters);
         } catch (error) {
             toast.error(error?.response?.data?.message || 'Cập nhật tiến độ thất bại.');
         }
@@ -196,7 +216,21 @@ export default function DepartmentAssignments(props) {
                 <FilterToolbar
                     title="Bộ lọc điều phối"
                     description="Lọc nhanh theo phòng ban và trạng thái triển khai để theo dõi nhóm đang xử lý."
-                    actions={null}
+                    actions={(
+                        <FilterActionGroup>
+                            <button
+                                type="button"
+                                className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700"
+                                onClick={() => {
+                                    const next = { ...filters, page: 1 };
+                                    setFilters(next);
+                                    fetchData(1, next);
+                                }}
+                            >
+                                Lọc
+                            </button>
+                        </FilterActionGroup>
+                    )}
                 >
                     <FilterField label="Phòng ban">
                         <select
@@ -292,6 +326,19 @@ export default function DepartmentAssignments(props) {
                         </div>
                     )}
                 </div>
+                <PaginationControls
+                    page={paging.current_page}
+                    lastPage={paging.last_page}
+                    total={paging.total}
+                    perPage={filters.per_page}
+                    label="điều phối"
+                    onPageChange={(page) => fetchData(page, filters)}
+                    onPerPageChange={(perPage) => {
+                        const next = { ...filters, per_page: perPage, page: 1 };
+                        setFilters(next);
+                        fetchData(1, next);
+                    }}
+                />
             </div>
 
             <Modal

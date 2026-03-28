@@ -48,6 +48,9 @@ class CrmScope
                     ->orWhereHas('collector', function (Builder $collectorQuery) use ($deptIds) {
                         $collectorQuery->whereIn('department_id', $deptIds);
                     })
+                    ->orWhereHas('careStaffUsers', function (Builder $careStaffQuery) use ($deptIds) {
+                        $careStaffQuery->whereIn('department_id', $deptIds);
+                    })
                     ->orWhereHas('client', function (Builder $clientQuery) use ($deptIds) {
                         $clientQuery->whereIn('assigned_department_id', $deptIds);
                     });
@@ -57,6 +60,9 @@ class CrmScope
         return $query->where(function (Builder $builder) use ($user) {
             $builder->where('created_by', $user->id)
                 ->orWhere('collector_user_id', $user->id)
+                ->orWhereHas('careStaffUsers', function (Builder $careStaffQuery) use ($user) {
+                    $careStaffQuery->where('users.id', $user->id);
+                })
                 ->orWhereHas('client', function (Builder $clientQuery) use ($user) {
                     $clientQuery->where('assigned_staff_id', $user->id)
                         ->orWhere('sales_owner_id', $user->id)

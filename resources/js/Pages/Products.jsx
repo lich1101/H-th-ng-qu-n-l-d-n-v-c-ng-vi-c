@@ -3,6 +3,7 @@ import axios from 'axios';
 import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
+import PaginationControls from '@/Components/PaginationControls';
 import { useToast } from '@/Contexts/ToastContext';
 
 function FormField({ label, required = false, children, className = '' }) {
@@ -27,7 +28,8 @@ export default function Products(props) {
     const [loading, setLoading] = useState(false);
     const [editingId, setEditingId] = useState(null);
     const [showForm, setShowForm] = useState(false);
-    const [filters, setFilters] = useState({ search: '', is_active: '', category_id: '' });
+    const [productMeta, setProductMeta] = useState({ current_page: 1, last_page: 1, total: 0 });
+    const [filters, setFilters] = useState({ search: '', is_active: '', category_id: '', per_page: 20, page: 1 });
     const [form, setForm] = useState({
         code: '',
         name: '',
@@ -37,7 +39,8 @@ export default function Products(props) {
         description: '',
         is_active: true,
     });
-    const [categoryFilters, setCategoryFilters] = useState({ search: '', is_active: '' });
+    const [categoryMeta, setCategoryMeta] = useState({ current_page: 1, last_page: 1, total: 0 });
+    const [categoryFilters, setCategoryFilters] = useState({ search: '', is_active: '', per_page: 10, page: 1 });
     const [showCategoryForm, setShowCategoryForm] = useState(false);
     const [editingCategoryId, setEditingCategoryId] = useState(null);
     const [categoryForm, setCategoryForm] = useState({
@@ -47,11 +50,29 @@ export default function Products(props) {
         is_active: true,
     });
 
-    const fetchProducts = async (nextFilters = filters) => {
+    const fetchProducts = async (pageOrFilters = filters.page, maybeFilters = filters) => {
+        const nextFilters = typeof pageOrFilters === 'object' && pageOrFilters !== null
+            ? pageOrFilters
+            : maybeFilters;
+        const nextPage = typeof pageOrFilters === 'object' && pageOrFilters !== null
+            ? Number(pageOrFilters.page || 1)
+            : Number(pageOrFilters || 1);
         setLoading(true);
         try {
-            const res = await axios.get('/api/v1/products', { params: { ...nextFilters, per_page: 200 } });
+            const res = await axios.get('/api/v1/products', {
+                params: {
+                    ...nextFilters,
+                    page: nextPage,
+                    per_page: nextFilters.per_page || 20,
+                },
+            });
             setProducts(res.data?.data || []);
+            setProductMeta({
+                current_page: res.data?.current_page || 1,
+                last_page: res.data?.last_page || 1,
+                total: res.data?.total || 0,
+            });
+            setFilters((prev) => ({ ...prev, page: res.data?.current_page || nextPage }));
         } catch (error) {
             toast.error(error?.response?.data?.message || 'Không tải được sản phẩm.');
         } finally {
@@ -59,10 +80,28 @@ export default function Products(props) {
         }
     };
 
-    const fetchCategories = async (nextFilters = categoryFilters) => {
+    const fetchCategories = async (pageOrFilters = categoryFilters.page, maybeFilters = categoryFilters) => {
+        const nextFilters = typeof pageOrFilters === 'object' && pageOrFilters !== null
+            ? pageOrFilters
+            : maybeFilters;
+        const nextPage = typeof pageOrFilters === 'object' && pageOrFilters !== null
+            ? Number(pageOrFilters.page || 1)
+            : Number(pageOrFilters || 1);
         try {
-            const res = await axios.get('/api/v1/product-categories', { params: { ...nextFilters, per_page: 200 } });
+            const res = await axios.get('/api/v1/product-categories', {
+                params: {
+                    ...nextFilters,
+                    page: nextPage,
+                    per_page: nextFilters.per_page || 10,
+                },
+            });
             setCategories(res.data?.data || []);
+            setCategoryMeta({
+                current_page: res.data?.current_page || 1,
+                last_page: res.data?.last_page || 1,
+                total: res.data?.total || 0,
+            });
+            setCategoryFilters((prev) => ({ ...prev, page: res.data?.current_page || nextPage }));
         } catch (error) {
             toast.error(error?.response?.data?.message || 'Không tải được danh mục sản phẩm.');
         }
@@ -75,7 +114,7 @@ export default function Products(props) {
     }, []);
 
     const stats = useMemo(() => {
-        const total = products.length;
+        const total = productMeta.total || products.length;
         const active = products.filter((p) => p.is_active).length;
         return [
             { label: 'Tổng sản phẩm', value: String(total) },
@@ -83,7 +122,7 @@ export default function Products(props) {
             { label: 'Ngưng', value: String(total - active) },
             { label: 'Vai trò', value: userRole || '—' },
         ];
-    }, [products, userRole]);
+    }, [productMeta.total, products, userRole]);
 
     const resetForm = () => {
         setEditingId(null);
@@ -135,7 +174,7 @@ export default function Products(props) {
                 toast.success('Đã tạo sản phẩm.');
             }
             closeForm();
-            await fetchProducts();
+            await fetchProducts(filters.page, filters);
         } catch (error) {
             toast.error(error?.response?.data?.message || 'Lưu sản phẩm thất bại.');
         }
@@ -147,7 +186,7 @@ export default function Products(props) {
         try {
             await axios.delete(`/api/v1/products/${product.id}`);
             toast.success('Đã xóa sản phẩm.');
-            await fetchProducts();
+            await fetchProducts(filters.page, filters);
         } catch (error) {
             toast.error(error?.response?.data?.message || 'Xóa sản phẩm thất bại.');
         }
@@ -197,7 +236,7 @@ export default function Products(props) {
                 toast.success('Đã tạo danh mục.');
             }
             closeCategoryForm();
-            await fetchCategories();
+            await fetchCategories(categoryFilters.page, categoryFilters);
         } catch (error) {
             toast.error(error?.response?.data?.message || 'Lưu danh mục thất bại.');
         }
@@ -209,7 +248,7 @@ export default function Products(props) {
         try {
             await axios.delete(`/api/v1/product-categories/${category.id}`);
             toast.success('Đã xóa danh mục.');
-            await fetchCategories();
+            await fetchCategories(categoryFilters.page, categoryFilters);
         } catch (error) {
             toast.error(error?.response?.data?.message || 'Xóa danh mục thất bại.');
         }
@@ -241,7 +280,11 @@ export default function Products(props) {
                                 <button
                                     type="button"
                                     className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700"
-                                    onClick={() => fetchCategories(categoryFilters)}
+                                    onClick={() => {
+                                        const next = { ...categoryFilters, page: 1 };
+                                        setCategoryFilters(next);
+                                        fetchCategories(1, next);
+                                    }}
                                 >
                                     Lọc
                                 </button>
@@ -316,6 +359,20 @@ export default function Products(props) {
                             <p className="text-sm text-text-muted">Chưa có danh mục nào.</p>
                         )}
                     </div>
+                    <PaginationControls
+                        page={categoryMeta.current_page}
+                        lastPage={categoryMeta.last_page}
+                        total={categoryMeta.total}
+                        perPage={categoryFilters.per_page}
+                        label="danh mục"
+                        className="border-0 bg-transparent px-0"
+                        onPageChange={(page) => fetchCategories(page, categoryFilters)}
+                        onPerPageChange={(perPage) => {
+                            const next = { ...categoryFilters, per_page: perPage, page: 1 };
+                            setCategoryFilters(next);
+                            fetchCategories(1, next);
+                        }}
+                    />
                 </div>
 
                 <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card p-5 lg:col-span-2">
@@ -334,7 +391,11 @@ export default function Products(props) {
                                 <button
                                     type="button"
                                     className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700"
-                                    onClick={() => fetchProducts(filters)}
+                                    onClick={() => {
+                                        const next = { ...filters, page: 1 };
+                                        setFilters(next);
+                                        fetchProducts(1, next);
+                                    }}
                                 >
                                     Lọc
                                 </button>
@@ -442,6 +503,20 @@ export default function Products(props) {
                             </tbody>
                         </table>
                     </div>
+                    <PaginationControls
+                        page={productMeta.current_page}
+                        lastPage={productMeta.last_page}
+                        total={productMeta.total}
+                        perPage={filters.per_page}
+                        label="sản phẩm"
+                        loading={loading}
+                        onPageChange={(page) => fetchProducts(page, filters)}
+                        onPerPageChange={(perPage) => {
+                            const next = { ...filters, per_page: perPage, page: 1 };
+                            setFilters(next);
+                            fetchProducts(1, next);
+                        }}
+                    />
                 </div>
             </div>
 

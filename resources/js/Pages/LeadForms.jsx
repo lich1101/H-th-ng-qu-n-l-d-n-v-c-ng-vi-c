@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
+import PaginationControls from '@/Components/PaginationControls';
 import { useToast } from '@/Contexts/ToastContext';
 
 const BUILDER_TABS = [
@@ -294,6 +295,8 @@ function FormPreview({ form, settings, logoPreview }) {
 export default function LeadForms(props) {
     const toast = useToast();
     const [forms, setForms] = useState([]);
+    const [formsMeta, setFormsMeta] = useState({ current_page: 1, last_page: 1, total: 0 });
+    const [listFilters, setListFilters] = useState({ per_page: 12, page: 1 });
     const [leadTypes, setLeadTypes] = useState([]);
     const [departments, setDepartments] = useState([]);
     const [staffUsers, setStaffUsers] = useState([]);
@@ -318,16 +321,33 @@ export default function LeadForms(props) {
         return () => URL.revokeObjectURL(url);
     }, [logoFile]);
 
-    const fetchData = async () => {
+    const fetchData = async (pageOrFilters = listFilters.page, maybeFilters = listFilters) => {
+        const nextFilters = typeof pageOrFilters === 'object' && pageOrFilters !== null
+            ? pageOrFilters
+            : maybeFilters;
+        const nextPage = typeof pageOrFilters === 'object' && pageOrFilters !== null
+            ? Number(pageOrFilters.page || 1)
+            : Number(pageOrFilters || 1);
         try {
             const [formsRes, leadRes, deptRes, settingsRes, usersRes] = await Promise.all([
-                axios.get('/api/v1/lead-forms', { params: { per_page: 200 } }),
+                axios.get('/api/v1/lead-forms', {
+                    params: {
+                        per_page: nextFilters.per_page || 12,
+                        page: nextPage,
+                    },
+                }),
                 axios.get('/api/v1/lead-types'),
                 axios.get('/api/v1/departments'),
                 axios.get('/api/v1/settings'),
                 axios.get('/api/v1/users/lookup'),
             ]);
             setForms(formsRes.data?.data || []);
+            setFormsMeta({
+                current_page: formsRes.data?.current_page || 1,
+                last_page: formsRes.data?.last_page || 1,
+                total: formsRes.data?.total || 0,
+            });
+            setListFilters((prev) => ({ ...prev, page: formsRes.data?.current_page || nextPage }));
             setLeadTypes(leadRes.data || []);
             setDepartments(deptRes.data || []);
             setSettings(settingsRes.data || null);
@@ -517,7 +537,7 @@ export default function LeadForms(props) {
             }
 
             closeForm();
-            await fetchData();
+            await fetchData(listFilters.page, listFilters);
         } catch (error) {
             toast.error(error?.response?.data?.message || 'Không thể lưu cấu hình form.');
         } finally {
@@ -530,7 +550,7 @@ export default function LeadForms(props) {
         try {
             await axios.delete(`/api/v1/lead-forms/${item.id}`);
             toast.success('Đã xóa form.');
-            await fetchData();
+            await fetchData(listFilters.page, listFilters);
         } catch (error) {
             toast.error(error?.response?.data?.message || 'Xóa form thất bại.');
         }
@@ -543,12 +563,12 @@ export default function LeadForms(props) {
             0
         );
         return [
-            { label: 'Tổng form', value: String(forms.length) },
+            { label: 'Tổng form', value: String(formsMeta.total || forms.length) },
             { label: 'Đang chạy', value: String(active) },
             { label: 'Tổng trường cấu hình', value: String(totalFields) },
             { label: 'Đích nhận dữ liệu', value: 'CRM khách hàng' },
         ];
-    }, [forms]);
+    }, [forms, formsMeta.total]);
 
     const mappedFields = useMemo(
         () =>
@@ -728,6 +748,19 @@ export default function LeadForms(props) {
                         </div>
                     )}
                 </div>
+                <PaginationControls
+                    page={formsMeta.current_page}
+                    lastPage={formsMeta.last_page}
+                    total={formsMeta.total}
+                    perPage={listFilters.per_page}
+                    label="form"
+                    onPageChange={(page) => fetchData(page, listFilters)}
+                    onPerPageChange={(perPage) => {
+                        const next = { ...listFilters, per_page: perPage, page: 1 };
+                        setListFilters(next);
+                        fetchData(1, next);
+                    }}
+                />
             </div>
 
             <Modal

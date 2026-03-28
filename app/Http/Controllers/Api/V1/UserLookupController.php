@@ -17,8 +17,10 @@ class UserLookupController extends Controller
             ->where('is_active', true);
 
         $purpose = (string) $request->input('purpose', '');
+        $skipDefaultRoleScope = false;
 
         if ($purpose === 'contract_collector') {
+            $skipDefaultRoleScope = true;
             if ($user && $user->role === 'nhan_vien') {
                 $query->where('id', $user->id);
             } elseif ($user && $user->role === 'quan_ly') {
@@ -37,20 +39,35 @@ class UserLookupController extends Controller
             }
         }
 
+        if ($purpose === 'contract_care_staff') {
+            $skipDefaultRoleScope = true;
+            if ($user && $user->role === 'quan_ly') {
+                $deptIds = $user->managedDepartments()->pluck('id');
+                $query->where('role', 'nhan_vien')
+                    ->whereIn('department_id', $deptIds);
+            } elseif ($user && in_array($user->role, ['admin', 'ke_toan'], true)) {
+                $query->where('role', 'nhan_vien');
+            } else {
+                $query->whereRaw('1 = 0');
+            }
+        }
+
         if ($request->filled('role')) {
             $query->where('role', (string) $request->input('role'));
         }
 
-        if ($user && $user->role === 'quan_ly') {
-            $deptIds = $user->managedDepartments()->pluck('id');
-            $query->where(function ($builder) use ($deptIds, $user) {
-                $builder->whereIn('department_id', $deptIds)
-                    ->orWhere('id', $user->id);
-            });
-        }
+        if (! $skipDefaultRoleScope) {
+            if ($user && $user->role === 'quan_ly') {
+                $deptIds = $user->managedDepartments()->pluck('id');
+                $query->where(function ($builder) use ($deptIds, $user) {
+                    $builder->whereIn('department_id', $deptIds)
+                        ->orWhere('id', $user->id);
+                });
+            }
 
-        if ($user && $user->role === 'nhan_vien') {
-            $query->where('id', $user->id);
+            if ($user && $user->role === 'nhan_vien') {
+                $query->where('id', $user->id);
+            }
         }
 
         if ($request->filled('search')) {

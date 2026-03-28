@@ -4,6 +4,7 @@ import AppIcon from '@/Components/AppIcon';
 import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
+import PaginationControls from '@/Components/PaginationControls';
 import { useToast } from '@/Contexts/ToastContext';
 
 const DEFAULT_PRIORITIES = [
@@ -1978,6 +1979,21 @@ export default function TasksBoard(props) {
                             })}
                         </div>
                     )}
+
+                    <PaginationControls
+                        page={metaPaging.current_page}
+                        lastPage={metaPaging.last_page}
+                        total={metaPaging.total}
+                        perPage={filters.per_page}
+                        label="công việc"
+                        loading={loading}
+                        onPageChange={(page) => fetchTasks(page, filters)}
+                        onPerPageChange={(perPage) => {
+                            const next = { ...filters, per_page: perPage, page: 1 };
+                            setFilters(next);
+                            fetchTasks(1, next);
+                        }}
+                    />
             </div>
 
             {showTaskChat && (

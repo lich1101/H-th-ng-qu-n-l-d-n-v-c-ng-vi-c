@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
+import PaginationControls from '@/Components/PaginationControls';
 import { useToast } from '@/Contexts/ToastContext';
 
 const TABS = [
@@ -204,6 +205,7 @@ export default function SystemSettings(props) {
         platform: '',
         apns_environment: '',
         notifications_enabled: '',
+        per_page: 20,
     });
     const [users, setUsers] = useState([]);
     const [testingPush, setTestingPush] = useState(false);
@@ -423,7 +425,7 @@ export default function SystemSettings(props) {
             const res = await axios.get('/api/v1/device-tokens', {
                 params: {
                     page,
-                    per_page: 20,
+                    per_page: nextFilters.per_page || 20,
                     ...(nextFilters.search ? { search: nextFilters.search } : {}),
                     ...(nextFilters.platform ? { platform: nextFilters.platform } : {}),
                     ...(nextFilters.apns_environment ? { apns_environment: nextFilters.apns_environment } : {}),
@@ -2268,26 +2270,22 @@ export default function SystemSettings(props) {
                                 </table>
                             </div>
 
-                            <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 text-xs text-text-muted">
-                                <span>Trang {deviceMeta.current_page || 1}/{deviceMeta.last_page || 1}</span>
-                                <div className="flex items-center gap-2">
-                                    <button
-                                        type="button"
-                                        className="rounded-lg border border-slate-200 px-3 py-1 font-semibold text-slate-700 disabled:opacity-40"
-                                        disabled={(deviceMeta.current_page || 1) <= 1 || deviceLoading}
-                                        onClick={() => fetchDevices((deviceMeta.current_page || 1) - 1)}
-                                    >
-                                        Trước
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className="rounded-lg border border-slate-200 px-3 py-1 font-semibold text-slate-700 disabled:opacity-40"
-                                        disabled={(deviceMeta.current_page || 1) >= (deviceMeta.last_page || 1) || deviceLoading}
-                                        onClick={() => fetchDevices((deviceMeta.current_page || 1) + 1)}
-                                    >
-                                        Sau
-                                    </button>
-                                </div>
+                            <div className="border-t border-slate-100 px-4 py-3">
+                                <PaginationControls
+                                    page={deviceMeta.current_page}
+                                    lastPage={deviceMeta.last_page}
+                                    total={deviceMeta.total}
+                                    perPage={deviceFilters.per_page}
+                                    label="thiết bị"
+                                    loading={deviceLoading}
+                                    className="mt-0 border-0 bg-transparent px-0 py-0"
+                                    onPageChange={(page) => fetchDevices(page, deviceFilters)}
+                                    onPerPageChange={(perPage) => {
+                                        const next = { ...deviceFilters, per_page: perPage };
+                                        setDeviceFilters(next);
+                                        fetchDevices(1, next);
+                                    }}
+                                />
                             </div>
                         </div>
                     </div>

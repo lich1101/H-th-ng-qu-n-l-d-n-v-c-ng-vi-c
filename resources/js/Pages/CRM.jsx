@@ -5,6 +5,7 @@ import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } fro
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import AppIcon from '@/Components/AppIcon';
+import PaginationControls from '@/Components/PaginationControls';
 import { useToast } from '@/Contexts/ToastContext';
 
 const badgeStyle = (hex) => ({
@@ -954,6 +955,19 @@ export default function CRM(props) {
                                 </tbody>
                             </table>
                         </div>
+                        <PaginationControls
+                            page={clientMeta.current_page}
+                            lastPage={clientMeta.last_page}
+                            total={clientMeta.total}
+                            perPage={clientFilters.per_page}
+                            label="khách hàng"
+                            onPageChange={(page) => fetchClients(page, clientFilters)}
+                            onPerPageChange={(perPage) => {
+                                const next = { ...clientFilters, per_page: perPage };
+                                setClientFilters(next);
+                                fetchClients(1, next);
+                            }}
+                        />
                     </div>
 
                     <Modal
@@ -1298,6 +1312,19 @@ export default function CRM(props) {
                                 </tbody>
                             </table>
                         </div>
+                        <PaginationControls
+                            page={paymentMeta.current_page}
+                            lastPage={paymentMeta.last_page}
+                            total={paymentMeta.total}
+                            perPage={paymentFilters.per_page}
+                            label="thanh toán"
+                            onPageChange={(page) => fetchPayments(page, paymentFilters)}
+                            onPerPageChange={(perPage) => {
+                                const next = { ...paymentFilters, per_page: perPage };
+                                setPaymentFilters(next);
+                                fetchPayments(1, next);
+                            }}
+                        />
                     </div>
 
                     <Modal

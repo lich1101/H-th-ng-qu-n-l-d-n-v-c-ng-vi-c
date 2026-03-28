@@ -4,6 +4,7 @@ import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } fro
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import RoleBarChart from '@/Components/RoleBarChart';
+import PaginationControls from '@/Components/PaginationControls';
 
 const roleLabels = {
     admin: 'Quản trị',
@@ -25,10 +26,10 @@ function FormField({ label, required = false, children, className = '' }) {
 }
 
 export default function UserAccountsDashboard(props) {
-    const [filters, setFilters] = useState({ search: '', role: '', status: '', page: 1 });
+    const [filters, setFilters] = useState({ search: '', role: '', status: '', per_page: 10, page: 1 });
     const [usersData, setUsersData] = useState([]);
     const [departments, setDepartments] = useState([]);
-    const [pagination, setPagination] = useState({ current_page: 1, last_page: 1 });
+    const [pagination, setPagination] = useState({ current_page: 1, last_page: 1, total: 0 });
     const [stats, setStats] = useState({
         total_users: 0,
         active_users: 0,
@@ -69,6 +70,7 @@ export default function UserAccountsDashboard(props) {
             setPagination({
                 current_page: usersResponse.data.users.current_page,
                 last_page: usersResponse.data.users.last_page,
+                total: usersResponse.data.users.total || 0,
             });
             setStats(statsResponse.data);
         } finally {
@@ -87,7 +89,7 @@ export default function UserAccountsDashboard(props) {
 
     useEffect(() => {
         fetchAccounts(filters);
-    }, [filters.page, filters.role, filters.status]);
+    }, [filters.page, filters.per_page, filters.role, filters.status]);
 
     useEffect(() => {
         fetchDepartments();
@@ -565,29 +567,16 @@ export default function UserAccountsDashboard(props) {
                             </tbody>
                         </table>
                     </div>
-                    <div className="flex items-center justify-between text-xs text-text-muted mt-3">
-                        <span>
-                            Trang {pagination.current_page} / {pagination.last_page}
-                        </span>
-                        <div className="space-x-2">
-                            <button
-                                type="button"
-                                disabled={pagination.current_page <= 1}
-                                onClick={() => setFilters((prev) => ({ ...prev, page: prev.page - 1 }))}
-                                className="rounded-lg border border-slate-200 px-2 py-1 disabled:opacity-50"
-                            >
-                                Trước
-                            </button>
-                            <button
-                                type="button"
-                                disabled={pagination.current_page >= pagination.last_page}
-                                onClick={() => setFilters((prev) => ({ ...prev, page: prev.page + 1 }))}
-                                className="rounded-lg border border-slate-200 px-2 py-1 disabled:opacity-50"
-                            >
-                                Sau
-                            </button>
-                        </div>
-                    </div>
+                    <PaginationControls
+                        page={pagination.current_page}
+                        lastPage={pagination.last_page}
+                        total={pagination.total}
+                        perPage={filters.per_page}
+                        label="tài khoản"
+                        loading={loading}
+                        onPageChange={(page) => setFilters((prev) => ({ ...prev, page }))}
+                        onPerPageChange={(perPage) => setFilters((prev) => ({ ...prev, per_page: perPage, page: 1 }))}
+                    />
                 </div>
                 <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
                     <h3 className="font-semibold text-slate-900 mb-3">Phân bổ vai trò</h3>

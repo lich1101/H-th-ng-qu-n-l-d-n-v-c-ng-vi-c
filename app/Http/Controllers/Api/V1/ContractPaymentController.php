@@ -140,10 +140,17 @@ class ContractPaymentController extends Controller
         }
 
         $contract->loadMissing('collector');
+        $contract->loadMissing('careStaffUsers:id,department_id');
 
-        return $contract->collector
+        if ($contract->collector
             && $contract->collector->department_id
-            && $deptIds->contains((int) $contract->collector->department_id);
+            && $deptIds->contains((int) $contract->collector->department_id)) {
+            return true;
+        }
+
+        return $contract->careStaffUsers->contains(function ($staff) use ($deptIds) {
+            return $staff->department_id && $deptIds->contains((int) $staff->department_id);
+        });
     }
 
     private function isStaffLinkedToContract(User $user, Contract $contract): bool
@@ -169,7 +176,7 @@ class ContractPaymentController extends Controller
             return true;
         }
 
-        return $this->isCareStaff($user, $client);
+        return $this->isCareStaff($user, $client) || $this->isContractCareStaff($user, $contract);
     }
 
     private function isCareStaff(User $user, Client $client): bool
@@ -181,6 +188,19 @@ class ContractPaymentController extends Controller
         }
 
         return $client->careStaffUsers()
+            ->where('users.id', $user->id)
+            ->exists();
+    }
+
+    private function isContractCareStaff(User $user, Contract $contract): bool
+    {
+        if ($contract->relationLoaded('careStaffUsers')) {
+            return $contract->careStaffUsers->contains(function ($staff) use ($user) {
+                return (int) $staff->id === (int) $user->id;
+            });
+        }
+
+        return $contract->careStaffUsers()
             ->where('users.id', $user->id)
             ->exists();
     }

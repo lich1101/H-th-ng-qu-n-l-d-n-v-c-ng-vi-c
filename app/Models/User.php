@@ -69,6 +69,18 @@ class User extends Authenticatable
         return $this->hasMany(ClientCareNote::class);
     }
 
+    public function caredContracts()
+    {
+        return $this->belongsToMany(Contract::class, 'contract_care_staff')
+            ->withPivot('assigned_by')
+            ->withTimestamps();
+    }
+
+    public function contractCareNotes()
+    {
+        return $this->hasMany(ContractCareNote::class);
+    }
+
     /**
      * The attributes that should be hidden for serialization.
      *

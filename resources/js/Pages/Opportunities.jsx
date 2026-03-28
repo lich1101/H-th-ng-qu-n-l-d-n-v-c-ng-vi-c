@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import PageContainer from '@/Components/PageContainer';
 import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
+import PaginationControls from '@/Components/PaginationControls';
 import { useToast } from '@/Contexts/ToastContext';
 
 const toColorStyle = (hex) => ({
@@ -17,19 +18,39 @@ export default function Opportunities(props) {
 
     const [leadTypes, setLeadTypes] = useState([]);
     const [clients, setClients] = useState([]);
-    const [search, setSearch] = useState('');
-    const [selectedLead, setSelectedLead] = useState('');
+    const [clientMeta, setClientMeta] = useState({ current_page: 1, last_page: 1, total: 0 });
+    const [filters, setFilters] = useState({ search: '', lead_type_id: '', per_page: 20, page: 1 });
     const [loading, setLoading] = useState(true);
 
-    const fetchData = async () => {
+    const fetchData = async (pageOrFilters = filters.page, maybeFilters = filters) => {
+        const nextFilters = typeof pageOrFilters === 'object' && pageOrFilters !== null
+            ? pageOrFilters
+            : maybeFilters;
+        const nextPage = typeof pageOrFilters === 'object' && pageOrFilters !== null
+            ? Number(pageOrFilters.page || 1)
+            : Number(pageOrFilters || 1);
         setLoading(true);
         try {
             const [typesRes, clientsRes] = await Promise.all([
                 axios.get('/api/v1/lead-types'),
-                axios.get('/api/v1/crm/clients', { params: { lead_only: true, per_page: 200 } }),
+                axios.get('/api/v1/crm/clients', {
+                    params: {
+                        lead_only: true,
+                        per_page: nextFilters.per_page || 20,
+                        page: nextPage,
+                        ...(nextFilters.search ? { search: nextFilters.search } : {}),
+                        ...(nextFilters.lead_type_id ? { lead_type_id: nextFilters.lead_type_id } : {}),
+                    },
+                }),
             ]);
             setLeadTypes(typesRes.data || []);
             setClients(clientsRes.data?.data || []);
+            setClientMeta({
+                current_page: clientsRes.data?.current_page || 1,
+                last_page: clientsRes.data?.last_page || 1,
+                total: clientsRes.data?.total || 0,
+            });
+            setFilters((prev) => ({ ...prev, page: clientsRes.data?.current_page || nextPage }));
         } catch (error) {
             toast.error(error?.response?.data?.message || 'Không tải được dữ liệu cơ hội.');
         } finally {
@@ -42,28 +63,6 @@ export default function Opportunities(props) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    const searchFilteredClients = useMemo(() => {
-        return clients.filter((client) => {
-            if (!search.trim()) return true;
-            const keyword = search.trim().toLowerCase();
-            return (
-                (client.name || '').toLowerCase().includes(keyword) ||
-                (client.company || '').toLowerCase().includes(keyword) ||
-                (client.email || '').toLowerCase().includes(keyword) ||
-                (client.phone || '').toLowerCase().includes(keyword)
-            );
-        });
-    }, [clients, search]);
-
-    const filteredClients = useMemo(() => {
-        return searchFilteredClients.filter((client) => {
-            if (selectedLead && String(client.lead_type_id) !== String(selectedLead)) {
-                return false;
-            }
-            return true;
-        });
-    }, [searchFilteredClients, selectedLead]);
-
     const leadTypeMap = useMemo(() => {
         const map = {};
         leadTypes.forEach((type) => {
@@ -74,23 +73,23 @@ export default function Opportunities(props) {
 
     const leadTypeCounts = useMemo(() => {
         const counts = {};
-        searchFilteredClients.forEach((client) => {
+        clients.forEach((client) => {
             if (!client.lead_type_id) return;
             counts[client.lead_type_id] = (counts[client.lead_type_id] || 0) + 1;
         });
         return counts;
-    }, [searchFilteredClients]);
+    }, [clients]);
 
     const stats = useMemo(() => {
-        const total = filteredClients.length;
-        const caring = filteredClients.filter((c) => c.lead_type_id).length;
+        const total = clientMeta.total || clients.length;
+        const caring = clients.filter((c) => c.lead_type_id).length;
         return [
             { label: 'Tổng cơ hội', value: String(total) },
             { label: 'Có trạng thái', value: String(caring) },
             { label: 'Vai trò', value: userRole || '—' },
             { label: 'Cập nhật', value: loading ? '...' : 'OK' },
         ];
-    }, [filteredClients, userRole, loading]);
+    }, [clientMeta.total, clients, userRole, loading]);
 
     const updateLeadType = async (client, leadTypeId) => {
         if (!canEdit) return;
@@ -107,11 +106,7 @@ export default function Opportunities(props) {
                 lead_channel: client.lead_channel,
                 lead_message: client.lead_message,
             });
-            setClients((prev) =>
-                prev.map((item) =>
-                    item.id === client.id ? { ...item, lead_type_id: Number(leadTypeId) } : item
-                )
-            );
+            await fetchData(filters.page, filters);
             toast.success('Đã cập nhật trạng thái cơ hội.');
         } catch (error) {
             toast.error(error?.response?.data?.message || 'Cập nhật trạng thái thất bại.');
@@ -129,21 +124,35 @@ export default function Opportunities(props) {
                 <FilterToolbar
                     title="Danh sách cơ hội"
                     description="Lọc nhanh theo khách hàng tiềm năng, trạng thái và phạm vi theo dõi hiện tại."
-                    actions={null}
+                    actions={(
+                        <FilterActionGroup>
+                            <button
+                                type="button"
+                                className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700"
+                                onClick={() => {
+                                    const next = { ...filters, page: 1 };
+                                    setFilters(next);
+                                    fetchData(1, next);
+                                }}
+                            >
+                                Lọc
+                            </button>
+                        </FilterActionGroup>
+                    )}
                 >
                     <FilterField label="Tìm kiếm">
                         <input
                             className={filterControlClass}
                             placeholder="Tìm theo tên, email, công ty..."
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
+                            value={filters.search}
+                            onChange={(e) => setFilters((prev) => ({ ...prev, search: e.target.value }))}
                         />
                     </FilterField>
                     <FilterField label="Trạng thái lead">
                         <select
                             className={filterControlClass}
-                            value={selectedLead}
-                            onChange={(e) => setSelectedLead(e.target.value)}
+                            value={filters.lead_type_id}
+                            onChange={(e) => setFilters((prev) => ({ ...prev, lead_type_id: e.target.value }))}
                         >
                             <option value="">Tất cả trạng thái</option>
                             {leadTypes.map((type) => (
@@ -162,20 +171,28 @@ export default function Opportunities(props) {
                 <div className="mt-4 flex flex-wrap gap-2">
                     <button
                         type="button"
-                        onClick={() => setSelectedLead('')}
+                        onClick={() => {
+                            const next = { ...filters, lead_type_id: '', page: 1 };
+                            setFilters(next);
+                            fetchData(1, next);
+                        }}
                         className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
-                            selectedLead === '' ? 'border-primary bg-primary/10 text-primary' : 'border-slate-200 text-slate-600 bg-white'
+                            filters.lead_type_id === '' ? 'border-primary bg-primary/10 text-primary' : 'border-slate-200 text-slate-600 bg-white'
                         }`}
                     >
-                        Tất cả ({searchFilteredClients.length})
+                        Tất cả ({clients.length})
                     </button>
                     {leadTypes.map((type) => (
                         <button
                             key={type.id}
                             type="button"
-                            onClick={() => setSelectedLead(String(type.id))}
+                            onClick={() => {
+                                const next = { ...filters, lead_type_id: String(type.id), page: 1 };
+                                setFilters(next);
+                                fetchData(1, next);
+                            }}
                             className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
-                                String(selectedLead) === String(type.id) ? 'ring-2 ring-primary/30' : ''
+                                String(filters.lead_type_id) === String(type.id) ? 'ring-2 ring-primary/30' : ''
                             }`}
                             style={type.color_hex ? toColorStyle(type.color_hex) : undefined}
                         >
@@ -204,7 +221,7 @@ export default function Opportunities(props) {
                                 </tr>
                             </thead>
                             <tbody>
-                                {filteredClients.map((client) => {
+                                {clients.map((client) => {
                                     const leadType = leadTypeMap[client.lead_type_id];
                                     const assigneeName = client.assigned_staff?.name || client.sales_owner?.name || '—';
                                     return (
@@ -269,7 +286,7 @@ export default function Opportunities(props) {
                                         </tr>
                                     );
                                 })}
-                                {filteredClients.length === 0 && (
+                                {clients.length === 0 && (
                                     <tr>
                                         <td className="py-6 text-center text-sm text-text-muted" colSpan={6}>
                                             Chưa có cơ hội nào theo bộ lọc hiện tại.
@@ -279,6 +296,20 @@ export default function Opportunities(props) {
                             </tbody>
                         </table>
                     </div>
+                    <PaginationControls
+                        page={clientMeta.current_page}
+                        lastPage={clientMeta.last_page}
+                        total={clientMeta.total}
+                        perPage={filters.per_page}
+                        label="cơ hội"
+                        loading={loading}
+                        onPageChange={(page) => fetchData(page, filters)}
+                        onPerPageChange={(perPage) => {
+                            const next = { ...filters, per_page: perPage, page: 1 };
+                            setFilters(next);
+                            fetchData(1, next);
+                        }}
+                    />
                 </div>
             )}
         </PageContainer>
