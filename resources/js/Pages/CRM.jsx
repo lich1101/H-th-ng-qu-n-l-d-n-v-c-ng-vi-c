@@ -89,7 +89,29 @@ export default function CRM(props) {
         note: '',
     });
 
-    const getErrorMessage = (error, fallback) => error?.response?.data?.message || fallback;
+    const extractValidationMessages = (error) => {
+        const errors = error?.response?.data?.errors;
+        if (!errors || typeof errors !== 'object') return [];
+
+        return Object.values(errors)
+            .flatMap((entry) => (Array.isArray(entry) ? entry : [entry]))
+            .map((message) => String(message || '').trim())
+            .filter(Boolean);
+    };
+
+    const getErrorMessage = (error, fallback) => {
+        const validationMessages = extractValidationMessages(error);
+        if (validationMessages.length > 0) {
+            return validationMessages[0];
+        }
+
+        const message = error?.response?.data?.message;
+        if (message && message !== 'The given data was invalid.') {
+            return message;
+        }
+
+        return fallback;
+    };
 
     const normalizeCareStaffIds = (rawValue) => (
         Array.isArray(rawValue)
@@ -196,14 +218,18 @@ export default function CRM(props) {
             );
             await fetchClients(1, clientFilters);
         } catch (error) {
+            const validationMessages = extractValidationMessages(error);
+            const fallbackMessage = getErrorMessage(error, 'Import thất bại.');
             setClientImportReport({
                 created: 0,
                 updated: 0,
                 skipped: 0,
                 warnings: [],
-                errors: [{ row: '-', message: getErrorMessage(error, 'Import thất bại.') }],
+                errors: validationMessages.length > 0
+                    ? validationMessages.map((message) => ({ row: '-', message }))
+                    : [{ row: '-', message: fallbackMessage }],
             });
-            toast.error(getErrorMessage(error, 'Import thất bại.'));
+            toast.error(fallbackMessage);
         } finally {
             setImportingClients(false);
         }

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Models\Client;
 use App\Models\Contract;
 use App\Models\ContractCost;
 use App\Models\User;
@@ -97,16 +98,81 @@ class ContractCostController extends Controller
         if (in_array($user->role, ['admin', 'ke_toan'], true)) {
             return true;
         }
-        if (! $contract->client) {
-            $contract->load('client');
-        }
-        if ($user->role === 'quan_ly') {
-            $deptIds = $user->managedDepartments()->pluck('id');
-            return $contract->client
-                && $contract->client->assigned_department_id
-                && $deptIds->contains($contract->client->assigned_department_id);
+
+        if ($this->isManagerOfContractDepartment($user, $contract)) {
+            return true;
         }
 
-        return $contract->client && (int) $contract->client->assigned_staff_id === (int) $user->id;
+        if ($user->role !== 'nhan_vien') {
+            return false;
+        }
+
+        return $this->isStaffLinkedToContract($user, $contract);
+    }
+
+    private function isManagerOfContractDepartment(User $user, Contract $contract): bool
+    {
+        if ($user->role !== 'quan_ly') {
+            return false;
+        }
+
+        if ((int) $contract->collector_user_id === (int) $user->id) {
+            return true;
+        }
+
+        $deptIds = $user->managedDepartments()->pluck('id');
+        if ($deptIds->isEmpty()) {
+            return false;
+        }
+
+        $contract->loadMissing('client');
+        if ($contract->client && $contract->client->assigned_department_id && $deptIds->contains((int) $contract->client->assigned_department_id)) {
+            return true;
+        }
+
+        $contract->loadMissing('collector');
+
+        return $contract->collector
+            && $contract->collector->department_id
+            && $deptIds->contains((int) $contract->collector->department_id);
+    }
+
+    private function isStaffLinkedToContract(User $user, Contract $contract): bool
+    {
+        if ((int) $contract->created_by === (int) $user->id) {
+            return true;
+        }
+        if ((int) $contract->collector_user_id === (int) $user->id) {
+            return true;
+        }
+
+        $contract->loadMissing('client');
+        $client = $contract->client;
+
+        if (! $client) {
+            return false;
+        }
+
+        if ((int) $client->assigned_staff_id === (int) $user->id) {
+            return true;
+        }
+        if ((int) $client->sales_owner_id === (int) $user->id) {
+            return true;
+        }
+
+        return $this->isCareStaff($user, $client);
+    }
+
+    private function isCareStaff(User $user, Client $client): bool
+    {
+        if ($client->relationLoaded('careStaffUsers')) {
+            return $client->careStaffUsers->contains(function ($staff) use ($user) {
+                return (int) $staff->id === (int) $user->id;
+            });
+        }
+
+        return $client->careStaffUsers()
+            ->where('users.id', $user->id)
+            ->exists();
     }
 }

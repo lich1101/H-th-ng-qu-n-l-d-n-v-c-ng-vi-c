@@ -23,7 +23,7 @@ class ContractController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = Contract::query()
-            ->with(['client', 'project', 'opportunity', 'creator', 'approver', 'collector'])
+            ->with(['client', 'client.careStaffUsers:id', 'project', 'opportunity', 'creator', 'approver', 'collector'])
             ->withCount('items')
             ->withSum('items as items_total_value', 'total_price')
             ->withCount('payments')
@@ -66,27 +66,36 @@ class ContractController extends Controller
             });
         }
 
-        return response()->json(
-            $query->orderByDesc('id')->paginate((int) $request->input('per_page', 15))
-        );
+        $contracts = $query->orderByDesc('id')->paginate((int) $request->input('per_page', 15));
+        $contracts->getCollection()->transform(function (Contract $contract) use ($request) {
+            return $this->appendContractPermissions($contract, $request->user());
+        });
+
+        return response()->json($contracts);
     }
 
     public function show(Contract $contract): JsonResponse
     {
-        if (! $this->canAccessContract(request()->user(), $contract)) {
+        if (! $this->canViewContract(request()->user(), $contract)) {
             return response()->json(['message' => 'Không có quyền xem hợp đồng.'], 403);
         }
+
+        $contract->load(['client', 'client.careStaffUsers:id,name', 'project', 'opportunity', 'creator', 'approver', 'collector', 'items', 'payments', 'costs']);
+
         return response()->json(
-            $contract->load(['client', 'project', 'opportunity', 'creator', 'approver', 'collector', 'items', 'payments', 'costs'])
+            $this->appendContractPermissions($contract, request()->user())
         );
     }
 
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate($this->rules(null, true));
-        $client = $this->resolveAccessibleClient($request, (int) $validated['client_id']);
+        $client = Client::query()->find((int) $validated['client_id']);
         if (! $client) {
-            return response()->json(['message' => 'Bạn chỉ được chọn khách hàng mà mình đang quản lý.'], 403);
+            return response()->json(['message' => 'Khách hàng không tồn tại.'], 422);
+        }
+        if (! $this->canManageContractClient($request->user(), $client)) {
+            return response()->json(['message' => 'Nhân viên chăm sóc chỉ có quyền xem hợp đồng, không được tạo/cập nhật/xóa.'], 403);
         }
         if (empty($validated['code'])) {
             $validated['code'] = $this->generateContractCode();
@@ -161,13 +170,16 @@ class ContractController extends Controller
 
     public function update(Request $request, Contract $contract): JsonResponse
     {
-        if (! $this->canAccessContract($request->user(), $contract)) {
+        if (! $this->canManageContract($request->user(), $contract)) {
             return response()->json(['message' => 'Không có quyền cập nhật hợp đồng.'], 403);
         }
         $validated = $request->validate($this->rules($contract->id, true));
-        $client = $this->resolveAccessibleClient($request, (int) $validated['client_id']);
+        $client = Client::query()->find((int) $validated['client_id']);
         if (! $client) {
-            return response()->json(['message' => 'Bạn chỉ được chọn khách hàng mà mình đang quản lý.'], 403);
+            return response()->json(['message' => 'Khách hàng không tồn tại.'], 422);
+        }
+        if (! $this->canManageContractClient($request->user(), $client, $contract)) {
+            return response()->json(['message' => 'Nhân viên chăm sóc chỉ có quyền xem hợp đồng, không được tạo/cập nhật/xóa.'], 403);
         }
         $oldProjectId = $contract->project_id;
 
@@ -254,7 +266,7 @@ class ContractController extends Controller
 
     public function destroy(Contract $contract): JsonResponse
     {
-        if (! $this->canAccessContract(request()->user(), $contract)) {
+        if (! $this->canManageContract(request()->user(), $contract)) {
             return response()->json(['message' => 'Không có quyền xóa hợp đồng.'], 403);
         }
         if ($contract->project_id) {
@@ -546,22 +558,142 @@ class ContractController extends Controller
         return 'CTR-' . $date . '-' . strtoupper(Str::random(6));
     }
 
-    private function canAccessContract(User $user, Contract $contract): bool
+    private function appendContractPermissions(Contract $contract, User $user): Contract
+    {
+        $contract->setAttribute('can_view', $this->canViewContract($user, $contract));
+        $contract->setAttribute('can_manage', $this->canManageContract($user, $contract));
+
+        return $contract;
+    }
+
+    private function canViewContract(User $user, Contract $contract): bool
     {
         if (in_array($user->role, ['admin', 'ke_toan'], true)) {
             return true;
         }
-        if (! $contract->client) {
-            $contract->load('client');
-        }
-        if ($user->role === 'quan_ly') {
-            $deptIds = $user->managedDepartments()->pluck('id');
-            return $contract->client
-                && $contract->client->assigned_department_id
-                && $deptIds->contains($contract->client->assigned_department_id);
+
+        if ($this->isManagerOfContractDepartment($user, $contract)) {
+            return true;
         }
 
-        return $contract->client && (int) $contract->client->assigned_staff_id === (int) $user->id;
+        if ($user->role !== 'nhan_vien') {
+            return false;
+        }
+
+        return $this->isStaffLinkedToContract($user, $contract, true);
+    }
+
+    private function canManageContract(User $user, Contract $contract): bool
+    {
+        if (in_array($user->role, ['admin', 'ke_toan'], true)) {
+            return true;
+        }
+
+        if ($this->isManagerOfContractDepartment($user, $contract)) {
+            return true;
+        }
+
+        if ($user->role !== 'nhan_vien') {
+            return false;
+        }
+
+        return $this->isStaffLinkedToContract($user, $contract, false);
+    }
+
+    private function canManageContractClient(User $user, Client $client, ?Contract $contract = null): bool
+    {
+        if (in_array($user->role, ['admin', 'ke_toan'], true)) {
+            return true;
+        }
+
+        if ($user->role === 'quan_ly') {
+            $deptIds = $user->managedDepartments()->pluck('id');
+
+            return $client->assigned_department_id
+                && $deptIds->contains((int) $client->assigned_department_id);
+        }
+
+        if ($user->role !== 'nhan_vien') {
+            return false;
+        }
+
+        if ((int) $client->assigned_staff_id === (int) $user->id
+            || (int) $client->sales_owner_id === (int) $user->id) {
+            return true;
+        }
+
+        if (! $contract || (int) $contract->client_id !== (int) $client->id) {
+            return false;
+        }
+
+        return (int) $contract->collector_user_id === (int) $user->id
+            || (int) $contract->created_by === (int) $user->id;
+    }
+
+    private function isManagerOfContractDepartment(User $user, Contract $contract): bool
+    {
+        if ($user->role !== 'quan_ly') {
+            return false;
+        }
+
+        if ((int) $contract->collector_user_id === (int) $user->id) {
+            return true;
+        }
+
+        $deptIds = $user->managedDepartments()->pluck('id');
+        if ($deptIds->isEmpty()) {
+            return false;
+        }
+
+        $contract->loadMissing('client');
+        if ($contract->client && $contract->client->assigned_department_id && $deptIds->contains((int) $contract->client->assigned_department_id)) {
+            return true;
+        }
+
+        $contract->loadMissing('collector');
+
+        return $contract->collector
+            && $contract->collector->department_id
+            && $deptIds->contains((int) $contract->collector->department_id);
+    }
+
+    private function isStaffLinkedToContract(User $user, Contract $contract, bool $includeCareStaff): bool
+    {
+        if ((int) $contract->created_by === (int) $user->id) {
+            return true;
+        }
+        if ((int) $contract->collector_user_id === (int) $user->id) {
+            return true;
+        }
+
+        $contract->loadMissing('client');
+        $client = $contract->client;
+
+        if (! $client) {
+            return false;
+        }
+
+        if ((int) $client->assigned_staff_id === (int) $user->id) {
+            return true;
+        }
+        if ((int) $client->sales_owner_id === (int) $user->id) {
+            return true;
+        }
+
+        return $includeCareStaff && $this->isCareStaff($user, $client);
+    }
+
+    private function isCareStaff(User $user, Client $client): bool
+    {
+        if ($client->relationLoaded('careStaffUsers')) {
+            return $client->careStaffUsers->contains(function ($staff) use ($user) {
+                return (int) $staff->id === (int) $user->id;
+            });
+        }
+
+        return $client->careStaffUsers()
+            ->where('users.id', $user->id)
+            ->exists();
     }
 
     private function resolveAccessibleClient(Request $request, int $clientId): ?Client

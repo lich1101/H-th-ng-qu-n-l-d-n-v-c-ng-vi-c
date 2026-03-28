@@ -169,6 +169,64 @@ export default function Contracts(props) {
     const [importFile, setImportFile] = useState(null);
     const [importing, setImporting] = useState(false);
     const [importReport, setImportReport] = useState(null);
+    const [editingCanManage, setEditingCanManage] = useState(true);
+
+    const extractValidationMessages = (error) => {
+        const errors = error?.response?.data?.errors;
+        if (!errors || typeof errors !== 'object') return [];
+
+        return Object.values(errors)
+            .flatMap((entry) => (Array.isArray(entry) ? entry : [entry]))
+            .map((message) => String(message || '').trim())
+            .filter(Boolean);
+    };
+
+    const getErrorMessage = (error, fallback) => {
+        const validationMessages = extractValidationMessages(error);
+        if (validationMessages.length > 0) {
+            return validationMessages[0];
+        }
+
+        const message = error?.response?.data?.message;
+        if (message && message !== 'The given data was invalid.') {
+            return message;
+        }
+
+        return fallback;
+    };
+
+    const readBoolean = (raw) => {
+        if (typeof raw === 'boolean') return raw;
+        if (typeof raw === 'number') return raw !== 0;
+        if (typeof raw === 'string') {
+            const normalized = raw.trim().toLowerCase();
+            if (['1', 'true', 'yes'].includes(normalized)) return true;
+            if (['0', 'false', 'no'].includes(normalized)) return false;
+        }
+        return null;
+    };
+
+    const canManageContract = (contract) => {
+        if (!canManage) return false;
+
+        const apiPermission = readBoolean(contract?.can_manage);
+        if (apiPermission !== null) {
+            return apiPermission;
+        }
+
+        if (userRole !== 'nhan_vien') {
+            return true;
+        }
+
+        const uid = Number(currentUserId || 0);
+        if (!uid) return false;
+
+        const client = contract?.client || {};
+        return Number(contract?.created_by || 0) === uid
+            || Number(contract?.collector_user_id || 0) === uid
+            || Number(client?.assigned_staff_id || 0) === uid
+            || Number(client?.sales_owner_id || 0) === uid;
+    };
 
     const itemsTotal = useMemo(() => {
         return items.reduce((sum, item) => {
@@ -282,6 +340,7 @@ export default function Contracts(props) {
 
     const resetForm = () => {
         setEditingId(null);
+        setEditingCanManage(true);
         setForm({
             code: '',
             title: '',
@@ -302,10 +361,23 @@ export default function Contracts(props) {
     };
 
     const startEdit = async (c) => {
+        if (!canManageContract(c)) {
+            toast.error('Bạn chỉ có quyền xem hợp đồng này.');
+            return;
+        }
+
         setEditingId(c.id);
         try {
             const res = await axios.get(`/api/v1/contracts/${c.id}`);
             const detail = res.data || c;
+            const canManageDetail = canManageContract(detail);
+            if (!canManageDetail) {
+                setEditingCanManage(false);
+                setEditingId(null);
+                toast.error('Bạn chỉ có quyền xem hợp đồng này.');
+                return;
+            }
+            setEditingCanManage(true);
             setForm({
                 code: detail.code || '',
                 title: detail.title || '',
@@ -334,7 +406,8 @@ export default function Contracts(props) {
             setCosts(detail.costs || []);
             setShowForm(true);
         } catch (e) {
-            toast.error(e?.response?.data?.message || 'Không tải được chi tiết hợp đồng.');
+            setEditingId(null);
+            toast.error(getErrorMessage(e, 'Không tải được chi tiết hợp đồng.'));
         }
     };
 
@@ -560,14 +633,18 @@ export default function Contracts(props) {
             );
             await fetchContracts();
         } catch (e) {
+            const validationMessages = extractValidationMessages(e);
+            const fallbackMessage = getErrorMessage(e, 'Import thất bại.');
             setImportReport({
                 created: 0,
                 updated: 0,
                 skipped: 0,
                 warnings: [],
-                errors: [{ row: '-', message: e?.response?.data?.message || 'Import thất bại.' }],
+                errors: validationMessages.length > 0
+                    ? validationMessages.map((message) => ({ row: '-', message }))
+                    : [{ row: '-', message: fallbackMessage }],
             });
-            toast.error(e?.response?.data?.message || 'Import thất bại.');
+            toast.error(fallbackMessage);
         } finally {
             setImporting(false);
         }
@@ -575,6 +652,9 @@ export default function Contracts(props) {
 
     const save = async (createAndApprove = false) => {
         if (!canManage) return toast.error('Bạn không có quyền quản lý hợp đồng.');
+        if (editingId && !editingCanManage) {
+            return toast.error('Bạn chỉ có quyền xem hợp đồng này.');
+        }
         if (!form.title?.trim() || !form.client_id) {
             return toast.error('Vui lòng chọn khách hàng và nhập tiêu đề hợp đồng.');
         }
@@ -777,7 +857,7 @@ export default function Contracts(props) {
                                                 >
                                                     <AppIcon name="eye" className="h-4 w-4" />
                                                 </button>
-                                                {canManage && (
+                                                {canManageContract(c) && (
                                                     <button
                                                         type="button"
                                                         className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:border-sky-300 hover:bg-sky-50 hover:text-sky-700"
