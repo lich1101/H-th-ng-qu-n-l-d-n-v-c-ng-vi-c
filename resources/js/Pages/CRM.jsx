@@ -6,6 +6,7 @@ import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import AppIcon from '@/Components/AppIcon';
 import PaginationControls from '@/Components/PaginationControls';
+import TagMultiSelect from '@/Components/TagMultiSelect';
 import { useToast } from '@/Contexts/ToastContext';
 
 const badgeStyle = (hex) => ({
@@ -621,6 +622,16 @@ export default function CRM(props) {
         });
     }, [departments, staffUsers, isAdminRole, isManager, userId]);
 
+    const careStaffOptions = useMemo(() => {
+        return staffUsers.map((user) => ({
+            id: Number(user.id || 0),
+            label: user.name || 'Nhân sự',
+            meta: user.department_id
+                ? (visibleDepartmentOptions.find((dept) => Number(dept.id) === Number(user.department_id))?.name || user.role || '')
+                : (user.role || ''),
+        })).filter((user) => user.id > 0);
+    }, [staffUsers, visibleDepartmentOptions]);
+
     return (
         <PageContainer
             auth={props.auth}
@@ -1104,27 +1115,15 @@ export default function CRM(props) {
                                             hint="Nhóm này chỉ có quyền xem thông tin khách hàng, hợp đồng, dự án, công việc và thêm ghi chú chăm sóc."
                                             className={isAdminRole ? 'md:col-span-2' : ''}
                                         >
-                                            <select
-                                                multiple
-                                                className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2 min-h-[110px]"
-                                                value={(clientForm.care_staff_ids || []).map((id) => String(id))}
-                                                onChange={(e) => {
-                                                    const selectedIds = Array.from(e.target.selectedOptions).map((option) => Number(option.value));
+                                            <TagMultiSelect
+                                                options={careStaffOptions}
+                                                selectedIds={clientForm.care_staff_ids}
+                                                addPlaceholder="Thêm nhân viên chăm sóc"
+                                                emptyLabel="Chưa thêm nhân viên chăm sóc nào."
+                                                onChange={(selectedIds) => {
                                                     setClientForm((s) => ({ ...s, care_staff_ids: selectedIds }));
                                                 }}
-                                            >
-                                                {staffUsers.map((user) => (
-                                                    <option key={user.id} value={user.id}>
-                                                        {user.name}
-                                                        {user.department_id
-                                                            ? ` • ${visibleDepartmentOptions.find((dept) => Number(dept.id) === Number(user.department_id))?.name || user.role}`
-                                                            : ` • ${user.role}`}
-                                                    </option>
-                                                ))}
-                                            </select>
-                                            <p className="mt-1.5 text-xs text-text-muted">
-                                                Giữ Ctrl/Cmd để chọn nhiều nhân sự.
-                                            </p>
+                                            />
                                         </LabeledField>
                                     </div>
                                 </div>

@@ -5,6 +5,7 @@ import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import AppIcon from '@/Components/AppIcon';
 import PaginationControls from '@/Components/PaginationControls';
+import TagMultiSelect from '@/Components/TagMultiSelect';
 import { useToast } from '@/Contexts/ToastContext';
 
 const STATUS_OPTIONS = [
@@ -251,27 +252,19 @@ export default function Contracts(props) {
             .filter((value) => Number.isInteger(value) && value > 0)));
     };
 
-    const toggleCareStaffId = (staffId) => {
-        setForm((current) => {
-            const nextIds = new Set(normalizeCareStaffIds(current.care_staff_ids));
-            if (nextIds.has(staffId)) {
-                nextIds.delete(staffId);
-            } else {
-                nextIds.add(staffId);
-            }
-
-            return {
-                ...current,
-                care_staff_ids: Array.from(nextIds).sort((a, b) => a - b),
-            };
-        });
-    };
-
     const itemsTotal = useMemo(() => {
         return items.reduce((sum, item) => {
             return sum + calculateItemTotal(item);
         }, 0);
     }, [items]);
+
+    const careStaffOptions = useMemo(() => {
+        return careStaffUsers.map((user) => ({
+            id: Number(user.id || 0),
+            label: user.name || 'Nhân sự',
+            meta: user.email || user.role || '',
+        })).filter((user) => user.id > 0);
+    }, [careStaffUsers]);
 
     const contractValueTotal = useMemo(() => (
         items.length ? itemsTotal : parseNumberInput(form.value)
@@ -1111,31 +1104,21 @@ export default function Contracts(props) {
                                 Chỉ admin, kế toán và quản lý được gắn nhóm chăm sóc. Nhân viên được gắn ở đây có quyền xem hợp đồng và cập nhật nhật ký chăm sóc.
                             </p>
                         </div>
-                        <div className="flex flex-wrap gap-2">
-                            {careStaffUsers.map((user) => {
-                                const selected = normalizeCareStaffIds(form.care_staff_ids).includes(Number(user.id));
-                                return (
-                                    <button
-                                        key={user.id}
-                                        type="button"
-                                        className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
-                                            selected
-                                                ? 'border-cyan-300 bg-cyan-50 text-cyan-700'
-                                                : 'border-slate-200 bg-white text-slate-600 hover:border-cyan-200 hover:text-cyan-700'
-                                        }`}
-                                        onClick={() => toggleCareStaffId(Number(user.id))}
-                                    >
-                                        {user.name}
-                                        {user.email ? ` • ${user.email}` : ''}
-                                    </button>
-                                );
-                            })}
-                            {careStaffUsers.length === 0 && (
-                                <div className="text-xs text-text-muted">
-                                    Chưa có nhân viên chăm sóc phù hợp trong phạm vi được phép gán.
-                                </div>
-                            )}
-                        </div>
+                        {careStaffUsers.length > 0 ? (
+                            <TagMultiSelect
+                                options={careStaffOptions}
+                                selectedIds={form.care_staff_ids}
+                                addPlaceholder="Thêm nhân viên chăm sóc hợp đồng"
+                                emptyLabel="Chưa thêm nhân viên chăm sóc hợp đồng nào."
+                                onChange={(selectedIds) => {
+                                    setForm((current) => ({ ...current, care_staff_ids: selectedIds }));
+                                }}
+                            />
+                        ) : (
+                            <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-3 text-xs text-text-muted">
+                                Chưa có nhân viên chăm sóc phù hợp trong phạm vi được phép gán.
+                            </div>
+                        )}
                     </div>
                     <div className="rounded-2xl border border-slate-200/80 bg-slate-50 p-4">
                         <div className="grid gap-4 md:grid-cols-3">
