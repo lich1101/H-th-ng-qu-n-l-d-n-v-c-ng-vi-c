@@ -427,7 +427,7 @@ class AttendanceController extends Controller
         $now = Carbon::now('Asia/Ho_Chi_Minh');
         $holiday = AttendanceHoliday::query()
             ->where('is_active', true)
-            ->whereDate('holiday_date', $now->toDateString())
+            ->coveringDate($now)
             ->first();
         if ($holiday) {
             $record = $attendance->upsertHolidayRecord($user, $now, $holiday);
@@ -735,12 +735,21 @@ class AttendanceController extends Controller
             return response()->json(['message' => 'Không có quyền xem ngày lễ.'], 403);
         }
 
-        $query = AttendanceHoliday::query()->orderBy('holiday_date');
-        if ($request->filled('from_date')) {
-            $query->whereDate('holiday_date', '>=', $request->input('from_date'));
-        }
-        if ($request->filled('to_date')) {
-            $query->whereDate('holiday_date', '<=', $request->input('to_date'));
+        $query = AttendanceHoliday::query()->orderBy('start_date')->orderBy('holiday_date');
+        if ($request->filled('from_date') || $request->filled('to_date')) {
+            $from = $this->resolveDate(
+                $request->input('from_date'),
+                $request->filled('to_date')
+                    ? $this->resolveDate($request->input('to_date'), Carbon::now('Asia/Ho_Chi_Minh'))
+                    : Carbon::now('Asia/Ho_Chi_Minh')
+            );
+            $to = $this->resolveDate(
+                $request->input('to_date'),
+                $request->filled('from_date')
+                    ? $this->resolveDate($request->input('from_date'), Carbon::now('Asia/Ho_Chi_Minh'))
+                    : Carbon::now('Asia/Ho_Chi_Minh')
+            );
+            $query->overlappingRange($from, $to);
         }
 
         return response()->json([
@@ -757,24 +766,33 @@ class AttendanceController extends Controller
         }
 
         $validated = $request->validate([
-            'holiday_date' => ['required', 'date'],
+            'holiday_date' => ['nullable', 'date'],
+            'start_date' => ['nullable', 'date'],
+            'end_date' => ['nullable', 'date'],
             'title' => ['required', 'string', 'max:191'],
             'note' => ['nullable', 'string', 'max:255'],
             'is_active' => ['nullable', 'boolean'],
         ]);
 
+        [$startDate, $endDate] = $this->resolveHolidayRangeFromPayload($validated);
+        if ($error = $this->holidayRangeConflictMessage($startDate, $endDate)) {
+            return response()->json(['message' => $error], 422);
+        }
+
         $item = AttendanceHoliday::create([
-            'holiday_date' => Carbon::parse($validated['holiday_date'], 'Asia/Ho_Chi_Minh')->toDateString(),
+            'holiday_date' => $startDate->toDateString(),
+            'start_date' => $startDate->toDateString(),
+            'end_date' => $endDate->toDateString(),
             'title' => trim((string) $validated['title']),
             'note' => trim((string) ($validated['note'] ?? '')) ?: null,
             'is_active' => array_key_exists('is_active', $validated) ? (bool) $validated['is_active'] : true,
             'created_by' => $request->user()->id,
         ]);
 
-        $this->syncHolidayIfToday($item);
+        $this->syncHolidayRangeUntilToday($item);
 
         return response()->json([
-            'message' => 'Đã thêm ngày lễ.',
+            'message' => 'Đã thêm kỳ nghỉ/ngày lễ.',
             'item' => $this->holidayPayload($item),
         ], 201);
     }
@@ -786,14 +804,23 @@ class AttendanceController extends Controller
         }
 
         $validated = $request->validate([
-            'holiday_date' => ['required', 'date'],
+            'holiday_date' => ['nullable', 'date'],
+            'start_date' => ['nullable', 'date'],
+            'end_date' => ['nullable', 'date'],
             'title' => ['required', 'string', 'max:191'],
             'note' => ['nullable', 'string', 'max:255'],
             'is_active' => ['nullable', 'boolean'],
         ]);
 
+        [$startDate, $endDate] = $this->resolveHolidayRangeFromPayload($validated);
+        if ($error = $this->holidayRangeConflictMessage($startDate, $endDate, (int) $attendanceHoliday->id)) {
+            return response()->json(['message' => $error], 422);
+        }
+
         $attendanceHoliday->update([
-            'holiday_date' => Carbon::parse($validated['holiday_date'], 'Asia/Ho_Chi_Minh')->toDateString(),
+            'holiday_date' => $startDate->toDateString(),
+            'start_date' => $startDate->toDateString(),
+            'end_date' => $endDate->toDateString(),
             'title' => trim((string) $validated['title']),
             'note' => trim((string) ($validated['note'] ?? '')) ?: null,
             'is_active' => array_key_exists('is_active', $validated)
@@ -801,10 +828,10 @@ class AttendanceController extends Controller
                 : (bool) $attendanceHoliday->is_active,
         ]);
 
-        $this->syncHolidayIfToday($attendanceHoliday->fresh());
+        $this->syncHolidayRangeUntilToday($attendanceHoliday->fresh());
 
         return response()->json([
-            'message' => 'Đã cập nhật ngày lễ.',
+            'message' => 'Đã cập nhật kỳ nghỉ/ngày lễ.',
             'item' => $this->holidayPayload($attendanceHoliday->fresh()),
         ]);
     }
@@ -841,12 +868,45 @@ class AttendanceController extends Controller
         }
 
         [$rows] = $this->buildReport($request);
+        $summaryRows = $this->buildExportSummary($request);
 
         $spreadsheet = new Spreadsheet();
-        $sheet = $spreadsheet->getActiveSheet();
-        $sheet->setTitle('Cham cong');
+        $summarySheet = $spreadsheet->getActiveSheet();
+        $summarySheet->setTitle('Tong hop');
 
-        $headers = [
+        $summaryHeaders = [
+            'Tên nhân viên',
+            'Kiểu làm việc',
+            'Số công',
+            'Số công thiếu',
+            'Số lần gửi đơn',
+            'Số ngày đi muộn',
+            'Tổng thời gian muộn (phút)',
+        ];
+
+        $summarySheet->fromArray($summaryHeaders, null, 'A1');
+        $summaryRowIndex = 2;
+        foreach ($summaryRows as $row) {
+            $summarySheet->fromArray([
+                $row['user_name'],
+                $row['employment_type_label'],
+                $row['work_units'],
+                $row['missing_work_units'],
+                $row['request_count'],
+                $row['late_days'],
+                $row['total_late_minutes'],
+            ], null, 'A'.$summaryRowIndex);
+            $summaryRowIndex++;
+        }
+
+        foreach (range('A', 'G') as $column) {
+            $summarySheet->getColumnDimension($column)->setAutoSize(true);
+        }
+
+        $detailSheet = $spreadsheet->createSheet();
+        $detailSheet->setTitle('Chi tiet');
+
+        $detailHeaders = [
             'Ngày',
             'Nhân sự',
             'Vai trò',
@@ -862,10 +922,10 @@ class AttendanceController extends Controller
             'Ghi chú',
         ];
 
-        $sheet->fromArray($headers, null, 'A1');
+        $detailSheet->fromArray($detailHeaders, null, 'A1');
         $rowIndex = 2;
         foreach ($rows as $row) {
-            $sheet->fromArray([
+            $detailSheet->fromArray([
                 $row['work_date'],
                 $row['user_name'],
                 $row['role'],
@@ -884,8 +944,10 @@ class AttendanceController extends Controller
         }
 
         foreach (range('A', 'M') as $column) {
-            $sheet->getColumnDimension($column)->setAutoSize(true);
+            $detailSheet->getColumnDimension($column)->setAutoSize(true);
         }
+
+        $spreadsheet->setActiveSheetIndex(0);
 
         $fileName = sprintf(
             'bao-cao-cham-cong-%s-den-%s.xlsx',
@@ -941,6 +1003,82 @@ class AttendanceController extends Controller
         return [$rows, $summary];
     }
 
+    private function buildExportSummary(Request $request): array
+    {
+        $attendance = app(AttendanceService::class);
+        $startDate = $this->resolveDate($request->input('start_date'), Carbon::now('Asia/Ho_Chi_Minh')->startOfMonth());
+        $endDate = $this->resolveDate($request->input('end_date'), Carbon::now('Asia/Ho_Chi_Minh')->endOfMonth());
+        $totalDays = max(1, $startDate->diffInDays($endDate) + 1);
+
+        $userQuery = $attendance->trackedUsersQuery()
+            ->select(['id', 'name', 'email', 'attendance_employment_type'])
+            ->orderBy('name');
+
+        if ($request->filled('search')) {
+            $search = trim((string) $request->input('search'));
+            $userQuery->where(function ($query) use ($search) {
+                $query->where('name', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%");
+            });
+        }
+
+        if ($request->filled('user_id')) {
+            $userQuery->where('id', (int) $request->input('user_id'));
+        }
+
+        $users = $userQuery->get();
+        if ($users->isEmpty()) {
+            return [];
+        }
+
+        $userIds = $users->pluck('id')->map(function ($id) {
+            return (int) $id;
+        })->all();
+
+        $recordsByUser = AttendanceRecord::query()
+            ->select(['user_id', 'work_units', 'minutes_late'])
+            ->whereIn('user_id', $userIds)
+            ->whereBetween('work_date', [$startDate->toDateString(), $endDate->toDateString()])
+            ->get()
+            ->groupBy('user_id');
+
+        $requestsByUser = AttendanceRequestModel::query()
+            ->select(['user_id'])
+            ->whereIn('user_id', $userIds)
+            ->whereBetween('request_date', [$startDate->toDateString(), $endDate->toDateString()])
+            ->get()
+            ->groupBy('user_id');
+
+        return $users->map(function (User $user) use ($attendance, $recordsByUser, $requestsByUser, $totalDays) {
+            $employmentType = $attendance->employmentTypeForUser($user);
+            $defaultWorkUnits = $attendance->defaultWorkUnitsForEmployment($employmentType);
+            $expectedUnits = round($totalDays * $defaultWorkUnits, 1);
+            $userRecords = $recordsByUser->get($user->id, collect());
+            $actualUnits = round((float) $userRecords->sum(function (AttendanceRecord $record) {
+                return (float) ($record->work_units ?? 0);
+            }), 1);
+            $missingUnits = round(max(0, $expectedUnits - $actualUnits), 1);
+            $lateDays = (int) $userRecords->filter(function (AttendanceRecord $record) {
+                return (int) ($record->minutes_late ?? 0) > 0;
+            })->count();
+            $totalLateMinutes = (int) $userRecords->sum(function (AttendanceRecord $record) {
+                return (int) ($record->minutes_late ?? 0);
+            });
+            $requestCount = (int) $requestsByUser->get($user->id, collect())->count();
+
+            return [
+                'user_name' => $user->name ?: '—',
+                'employment_type' => $employmentType,
+                'employment_type_label' => $this->employmentTypeLabel($employmentType),
+                'work_units' => $actualUnits,
+                'missing_work_units' => $missingUnits,
+                'request_count' => $requestCount,
+                'late_days' => $lateDays,
+                'total_late_minutes' => $totalLateMinutes,
+            ];
+        })->values()->all();
+    }
+
     private function resolveDate($value, Carbon $fallback): Carbon
     {
         try {
@@ -982,23 +1120,37 @@ class AttendanceController extends Controller
         );
     }
 
-    private function syncHolidayIfToday(?AttendanceHoliday $holiday): void
+    private function syncHolidayRangeUntilToday(?AttendanceHoliday $holiday): void
     {
         if (! $holiday || ! $holiday->is_active) {
             return;
         }
 
         $today = Carbon::now('Asia/Ho_Chi_Minh')->toDateString();
-        if (optional($holiday->holiday_date)->toDateString() !== $today) {
+        $startDate = $holiday->resolvedStartDate();
+        $endDate = $holiday->resolvedEndDate();
+        if (! $startDate || ! $endDate || $startDate->toDateString() > $today) {
             return;
         }
 
         $attendance = app(AttendanceService::class);
-        $attendance->trackedUsersQuery()
-            ->get()
-            ->each(function (User $user) use ($attendance, $holiday) {
-                $attendance->upsertHolidayRecord($user, Carbon::parse($holiday->holiday_date, 'Asia/Ho_Chi_Minh'), $holiday);
-            });
+        $syncEnd = $endDate->copy()->startOfDay();
+        if ($syncEnd->toDateString() > $today) {
+            $syncEnd = Carbon::parse($today, 'Asia/Ho_Chi_Minh')->startOfDay();
+        }
+
+        if ($syncEnd->lt($startDate)) {
+            return;
+        }
+
+        $users = $attendance->trackedUsersQuery()->get();
+        $cursor = $startDate->copy()->startOfDay();
+        while ($cursor->lte($syncEnd)) {
+            foreach ($users as $user) {
+                $attendance->upsertHolidayRecord($user, $cursor, $holiday);
+            }
+            $cursor->addDay();
+        }
     }
 
     private function devicePayload(AttendanceDevice $item): array
@@ -1086,9 +1238,15 @@ class AttendanceController extends Controller
 
     private function holidayPayload(AttendanceHoliday $item): array
     {
+        $startDate = $item->resolvedStartDate();
+        $endDate = $item->resolvedEndDate();
+
         return [
             'id' => (int) $item->id,
-            'holiday_date' => optional($item->holiday_date)->toDateString(),
+            'holiday_date' => optional($startDate)->toDateString(),
+            'start_date' => optional($startDate)->toDateString(),
+            'end_date' => optional($endDate)->toDateString(),
+            'day_count' => $item->durationDays(),
             'title' => (string) $item->title,
             'note' => $item->note,
             'is_active' => (bool) $item->is_active,
@@ -1110,17 +1268,7 @@ class AttendanceController extends Controller
     {
         $user = $item->user;
         $employmentType = (string) ($item->employment_type ?: 'full_time');
-        switch ($employmentType) {
-            case 'half_day_morning':
-                $employmentLabel = 'Nửa buổi sáng';
-                break;
-            case 'half_day_afternoon':
-                $employmentLabel = 'Nửa buổi chiều';
-                break;
-            default:
-                $employmentLabel = 'Full time';
-                break;
-        }
+        $employmentLabel = $this->employmentTypeLabel($employmentType);
 
         switch ((string) $item->status) {
             case 'present':
@@ -1181,6 +1329,58 @@ class AttendanceController extends Controller
             'wifi_bssid' => $item->wifi_bssid ?: '—',
             'note' => $item->note ?: '',
         ];
+    }
+
+    private function employmentTypeLabel(string $employmentType): string
+    {
+        switch ($employmentType) {
+            case 'half_day_morning':
+                return 'Mỗi sáng';
+            case 'half_day_afternoon':
+                return 'Mỗi chiều';
+            default:
+                return 'Full time';
+        }
+    }
+
+    private function resolveHolidayRangeFromPayload(array $validated): array
+    {
+        $startRaw = $validated['start_date'] ?? $validated['holiday_date'] ?? null;
+        $endRaw = $validated['end_date'] ?? $validated['holiday_date'] ?? null;
+
+        if (! $startRaw || ! $endRaw) {
+            throw new \Illuminate\Http\Exceptions\HttpResponseException(
+                response()->json([
+                    'message' => 'Cần nhập ngày bắt đầu và ngày kết thúc cho kỳ nghỉ.',
+                ], 422)
+            );
+        }
+
+        $startDate = Carbon::parse((string) $startRaw, 'Asia/Ho_Chi_Minh')->startOfDay();
+        $endDate = Carbon::parse((string) $endRaw, 'Asia/Ho_Chi_Minh')->startOfDay();
+        if ($endDate->lt($startDate)) {
+            throw new \Illuminate\Http\Exceptions\HttpResponseException(
+                response()->json([
+                    'message' => 'Ngày kết thúc phải lớn hơn hoặc bằng ngày bắt đầu.',
+                ], 422)
+            );
+        }
+
+        return [$startDate, $endDate];
+    }
+
+    private function holidayRangeConflictMessage(Carbon $startDate, Carbon $endDate, ?int $ignoreId = null): ?string
+    {
+        $query = AttendanceHoliday::query()->overlappingRange($startDate, $endDate);
+        if ($ignoreId) {
+            $query->where('id', '!=', $ignoreId);
+        }
+
+        if (! $query->exists()) {
+            return null;
+        }
+
+        return 'Khoảng ngày lễ này đang bị chồng với một kỳ nghỉ/ngày lễ đã có.';
     }
 
     private function normalizeWorkUnits($value): float

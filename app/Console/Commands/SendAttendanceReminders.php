@@ -28,7 +28,7 @@ class SendAttendanceReminders extends Command
 
         $isHoliday = AttendanceHoliday::query()
             ->where('is_active', true)
-            ->whereDate('holiday_date', $today)
+            ->coveringDate($today)
             ->exists();
 
         if ($isHoliday) {

@@ -17,7 +17,7 @@ class SyncAttendanceHolidayRecords extends Command
         $targetDate = $this->resolveDate((string) $this->option('date'));
         $holiday = AttendanceHoliday::query()
             ->where('is_active', true)
-            ->whereDate('holiday_date', $targetDate->toDateString())
+            ->coveringDate($targetDate)
             ->first();
 
         if (! $holiday) {

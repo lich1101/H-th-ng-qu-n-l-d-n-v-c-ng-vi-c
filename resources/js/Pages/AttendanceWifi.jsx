@@ -120,6 +120,28 @@ function displayDateToIso(value) {
     return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
+function formatIsoDate(value) {
+    if (!value || typeof value !== 'string') return '—';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        const [year, month, day] = value.split('-');
+        return `${day}/${month}/${year}`;
+    }
+    return value;
+}
+
+function formatHolidayRange(item) {
+    const startDate = item?.start_date || item?.holiday_date;
+    const endDate = item?.end_date || item?.holiday_date;
+    const startLabel = formatIsoDate(startDate);
+    const endLabel = formatIsoDate(endDate);
+    const dayCount = Number(item?.day_count || 1);
+    const rangeLabel = startDate && endDate && startDate !== endDate
+        ? `${startLabel} - ${endLabel}`
+        : startLabel;
+
+    return `${rangeLabel}${dayCount > 1 ? ` • ${dayCount} ngày` : ''}`;
+}
+
 export default function AttendanceWifi(props) {
     const toast = useToast();
     const role = props?.auth?.user?.role || '';
@@ -160,7 +182,7 @@ export default function AttendanceWifi(props) {
     const [reviewForm, setReviewForm] = useState({ status: 'approved', approval_mode: 'full_work', approved_work_units: '1', decision_note: '' });
     const [holidays, setHolidays] = useState([]);
     const [holidayModal, setHolidayModal] = useState({ open: false, item: null });
-    const [holidayForm, setHolidayForm] = useState({ holiday_date: todayIso(), title: '', note: '', is_active: true });
+    const [holidayForm, setHolidayForm] = useState({ start_date: todayIso(), end_date: todayIso(), title: '', note: '', is_active: true });
     const [staffRows, setStaffRows] = useState([]);
     const [staffPaging, setStaffPaging] = useState({ current_page: 1, last_page: 1, total: 0, per_page: 200 });
     const [staffFilters, setStaffFilters] = useState({ search: '', role: '', per_page: 200, page: 1 });
@@ -230,7 +252,8 @@ export default function AttendanceWifi(props) {
 
     const resetHolidayForm = (item = null) => {
         setHolidayForm({
-            holiday_date: item?.holiday_date || todayIso(),
+            start_date: item?.start_date || item?.holiday_date || todayIso(),
+            end_date: item?.end_date || item?.holiday_date || todayIso(),
             title: item?.title || '',
             note: item?.note || '',
             is_active: item?.is_active ?? true,
@@ -315,7 +338,7 @@ export default function AttendanceWifi(props) {
 
     const loadHolidays = async () => {
         if (!canManage) return;
-        const res = await axios.get('/api/v1/attendance/holidays', { params: { from_date: monthStartIso(), to_date: todayIso() } });
+        const res = await axios.get('/api/v1/attendance/holidays', { params: { from_date: monthStartIso(), to_date: '2099-12-31' } });
         setHolidays(res.data?.data || []);
     };
 
@@ -911,7 +934,7 @@ export default function AttendanceWifi(props) {
                         <div className="flex items-center justify-between gap-3">
                             <div>
                                 <h3 className="text-lg font-semibold text-slate-900">Ngày lễ tự động đủ công</h3>
-                                <p className="mt-1 text-sm text-text-muted">Khi đến ngày lễ active, cron sẽ tự động chấm đủ công cho toàn bộ nhân sự thuộc diện attendance.</p>
+                                <p className="mt-1 text-sm text-text-muted">Có thể nhập cả một khoảng nghỉ nhiều ngày. Khi đến từng ngày trong khoảng active, cron sẽ tự động chấm đủ công cho toàn bộ nhân sự thuộc diện attendance.</p>
                             </div>
                             <button type="button" className={buttonPrimaryClass} onClick={() => resetHolidayForm(null)}>Thêm ngày lễ</button>
                         </div>
@@ -924,7 +947,7 @@ export default function AttendanceWifi(props) {
                                             <h4 className="font-semibold text-slate-900">{item.title}</h4>
                                             <Badge tone={item.is_active ? 'emerald' : 'slate'}>{item.is_active ? 'Active' : 'Tạm tắt'}</Badge>
                                         </div>
-                                        <div className="mt-1 text-sm text-text-muted">{item.holiday_date ? new Date(item.holiday_date).toLocaleDateString('vi-VN') : '—'}</div>
+                                        <div className="mt-1 text-sm text-text-muted">{formatHolidayRange(item)}</div>
                                         {item.note ? <div className="mt-2 text-sm text-slate-700">{item.note}</div> : null}
                                     </div>
                                     <div className="flex flex-wrap gap-2">
@@ -1128,12 +1151,15 @@ export default function AttendanceWifi(props) {
                 open={holidayModal.open}
                 onClose={() => setHolidayModal({ open: false, item: null })}
                 title={holidayModal.item ? `Sửa ngày lễ ${holidayModal.item.title}` : 'Thêm ngày lễ'}
-                description="Ngày lễ active sẽ được cron tự động chấm đủ công cho toàn bộ nhân sự thuộc diện attendance."
+                description="Có thể nhập ngày bắt đầu và ngày kết thúc cho cả một kỳ nghỉ dài, ví dụ Tết 10 ngày. Cron sẽ tự động chấm đủ công cho từng ngày nằm trong khoảng này."
                 size="md"
             >
                 <div className="grid gap-4 md:grid-cols-2">
-                    <FormField label="Ngày lễ" required>
-                        <input type="date" className={inputClass} value={holidayForm.holiday_date} onChange={(e) => setHolidayForm((s) => ({ ...s, holiday_date: e.target.value }))} />
+                    <FormField label="Từ ngày" required>
+                        <input type="date" className={inputClass} value={holidayForm.start_date} onChange={(e) => setHolidayForm((s) => ({ ...s, start_date: e.target.value }))} />
+                    </FormField>
+                    <FormField label="Đến ngày" required>
+                        <input type="date" className={inputClass} value={holidayForm.end_date} onChange={(e) => setHolidayForm((s) => ({ ...s, end_date: e.target.value }))} />
                     </FormField>
                     <FormField label="Trạng thái">
                         <select className={inputClass} value={holidayForm.is_active ? '1' : '0'} onChange={(e) => setHolidayForm((s) => ({ ...s, is_active: e.target.value === '1' }))}>
