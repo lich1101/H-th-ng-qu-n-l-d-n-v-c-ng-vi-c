@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use App\Models\LeadForm;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -163,6 +165,15 @@ class LeadFormController extends Controller
 
         $validated = $validator->validate();
 
+        if ($error = $this->validateAssignedStaffId($validated['submission_mapping']['assigned_staff_id'] ?? null)) {
+            throw new HttpResponseException(response()->json([
+                'message' => $error,
+                'errors' => [
+                    'submission_mapping.assigned_staff_id' => [$error],
+                ],
+            ], 422));
+        }
+
         if (empty($validated['field_schema'])) {
             $validated['field_schema'] = LeadForm::defaultFieldSchema();
         }
@@ -300,5 +311,27 @@ class LeadFormController extends Controller
                 ? (int) $normalized['assigned_staff_id']
                 : null,
         ];
+    }
+
+    private function validateAssignedStaffId($assignedStaffId): ?string
+    {
+        $assignedStaffId = (int) ($assignedStaffId ?? 0);
+        if ($assignedStaffId <= 0) {
+            return null;
+        }
+
+        $staff = User::query()
+            ->select(['id', 'role', 'is_active'])
+            ->find($assignedStaffId);
+
+        if (! $staff || ! $staff->is_active) {
+            return 'Nhân sự phụ trách form không tồn tại hoặc đã ngưng hoạt động.';
+        }
+
+        if (! in_array((string) $staff->role, ['quan_ly', 'nhan_vien'], true)) {
+            return 'Nhân sự phụ trách form chỉ được là quản lý hoặc nhân viên.';
+        }
+
+        return null;
     }
 }

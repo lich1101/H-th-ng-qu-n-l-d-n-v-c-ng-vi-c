@@ -132,7 +132,7 @@ class UserAccountController extends Controller
             'department' => $validated['department'] ?? null,
             'department_id' => $validated['department_id'] ?? null,
             'phone' => $validated['phone'] ?? null,
-            'workload_capacity' => $validated['workload_capacity'] ?? 100,
+            'workload_capacity' => $validated['workload_capacity'] ?? $user->workload_capacity ?? 100,
             'is_active' => $validated['is_active'] ?? true,
         ];
 

@@ -68,6 +68,7 @@ export default function ProjectsKanban(props) {
     const canCreate = ['admin', 'quan_ly'].includes(userRole);
     const canUpdate = ['admin', 'quan_ly'].includes(userRole);
     const canDelete = userRole === 'admin';
+    const canBulkActions = canUpdate || canDelete;
 
     const [loading, setLoading] = useState(false);
     const [projects, setProjects] = useState([]);
@@ -101,6 +102,8 @@ export default function ProjectsKanban(props) {
         repo_url: '',
         website_url: '',
     });
+    const [selectedProjectIds, setSelectedProjectIds] = useState([]);
+    const [bulkLoading, setBulkLoading] = useState(false);
 
     const statusOptions = useMemo(() => {
         const values = meta.project_statuses || [];
@@ -141,7 +144,9 @@ export default function ProjectsKanban(props) {
                     ...(nextFilters.service_type ? { service_type: nextFilters.service_type } : {}),
                 },
             });
-            setProjects(res.data?.data || []);
+            const rows = res.data?.data || [];
+            setProjects(rows);
+            setSelectedProjectIds((prev) => prev.filter((id) => rows.some((project) => Number(project.id) === Number(id))));
             setPaging({
                 current_page: res.data?.current_page || 1,
                 last_page: res.data?.last_page || 1,
@@ -279,6 +284,57 @@ export default function ProjectsKanban(props) {
         ];
     }, [paging.total, projects]);
 
+    const visibleProjectIds = useMemo(
+        () => projects.map((project) => Number(project.id)).filter((id) => id > 0),
+        [projects]
+    );
+    const selectedProjectSet = useMemo(
+        () => new Set(selectedProjectIds.map((id) => Number(id))),
+        [selectedProjectIds]
+    );
+    const allVisibleSelected = visibleProjectIds.length > 0
+        && visibleProjectIds.every((id) => selectedProjectSet.has(id));
+
+    const toggleProjectSelection = (projectId) => {
+        const normalizedId = Number(projectId || 0);
+        if (normalizedId <= 0) return;
+        setSelectedProjectIds((prev) => (
+            prev.includes(normalizedId)
+                ? prev.filter((id) => id !== normalizedId)
+                : [...prev, normalizedId]
+        ));
+    };
+
+    const toggleSelectAllVisibleProjects = () => {
+        if (allVisibleSelected) {
+            setSelectedProjectIds((prev) => prev.filter((id) => !visibleProjectIds.includes(Number(id))));
+            return;
+        }
+
+        setSelectedProjectIds((prev) => {
+            const set = new Set(prev.map((id) => Number(id)));
+            visibleProjectIds.forEach((id) => set.add(id));
+            return Array.from(set.values());
+        });
+    };
+
+    const buildProjectPayload = (project, patch = {}) => ({
+        code: patch.code ?? project.code,
+        name: patch.name ?? project.name,
+        client_id: patch.client_id ?? project.client_id,
+        contract_id: patch.contract_id ?? project.contract_id,
+        service_type: patch.service_type ?? project.service_type,
+        service_type_other: patch.service_type_other ?? project.service_type_other ?? null,
+        start_date: patch.start_date ?? project.start_date,
+        deadline: patch.deadline ?? project.deadline,
+        budget: patch.budget ?? project.budget,
+        status: patch.status ?? project.status,
+        customer_requirement: patch.customer_requirement ?? project.customer_requirement,
+        owner_id: patch.owner_id ?? project.owner_id,
+        repo_url: patch.repo_url ?? project.repo_url,
+        website_url: patch.website_url ?? project.website_url,
+    });
+
     const resetForm = () => {
         setEditingId(null);
         setForm({
@@ -390,26 +446,66 @@ export default function ProjectsKanban(props) {
     const quickMove = async (p, nextStatus) => {
         if (!canUpdate) return toast.error('Bạn không có quyền cập nhật dự án.');
         try {
-            await axios.put(`/api/v1/projects/${p.id}`, {
-                code: p.code,
-                name: p.name,
-                client_id: p.client_id,
-                contract_id: p.contract_id,
-                service_type: p.service_type,
-                service_type_other: p.service_type_other || null,
-                start_date: p.start_date,
-                deadline: p.deadline,
-                budget: p.budget,
-                status: nextStatus,
-                customer_requirement: p.customer_requirement,
-                owner_id: p.owner_id,
-                repo_url: p.repo_url,
-                website_url: p.website_url,
-            });
+            await axios.put(`/api/v1/projects/${p.id}`, buildProjectPayload(p, { status: nextStatus }));
             toast.success('Đã cập nhật trạng thái.');
             await fetchProjects();
         } catch (e) {
             toast.error(e?.response?.data?.message || 'Cập nhật trạng thái thất bại.');
+        }
+    };
+
+    const bulkUpdateProjects = async (patch, successLabel) => {
+        if (!canUpdate) {
+            toast.error('Bạn không có quyền cập nhật dự án hàng loạt.');
+            return;
+        }
+        if (!selectedProjectIds.length) {
+            toast.error('Vui lòng chọn dự án cần xử lý.');
+            return;
+        }
+
+        const selectedProjects = projects.filter((project) => selectedProjectSet.has(Number(project.id)));
+        if (!selectedProjects.length) {
+            toast.error('Không tìm thấy dự án phù hợp trong danh sách hiện tại.');
+            return;
+        }
+
+        setBulkLoading(true);
+        try {
+            await Promise.all(selectedProjects.map((project) => (
+                axios.put(`/api/v1/projects/${project.id}`, buildProjectPayload(project, patch))
+            )));
+            toast.success(successLabel);
+            setSelectedProjectIds([]);
+            await fetchProjects(filters.page, filters);
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Không thể cập nhật hàng loạt dự án.');
+        } finally {
+            setBulkLoading(false);
+        }
+    };
+
+    const bulkDeleteProjects = async () => {
+        if (!canDelete) {
+            toast.error('Bạn không có quyền xóa dự án.');
+            return;
+        }
+        if (!selectedProjectIds.length) {
+            toast.error('Vui lòng chọn dự án cần xóa.');
+            return;
+        }
+        if (!confirm(`Xóa ${selectedProjectIds.length} dự án đã chọn?`)) return;
+
+        setBulkLoading(true);
+        try {
+            await Promise.all(selectedProjectIds.map((id) => axios.delete(`/api/v1/projects/${id}`)));
+            toast.success(`Đã xóa ${selectedProjectIds.length} dự án đã chọn.`);
+            setSelectedProjectIds([]);
+            await fetchProjects(filters.page, filters);
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Không thể xóa hàng loạt dự án.');
+        } finally {
+            setBulkLoading(false);
         }
     };
 
@@ -530,10 +626,76 @@ export default function ProjectsKanban(props) {
 
                     {viewMode === 'list' && (
                         <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card p-4">
+                            {canBulkActions && selectedProjectIds.length > 0 && (
+                                <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3">
+                                    <div className="text-sm font-medium text-cyan-900">
+                                        Đã chọn {selectedProjectIds.length} dự án.
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <button
+                                            type="button"
+                                            className="rounded-xl border border-cyan-300 bg-white px-3 py-2 text-xs font-semibold text-cyan-700"
+                                            onClick={() => setSelectedProjectIds([])}
+                                            disabled={bulkLoading}
+                                        >
+                                            Bỏ chọn
+                                        </button>
+                                        {canUpdate && (
+                                            <>
+                                                <button
+                                                    type="button"
+                                                    className="rounded-xl border border-sky-300 bg-sky-100 px-3 py-2 text-xs font-semibold text-sky-800"
+                                                    onClick={() => bulkUpdateProjects({ status: 'dang_trien_khai' }, `Đã chuyển ${selectedProjectIds.length} dự án sang Đang triển khai.`)}
+                                                    disabled={bulkLoading}
+                                                >
+                                                    {bulkLoading ? 'Đang xử lý...' : 'Đang triển khai'}
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="rounded-xl border border-amber-300 bg-amber-100 px-3 py-2 text-xs font-semibold text-amber-800"
+                                                    onClick={() => bulkUpdateProjects({ status: 'cho_duyet' }, `Đã chuyển ${selectedProjectIds.length} dự án sang Chờ duyệt.`)}
+                                                    disabled={bulkLoading}
+                                                >
+                                                    {bulkLoading ? 'Đang xử lý...' : 'Chờ duyệt'}
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="rounded-xl border border-rose-300 bg-rose-100 px-3 py-2 text-xs font-semibold text-rose-800"
+                                                    onClick={() => bulkUpdateProjects({ status: 'tam_dung' }, `Đã tạm dừng ${selectedProjectIds.length} dự án.`)}
+                                                    disabled={bulkLoading}
+                                                >
+                                                    {bulkLoading ? 'Đang xử lý...' : 'Tạm dừng'}
+                                                </button>
+                                            </>
+                                        )}
+                                        {canDelete && (
+                                            <button
+                                                type="button"
+                                                className="rounded-xl border border-rose-300 bg-white px-3 py-2 text-xs font-semibold text-rose-700"
+                                                onClick={bulkDeleteProjects}
+                                                disabled={bulkLoading}
+                                            >
+                                                {bulkLoading ? 'Đang xử lý...' : 'Xóa đã chọn'}
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
                             <div className="overflow-x-auto">
                                 <table className="min-w-full text-sm">
                                     <thead>
                                         <tr className="text-left text-xs uppercase tracking-wider text-text-subtle border-b border-slate-200">
+                                            {canBulkActions && (
+                                                <th className="py-2 pr-3">
+                                                    <input
+                                                        type="checkbox"
+                                                        className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary/40"
+                                                        checked={allVisibleSelected}
+                                                        onChange={toggleSelectAllVisibleProjects}
+                                                        aria-label="Chọn tất cả dự án đang hiển thị"
+                                                    />
+                                                </th>
+                                            )}
                                             <th className="py-2">Dự án</th>
                                             <th className="py-2">Dịch vụ</th>
                                             <th className="py-2">Trạng thái</th>
@@ -550,9 +712,21 @@ export default function ProjectsKanban(props) {
                                         {projects.map((p) => (
                                             <tr
                                                 key={p.id}
-                                                className="border-b border-slate-100 cursor-pointer hover:bg-slate-50/70"
+                                                className={`border-b border-slate-100 cursor-pointer hover:bg-slate-50/70 ${selectedProjectSet.has(Number(p.id)) ? 'bg-primary/5' : ''}`}
                                                 onClick={() => { window.location.href = `/cong-viec?project_id=${p.id}`; }}
                                             >
+                                                {canBulkActions && (
+                                                    <td className="py-3 pr-3 align-top">
+                                                        <input
+                                                            type="checkbox"
+                                                            className="mt-1 h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary/40"
+                                                            checked={selectedProjectSet.has(Number(p.id))}
+                                                            onChange={() => toggleProjectSelection(p.id)}
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            aria-label={`Chọn dự án ${p.name}`}
+                                                        />
+                                                    </td>
+                                                )}
                                                 <td className="py-3">
                                                     <div className="font-medium text-slate-900">{p.name}</div>
                                                     <div className="text-xs text-text-muted">{p.code}</div>
@@ -659,14 +833,14 @@ export default function ProjectsKanban(props) {
                                         ))}
                                         {loading && (
                                             <tr>
-                                                <td className="py-6 text-center text-sm text-text-muted" colSpan={10}>
+                                                <td className="py-6 text-center text-sm text-text-muted" colSpan={canBulkActions ? 11 : 10}>
                                                     Đang tải...
                                                 </td>
                                             </tr>
                                         )}
                                         {!loading && projects.length === 0 && (
                                             <tr>
-                                                <td className="py-6 text-center text-sm text-text-muted" colSpan={10}>
+                                                <td className="py-6 text-center text-sm text-text-muted" colSpan={canBulkActions ? 11 : 10}>
                                                     Chưa có dự án theo bộ lọc.
                                                 </td>
                                             </tr>

@@ -339,7 +339,9 @@ export default function LeadForms(props) {
                 axios.get('/api/v1/lead-types'),
                 axios.get('/api/v1/departments'),
                 axios.get('/api/v1/settings'),
-                axios.get('/api/v1/users/lookup'),
+                axios.get('/api/v1/users/lookup', {
+                    params: { purpose: 'operational_assignee' },
+                }),
             ]);
             setForms(formsRes.data?.data || []);
             setFormsMeta({

@@ -13,18 +13,21 @@ export default function FacebookPages(props) {
     const [syncing, setSyncing] = useState(false);
     const [savingPageId, setSavingPageId] = useState(null);
 
+    const sortPages = (items = []) => [...items].sort((left, right) => Number(left?.id || 0) - Number(right?.id || 0));
+    const buildAssignedDraft = (items = []) => (
+        items.reduce((carry, page) => {
+            carry[page.id] = page.assigned_staff_id ? String(page.assigned_staff_id) : '';
+            return carry;
+        }, {})
+    );
+
     const fetchPages = async () => {
         setLoading(true);
         try {
             const res = await axios.get('/api/v1/facebook/pages');
-            const rows = res.data || [];
+            const rows = sortPages(res.data || []);
             setPages(rows);
-            setAssignedStaffDraft(
-                rows.reduce((carry, page) => {
-                    carry[page.id] = page.assigned_staff_id ? String(page.assigned_staff_id) : '';
-                    return carry;
-                }, {})
-            );
+            setAssignedStaffDraft(buildAssignedDraft(rows));
         } catch (e) {
             setMessage(e?.response?.data?.message || 'Không tải được danh sách Page.');
         } finally {
@@ -34,7 +37,9 @@ export default function FacebookPages(props) {
 
     const fetchStaffUsers = async () => {
         try {
-            const res = await axios.get('/api/v1/users/lookup');
+            const res = await axios.get('/api/v1/users/lookup', {
+                params: { purpose: 'operational_assignee' },
+            });
             setStaffUsers(res.data?.data || []);
         } catch {
             setStaffUsers([]);
@@ -47,7 +52,9 @@ export default function FacebookPages(props) {
         setMessage('');
         try {
             const res = await axios.post('/api/v1/facebook/pages/sync');
-            setPages(res.data?.pages || []);
+            const syncedPages = sortPages(res.data?.pages || []);
+            setPages(syncedPages);
+            setAssignedStaffDraft(buildAssignedDraft(syncedPages));
             setMessage(res.data?.message || 'Đã tự động đồng bộ danh sách Page.');
         } catch (e) {
             setMessage(e?.response?.data?.message || 'Đồng bộ danh sách Page thất bại.');
@@ -74,7 +81,11 @@ export default function FacebookPages(props) {
             };
             const res = await axios.put(`/api/v1/facebook/pages/${pageId}`, payload);
             setMessage(res.data?.message || 'Đã cập nhật nhân viên phụ trách.');
-            await fetchPages();
+            if (res.data?.page) {
+                setPages((current) => sortPages(current.map((page) => (
+                    Number(page.id) === Number(pageId) ? { ...page, ...res.data.page } : page
+                ))));
+            }
         } catch (e) {
             setMessage(e?.response?.data?.message || 'Không lưu được nhân viên phụ trách cho Page.');
         } finally {
@@ -87,7 +98,11 @@ export default function FacebookPages(props) {
         try {
             const res = await axios.post(`/api/v1/facebook/pages/${pageId}/subscribe`);
             setMessage(res.data?.message || 'Đã kích hoạt webhook.');
-            fetchPages();
+            if (res.data?.page) {
+                setPages((current) => sortPages(current.map((page) => (
+                    Number(page.id) === Number(pageId) ? { ...page, ...res.data.page } : page
+                ))));
+            }
         } catch (e) {
             setMessage(e?.response?.data?.message || 'Kích hoạt webhook thất bại.');
         }
@@ -101,7 +116,11 @@ export default function FacebookPages(props) {
         try {
             const res = await axios.post(`/api/v1/facebook/pages/${pageId}/unsubscribe`);
             setMessage(res.data?.message || 'Đã hủy kích hoạt webhook.');
-            fetchPages();
+            if (res.data?.page) {
+                setPages((current) => sortPages(current.map((page) => (
+                    Number(page.id) === Number(pageId) ? { ...page, ...res.data.page } : page
+                ))));
+            }
         } catch (e) {
             setMessage(e?.response?.data?.message || 'Hủy kích hoạt thất bại.');
         }

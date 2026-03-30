@@ -248,7 +248,7 @@ export default function UserAccountsDashboard(props) {
         <PageContainer
             auth={props.auth}
             title="Bảng điều khiển tài khoản người dùng"
-            description="Theo dõi phân bổ vai trò, trạng thái hoạt động và năng lực xử lý công việc."
+            description="Theo dõi phân bổ vai trò, trạng thái hoạt động và thông tin người dùng trong hệ thống."
             stats={[
                 { label: 'Tổng tài khoản', value: stats.total_users },
                 { label: 'Đang hoạt động', value: stats.active_users },
@@ -338,106 +338,104 @@ export default function UserAccountsDashboard(props) {
                 description="Cập nhật thông tin và phân quyền người dùng."
                 size="xl"
             >
-                <form onSubmit={submitAccount} className="grid gap-3 md:grid-cols-4">
-                    <FormField label="Họ tên" required>
-                        <input
-                            type="text"
-                            placeholder="Tên hiển thị của người dùng"
-                            value={form.name}
-                            onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
-                            className="rounded-lg border-slate-300 text-sm"
-                            required
-                        />
-                    </FormField>
-                    <FormField label="Email" required>
-                        <input
-                            type="email"
-                            placeholder="Email đăng nhập"
-                            value={form.email}
-                            onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
-                            className="rounded-lg border-slate-300 text-sm"
-                            required
-                        />
-                    </FormField>
-                    <FormField label={editingId ? 'Mật khẩu mới' : 'Mật khẩu'}>
-                        <input
-                            type="password"
-                            placeholder={editingId ? 'Để trống nếu không đổi' : 'Nhập mật khẩu khởi tạo'}
-                            value={form.password}
-                            onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))}
-                            className="rounded-lg border-slate-300 text-sm"
-                        />
-                    </FormField>
-                    <FormField label="Vai trò">
-                        <select
-                            value={form.role}
-                            onChange={(e) => setForm((prev) => ({ ...prev, role: e.target.value }))}
-                            className="rounded-lg border-slate-300 text-sm"
-                        >
-                            <option value="admin">Admin</option>
-                            <option value="administrator">Administrator</option>
-                            <option value="quan_ly">Quản lý</option>
-                            <option value="nhan_vien">Nhân sự</option>
-                            <option value="ke_toan">Kế toán</option>
-                        </select>
-                    </FormField>
-                    <FormField label="Phòng ban">
-                        <select
-                            value={form.department_id}
-                            onChange={(e) => setForm((prev) => ({ ...prev, department_id: e.target.value }))}
-                            className="rounded-lg border-slate-300 text-sm"
-                        >
-                            <option value="">Chọn phòng ban</option>
-                            {departments.map((dept) => (
-                                <option key={dept.id} value={dept.id}>
-                                    {dept.name}
-                                </option>
-                            ))}
-                        </select>
-                    </FormField>
-                    <FormField label="Số điện thoại">
-                        <input
-                            type="text"
-                            placeholder="Số điện thoại liên hệ"
-                            value={form.phone}
-                            onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))}
-                            className="rounded-lg border-slate-300 text-sm"
-                        />
-                    </FormField>
-                    <FormField label="Năng lực (%)">
-                        <input
-                            type="number"
-                            min="0"
-                            max="200"
-                            placeholder="Mặc định 100%"
-                            value={form.workload_capacity}
-                            onChange={(e) => setForm((prev) => ({ ...prev, workload_capacity: e.target.value }))}
-                            className="rounded-lg border-slate-300 text-sm"
-                        />
-                    </FormField>
-                    <FormField label="Trạng thái tài khoản">
-                        <select
-                            value={form.is_active ? '1' : '0'}
-                            onChange={(e) => setForm((prev) => ({ ...prev, is_active: e.target.value === '1' }))}
-                            className="rounded-lg border-slate-300 text-sm"
-                        >
-                            <option value="1">Đang hoạt động</option>
-                            <option value="0">Tạm khóa</option>
-                        </select>
-                    </FormField>
+                <form onSubmit={submitAccount} className="space-y-5">
+                    <div className="rounded-3xl border border-slate-200/80 bg-slate-50/70 p-4">
+                        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                            <FormField label="Họ tên" required>
+                                <input
+                                    type="text"
+                                    placeholder="Tên hiển thị của người dùng"
+                                    value={form.name}
+                                    onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
+                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm"
+                                    required
+                                />
+                            </FormField>
+                            <FormField label="Email" required>
+                                <input
+                                    type="email"
+                                    placeholder="Email đăng nhập"
+                                    value={form.email}
+                                    onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
+                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm"
+                                    required
+                                />
+                            </FormField>
+                            <FormField label={editingId ? 'Mật khẩu mới' : 'Mật khẩu'}>
+                                <input
+                                    type="password"
+                                    placeholder={editingId ? 'Để trống nếu không đổi' : 'Nhập mật khẩu khởi tạo'}
+                                    value={form.password}
+                                    onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))}
+                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm"
+                                />
+                            </FormField>
+                            <FormField label="Vai trò">
+                                <select
+                                    value={form.role}
+                                    onChange={(e) => setForm((prev) => ({ ...prev, role: e.target.value }))}
+                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm"
+                                >
+                                    <option value="admin">Admin</option>
+                                    <option value="administrator">Administrator</option>
+                                    <option value="quan_ly">Quản lý</option>
+                                    <option value="nhan_vien">Nhân sự</option>
+                                    <option value="ke_toan">Kế toán</option>
+                                </select>
+                            </FormField>
+                        </div>
+                    </div>
 
-                    <div className="md:col-span-4 flex items-center gap-2">
+                    <div className="rounded-3xl border border-slate-200/80 bg-white p-4">
+                        <div className="grid gap-4 md:grid-cols-3">
+                            <FormField label="Phòng ban">
+                                <select
+                                    value={form.department_id}
+                                    onChange={(e) => setForm((prev) => ({ ...prev, department_id: e.target.value }))}
+                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm"
+                                >
+                                    <option value="">Chọn phòng ban</option>
+                                    {departments.map((dept) => (
+                                        <option key={dept.id} value={dept.id}>
+                                            {dept.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </FormField>
+                            <FormField label="Số điện thoại">
+                                <input
+                                    type="text"
+                                    placeholder="Số điện thoại liên hệ"
+                                    value={form.phone}
+                                    onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))}
+                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm"
+                                />
+                            </FormField>
+                            <FormField label="Trạng thái tài khoản">
+                                <select
+                                    value={form.is_active ? '1' : '0'}
+                                    onChange={(e) => setForm((prev) => ({ ...prev, is_active: e.target.value === '1' }))}
+                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm"
+                                >
+                                    <option value="1">Đang hoạt động</option>
+                                    <option value="0">Tạm khóa</option>
+                                </select>
+                            </FormField>
+                        </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
                         <button
                             type="submit"
                             disabled={submitting}
-                            className="rounded-lg bg-sky-600 text-white text-sm font-semibold px-4 py-2 hover:bg-sky-700 disabled:opacity-60"
+                            className="rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-primary/90 disabled:opacity-60"
                         >
                             {editingId ? 'Lưu chỉnh sửa' : 'Thêm tài khoản'}
                         </button>
                         <button
                             type="button"
                             onClick={closeForm}
-                            className="rounded-lg border border-slate-300 text-sm px-4 py-2"
+                            className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
                         >
                             Hủy
                         </button>
@@ -511,7 +509,6 @@ export default function UserAccountsDashboard(props) {
                                     <th className="px-3 py-2 text-left">Tên</th>
                                     <th className="px-3 py-2 text-left">Vai trò</th>
                                     <th className="px-3 py-2 text-left">Phòng ban</th>
-                                    <th className="px-3 py-2 text-left">Năng lực</th>
                                     <th className="px-3 py-2 text-left">Trạng thái</th>
                                     <th className="px-3 py-2 text-right">Thao tác</th>
                                 </tr>
@@ -526,9 +523,6 @@ export default function UserAccountsDashboard(props) {
                                         <td className="px-3 py-2">{toRoleLabel(user.role)}</td>
                                         <td className="px-3 py-2">
                                             {departments.find((d) => d.id === user.department_id)?.name || user.department || '—'}
-                                        </td>
-                                        <td className="px-3 py-2">
-                                            {user.workload_capacity ?? 0}%
                                         </td>
                                         <td className="px-3 py-2">
                                             <span
@@ -559,7 +553,7 @@ export default function UserAccountsDashboard(props) {
                                 ))}
                                 {usersData.length === 0 && !loading && (
                                     <tr>
-                                        <td colSpan={6} className="px-3 py-6 text-center text-sm text-text-muted">
+                                        <td colSpan={5} className="px-3 py-6 text-center text-sm text-text-muted">
                                             Không có dữ liệu.
                                         </td>
                                     </tr>
@@ -584,7 +578,6 @@ export default function UserAccountsDashboard(props) {
                     <div className="mt-4 text-xs text-text-muted space-y-1">
                         <p>Hoạt động: {statusPercent.active}%</p>
                         <p>Không hoạt động: {statusPercent.inactive}%</p>
-                        <p>Năng lực TB: {stats.average_capacity}%</p>
                     </div>
                 </div>
             </div>

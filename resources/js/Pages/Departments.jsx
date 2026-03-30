@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
+import TagMultiSelect from '@/Components/TagMultiSelect';
 import { useToast } from '@/Contexts/ToastContext';
 
 function FormField({ label, required = false, children, className = '' }) {
@@ -65,6 +66,28 @@ export default function Departments(props) {
             { label: 'Quyền', value: canManage ? 'Quản trị' : 'Xem' },
         ];
     }, [departments, users, canManage]);
+
+    const managerOptions = useMemo(
+        () => users
+            .filter((user) => user?.is_active && user?.role === 'quan_ly')
+            .map((user) => ({
+                id: user.id,
+                label: user.name,
+                meta: user.email || 'Quản lý',
+            })),
+        [users]
+    );
+
+    const staffOptions = useMemo(
+        () => users
+            .filter((user) => user?.is_active && ['quan_ly', 'nhan_vien'].includes(user?.role))
+            .map((user) => ({
+                id: user.id,
+                label: user.name,
+                meta: [user.email, user.role].filter(Boolean).join(' • '),
+            })),
+        [users]
+    );
 
     const resetForm = () => {
         setEditingId(null);
@@ -211,47 +234,52 @@ export default function Departments(props) {
                 description="Gán quản lý và nhân sự theo phòng ban."
                 size="lg"
             >
-                <div className="space-y-3 text-sm">
-                    <FormField label="Tên phòng ban" required>
-                        <input
-                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                            placeholder="Ví dụ: Phòng sản xuất, Phòng kinh doanh"
-                            value={form.name}
-                            onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))}
-                        />
-                    </FormField>
-                    <FormField label="Quản lý phòng ban">
-                        <select
-                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                            value={form.manager_id}
-                            onChange={(e) => setForm((s) => ({ ...s, manager_id: e.target.value }))}
+                <div className="space-y-5 text-sm">
+                    <div className="rounded-3xl border border-slate-200/80 bg-slate-50/70 p-4">
+                        <div className="grid gap-4 md:grid-cols-2">
+                            <FormField label="Tên phòng ban" required>
+                                <input
+                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-4 py-3"
+                                    placeholder="Ví dụ: Phòng sản xuất, Phòng kinh doanh"
+                                    value={form.name}
+                                    onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))}
+                                />
+                            </FormField>
+                            <FormField label="Quản lý phòng ban">
+                                <select
+                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-4 py-3"
+                                    value={form.manager_id}
+                                    onChange={(e) => setForm((s) => ({ ...s, manager_id: e.target.value }))}
+                                >
+                                    <option value="">Chọn quản lý</option>
+                                    {managerOptions.map((user) => (
+                                        <option key={user.id} value={user.id}>
+                                            {user.label}{user.meta ? ` • ${user.meta}` : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                            </FormField>
+                        </div>
+                    </div>
+
+                    <div className="rounded-3xl border border-slate-200/80 bg-white p-4">
+                        <FormField
+                            label="Nhân sự thuộc phòng ban"
+                            className="mb-0"
                         >
-                            <option value="">Chọn quản lý</option>
-                            {users.map((user) => (
-                                <option key={user.id} value={user.id}>
-                                    {user.name} • {user.role}
-                                </option>
-                            ))}
-                        </select>
-                    </FormField>
-                    <FormField label="Nhân sự thuộc phòng ban">
-                        <select
-                            className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                            multiple
-                            value={form.staff_ids}
-                            onChange={(e) => {
-                                const values = Array.from(e.target.selectedOptions).map((opt) => opt.value);
-                                setForm((s) => ({ ...s, staff_ids: values }));
-                            }}
-                            size={6}
-                        >
-                            {users.map((user) => (
-                                <option key={user.id} value={user.id}>
-                                    {user.name} • {user.role}
-                                </option>
-                            ))}
-                        </select>
-                    </FormField>
+                            <TagMultiSelect
+                                options={staffOptions}
+                                selectedIds={form.staff_ids}
+                                onChange={(selectedIds) => setForm((s) => ({ ...s, staff_ids: selectedIds }))}
+                                addPlaceholder="Tìm và thêm quản lý hoặc nhân viên"
+                                emptyLabel="Chưa có nhân sự nào trong phòng ban."
+                            />
+                        </FormField>
+                        <p className="mt-3 text-xs text-text-muted">
+                            Chỉ được thêm vai trò quản lý hoặc nhân viên đang hoạt động. Admin, Administrator và Kế toán không nằm trong phòng ban vận hành.
+                        </p>
+                    </div>
+
                     {!canManage && (
                         <p className="text-xs text-text-muted">
                             Chỉ Admin mới được chỉnh sửa phòng ban.

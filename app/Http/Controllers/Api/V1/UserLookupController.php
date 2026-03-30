@@ -78,6 +78,33 @@ class UserLookupController extends Controller
             }
         }
 
+        if ($purpose === 'operational_assignee') {
+            $skipDefaultRoleScope = true;
+            $allowedRoles = ['quan_ly', 'nhan_vien'];
+
+            if (! $user) {
+                $query->whereRaw('1 = 0');
+            } elseif (in_array($user->role, ['admin', 'administrator', 'ke_toan'], true)) {
+                $query->whereIn('role', $allowedRoles);
+            } elseif ($user->role === 'quan_ly') {
+                $deptIds = $user->managedDepartments()->pluck('id');
+                $query->where(function ($builder) use ($allowedRoles, $deptIds, $user) {
+                    $builder->where(function ($selfBuilder) use ($user) {
+                        $selfBuilder->where('id', $user->id)
+                            ->where('role', 'quan_ly');
+                    })->orWhere(function ($staffBuilder) use ($deptIds, $allowedRoles) {
+                        $staffBuilder->whereIn('role', $allowedRoles)
+                            ->whereIn('department_id', $deptIds);
+                    });
+                });
+            } elseif ($user->role === 'nhan_vien') {
+                $query->where('id', $user->id)
+                    ->where('role', 'nhan_vien');
+            } else {
+                $query->whereRaw('1 = 0');
+            }
+        }
+
         if ($request->filled('role')) {
             $query->where('role', (string) $request->input('role'));
         }

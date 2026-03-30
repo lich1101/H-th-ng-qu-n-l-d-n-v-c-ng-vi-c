@@ -17,7 +17,7 @@ class FacebookPageController extends Controller
         $pages = FacebookPage::query()
             ->with('assignedStaff:id,name,email,department_id')
             ->where('user_id', $request->user()->id)
-            ->orderBy('name')
+            ->orderBy('id')
             ->get();
 
         return response()->json($pages);
@@ -56,19 +56,39 @@ class FacebookPageController extends Controller
         $userId = $request->user()->id;
         $now = Carbon::now();
 
+        $pageIds = collect($data)
+            ->pluck('id')
+            ->filter()
+            ->map(function ($pageId) {
+                return (string) $pageId;
+            })
+            ->values();
+
+        FacebookPage::query()
+            ->where('user_id', $userId)
+            ->when(
+                $pageIds->isNotEmpty(),
+                function ($builder) use ($pageIds) {
+                    return $builder->whereNotIn('page_id', $pageIds->all());
+                }
+            )
+            ->delete();
+
         $pages = collect($data)->map(function ($page) use ($userId, $now) {
             return FacebookPage::updateOrCreate(
-                ['page_id' => (string) ($page['id'] ?? '')],
+                [
+                    'user_id' => $userId,
+                    'page_id' => (string) ($page['id'] ?? ''),
+                ],
                 [
                     'name' => (string) ($page['name'] ?? 'Facebook Page'),
                     'category' => $page['category'] ?? null,
                     'access_token' => (string) ($page['access_token'] ?? ''),
-                    'user_id' => $userId,
                     'is_active' => true,
                     'connected_at' => $now,
                 ]
             );
-        })->values();
+        })->sortBy('id')->values();
 
         return response()->json([
             'message' => 'Đã đồng bộ danh sách Page.',
@@ -158,14 +178,21 @@ class FacebookPageController extends Controller
 
     private function canAssignStaff($user, int $staffId): bool
     {
+        $allowedRoles = ['quan_ly', 'nhan_vien'];
+
         if (in_array($user->role, ['admin', 'administrator', 'ke_toan'], true)) {
-            return User::query()->where('id', $staffId)->where('is_active', true)->exists();
+            return User::query()
+                ->where('id', $staffId)
+                ->where('is_active', true)
+                ->whereIn('role', $allowedRoles)
+                ->exists();
         }
 
         if ($user->role === 'quan_ly') {
             return User::query()
                 ->where('id', $staffId)
                 ->where('is_active', true)
+                ->whereIn('role', $allowedRoles)
                 ->where(function ($builder) use ($user) {
                     $builder->whereIn('department_id', $user->managedDepartments()->pluck('id'))
                         ->orWhere('id', $user->id);
@@ -173,6 +200,6 @@ class FacebookPageController extends Controller
                 ->exists();
         }
 
-        return (int) $user->id === $staffId;
+        return (int) $user->id === $staffId && in_array($user->role, $allowedRoles, true);
     }
 }

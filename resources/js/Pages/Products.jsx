@@ -22,6 +22,7 @@ export default function Products(props) {
     const userRole = props?.auth?.user?.role || '';
     const canManage = ['admin', 'ke_toan'].includes(userRole);
     const canDelete = userRole === 'admin';
+    const canBulkActions = canManage || canDelete;
 
     const [categories, setCategories] = useState([]);
     const [products, setProducts] = useState([]);
@@ -49,6 +50,8 @@ export default function Products(props) {
         description: '',
         is_active: true,
     });
+    const [selectedProductIds, setSelectedProductIds] = useState([]);
+    const [bulkLoading, setBulkLoading] = useState(false);
 
     const fetchProducts = async (pageOrFilters = filters.page, maybeFilters = filters) => {
         const nextFilters = typeof pageOrFilters === 'object' && pageOrFilters !== null
@@ -66,7 +69,9 @@ export default function Products(props) {
                     per_page: nextFilters.per_page || 20,
                 },
             });
-            setProducts(res.data?.data || []);
+            const rows = res.data?.data || [];
+            setProducts(rows);
+            setSelectedProductIds((prev) => prev.filter((id) => rows.some((product) => Number(product.id) === Number(id))));
             setProductMeta({
                 current_page: res.data?.current_page || 1,
                 last_page: res.data?.last_page || 1,
@@ -123,6 +128,75 @@ export default function Products(props) {
             { label: 'Vai trò', value: userRole || '—' },
         ];
     }, [productMeta.total, products, userRole]);
+
+    const visibleProductIds = useMemo(
+        () => products.map((product) => Number(product.id)).filter((id) => id > 0),
+        [products]
+    );
+    const selectedProductSet = useMemo(
+        () => new Set(selectedProductIds.map((id) => Number(id))),
+        [selectedProductIds]
+    );
+    const allVisibleSelected = visibleProductIds.length > 0
+        && visibleProductIds.every((id) => selectedProductSet.has(id));
+
+    const toggleProductSelection = (productId) => {
+        const normalizedId = Number(productId || 0);
+        if (normalizedId <= 0) return;
+        setSelectedProductIds((prev) => (
+            prev.includes(normalizedId)
+                ? prev.filter((id) => id !== normalizedId)
+                : [...prev, normalizedId]
+        ));
+    };
+
+    const toggleSelectAllVisibleProducts = () => {
+        if (allVisibleSelected) {
+            setSelectedProductIds((prev) => prev.filter((id) => !visibleProductIds.includes(Number(id))));
+            return;
+        }
+
+        setSelectedProductIds((prev) => {
+            const set = new Set(prev.map((id) => Number(id)));
+            visibleProductIds.forEach((id) => set.add(id));
+            return Array.from(set.values());
+        });
+    };
+
+    const bulkUpdateProducts = async (patch, successLabel) => {
+        if (!canManage) return toast.error('Bạn không có quyền thao tác nhanh sản phẩm.');
+        if (!selectedProductIds.length) return toast.error('Vui lòng chọn sản phẩm cần xử lý.');
+
+        setBulkLoading(true);
+        try {
+            await Promise.all(selectedProductIds.map((id) => axios.put(`/api/v1/products/${id}`, patch)));
+            toast.success(successLabel);
+            setSelectedProductIds([]);
+            await fetchProducts(filters.page, filters);
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Không thể cập nhật hàng loạt sản phẩm.');
+        } finally {
+            setBulkLoading(false);
+        }
+    };
+
+    const bulkDeleteProducts = async () => {
+        if (!canDelete) return toast.error('Bạn không có quyền xóa sản phẩm.');
+        if (!selectedProductIds.length) return toast.error('Vui lòng chọn sản phẩm cần xóa.');
+        if (!confirm(`Xóa ${selectedProductIds.length} sản phẩm đã chọn?`)) return;
+
+        setBulkLoading(true);
+        try {
+            await Promise.all(selectedProductIds.map((id) => axios.delete(`/api/v1/products/${id}`)));
+            toast.success(`Đã xóa ${selectedProductIds.length} sản phẩm đã chọn.`);
+            setSelectedProductIds([]);
+            await fetchProducts(filters.page, filters);
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Không thể xóa hàng loạt sản phẩm.');
+        } finally {
+            setBulkLoading(false);
+        }
+    };
 
     const resetForm = () => {
         setEditingId(null);
@@ -439,10 +513,68 @@ export default function Products(props) {
                         </div>
                     </FilterToolbar>
                     <div className="mb-4" />
+                    {canBulkActions && selectedProductIds.length > 0 && (
+                        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3">
+                            <div className="text-sm font-medium text-cyan-900">
+                                Đã chọn {selectedProductIds.length} sản phẩm.
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                                <button
+                                    type="button"
+                                    className="rounded-xl border border-cyan-300 bg-white px-3 py-2 text-xs font-semibold text-cyan-700"
+                                    onClick={() => setSelectedProductIds([])}
+                                    disabled={bulkLoading}
+                                >
+                                    Bỏ chọn
+                                </button>
+                                {canManage && (
+                                    <>
+                                        <button
+                                            type="button"
+                                            className="rounded-xl border border-emerald-300 bg-emerald-100 px-3 py-2 text-xs font-semibold text-emerald-800"
+                                            onClick={() => bulkUpdateProducts({ is_active: true }, `Đã kích hoạt ${selectedProductIds.length} sản phẩm.`)}
+                                            disabled={bulkLoading}
+                                        >
+                                            {bulkLoading ? 'Đang xử lý...' : 'Kích hoạt đã chọn'}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="rounded-xl border border-amber-300 bg-amber-100 px-3 py-2 text-xs font-semibold text-amber-800"
+                                            onClick={() => bulkUpdateProducts({ is_active: false }, `Đã ngưng ${selectedProductIds.length} sản phẩm.`)}
+                                            disabled={bulkLoading}
+                                        >
+                                            {bulkLoading ? 'Đang xử lý...' : 'Ngưng đã chọn'}
+                                        </button>
+                                    </>
+                                )}
+                                {canDelete && (
+                                    <button
+                                        type="button"
+                                        className="rounded-xl border border-rose-300 bg-rose-100 px-3 py-2 text-xs font-semibold text-rose-800"
+                                        onClick={bulkDeleteProducts}
+                                        disabled={bulkLoading}
+                                    >
+                                        {bulkLoading ? 'Đang xử lý...' : 'Xóa đã chọn'}
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    )}
                     <div className="overflow-x-auto">
                         <table className="min-w-full text-sm">
                             <thead>
                                 <tr className="text-left text-xs uppercase tracking-wider text-text-subtle border-b border-slate-200">
+                                    {canBulkActions && (
+                                        <th className="py-2 pr-3">
+                                            <input
+                                                type="checkbox"
+                                                className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary/40"
+                                                checked={allVisibleSelected}
+                                                onChange={toggleSelectAllVisibleProducts}
+                                                aria-label="Chọn tất cả sản phẩm đang hiển thị"
+                                            />
+                                        </th>
+                                    )}
                                     <th className="py-2">Mã</th>
                                     <th className="py-2">Tên sản phẩm</th>
                                     <th className="py-2">Danh mục</th>
@@ -454,7 +586,18 @@ export default function Products(props) {
                             </thead>
                             <tbody>
                                 {products.map((p) => (
-                                    <tr key={p.id} className="border-b border-slate-100">
+                                    <tr key={p.id} className={`border-b border-slate-100 ${selectedProductSet.has(Number(p.id)) ? 'bg-primary/5' : ''}`}>
+                                        {canBulkActions && (
+                                            <td className="py-2 pr-3 align-top">
+                                                <input
+                                                    type="checkbox"
+                                                    className="mt-1 h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary/40"
+                                                    checked={selectedProductSet.has(Number(p.id))}
+                                                    onChange={() => toggleProductSelection(p.id)}
+                                                    aria-label={`Chọn sản phẩm ${p.name}`}
+                                                />
+                                            </td>
+                                        )}
                                         <td className="py-2 text-text-muted">{p.code || '—'}</td>
                                         <td className="py-2 font-medium text-slate-900">{p.name}</td>
                                         <td className="py-2 text-text-muted">{p.category?.name || '—'}</td>
@@ -495,7 +638,7 @@ export default function Products(props) {
                                 ))}
                                 {products.length === 0 && !loading && (
                                     <tr>
-                                        <td className="py-6 text-center text-sm text-text-muted" colSpan={7}>
+                                        <td className="py-6 text-center text-sm text-text-muted" colSpan={canBulkActions ? 8 : 7}>
                                             Chưa có sản phẩm nào.
                                         </td>
                                     </tr>
