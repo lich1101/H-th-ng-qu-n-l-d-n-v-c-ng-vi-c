@@ -328,7 +328,7 @@ Route::prefix('v1')->group(function () {
         Route::put('/opportunities/{opportunity}', [OpportunityController::class, 'update'])
             ->middleware('role:admin,quan_ly,nhan_vien');
         Route::delete('/opportunities/{opportunity}', [OpportunityController::class, 'destroy'])
-            ->middleware('role:admin,quan_ly');
+            ->middleware('role:admin');
 
         Route::get('/products', [ProductController::class, 'index'])
             ->middleware('role:admin,quan_ly,nhan_vien,ke_toan');

@@ -1,42 +1,26 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { Link } from '@inertiajs/inertia-react';
-import ReactFlow, { Background, Controls } from 'reactflow';
-import 'reactflow/dist/style.css';
 import AppIcon from '@/Components/AppIcon';
 import PageContainer from '@/Components/PageContainer';
 import { useToast } from '@/Contexts/ToastContext';
 
-const TYPE_LABELS = {
-    client: 'Khách hàng',
-    contract: 'Hợp đồng',
-    project: 'Dự án',
-    task: 'Công việc',
-    item: 'Đầu việc',
-};
-
-const TYPE_COLORS = {
-    client: '#0f766e',
-    contract: '#2563eb',
-    project: '#0891b2',
-    task: '#7c3aed',
-    item: '#ea580c',
-};
-
-const LABELS = {
+const STATUS_LABELS = {
+    open: 'Đang mở',
+    won: 'Thành công',
+    lost: 'Thất bại',
+    pending: 'Chờ duyệt',
+    approved: 'Đã duyệt',
+    rejected: 'Từ chối',
     moi_tao: 'Mới tạo',
     dang_trien_khai: 'Đang triển khai',
     cho_duyet: 'Chờ duyệt',
     hoan_thanh: 'Hoàn thành',
     tam_dung: 'Tạm dừng',
-    pending: 'Chờ duyệt',
-    approved: 'Đã duyệt',
-    rejected: 'Từ chối',
-    backlog: 'Backlog',
     todo: 'Cần làm',
     doing: 'Đang làm',
-    blocked: 'Bị chặn',
     done: 'Hoàn tất',
+    blocked: 'Bị chặn',
 };
 
 const SERVICE_LABELS = {
@@ -47,25 +31,10 @@ const SERVICE_LABELS = {
     khac: 'Khác',
 };
 
-const HINT_CARD_WIDTH = 360;
-const HINT_CARD_MAX_HEIGHT = 430;
+const doneStatusSet = new Set(['won', 'success', 'thanh_cong', 'hoan_thanh', 'done', 'completed']);
+const doneContractStatusSet = new Set(['success', 'active', 'approved', 'hoan_thanh']);
 
-const statusLabel = (value) => LABELS[String(value || '').toLowerCase()] || value || '—';
-
-const statusColor = (value, fallback = '#2563eb') => {
-    const key = String(value || '').toLowerCase();
-    if (['dang_trien_khai', 'doing', 'active', 'paid'].includes(key)) return '#16a34a';
-    if (['cho_duyet', 'pending', 'waiting'].includes(key)) return '#d97706';
-    if (['blocked', 'tam_dung', 'paused', 'rejected'].includes(key)) return '#dc2626';
-    if (['hoan_thanh', 'done', 'completed', 'closed', 'approved'].includes(key)) return '#0f766e';
-    return fallback;
-};
-
-const clampPercent = (value) => {
-    const parsed = Number(value || 0);
-    if (Number.isNaN(parsed)) return 0;
-    return Math.max(0, Math.min(100, parsed));
-};
+const statusLabel = (value) => STATUS_LABELS[String(value || '').toLowerCase()] || value || '—';
 
 const formatDate = (raw) => {
     if (!raw) return '—';
@@ -78,7 +47,7 @@ const formatDateTime = (raw) => {
     if (!raw) return '—';
     const date = new Date(raw);
     if (Number.isNaN(date.getTime())) return String(raw);
-    return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+    return date.toLocaleString('vi-VN');
 };
 
 const formatCurrency = (value) => Number(value || 0).toLocaleString('vi-VN');
@@ -89,189 +58,33 @@ const serviceLabel = (project) => {
     return SERVICE_LABELS[project.service_type] || project.service_type || '—';
 };
 
-const safeText = (value, fallback = '—') => {
-    if (value === null || value === undefined || value === '') return fallback;
-    return value;
-};
-
-const hexToRgba = (hex, alpha) => {
-    const value = String(hex || '').replace('#', '');
-    if (value.length !== 6) return `rgba(37, 99, 235, ${alpha})`;
-    const r = Number.parseInt(value.slice(0, 2), 16);
-    const g = Number.parseInt(value.slice(2, 4), 16);
-    const b = Number.parseInt(value.slice(4, 6), 16);
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-};
-
-const nodeStyle = (accent, isActive) => ({
-    width: 276,
-    padding: 0,
-    overflow: 'hidden',
-    cursor: 'pointer',
-    borderRadius: 24,
-    border: `1px solid ${hexToRgba(accent, isActive ? 0.56 : 0.22)}`,
-    background: '#ffffff',
-    boxShadow: isActive
-        ? `0 20px 48px ${hexToRgba(accent, 0.22)}`
-        : '0 14px 34px rgba(15, 23, 42, 0.08)',
-});
-
-function FlowNodeCard({ detail }) {
-    const accent = detail.accentColor || TYPE_COLORS[detail.type] || '#2563eb';
-    const stats = (detail.stats || []).slice(0, 2);
-    const rows = (detail.rows || []).slice(0, 2);
-
+function TabButton({ active, icon, label, onClick, count = null }) {
     return (
-        <div className="relative overflow-hidden text-left">
-            <div
-                className="absolute inset-x-0 top-0 h-20"
-                style={{ background: `linear-gradient(135deg, ${hexToRgba(accent, 0.18)}, ${hexToRgba(accent, 0.03)})` }}
-            />
-            <div className="relative space-y-3 px-4 py-4">
-                <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                        <div
-                            className="inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]"
-                            style={{ backgroundColor: hexToRgba(accent, 0.12), color: accent }}
-                        >
-                            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: accent }} />
-                            {TYPE_LABELS[detail.type] || detail.type}
-                        </div>
-                        <div className="mt-3 text-[14px] font-semibold leading-5 text-slate-900 break-words">{detail.title}</div>
-                        {detail.subtitle && (
-                            <div className="mt-1 text-[11px] leading-4 text-slate-500 break-words">{detail.subtitle}</div>
-                        )}
-                    </div>
-                    <div
-                        className="shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold"
-                        style={{ backgroundColor: hexToRgba(accent, 0.12), color: accent }}
-                    >
-                        {detail.statusText}
-                    </div>
-                </div>
-
-                {typeof detail.progress === 'number' && (
-                    <div className="space-y-1.5">
-                        <div className="flex items-center justify-between text-[11px] text-slate-500">
-                            <span>Tiến độ</span>
-                            <span className="font-semibold text-slate-700">{clampPercent(detail.progress)}%</span>
-                        </div>
-                        <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
-                            <div
-                                className="h-full rounded-full"
-                                style={{ width: `${clampPercent(detail.progress)}%`, backgroundColor: accent }}
-                            />
-                        </div>
-                    </div>
-                )}
-
-                {stats.length > 0 && (
-                    <div className="grid grid-cols-2 gap-2">
-                        {stats.map((stat) => (
-                            <div key={`${detail.id}-${stat.label}`} className="rounded-2xl border border-slate-200/80 bg-slate-50/80 px-3 py-2">
-                                <div className="text-[10px] uppercase tracking-[0.16em] text-slate-400">{stat.label}</div>
-                                <div className="mt-1 text-[12px] font-semibold text-slate-800 break-words">{stat.value}</div>
-                            </div>
-                        ))}
-                    </div>
-                )}
-
-                {rows.length > 0 && (
-                    <div className="space-y-2 border-t border-slate-200/80 pt-3">
-                        {rows.map((row) => (
-                            <div key={`${detail.id}-${row.label}`} className="flex items-start justify-between gap-3 text-[11px]">
-                                <span className="text-slate-400">{row.label}</span>
-                                <span className="text-right font-semibold text-slate-700 break-words">{row.value}</span>
-                            </div>
-                        ))}
-                    </div>
-                )}
-
-                <div className="flex items-center justify-between pt-1 text-[11px]">
-                    <span className="text-slate-400">{detail.footer || 'Nhấn để xem ghi chú nhanh'}</span>
-                    <span className="font-semibold" style={{ color: accent }}>Xem chú thích</span>
-                </div>
-            </div>
-        </div>
+        <button
+            type="button"
+            onClick={onClick}
+            className={`inline-flex items-center gap-2 rounded-2xl border px-3 py-2 text-sm font-semibold transition ${
+                active
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-slate-200 bg-white text-slate-600 hover:border-primary/30 hover:text-primary'
+            }`}
+        >
+            <AppIcon name={icon} className="h-4 w-4" />
+            <span>{label}</span>
+            {count !== null && (
+                <span className="rounded-full bg-white/80 px-2 py-0.5 text-xs text-slate-700">{count}</span>
+            )}
+        </button>
     );
 }
 
-function DetailList({ rows }) {
+function EmptyTable({ colSpan, message }) {
     return (
-        <div className="space-y-2">
-            {(rows || []).map((row) => (
-                <div key={`${row.label}-${row.value}`} className="flex items-start justify-between gap-3 text-xs">
-                    <span className="text-slate-400">{row.label}</span>
-                    <span className="max-w-[62%] text-right font-semibold text-slate-800 break-words">{row.value}</span>
-                </div>
-            ))}
-        </div>
-    );
-}
-
-function FloatingDetailHint({ hint, onClose }) {
-    const detail = hint?.detail;
-    if (!detail) {
-        return null;
-    }
-
-    const accent = detail.accentColor || TYPE_COLORS[detail.type] || '#2563eb';
-    const rows = (detail.rows || []).slice(0, 6);
-
-    return (
-        <div className="pointer-events-auto absolute z-20" style={{ left: hint.position.x, top: hint.position.y, width: hint.width }}>
-            <div
-                className="absolute -top-2 h-4 w-4 rotate-45 rounded-[4px] border-l border-t border-slate-200/80 bg-white"
-                style={{ left: hint.arrowLeft - 8 }}
-            />
-
-            <div className="relative overflow-hidden rounded-[24px] border border-slate-200/90 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.18)]">
-                <div
-                    className="absolute inset-x-0 top-0 h-20"
-                    style={{ background: `linear-gradient(135deg, ${hexToRgba(accent, 0.18)}, ${hexToRgba(accent, 0.03)})` }}
-                />
-
-                <div className="relative space-y-4 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                            <div
-                                className="inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]"
-                                style={{ backgroundColor: hexToRgba(accent, 0.12), color: accent }}
-                            >
-                                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: accent }} />
-                                {TYPE_LABELS[detail.type] || detail.type}
-                            </div>
-                            <div className="mt-3 text-sm font-semibold text-slate-900 break-words">{detail.title}</div>
-                        </div>
-
-                        <div className="flex shrink-0 items-start gap-2">
-                            <div
-                                className="rounded-full px-2.5 py-1 text-[11px] font-semibold"
-                                style={{ backgroundColor: hexToRgba(accent, 0.12), color: accent }}
-                            >
-                                {detail.statusText}
-                            </div>
-                            <button
-                                type="button"
-                                className="rounded-full border border-slate-200 bg-white p-1 text-slate-400 transition hover:text-slate-600"
-                                onClick={onClose}
-                            >
-                                <AppIcon name="x-mark" className="h-4 w-4" strokeWidth={2.1} />
-                            </button>
-                        </div>
-                    </div>
-
-                    <DetailList rows={rows} />
-
-                    {detail.description && (
-                        <div className="rounded-2xl border border-slate-200/80 bg-slate-50/70 px-3 py-3">
-                            <div className="text-[10px] uppercase tracking-[0.18em] text-slate-400">Ghi chú</div>
-                            <div className="mt-1 text-xs leading-6 text-slate-600 break-words">{detail.description}</div>
-                        </div>
-                    )}
-                </div>
-            </div>
-        </div>
+        <tr>
+            <td colSpan={colSpan} className="py-6 text-center text-sm text-slate-500">
+                {message}
+            </td>
+        </tr>
     );
 }
 
@@ -279,19 +92,17 @@ export default function ClientFlow({ auth, clientId }) {
     const toast = useToast();
     const [flow, setFlow] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [activeHint, setActiveHint] = useState(null);
+    const [activeTab, setActiveTab] = useState('tong_quan');
     const [careNoteForm, setCareNoteForm] = useState({ title: '', detail: '' });
     const [submittingCareNote, setSubmittingCareNote] = useState(false);
-    const flowSurfaceRef = useRef(null);
 
     const fetchFlow = async () => {
         setLoading(true);
-        setActiveHint(null);
         try {
             const res = await axios.get(`/api/v1/crm/clients/${clientId}/flow`);
             setFlow(res.data || null);
         } catch (e) {
-            toast.error(e?.response?.data?.message || 'Không tải được luồng khách hàng.');
+            toast.error(e?.response?.data?.message || 'Không tải được thông tin khách hàng.');
         } finally {
             setLoading(false);
         }
@@ -304,9 +115,7 @@ export default function ClientFlow({ auth, clientId }) {
 
     const submitCareNote = async (event) => {
         event.preventDefault();
-        if (!flow?.client?.id) {
-            return;
-        }
+        if (!flow?.client?.id) return;
 
         const title = (careNoteForm.title || '').trim();
         const detail = (careNoteForm.detail || '').trim();
@@ -339,508 +148,378 @@ export default function ClientFlow({ auth, clientId }) {
         }
     };
 
-    useEffect(() => {
-        if (!activeHint) {
-            return undefined;
-        }
+    const opportunities = flow?.opportunities || [];
+    const contracts = flow?.contracts || [];
+    const projects = flow?.projects || [];
+    const tasks = flow?.tasks || [];
+    const items = flow?.items || [];
 
-        const onKeyDown = (event) => {
-            if (event.key === 'Escape') {
-                setActiveHint(null);
-            }
+    const projectById = useMemo(() => {
+        const map = new Map();
+        projects.forEach((project) => map.set(Number(project.id), project));
+        return map;
+    }, [projects]);
+
+    const taskById = useMemo(() => {
+        const map = new Map();
+        tasks.forEach((task) => map.set(Number(task.id), task));
+        return map;
+    }, [tasks]);
+
+    const summary = useMemo(() => {
+        const completedOpportunities = opportunities.filter((row) => doneStatusSet.has(String(row.status || '').toLowerCase())).length;
+        const completedContracts = contracts.filter((row) => {
+            const status = String(row.status || '').toLowerCase();
+            const approval = String(row.approval_status || '').toLowerCase();
+            return doneContractStatusSet.has(status) || doneContractStatusSet.has(approval);
+        }).length;
+        const completedProjects = projects.filter((row) => doneStatusSet.has(String(row.status || '').toLowerCase())).length;
+        const completedTasks = tasks.filter((row) => doneStatusSet.has(String(row.status || '').toLowerCase())).length;
+        const completedItems = items.filter((row) => doneStatusSet.has(String(row.status || '').toLowerCase())).length;
+
+        const totalRecords = opportunities.length + contracts.length + projects.length + tasks.length + items.length;
+        const completedRecords = completedOpportunities + completedContracts + completedProjects + completedTasks + completedItems;
+        const progressPercent = totalRecords > 0 ? Math.round((completedRecords / totalRecords) * 100) : 0;
+
+        return {
+            totalRecords,
+            completedRecords,
+            progressPercent,
+            opportunities: { total: opportunities.length, done: completedOpportunities },
+            contracts: { total: contracts.length, done: completedContracts },
+            projects: { total: projects.length, done: completedProjects },
+            tasks: { total: tasks.length, done: completedTasks },
+            items: { total: items.length, done: completedItems },
         };
+    }, [opportunities, contracts, projects, tasks, items]);
 
-        window.addEventListener('keydown', onKeyDown);
-        return () => window.removeEventListener('keydown', onKeyDown);
-    }, [activeHint]);
+    const stats = useMemo(() => {
+        return [
+            { label: 'Tiến độ tổng', value: `${summary.progressPercent}%` },
+            { label: 'Cơ hội', value: `${summary.opportunities.done}/${summary.opportunities.total}` },
+            { label: 'Hợp đồng', value: `${summary.contracts.done}/${summary.contracts.total}` },
+            { label: 'Đầu việc', value: `${summary.items.done}/${summary.items.total}` },
+        ];
+    }, [summary]);
 
-    const { nodes, edges } = useMemo(() => {
-        if (!flow?.client) {
-            return { nodes: [], edges: [] };
-        }
-
-        const nodes = [];
-        const edges = [];
-        const selectedId = activeHint?.id || null;
-
-        const contracts = flow.contracts || [];
-        const projects = flow.projects || [];
-        const tasks = flow.tasks || [];
-        const items = flow.items || [];
-
-        const COL_X = {
-            client: 0,
-            contract: 500,
-            project: 1020,
-            task: 1540,
-            item: 2060,
-        };
-        const ROW_GAP = 280;
-
-        const addNode = (id, detail, x, y) => {
-            const accent = detail.accentColor || TYPE_COLORS[detail.type] || '#2563eb';
-            nodes.push({
-                id,
-                position: { x, y },
-                data: {
-                    label: <FlowNodeCard detail={detail} />,
-                    detail,
-                },
-                style: nodeStyle(accent, selectedId === id),
-                sourcePosition: 'right',
-                targetPosition: 'left',
-                draggable: false,
-            });
-        };
-
-        const contractNodeById = new Map();
-        const projectNodeById = new Map();
-        const taskNodeById = new Map();
-
-        const client = flow.client;
-        const clientNodeId = `client-${client.id}`;
-        addNode(
-            clientNodeId,
-            {
-                id: clientNodeId,
-                type: 'client',
-                title: client.name || 'Khách hàng',
-                subtitle: client.company || 'Chưa có công ty',
-                statusText: client.has_purchased ? 'Đã mua' : 'Tiềm năng',
-                accentColor: statusColor(client.has_purchased ? 'approved' : 'pending', TYPE_COLORS.client),
-                stats: [
-                    { label: 'Doanh thu', value: `${formatCurrency(client.total_revenue)} VNĐ` },
-                    { label: 'Hợp đồng', value: String(contracts.length) },
-                ],
-                rows: [
-                    { label: 'Nguồn', value: [client.lead_source, client.lead_channel].filter(Boolean).join(' • ') || '—' },
-                    { label: 'Email', value: safeText(client.email) },
-                    { label: 'Điện thoại', value: safeText(client.phone) },
-                ],
-                description: safeText(client.notes, ''),
-                footer: 'Nút gốc hành trình khách hàng',
-            },
-            COL_X.client,
-            Math.max(0, ((Math.max(contracts.length, 1) - 1) * ROW_GAP) / 2)
-        );
-
-        contracts.forEach((contract, index) => {
-            const nodeId = `contract-${contract.id}`;
-            const y = index * ROW_GAP;
-            const status = contract.status || contract.approval_status;
-            contractNodeById.set(contract.id, nodeId);
-
-            addNode(
-                nodeId,
-                {
-                    id: nodeId,
-                    type: 'contract',
-                    title: contract.title || contract.code || `Hợp đồng #${contract.id}`,
-                    subtitle: contract.code || 'Chưa có mã',
-                    statusText: statusLabel(status),
-                    accentColor: statusColor(status, TYPE_COLORS.contract),
-                    stats: [
-                        { label: 'Giá trị', value: `${formatCurrency(contract.value)} VNĐ` },
-                        { label: 'Thanh toán', value: `${contract.payment_times || 0} đợt` },
-                    ],
-                    rows: [
-                        { label: 'Ngày ký', value: formatDate(contract.signed_at) },
-                        { label: 'Hiệu lực', value: formatDate(contract.end_date) },
-                    ],
-                    description: safeText(contract.notes, ''),
-                    footer: 'Nhấn để xem chú thích nhanh',
-                },
-                COL_X.contract,
-                y
-            );
-
-            edges.push({
-                id: `${clientNodeId}-${nodeId}`,
-                source: clientNodeId,
-                target: nodeId,
-                type: 'smoothstep',
-                animated: true,
-                style: { stroke: '#94a3b8', strokeWidth: 2 },
-            });
-        });
-
-        projects.forEach((project, index) => {
-            const nodeId = `project-${project.id}`;
-            const y = index * ROW_GAP;
-            projectNodeById.set(project.id, nodeId);
-
-            addNode(
-                nodeId,
-                {
-                    id: nodeId,
-                    type: 'project',
-                    title: project.name || `Dự án #${project.id}`,
-                    subtitle: serviceLabel(project),
-                    statusText: statusLabel(project.status),
-                    accentColor: statusColor(project.status, TYPE_COLORS.project),
-                    progress: clampPercent(project.progress_percent),
-                    stats: [
-                        { label: 'Tiến độ', value: `${clampPercent(project.progress_percent)}%` },
-                        { label: 'Deadline', value: formatDate(project.deadline) },
-                    ],
-                    rows: [
-                        { label: 'Mã dự án', value: safeText(project.code) },
-                        { label: 'Dịch vụ', value: serviceLabel(project) },
-                    ],
-                    description: safeText(project.customer_requirement, ''),
-                    footer: 'Nhánh dự án',
-                },
-                COL_X.project,
-                y
-            );
-
-            const sourceNode = project.contract_id && contractNodeById.has(project.contract_id)
-                ? contractNodeById.get(project.contract_id)
-                : clientNodeId;
-            edges.push({
-                id: `${sourceNode}-${nodeId}`,
-                source: sourceNode,
-                target: nodeId,
-                type: 'smoothstep',
-                style: { stroke: '#cbd5e1', strokeWidth: 2 },
-            });
-        });
-
-        tasks.forEach((task, index) => {
-            const nodeId = `task-${task.id}`;
-            const y = index * ROW_GAP;
-            taskNodeById.set(task.id, nodeId);
-
-            addNode(
-                nodeId,
-                {
-                    id: nodeId,
-                    type: 'task',
-                    title: task.title || `Công việc #${task.id}`,
-                    subtitle: safeText(task.department?.name, 'Chưa có phòng ban'),
-                    statusText: statusLabel(task.status),
-                    accentColor: statusColor(task.status, TYPE_COLORS.task),
-                    progress: clampPercent(task.progress_percent),
-                    stats: [
-                        { label: 'Tiến độ', value: `${clampPercent(task.progress_percent)}%` },
-                        { label: 'Deadline', value: formatDate(task.deadline) },
-                    ],
-                    rows: [
-                        { label: 'Phụ trách', value: safeText(task.assignee?.name) },
-                        { label: 'Phòng ban', value: safeText(task.department?.name) },
-                    ],
-                    footer: 'Nhánh công việc',
-                },
-                COL_X.task,
-                y
-            );
-
-            const parentProjectId = projectNodeById.get(task.project_id);
-            if (parentProjectId) {
-                edges.push({
-                    id: `${parentProjectId}-${nodeId}`,
-                    source: parentProjectId,
-                    target: nodeId,
-                    type: 'smoothstep',
-                    style: { stroke: '#dbeafe', strokeWidth: 2 },
-                });
-            }
-        });
-
-        items.forEach((item, index) => {
-            const nodeId = `item-${item.id}`;
-            const y = index * ROW_GAP;
-
-            addNode(
-                nodeId,
-                {
-                    id: nodeId,
-                    type: 'item',
-                    title: item.title || `Đầu việc #${item.id}`,
-                    subtitle: safeText(item.assignee?.name, 'Chưa phân công'),
-                    statusText: statusLabel(item.status),
-                    accentColor: statusColor(item.status, TYPE_COLORS.item),
-                    progress: clampPercent(item.progress_percent),
-                    stats: [
-                        { label: 'Tiến độ', value: `${clampPercent(item.progress_percent)}%` },
-                        { label: 'Deadline', value: formatDate(item.deadline) },
-                    ],
-                    rows: [
-                        { label: 'Nhân sự', value: safeText(item.assignee?.name) },
-                        { label: 'Bắt đầu', value: formatDate(item.start_date) },
-                        { label: 'Deadline', value: formatDate(item.deadline) },
-                    ],
-                    footer: 'Nút cuối của nhánh',
-                },
-                COL_X.item,
-                y
-            );
-
-            const parentTaskId = taskNodeById.get(item.task_id);
-            if (parentTaskId) {
-                edges.push({
-                    id: `${parentTaskId}-${nodeId}`,
-                    source: parentTaskId,
-                    target: nodeId,
-                    type: 'smoothstep',
-                    style: { stroke: '#e2e8f0', strokeWidth: 1.8 },
-                });
-            }
-        });
-
-        return { nodes, edges };
-    }, [activeHint, flow]);
-
-    const openHintAtCursor = (event, node) => {
-        const detail = node?.data?.detail;
-        if (!detail) {
-            return;
-        }
-
-        if (!flowSurfaceRef.current) {
-            setActiveHint({
-                id: node.id,
-                detail,
-                position: { x: 24, y: 24 },
-                width: HINT_CARD_WIDTH,
-                arrowLeft: 36,
-            });
-            return;
-        }
-
-        const rect = flowSurfaceRef.current.getBoundingClientRect();
-        const rawX = event.clientX - rect.left;
-        const rawY = event.clientY - rect.top;
-        const width = Math.min(HINT_CARD_WIDTH, Math.max(280, rect.width - 32));
-        const x = Math.min(Math.max(rawX + 20, 16), Math.max(16, rect.width - width - 16));
-        const y = Math.min(Math.max(rawY + 18, 16), Math.max(16, rect.height - HINT_CARD_MAX_HEIGHT - 16));
-        const arrowLeft = Math.min(Math.max(rawX - x, 28), width - 28);
-
-        setActiveHint((current) => {
-            if (current?.id === node.id) {
-                return null;
-            }
-
-            return {
-                id: node.id,
-                detail,
-                position: { x, y },
-                width,
-                arrowLeft,
-            };
-        });
-    };
-
-    const timeline = useMemo(() => {
-        if (!flow) return [];
-        const rows = [];
-        (flow.contracts || []).forEach((contract) => {
-            if (contract.signed_at) {
-                rows.push({
-                    id: `contract-signed-${contract.id}`,
-                    date: contract.signed_at,
-                    title: `Ký hợp đồng: ${contract.title || contract.code || `#${contract.id}`}`,
-                    status: contract.status || contract.approval_status,
-                });
-            }
-            if (contract.end_date) {
-                rows.push({
-                    id: `contract-end-${contract.id}`,
-                    date: contract.end_date,
-                    title: `Hạn hợp đồng: ${contract.title || contract.code || `#${contract.id}`}`,
-                    status: contract.status || contract.approval_status,
-                });
-            }
-        });
-        (flow.projects || []).forEach((project) => {
-            if (project.deadline) {
-                rows.push({
-                    id: `project-${project.id}`,
-                    date: project.deadline,
-                    title: `Deadline dự án: ${project.name || `#${project.id}`}`,
-                    status: project.status,
-                });
-            }
-        });
-        (flow.tasks || []).forEach((task) => {
-            if (task.deadline) {
-                rows.push({
-                    id: `task-${task.id}`,
-                    date: task.deadline,
-                    title: `Deadline công việc: ${task.title || `#${task.id}`}`,
-                    status: task.status,
-                });
-            }
-        });
-        (flow.items || []).forEach((item) => {
-            if (item.deadline) {
-                rows.push({
-                    id: `item-${item.id}`,
-                    date: item.deadline,
-                    title: `Deadline đầu việc: ${item.title || `#${item.id}`}`,
-                    status: item.status,
-                });
-            }
-        });
-        return rows.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    }, [flow]);
+    const tabs = [
+        { key: 'tong_quan', label: 'Tổng quan', icon: 'chart', count: null },
+        { key: 'co_hoi', label: 'Cơ hội', icon: 'trend', count: opportunities.length },
+        { key: 'hop_dong', label: 'Hợp đồng', icon: 'file', count: contracts.length },
+        { key: 'du_an', label: 'Dự án', icon: 'folder', count: projects.length },
+        { key: 'cong_viec', label: 'Công việc', icon: 'tasks', count: tasks.length },
+        { key: 'dau_viec', label: 'Đầu việc', icon: 'check', count: items.length },
+        { key: 'cham_soc', label: 'Chăm sóc', icon: 'users', count: flow?.care_notes?.length || 0 },
+    ];
 
     return (
         <PageContainer
             auth={auth}
-            title="Luồng khách hàng"
-            description={flow?.client?.name ? `Luồng xử lý cho ${flow.client.name}` : 'Theo dõi hành trình khách hàng.'}
+            title="Thông tin khách hàng"
+            description="Theo dõi khách hàng theo dạng tab, thống kê tiến độ tổng hợp và ghi chú chăm sóc."
+            stats={stats}
         >
-            <div className="flex flex-col gap-3 mb-4 lg:flex-row lg:items-center lg:justify-between">
-                <div className="text-xs text-text-muted">
-                    Luồng hiển thị theo cây: Khách hàng → Hợp đồng → Dự án → Công việc → Đầu việc. Nhấn vào node để xem chú thích ngay tại vị trí bấm.
-                </div>
-                <Link href={route('crm.index')} className="rounded-xl bg-primary text-white px-4 py-2 text-xs font-semibold">
-                    Quay lại khách hàng
-                </Link>
-            </div>
-
-            {loading && (
-                <div className="rounded-2xl border border-dashed border-slate-200 p-6 text-sm text-text-muted">
-                    Đang tải luồng khách hàng...
-                </div>
-            )}
-
-            {!loading && flow && (
-                <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
-                    <div
-                        ref={flowSurfaceRef}
-                        className="relative h-[80vh] min-h-[700px] bg-white rounded-2xl border border-slate-200/80 shadow-card overflow-hidden"
-                    >
-                        <ReactFlow
-                            nodes={nodes}
-                            edges={edges}
-                            fitView
-                            fitViewOptions={{ padding: 0.2, minZoom: 0.5 }}
-                            nodesDraggable={false}
-                            nodesConnectable={false}
-                            minZoom={0.35}
-                            maxZoom={1.4}
-                            onNodeClick={openHintAtCursor}
-                            onPaneClick={() => setActiveHint(null)}
-                            defaultEdgeOptions={{ animated: false, type: 'smoothstep' }}
-                            zoomOnDoubleClick={false}
+            <div className="space-y-5">
+                <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                            <div className="text-xs uppercase tracking-[0.14em] text-text-subtle">Khách hàng</div>
+                            <h3 className="mt-1 text-xl font-semibold text-slate-900">{flow?.client?.name || '—'}</h3>
+                            <p className="mt-1 text-sm text-slate-500">{flow?.client?.company || 'Chưa có công ty'} • {flow?.client?.phone || 'Chưa có số điện thoại'}</p>
+                        </div>
+                        <Link
+                            href={route('crm.index')}
+                            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:border-primary/30 hover:text-primary"
                         >
-                            <Background color="#e2e8f0" gap={28} />
-                            <Controls showInteractive={false} />
-                        </ReactFlow>
-
-                        {activeHint && (
-                            <div className="pointer-events-none absolute inset-0 z-20">
-                                <FloatingDetailHint hint={activeHint} onClose={() => setActiveHint(null)} />
-                            </div>
-                        )}
+                            <AppIcon name="route" className="h-4 w-4" />
+                            Quay lại khách hàng
+                        </Link>
                     </div>
 
-                    <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card p-5 space-y-5">
-                        <div>
-                            <p className="text-xs uppercase tracking-[0.2em] text-text-subtle">Nhân sự chăm sóc</p>
-                            <div className="mt-2 space-y-2">
-                                <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-3">
-                                    <div className="text-[11px] uppercase tracking-[0.18em] text-text-subtle">Phụ trách chính</div>
-                                    <div className="mt-1 text-sm font-semibold text-slate-900">
-                                        {flow?.client?.assigned_staff?.name || flow?.client?.sales_owner?.name || '—'}
-                                    </div>
-                                </div>
-                                <div className="rounded-xl border border-slate-200/80 bg-white p-3">
-                                    <div className="text-[11px] uppercase tracking-[0.18em] text-text-subtle">Nhân viên chăm sóc</div>
-                                    <div className="mt-2 flex flex-wrap gap-2">
-                                        {(flow?.client?.care_staff_users || []).length > 0 ? (
-                                            flow.client.care_staff_users.map((staff) => (
-                                                <span
-                                                    key={staff.id}
-                                                    className="inline-flex items-center rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-700"
-                                                >
-                                                    {staff.name}
-                                                </span>
-                                            ))
-                                        ) : (
-                                            <span className="text-xs text-text-muted">Chưa có nhân viên chăm sóc.</span>
-                                        )}
-                                    </div>
-                                </div>
+                    <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                        {[
+                            { label: 'Cơ hội', value: `${summary.opportunities.done}/${summary.opportunities.total}` },
+                            { label: 'Hợp đồng', value: `${summary.contracts.done}/${summary.contracts.total}` },
+                            { label: 'Dự án', value: `${summary.projects.done}/${summary.projects.total}` },
+                            { label: 'Công việc', value: `${summary.tasks.done}/${summary.tasks.total}` },
+                            { label: 'Đầu việc', value: `${summary.items.done}/${summary.items.total}` },
+                        ].map((card) => (
+                            <div key={card.label} className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">
+                                <div className="text-xs uppercase tracking-[0.14em] text-slate-400">{card.label}</div>
+                                <div className="mt-1 text-lg font-semibold text-slate-900">{card.value}</div>
                             </div>
-                        </div>
+                        ))}
+                    </div>
 
-                        <div>
-                            <p className="text-xs uppercase tracking-[0.2em] text-text-subtle">Ghi chú chăm sóc khách hàng</p>
-                            <p className="mt-1 text-xs text-text-muted">
-                                Nhân viên chăm sóc có thể thêm ghi chú gồm tiêu đề và chi tiết, tên nhân viên được lấy tự động theo người thao tác.
-                            </p>
-                            {flow?.permissions?.can_add_care_note && (
-                                <form className="mt-3 space-y-2" onSubmit={submitCareNote}>
-                                    <input
-                                        className="w-full rounded-xl border border-slate-200/80 px-3 py-2 text-sm"
-                                        placeholder="Tiêu đề ghi chú"
-                                        value={careNoteForm.title}
-                                        onChange={(event) => setCareNoteForm((prev) => ({ ...prev, title: event.target.value }))}
-                                    />
-                                    <textarea
-                                        className="w-full rounded-xl border border-slate-200/80 px-3 py-2 text-sm"
-                                        rows={3}
-                                        placeholder="Chi tiết ghi chú chăm sóc khách hàng"
-                                        value={careNoteForm.detail}
-                                        onChange={(event) => setCareNoteForm((prev) => ({ ...prev, detail: event.target.value }))}
-                                    />
-                                    <button
-                                        type="submit"
-                                        className="w-full rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
-                                        disabled={submittingCareNote}
-                                    >
-                                        {submittingCareNote ? 'Đang lưu...' : 'Thêm ghi chú chăm sóc'}
-                                    </button>
-                                </form>
-                            )}
-                            <div className="mt-3 space-y-2 max-h-[260px] overflow-y-auto pr-1">
-                                {(flow?.care_notes || []).length === 0 && (
-                                    <div className="rounded-xl border border-slate-200/80 bg-slate-50 px-3 py-2 text-xs text-text-muted">
-                                        Chưa có ghi chú chăm sóc.
-                                    </div>
-                                )}
-                                {(flow?.care_notes || []).map((note) => (
-                                    <div key={note.id} className="rounded-xl border border-slate-200/80 bg-white p-3">
-                                        <div className="flex items-center justify-between gap-2">
-                                            <div className="text-sm font-semibold text-slate-900">{note.title || 'Ghi chú'}</div>
-                                            <div className="text-[11px] text-text-subtle">{formatDateTime(note.created_at)}</div>
-                                        </div>
-                                        <div className="mt-1 text-xs text-text-muted">Nhân viên: {note?.user?.name || '—'}</div>
-                                        <div className="mt-2 text-sm leading-6 text-slate-700 whitespace-pre-wrap">{note.detail || '—'}</div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        <div>
-                            <p className="text-xs uppercase tracking-[0.2em] text-text-subtle">Timeline mốc chính</p>
-                            <div className="mt-2 space-y-3 max-h-[220px] overflow-y-auto pr-1">
-                                {timeline.length === 0 && (
-                                    <p className="text-sm text-text-muted">Chưa có mốc timeline.</p>
-                                )}
-                                {timeline.map((row) => (
-                                    <div key={row.id} className="flex items-start gap-3">
-                                        <span
-                                            className="mt-1 h-2.5 w-2.5 rounded-full"
-                                            style={{ backgroundColor: statusColor(row.status) }}
-                                        />
-                                        <div className="flex-1">
-                                            <div className="text-[11px] uppercase tracking-[0.2em] text-text-subtle">
-                                                {formatDate(row.date)}
-                                            </div>
-                                            <div className="text-sm font-semibold text-slate-900">{row.title}</div>
-                                            <div className="text-xs text-text-muted">{statusLabel(row.status)}</div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
+                    <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                        <p className="font-semibold">Công thức tiến độ tổng: {summary.progressPercent}%</p>
+                        <p className="mt-1 text-xs leading-5">
+                            Tiến độ tổng = (Cơ hội thành công + Hợp đồng đã nhận bàn giao/active + Dự án hoàn thành + Công việc hoàn tất + Đầu việc hoàn tất)
+                            / Tổng số bản ghi của 5 nhóm x 100.
+                        </p>
                     </div>
                 </div>
-            )}
+
+                <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card">
+                    <div className="flex flex-wrap gap-2">
+                        {tabs.map((tab) => (
+                            <TabButton
+                                key={tab.key}
+                                active={activeTab === tab.key}
+                                icon={tab.icon}
+                                label={tab.label}
+                                count={tab.count}
+                                onClick={() => setActiveTab(tab.key)}
+                            />
+                        ))}
+                    </div>
+
+                    {loading && (
+                        <div className="mt-4 rounded-2xl border border-dashed border-slate-200/80 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+                            Đang tải dữ liệu khách hàng...
+                        </div>
+                    )}
+
+                    {!loading && activeTab === 'tong_quan' && (
+                        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+                            <div className="rounded-2xl border border-slate-200/80 p-4">
+                                <h4 className="text-sm font-semibold text-slate-900">Thông tin chung</h4>
+                                <div className="mt-3 space-y-2 text-sm">
+                                    <div className="flex justify-between gap-2"><span className="text-slate-500">Email</span><span className="font-medium text-slate-800">{flow?.client?.email || '—'}</span></div>
+                                    <div className="flex justify-between gap-2"><span className="text-slate-500">Nguồn</span><span className="font-medium text-slate-800">{flow?.client?.lead_source || '—'} {flow?.client?.lead_channel ? `• ${flow.client.lead_channel}` : ''}</span></div>
+                                    <div className="flex justify-between gap-2"><span className="text-slate-500">Doanh thu</span><span className="font-medium text-slate-800">{formatCurrency(flow?.client?.total_revenue)} VNĐ</span></div>
+                                    <div className="flex justify-between gap-2"><span className="text-slate-500">Phụ trách chính</span><span className="font-medium text-slate-800">{flow?.client?.assigned_staff?.name || flow?.client?.sales_owner?.name || '—'}</span></div>
+                                </div>
+                            </div>
+                            <div className="rounded-2xl border border-slate-200/80 p-4">
+                                <h4 className="text-sm font-semibold text-slate-900">Nhân sự chăm sóc</h4>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                    {(flow?.client?.care_staff_users || []).length > 0 ? flow.client.care_staff_users.map((staff) => (
+                                        <span key={staff.id} className="rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
+                                            {staff.name}
+                                        </span>
+                                    )) : (
+                                        <span className="text-sm text-slate-500">Chưa có nhân sự chăm sóc.</span>
+                                    )}
+                                </div>
+                                <p className="mt-4 text-xs leading-5 text-slate-500">Khi thêm ghi chú chăm sóc, hệ thống tự lưu người ghi chú để theo dõi tiến độ hỗ trợ khách hàng.</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {!loading && activeTab === 'co_hoi' && (
+                        <div className="mt-5 overflow-x-auto">
+                            <table className="min-w-full text-sm">
+                                <thead>
+                                    <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-[0.12em] text-slate-500">
+                                        <th className="py-2">Tên cơ hội</th>
+                                        <th className="py-2">Trạng thái</th>
+                                        <th className="py-2">Doanh số</th>
+                                        <th className="py-2">Phụ trách</th>
+                                        <th className="py-2">Dự kiến chốt</th>
+                                        <th className="py-2">Ghi chú</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {opportunities.map((row) => (
+                                        <tr key={row.id} className="border-b border-slate-100">
+                                            <td className="py-2.5 font-medium text-slate-900">{row.title || '—'}</td>
+                                            <td className="py-2.5 text-xs text-slate-600">{statusLabel(row.status)}</td>
+                                            <td className="py-2.5 text-xs text-slate-600">{formatCurrency(row.amount)} VNĐ</td>
+                                            <td className="py-2.5 text-xs text-slate-600">{row.assignee?.name || row.creator?.name || '—'}</td>
+                                            <td className="py-2.5 text-xs text-slate-600">{formatDate(row.expected_close_date)}</td>
+                                            <td className="py-2.5 text-xs text-slate-600">{row.notes || '—'}</td>
+                                        </tr>
+                                    ))}
+                                    {opportunities.length === 0 && <EmptyTable colSpan={6} message="Khách hàng chưa có cơ hội nào." />}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+
+                    {!loading && activeTab === 'hop_dong' && (
+                        <div className="mt-5 overflow-x-auto">
+                            <table className="min-w-full text-sm">
+                                <thead>
+                                    <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-[0.12em] text-slate-500">
+                                        <th className="py-2">Mã hợp đồng</th>
+                                        <th className="py-2">Tên hợp đồng</th>
+                                        <th className="py-2">Trạng thái</th>
+                                        <th className="py-2">Bàn giao</th>
+                                        <th className="py-2">Giá trị</th>
+                                        <th className="py-2">Ngày ký</th>
+                                        <th className="py-2">Hiệu lực đến</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {contracts.map((row) => (
+                                        <tr key={row.id} className="border-b border-slate-100">
+                                            <td className="py-2.5 text-xs text-slate-600">{row.code || `HD-${row.id}`}</td>
+                                            <td className="py-2.5 font-medium text-slate-900">{row.title || '—'}</td>
+                                            <td className="py-2.5 text-xs text-slate-600">{statusLabel(row.status)}</td>
+                                            <td className="py-2.5 text-xs text-slate-600">{statusLabel(row.approval_status)}</td>
+                                            <td className="py-2.5 text-xs text-slate-600">{formatCurrency(row.value)} VNĐ</td>
+                                            <td className="py-2.5 text-xs text-slate-600">{formatDate(row.signed_at)}</td>
+                                            <td className="py-2.5 text-xs text-slate-600">{formatDate(row.end_date)}</td>
+                                        </tr>
+                                    ))}
+                                    {contracts.length === 0 && <EmptyTable colSpan={7} message="Khách hàng chưa có hợp đồng nào." />}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+
+                    {!loading && activeTab === 'du_an' && (
+                        <div className="mt-5 overflow-x-auto">
+                            <table className="min-w-full text-sm">
+                                <thead>
+                                    <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-[0.12em] text-slate-500">
+                                        <th className="py-2">Tên dự án</th>
+                                        <th className="py-2">Dịch vụ</th>
+                                        <th className="py-2">Trạng thái</th>
+                                        <th className="py-2">Tiến độ</th>
+                                        <th className="py-2">Hạn</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {projects.map((row) => (
+                                        <tr key={row.id} className="border-b border-slate-100">
+                                            <td className="py-2.5 font-medium text-slate-900">{row.name || '—'}</td>
+                                            <td className="py-2.5 text-xs text-slate-600">{serviceLabel(row)}</td>
+                                            <td className="py-2.5 text-xs text-slate-600">{statusLabel(row.status)}</td>
+                                            <td className="py-2.5 text-xs text-slate-600">{Number(row.progress_percent ?? 0)}%</td>
+                                            <td className="py-2.5 text-xs text-slate-600">{formatDate(row.deadline)}</td>
+                                        </tr>
+                                    ))}
+                                    {projects.length === 0 && <EmptyTable colSpan={5} message="Khách hàng chưa có dự án nào." />}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+
+                    {!loading && activeTab === 'cong_viec' && (
+                        <div className="mt-5 overflow-x-auto">
+                            <table className="min-w-full text-sm">
+                                <thead>
+                                    <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-[0.12em] text-slate-500">
+                                        <th className="py-2">Công việc</th>
+                                        <th className="py-2">Dự án</th>
+                                        <th className="py-2">Phụ trách</th>
+                                        <th className="py-2">Trạng thái</th>
+                                        <th className="py-2">Tiến độ</th>
+                                        <th className="py-2">Tỷ trọng</th>
+                                        <th className="py-2">Deadline</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {tasks.map((row) => (
+                                        <tr key={row.id} className="border-b border-slate-100">
+                                            <td className="py-2.5 font-medium text-slate-900">{row.title || '—'}</td>
+                                            <td className="py-2.5 text-xs text-slate-600">{projectById.get(Number(row.project_id))?.name || '—'}</td>
+                                            <td className="py-2.5 text-xs text-slate-600">{row.assignee?.name || '—'}</td>
+                                            <td className="py-2.5 text-xs text-slate-600">{statusLabel(row.status)}</td>
+                                            <td className="py-2.5 text-xs text-slate-600">{Number(row.progress_percent ?? 0)}%</td>
+                                            <td className="py-2.5 text-xs text-slate-600">{Number(row.weight_percent ?? 0)}%</td>
+                                            <td className="py-2.5 text-xs text-slate-600">{formatDate(row.deadline)}</td>
+                                        </tr>
+                                    ))}
+                                    {tasks.length === 0 && <EmptyTable colSpan={7} message="Khách hàng chưa có công việc nào." />}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+
+                    {!loading && activeTab === 'dau_viec' && (
+                        <div className="mt-5 overflow-x-auto">
+                            <table className="min-w-full text-sm">
+                                <thead>
+                                    <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-[0.12em] text-slate-500">
+                                        <th className="py-2">Đầu việc</th>
+                                        <th className="py-2">Công việc</th>
+                                        <th className="py-2">Phụ trách</th>
+                                        <th className="py-2">Trạng thái</th>
+                                        <th className="py-2">Tiến độ</th>
+                                        <th className="py-2">Tỷ trọng</th>
+                                        <th className="py-2">Deadline</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {items.map((row) => (
+                                        <tr key={row.id} className="border-b border-slate-100">
+                                            <td className="py-2.5 font-medium text-slate-900">{row.title || '—'}</td>
+                                            <td className="py-2.5 text-xs text-slate-600">{taskById.get(Number(row.task_id))?.title || '—'}</td>
+                                            <td className="py-2.5 text-xs text-slate-600">{row.assignee?.name || '—'}</td>
+                                            <td className="py-2.5 text-xs text-slate-600">{statusLabel(row.status)}</td>
+                                            <td className="py-2.5 text-xs text-slate-600">{Number(row.progress_percent ?? 0)}%</td>
+                                            <td className="py-2.5 text-xs text-slate-600">{Number(row.weight_percent ?? 0)}%</td>
+                                            <td className="py-2.5 text-xs text-slate-600">{formatDate(row.deadline)}</td>
+                                        </tr>
+                                    ))}
+                                    {items.length === 0 && <EmptyTable colSpan={7} message="Khách hàng chưa có đầu việc nào." />}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+
+                    {!loading && activeTab === 'cham_soc' && (
+                        <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+                            <div className="rounded-2xl border border-slate-200/80 bg-slate-50 p-4">
+                                <h4 className="font-semibold text-slate-900">Ghi chú chăm sóc khách hàng</h4>
+                                <p className="mt-1 text-xs text-slate-500">Nhân viên chăm sóc có thể thêm ghi chú để đội phụ trách theo dõi tiến độ hỗ trợ.</p>
+
+                                {flow?.permissions?.can_add_care_note ? (
+                                    <form className="mt-4 space-y-3" onSubmit={submitCareNote}>
+                                        <input
+                                            className="w-full rounded-xl border border-slate-200/80 bg-white px-3 py-2 text-sm"
+                                            placeholder="Tiêu đề ghi chú"
+                                            value={careNoteForm.title}
+                                            onChange={(e) => setCareNoteForm((prev) => ({ ...prev, title: e.target.value }))}
+                                        />
+                                        <textarea
+                                            className="min-h-[120px] w-full rounded-xl border border-slate-200/80 bg-white px-3 py-2 text-sm"
+                                            placeholder="Chi tiết ghi chú chăm sóc khách hàng"
+                                            value={careNoteForm.detail}
+                                            onChange={(e) => setCareNoteForm((prev) => ({ ...prev, detail: e.target.value }))}
+                                        />
+                                        <button
+                                            type="submit"
+                                            className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white"
+                                            disabled={submittingCareNote}
+                                        >
+                                            {submittingCareNote ? 'Đang lưu...' : 'Thêm ghi chú chăm sóc'}
+                                        </button>
+                                    </form>
+                                ) : (
+                                    <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                                        Bạn chỉ có quyền xem dữ liệu khách hàng này.
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="rounded-2xl border border-slate-200/80 bg-white p-4">
+                                <h4 className="font-semibold text-slate-900">Lịch sử chăm sóc</h4>
+                                <div className="mt-3 space-y-2">
+                                    {(flow?.care_notes || []).map((note) => (
+                                        <div key={note.id} className="rounded-xl border border-slate-200/80 bg-slate-50 px-3 py-2">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div className="text-sm font-semibold text-slate-900">{note.title}</div>
+                                                <div className="text-xs text-slate-500">{formatDateTime(note.created_at)}</div>
+                                            </div>
+                                            <div className="mt-1 text-xs text-slate-500">{note.user?.name || 'Nhân sự'} • {note.user?.email || '—'}</div>
+                                            <p className="mt-2 text-sm text-slate-700 whitespace-pre-wrap">{note.detail}</p>
+                                        </div>
+                                    ))}
+                                    {(flow?.care_notes || []).length === 0 && (
+                                        <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-center text-sm text-slate-500">
+                                            Chưa có ghi chú chăm sóc.
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
         </PageContainer>
     );
 }

@@ -16,15 +16,17 @@ class CRMController extends Controller
 {
     public function clients(Request $request): JsonResponse
     {
-        $query = Client::query()->with([
-            'leadType',
-            'salesOwner',
-            'revenueTier',
-            'assignedDepartment',
-            'assignedStaff',
-            'facebookPage',
-            'careStaffUsers:id,name,email',
-        ]);
+        $query = Client::query()
+            ->with([
+                'leadType',
+                'salesOwner',
+                'revenueTier',
+                'assignedDepartment',
+                'assignedStaff',
+                'facebookPage',
+                'careStaffUsers:id,name,email',
+            ])
+            ->withCount(['opportunities', 'contracts']);
         CrmScope::applyClientScope($query, $request->user());
         if ($request->filled('search')) {
             $search = (string) $request->input('search');

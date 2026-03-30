@@ -248,6 +248,7 @@ export default function TaskItemsBoard(props) {
                                     <th className="py-2">Nhân sự</th>
                                     <th className="py-2">Trạng thái</th>
                                     <th className="py-2">Tiến độ</th>
+                                    <th className="py-2">Tỷ trọng</th>
                                     <th className="py-2">Bắt đầu</th>
                                     <th className="py-2">Deadline</th>
                                 </tr>
@@ -272,18 +273,19 @@ export default function TaskItemsBoard(props) {
                                             </span>
                                         </td>
                                         <td className="py-2.5 text-xs text-slate-600">{item.progress_percent ?? 0}%</td>
+                                        <td className="py-2.5 text-xs text-slate-600">{Number(item.weight_percent ?? 0)}%</td>
                                         <td className="py-2.5 text-xs text-slate-600">{formatDate(item.start_date)}</td>
                                         <td className="py-2.5 text-xs text-slate-600">{formatDate(item.deadline)}</td>
                                     </tr>
                                 ))}
                                 {loading && (
                                     <tr>
-                                        <td className="py-6 text-center text-sm text-slate-500" colSpan={8}>Đang tải...</td>
+                                        <td className="py-6 text-center text-sm text-slate-500" colSpan={9}>Đang tải...</td>
                                     </tr>
                                 )}
                                 {!loading && items.length === 0 && (
                                     <tr>
-                                        <td className="py-6 text-center text-sm text-slate-500" colSpan={8}>Chưa có đầu việc theo bộ lọc.</td>
+                                        <td className="py-6 text-center text-sm text-slate-500" colSpan={9}>Chưa có đầu việc theo bộ lọc.</td>
                                     </tr>
                                 )}
                             </tbody>

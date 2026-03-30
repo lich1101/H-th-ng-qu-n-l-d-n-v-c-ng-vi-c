@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Models\ClientCareNote;
 use App\Models\Client;
+use App\Models\Opportunity;
 use App\Models\Project;
 use App\Models\Task;
 use App\Models\TaskItem;
@@ -44,12 +45,33 @@ class ClientFlowController extends Controller
             ->orderBy('id')
             ->get();
 
+        $opportunities = Opportunity::query()
+            ->where('client_id', $client->id)
+            ->with([
+                'assignee:id,name,email',
+                'creator:id,name,email',
+            ])
+            ->select([
+                'id',
+                'client_id',
+                'title',
+                'amount',
+                'status',
+                'assigned_to',
+                'created_by',
+                'expected_close_date',
+                'notes',
+            ])
+            ->orderByDesc('id')
+            ->get();
+
         $projects = Project::query()
             ->where('client_id', $client->id)
             ->select([
                 'id',
                 'name',
                 'status',
+                'progress_percent',
                 'deadline',
                 'contract_id',
                 'service_type',
@@ -68,6 +90,9 @@ class ClientFlowController extends Controller
                     'project_id',
                     'title',
                     'status',
+                    'progress_percent',
+                    'weight_percent',
+                    'start_at',
                     'deadline',
                     'assignee_id',
                     'department_id',
@@ -86,6 +111,9 @@ class ClientFlowController extends Controller
                     'task_id',
                     'title',
                     'status',
+                    'progress_percent',
+                    'weight_percent',
+                    'start_date',
                     'deadline',
                     'assignee_id',
                 ])
@@ -129,6 +157,7 @@ class ClientFlowController extends Controller
                     })
                     ->values(),
             ],
+            'opportunities' => $opportunities,
             'contracts' => $contracts,
             'projects' => $projects,
             'tasks' => $tasks,

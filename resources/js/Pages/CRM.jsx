@@ -844,6 +844,8 @@ export default function CRM(props) {
                                         <th className="py-2">Phụ trách</th>
                                         <th className="py-2">Chăm sóc</th>
                                         <th className="py-2">Doanh thu</th>
+                                        <th className="py-2">Số cơ hội</th>
+                                        <th className="py-2">Số hợp đồng</th>
                                         <th className="py-2">Nguồn</th>
                                         <th className="py-2"></th>
                                     </tr>
@@ -909,6 +911,12 @@ export default function CRM(props) {
                                             <td className="py-2 text-slate-700">
                                                 {Number(client.total_revenue || 0).toLocaleString('vi-VN')}
                                             </td>
+                                            <td className="py-2 text-xs font-semibold text-slate-700">
+                                                {Number(client.opportunities_count || 0)}
+                                            </td>
+                                            <td className="py-2 text-xs font-semibold text-slate-700">
+                                                {Number(client.contracts_count || 0)}
+                                            </td>
                                             <td className="py-2 text-xs text-text-muted">
                                                 <div>
                                                     {client.lead_source || '—'} {client.lead_channel ? `• ${client.lead_channel}` : ''}
@@ -919,19 +927,13 @@ export default function CRM(props) {
                                             </td>
                                             <td className="py-2 text-right">
                                                 <div className="flex items-center justify-end gap-2">
-                                                    {client.has_purchased || Number(client.total_revenue || 0) > 0 ? (
-                                                        <Link
-                                                            href={route('crm.flow', client.id)}
-                                                            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                                                            title="Mở luồng khách hàng"
-                                                        >
-                                                            <AppIcon name="eye" className="h-4 w-4" />
-                                                        </Link>
-                                                    ) : (
-                                                        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-500">
-                                                            Lead mới
-                                                        </span>
-                                                    )}
+                                                    <Link
+                                                        href={route('crm.flow', client.id)}
+                                                        className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                                                        title="Xem khách hàng"
+                                                    >
+                                                        <AppIcon name="eye" className="h-4 w-4" />
+                                                    </Link>
                                                     {canManageClients && (
                                                         <button
                                                             type="button"
@@ -958,7 +960,7 @@ export default function CRM(props) {
                                     ))}
                                     {clients.length === 0 && (
                                         <tr>
-                                            <td className="py-6 text-center text-sm text-text-muted" colSpan={canBulkClientActions ? 11 : 10}>
+                                            <td className="py-6 text-center text-sm text-text-muted" colSpan={canBulkClientActions ? 13 : 12}>
                                                 Chưa có khách hàng nào.
                                             </td>
                                         </tr>

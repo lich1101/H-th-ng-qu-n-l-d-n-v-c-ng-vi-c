@@ -3,6 +3,7 @@ import axios from 'axios';
 import PageContainer from '@/Components/PageContainer';
 import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
 import PaginationControls from '@/Components/PaginationControls';
+import Modal from '@/Components/Modal';
 import { useToast } from '@/Contexts/ToastContext';
 
 const toColorStyle = (hex) => ({
@@ -15,12 +16,20 @@ export default function Opportunities(props) {
     const toast = useToast();
     const userRole = props?.auth?.user?.role || '';
     const canEdit = ['admin', 'quan_ly', 'nhan_vien'].includes(userRole);
+    const canManageStatuses = userRole === 'admin';
 
     const [leadTypes, setLeadTypes] = useState([]);
     const [clients, setClients] = useState([]);
     const [clientMeta, setClientMeta] = useState({ current_page: 1, last_page: 1, total: 0 });
     const [filters, setFilters] = useState({ search: '', lead_type_id: '', per_page: 20, page: 1 });
     const [loading, setLoading] = useState(true);
+    const [showStatusForm, setShowStatusForm] = useState(false);
+    const [savingStatus, setSavingStatus] = useState(false);
+    const [statusForm, setStatusForm] = useState({
+        name: '',
+        color_hex: '#04BC5C',
+        sort_order: 0,
+    });
 
     const fetchData = async (pageOrFilters = filters.page, maybeFilters = filters) => {
         const nextFilters = typeof pageOrFilters === 'object' && pageOrFilters !== null
@@ -113,6 +122,30 @@ export default function Opportunities(props) {
         }
     };
 
+    const submitStatus = async () => {
+        if (!canManageStatuses) return;
+        if (!statusForm.name.trim()) {
+            toast.error('Vui lòng nhập tên trạng thái.');
+            return;
+        }
+        setSavingStatus(true);
+        try {
+            await axios.post('/api/v1/lead-types', {
+                name: statusForm.name.trim(),
+                color_hex: statusForm.color_hex || '#04BC5C',
+                sort_order: Number(statusForm.sort_order || 0),
+            });
+            setStatusForm({ name: '', color_hex: '#04BC5C', sort_order: 0 });
+            setShowStatusForm(false);
+            await fetchData(filters.page, filters);
+            toast.success('Đã thêm trạng thái cơ hội.');
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Không thêm được trạng thái.');
+        } finally {
+            setSavingStatus(false);
+        }
+    };
+
     return (
         <PageContainer
             auth={props.auth}
@@ -126,6 +159,15 @@ export default function Opportunities(props) {
                     description="Lọc nhanh theo khách hàng tiềm năng, trạng thái và phạm vi theo dõi hiện tại."
                     actions={(
                         <FilterActionGroup>
+                            {canManageStatuses && (
+                                <button
+                                    type="button"
+                                    className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700"
+                                    onClick={() => setShowStatusForm(true)}
+                                >
+                                    Thêm trạng thái
+                                </button>
+                            )}
                             <button
                                 type="button"
                                 className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700"
@@ -312,6 +354,69 @@ export default function Opportunities(props) {
                     />
                 </div>
             )}
+
+            <Modal
+                open={showStatusForm}
+                onClose={() => setShowStatusForm(false)}
+                title="Thêm trạng thái cơ hội"
+                description="Chỉ admin có quyền thêm trạng thái để dùng chung trong toàn hệ thống."
+                size="sm"
+            >
+                <div className="space-y-4 text-sm">
+                    <div>
+                        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">
+                            Tên trạng thái *
+                        </label>
+                        <input
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            placeholder="Ví dụ: Chờ chăm sóc"
+                            value={statusForm.name}
+                            onChange={(e) => setStatusForm((prev) => ({ ...prev, name: e.target.value }))}
+                        />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">
+                                Màu tag
+                            </label>
+                            <input
+                                type="color"
+                                className="h-11 w-full rounded-2xl border border-slate-200/80 p-1"
+                                value={statusForm.color_hex}
+                                onChange={(e) => setStatusForm((prev) => ({ ...prev, color_hex: e.target.value }))}
+                            />
+                        </div>
+                        <div>
+                            <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">
+                                Thứ tự
+                            </label>
+                            <input
+                                type="number"
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                value={statusForm.sort_order}
+                                onChange={(e) => setStatusForm((prev) => ({ ...prev, sort_order: e.target.value }))}
+                            />
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <button
+                            type="button"
+                            className="flex-1 rounded-2xl bg-primary px-4 py-2.5 text-sm font-semibold text-white"
+                            disabled={savingStatus}
+                            onClick={submitStatus}
+                        >
+                            {savingStatus ? 'Đang lưu...' : 'Lưu trạng thái'}
+                        </button>
+                        <button
+                            type="button"
+                            className="flex-1 rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700"
+                            onClick={() => setShowStatusForm(false)}
+                        >
+                            Hủy
+                        </button>
+                    </div>
+                </div>
+            </Modal>
         </PageContainer>
     );
 }

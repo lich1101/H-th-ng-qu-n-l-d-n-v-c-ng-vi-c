@@ -287,7 +287,7 @@ export default function TaskDetail(props) {
                                 {statusLabel(task.status)}
                             </span>
                         </div>
-                        <div className="mt-4 grid gap-3 md:grid-cols-4 text-sm">
+                        <div className="mt-4 grid gap-3 md:grid-cols-5 text-sm">
                             <div className="rounded-2xl bg-slate-50 px-4 py-3">
                                 <div className="text-xs text-text-muted">Phụ trách</div>
                                 <div className="mt-1 font-semibold text-slate-900">{task.assignee?.name || '—'}</div>
@@ -299,6 +299,10 @@ export default function TaskDetail(props) {
                             <div className="rounded-2xl bg-slate-50 px-4 py-3">
                                 <div className="text-xs text-text-muted">Tiến độ</div>
                                 <div className="mt-1 font-semibold text-slate-900">{task.progress_percent ?? 0}%</div>
+                            </div>
+                            <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                                <div className="text-xs text-text-muted">Tỷ trọng</div>
+                                <div className="mt-1 font-semibold text-slate-900">{Number(task.weight_percent ?? 0)}%</div>
                             </div>
                             <div className="rounded-2xl bg-slate-50 px-4 py-3">
                                 <div className="text-xs text-text-muted">Deadline</div>
@@ -326,28 +330,52 @@ export default function TaskDetail(props) {
                                     </div>
                                     <div className="space-y-3">
                                         {group.items.map((item) => (
-                                            <button
+                                            <div
                                                 key={item.id}
-                                                type="button"
-                                                onClick={() => openUpdatesModal(item)}
                                                 className="w-full rounded-2xl border border-slate-200/80 p-4 text-left transition hover:border-primary/30 hover:bg-primary/5"
                                             >
-                                                <div className="flex items-center justify-between gap-3">
-                                                    <div>
-                                                        <div className="font-semibold text-slate-900">{item.title}</div>
-                                                        <div className="mt-1 text-xs text-text-muted">
-                                                            Trạng thái: {statusLabel(item.status)} • Tiến độ: {item.progress_percent ?? 0}%
+                                                <button
+                                                    type="button"
+                                                    onClick={() => openUpdatesModal(item)}
+                                                    className="w-full text-left"
+                                                >
+                                                    <div className="flex items-center justify-between gap-3">
+                                                        <div>
+                                                            <div className="font-semibold text-slate-900">{item.title}</div>
+                                                            <div className="mt-1 text-xs text-text-muted">
+                                                                Trạng thái: {statusLabel(item.status)} • Tiến độ: {item.progress_percent ?? 0}% • Tỷ trọng: {Number(item.weight_percent ?? 0)}%
+                                                            </div>
+                                                        </div>
+                                                        <div className="text-right text-xs text-text-muted">
+                                                            <div>Bắt đầu: {item.start_date ? formatDate(item.start_date) : '—'}</div>
+                                                            <div>Hạn: {item.deadline ? formatDate(item.deadline) : '—'}</div>
                                                         </div>
                                                     </div>
-                                                    <div className="text-right text-xs text-text-muted">
-                                                        <div>Bắt đầu: {item.start_date ? formatDate(item.start_date) : '—'}</div>
-                                                        <div>Hạn: {item.deadline ? formatDate(item.deadline) : '—'}</div>
-                                                    </div>
+                                                </button>
+                                                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                                                    <button
+                                                        type="button"
+                                                        className="rounded-xl border border-slate-200 px-3 py-2 font-semibold text-slate-700"
+                                                        onClick={() => openUpdatesModal(item)}
+                                                    >
+                                                        Phiếu duyệt
+                                                    </button>
+                                                    {canSubmitReportForItem(item) && (
+                                                        <button
+                                                            type="button"
+                                                            className="rounded-xl bg-primary px-3 py-2 font-semibold text-white"
+                                                            onClick={() => openReportForm(item)}
+                                                        >
+                                                            Tạo phiếu
+                                                        </button>
+                                                    )}
+                                                    {canApproveItemUpdates && (
+                                                        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 font-semibold text-emerald-700">
+                                                            Quyền duyệt phiếu
+                                                        </span>
+                                                    )}
                                                 </div>
-                                                <div className="mt-3 text-xs font-semibold text-primary">
-                                                    Bấm để xem danh sách phiếu duyệt đầu việc
-                                                </div>
-                                            </button>
+                                            </div>
                                         ))}
                                     </div>
                                 </div>

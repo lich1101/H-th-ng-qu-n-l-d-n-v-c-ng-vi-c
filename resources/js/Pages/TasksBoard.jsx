@@ -1773,6 +1773,7 @@ export default function TasksBoard(props) {
                                             <th className="py-2">Ưu tiên</th>
                                             <th className="py-2">Hạn chót</th>
                                             <th className="py-2">Tiến độ</th>
+                                            <th className="py-2">Tỷ trọng</th>
                                             <th className="py-2">Phòng ban</th>
                                             <th className="py-2">Phụ trách</th>
                                             <th className="py-2"></th>
@@ -1825,6 +1826,7 @@ export default function TasksBoard(props) {
                                                         {t.deadline ? String(t.deadline).slice(0, 10) : '—'}
                                                     </td>
                                                     <td className="py-3 text-xs text-text-muted">{t.progress_percent ?? 0}%</td>
+                                                    <td className="py-3 text-xs text-text-muted">{Number(t.weight_percent ?? 0)}%</td>
                                                     <td className="py-3 text-xs text-text-muted">
                                                         {t.department?.name || '—'}
                                                     </td>
@@ -1860,14 +1862,14 @@ export default function TasksBoard(props) {
                                         })}
                                         {loading && (
                                             <tr>
-                                                <td className="py-6 text-center text-sm text-text-muted" colSpan={9}>
+                                                <td className="py-6 text-center text-sm text-text-muted" colSpan={10}>
                                                     Đang tải...
                                                 </td>
                                             </tr>
                                         )}
                                         {!loading && tasks.length === 0 && (
                                             <tr>
-                                                <td className="py-6 text-center text-sm text-text-muted" colSpan={9}>
+                                                <td className="py-6 text-center text-sm text-text-muted" colSpan={10}>
                                                     Chưa có công việc theo bộ lọc.
                                                 </td>
                                             </tr>
@@ -1919,6 +1921,9 @@ export default function TasksBoard(props) {
                                                     <div className="mt-3 flex items-center justify-between text-xs text-text-muted">
                                                         <span>{t.deadline ? `Hạn chót ${String(t.deadline).slice(0, 10)}` : 'Chưa có hạn chót'}</span>
                                                         <span>{t.progress_percent ?? 0}%</span>
+                                                    </div>
+                                                    <div className="mt-1 text-xs text-text-muted">
+                                                        Tỷ trọng: {Number(t.weight_percent ?? 0)}%
                                                     </div>
                                                     {t.require_acknowledgement && !t.acknowledged_at && (
                                                         <div className="mt-3 flex items-center justify-between text-xs">
@@ -2453,6 +2458,7 @@ export default function TasksBoard(props) {
                                 <div className="mt-2 flex flex-wrap gap-2 text-xs text-text-muted">
                                     <span>Trạng thái: {LABELS[item.status] || item.status}</span>
                                     <span>Tiến độ: {item.progress_percent ?? 0}%</span>
+                                    <span>Tỷ trọng: {Number(item.weight_percent ?? 0)}%</span>
                                     <span>Bắt đầu: {item.start_date ? String(item.start_date).slice(0, 10) : '—'}</span>
                                     <span>Hạn: {item.deadline ? String(item.deadline).slice(0, 10) : '—'}</span>
                                 </div>
