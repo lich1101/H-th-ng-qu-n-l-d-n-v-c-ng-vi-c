@@ -8,10 +8,15 @@ class Opportunity extends Model
 {
     protected $fillable = [
         'title',
+        'opportunity_type',
         'client_id',
         'amount',
         'status',
+        'source',
+        'success_probability',
+        'product_id',
         'assigned_to',
+        'watcher_ids',
         'expected_close_date',
         'notes',
         'created_by',
@@ -19,6 +24,8 @@ class Opportunity extends Model
 
     protected $casts = [
         'amount' => 'float',
+        'success_probability' => 'integer',
+        'watcher_ids' => 'array',
         'expected_close_date' => 'date',
     ];
 
@@ -30,6 +37,16 @@ class Opportunity extends Model
     public function assignee()
     {
         return $this->belongsTo(User::class, 'assigned_to');
+    }
+
+    public function product()
+    {
+        return $this->belongsTo(Product::class, 'product_id');
+    }
+
+    public function statusConfig()
+    {
+        return $this->belongsTo(OpportunityStatus::class, 'status', 'code');
     }
 
     public function creator()

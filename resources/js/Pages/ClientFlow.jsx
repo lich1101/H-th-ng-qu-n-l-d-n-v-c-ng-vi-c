@@ -35,6 +35,7 @@ const doneStatusSet = new Set(['won', 'success', 'thanh_cong', 'hoan_thanh', 'do
 const doneContractStatusSet = new Set(['success', 'active', 'approved', 'hoan_thanh']);
 
 const statusLabel = (value) => STATUS_LABELS[String(value || '').toLowerCase()] || value || '—';
+const opportunityStatusLabel = (row) => row?.status_config?.name || statusLabel(row?.status);
 
 const formatDate = (raw) => {
     if (!raw) return '—';
@@ -324,7 +325,18 @@ export default function ClientFlow({ auth, clientId }) {
                                     {opportunities.map((row) => (
                                         <tr key={row.id} className="border-b border-slate-100">
                                             <td className="py-2.5 font-medium text-slate-900">{row.title || '—'}</td>
-                                            <td className="py-2.5 text-xs text-slate-600">{statusLabel(row.status)}</td>
+                                            <td className="py-2.5 text-xs text-slate-600">
+                                                <span
+                                                    className="inline-flex rounded-full border px-2 py-1 font-semibold"
+                                                    style={{
+                                                        borderColor: row?.status_config?.color_hex || '#CBD5E1',
+                                                        color: row?.status_config?.color_hex || '#475569',
+                                                        backgroundColor: `${row?.status_config?.color_hex || '#CBD5E1'}20`,
+                                                    }}
+                                                >
+                                                    {opportunityStatusLabel(row)}
+                                                </span>
+                                            </td>
                                             <td className="py-2.5 text-xs text-slate-600">{formatCurrency(row.amount)} VNĐ</td>
                                             <td className="py-2.5 text-xs text-slate-600">{row.assignee?.name || row.creator?.name || '—'}</td>
                                             <td className="py-2.5 text-xs text-slate-600">{formatDate(row.expected_close_date)}</td>

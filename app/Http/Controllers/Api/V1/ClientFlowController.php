@@ -50,14 +50,20 @@ class ClientFlowController extends Controller
             ->with([
                 'assignee:id,name,email',
                 'creator:id,name,email',
+                'statusConfig:id,code,name,color_hex,sort_order',
             ])
             ->select([
                 'id',
                 'client_id',
                 'title',
+                'opportunity_type',
                 'amount',
                 'status',
+                'source',
+                'success_probability',
+                'product_id',
                 'assigned_to',
+                'watcher_ids',
                 'created_by',
                 'expected_close_date',
                 'notes',
