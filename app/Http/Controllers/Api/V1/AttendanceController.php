@@ -272,7 +272,7 @@ class AttendanceController extends Controller
         return response()->json($query->paginate((int) $request->input('per_page', 20)));
     }
 
-    public function submitDevice(Request $request): JsonResponse
+    public function submitDevice(Request $request, NotificationService $notifications): JsonResponse
     {
         if (! $this->canTrackAttendance($request->user())) {
             return response()->json(['message' => 'Tài khoản này không thuộc diện chấm công bằng WiFi.'], 403);
@@ -289,6 +289,18 @@ class AttendanceController extends Controller
         $user = $request->user();
         $existing = AttendanceDevice::query()->where('user_id', $user->id)->first();
         $deviceUuid = trim((string) $validated['device_uuid']);
+        $isReplacement = $existing && $existing->device_uuid !== $deviceUuid;
+
+        $conflict = AttendanceDevice::query()
+            ->where('device_uuid', $deviceUuid)
+            ->where('user_id', '!=', $user->id)
+            ->first();
+
+        if ($conflict) {
+            return response()->json([
+                'message' => 'Thiết bị này đã được liên kết với nhân sự khác. Vui lòng liên hệ quản trị để kiểm tra lại.',
+            ], 422);
+        }
 
         if ($existing && $existing->status === 'approved' && $existing->device_uuid === $deviceUuid) {
             $existing->update([
@@ -323,7 +335,9 @@ class AttendanceController extends Controller
 
         $this->notifyManagers(
             'Có yêu cầu duyệt thiết bị chấm công',
-            sprintf('%s vừa gửi yêu cầu duyệt thiết bị %s.', $user->name, $item->device_name ?: $item->device_uuid),
+            $isReplacement
+                ? sprintf('%s vừa gửi yêu cầu cập nhật sang thiết bị mới %s.', $user->name, $item->device_name ?: $item->device_uuid)
+                : sprintf('%s vừa gửi yêu cầu duyệt thiết bị %s.', $user->name, $item->device_name ?: $item->device_uuid),
             [
                 'type' => 'attendance_device_request',
                 'category' => 'attendance',
@@ -332,8 +346,21 @@ class AttendanceController extends Controller
             ]
         );
 
+        $notifications->notifyUsersAfterResponse(
+            [$user->id],
+            'Đã gửi yêu cầu duyệt thiết bị',
+            'Thiết bị vừa được gửi. Hãy liên hệ nhân sự phụ trách để thiết bị được duyệt.',
+            [
+                'type' => 'attendance_device_submitted',
+                'category' => 'attendance',
+                'attendance_device_id' => (int) $item->id,
+            ]
+        );
+
         return response()->json([
-            'message' => 'Đã gửi yêu cầu duyệt thiết bị.',
+            'message' => $isReplacement
+                ? 'Đã gửi yêu cầu cập nhật sang thiết bị mới. Hãy liên hệ nhân sự phụ trách để được duyệt.'
+                : 'Đã gửi yêu cầu duyệt thiết bị. Hãy liên hệ nhân sự phụ trách để được duyệt.',
             'item' => $this->devicePayload($item->fresh()),
         ], 201);
     }
@@ -403,7 +430,15 @@ class AttendanceController extends Controller
 
         $device = AttendanceDevice::query()->where('user_id', $user->id)->first();
         $deviceUuid = trim((string) $validated['device_uuid']);
-        if (! $device || $device->status !== 'approved' || $device->device_uuid !== $deviceUuid) {
+        if (! $device) {
+            return response()->json(['message' => 'Thiết bị hiện tại chưa được đăng ký. Vui lòng gửi yêu cầu duyệt thiết bị trước khi chấm công.'], 422);
+        }
+
+        if ($device->device_uuid !== $deviceUuid) {
+            return response()->json(['message' => 'Bạn đang dùng thiết bị mới. Vui lòng gửi yêu cầu duyệt lại để cập nhật thiết bị chấm công.'], 422);
+        }
+
+        if ($device->status !== 'approved') {
             return response()->json(['message' => 'Thiết bị hiện tại chưa được duyệt để chấm công.'], 422);
         }
 
