@@ -1,0 +1,1101 @@
+<?php
+
+namespace App\Http\Controllers\Api\V1;
+
+use App\Http\Controllers\Controller;
+use App\Models\AppSetting;
+use App\Models\AttendanceDevice;
+use App\Models\AttendanceHoliday;
+use App\Models\AttendanceRecord;
+use App\Models\AttendanceReminderLog;
+use App\Models\AttendanceRequest as AttendanceRequestModel;
+use App\Models\AttendanceWifiNetwork;
+use App\Models\User;
+use App\Services\AttendanceService;
+use App\Services\NotificationService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+class AttendanceController extends Controller
+{
+    public function dashboard(Request $request, AttendanceService $attendance): JsonResponse
+    {
+        $user = $request->user();
+        $today = Carbon::now('Asia/Ho_Chi_Minh')->toDateString();
+        $settings = $attendance->settings();
+        $todayRecord = AttendanceRecord::query()
+            ->where('user_id', $user->id)
+            ->whereDate('work_date', $today)
+            ->first();
+        $device = AttendanceDevice::query()->where('user_id', $user->id)->first();
+        $recentRequests = AttendanceRequestModel::query()
+            ->with(['decider:id,name'])
+            ->where('user_id', $user->id)
+            ->orderByDesc('request_date')
+            ->orderByDesc('id')
+            ->limit(10)
+            ->get();
+
+        return response()->json([
+            'settings' => $settings,
+            'today_record' => $todayRecord ? $this->recordPayload($todayRecord) : null,
+            'device' => $device ? $this->devicePayload($device) : null,
+            'recent_requests' => $recentRequests->map(function (AttendanceRequestModel $item) {
+                return $this->attendanceRequestPayload($item);
+            })->values(),
+            'can_manage_attendance' => $this->canManageAttendance($user),
+            'pending_counts' => $this->canManageAttendance($user)
+                ? [
+                    'devices' => AttendanceDevice::query()->where('status', 'pending')->count(),
+                    'requests' => AttendanceRequestModel::query()->where('status', 'pending')->count(),
+                ]
+                : null,
+        ]);
+    }
+
+    public function settingsShow(Request $request, AttendanceService $attendance): JsonResponse
+    {
+        if (! $this->canManageAttendance($request->user())) {
+            return response()->json(['message' => 'Không có quyền xem cấu hình chấm công.'], 403);
+        }
+
+        return response()->json($attendance->settings());
+    }
+
+    public function settingsUpdate(Request $request, AttendanceService $attendance): JsonResponse
+    {
+        if (! $this->canManageAttendance($request->user())) {
+            return response()->json(['message' => 'Không có quyền cập nhật cấu hình chấm công.'], 403);
+        }
+
+        $validated = $request->validate([
+            'attendance_enabled' => ['nullable', 'boolean'],
+            'attendance_work_start_time' => ['required', 'regex:/^\d{2}:\d{2}$/'],
+            'attendance_work_end_time' => ['required', 'regex:/^\d{2}:\d{2}$/'],
+            'attendance_afternoon_start_time' => ['required', 'regex:/^\d{2}:\d{2}$/'],
+            'attendance_late_grace_minutes' => ['required', 'integer', 'min:0', 'max:240'],
+            'attendance_reminder_enabled' => ['nullable', 'boolean'],
+            'attendance_reminder_minutes_before' => ['nullable', 'integer', 'min:0', 'max:120'],
+        ]);
+
+        $setting = AppSetting::query()->first();
+        if (! $setting) {
+            $setting = AppSetting::create(AppSetting::defaults());
+        }
+
+        $setting->update([
+            'attendance_enabled' => array_key_exists('attendance_enabled', $validated)
+                ? (bool) $validated['attendance_enabled']
+                : (bool) ($setting->attendance_enabled ?? true),
+            'attendance_work_start_time' => $attendance->normalizeTime($validated['attendance_work_start_time'], '08:30'),
+            'attendance_work_end_time' => $attendance->normalizeTime($validated['attendance_work_end_time'], '17:30'),
+            'attendance_afternoon_start_time' => $attendance->normalizeTime($validated['attendance_afternoon_start_time'], '13:30'),
+            'attendance_late_grace_minutes' => (int) $validated['attendance_late_grace_minutes'],
+            'attendance_reminder_enabled' => array_key_exists('attendance_reminder_enabled', $validated)
+                ? (bool) $validated['attendance_reminder_enabled']
+                : (bool) ($setting->attendance_reminder_enabled ?? true),
+            'attendance_reminder_minutes_before' => array_key_exists('attendance_reminder_minutes_before', $validated)
+                ? (int) $validated['attendance_reminder_minutes_before']
+                : (int) ($setting->attendance_reminder_minutes_before ?? 10),
+            'updated_by' => $request->user()->id,
+        ]);
+
+        return response()->json($attendance->settings());
+    }
+
+    public function wifiIndex(Request $request): JsonResponse
+    {
+        if (! $this->canManageAttendance($request->user())) {
+            return response()->json(['message' => 'Không có quyền xem danh sách WiFi.'], 403);
+        }
+
+        $rows = AttendanceWifiNetwork::query()
+            ->orderByDesc('is_active')
+            ->orderBy('ssid')
+            ->orderBy('bssid')
+            ->get();
+
+        return response()->json([
+            'data' => $rows->map(function (AttendanceWifiNetwork $item) {
+                return $this->wifiPayload($item);
+            })->values(),
+        ]);
+    }
+
+    public function wifiStore(Request $request, AttendanceService $attendance): JsonResponse
+    {
+        if (! $this->canManageAttendance($request->user())) {
+            return response()->json(['message' => 'Không có quyền cấu hình WiFi.'], 403);
+        }
+
+        $validated = $request->validate([
+            'ssid' => ['required', 'string', 'max:120'],
+            'bssid' => ['nullable', 'string', 'max:64'],
+            'note' => ['nullable', 'string', 'max:255'],
+            'is_active' => ['nullable', 'boolean'],
+        ]);
+
+        $row = AttendanceWifiNetwork::create([
+            'ssid' => trim((string) $validated['ssid']),
+            'bssid' => $attendance->normalizeBssid($validated['bssid'] ?? null),
+            'note' => trim((string) ($validated['note'] ?? '')) ?: null,
+            'is_active' => array_key_exists('is_active', $validated) ? (bool) $validated['is_active'] : true,
+            'created_by' => $request->user()->id,
+            'updated_by' => $request->user()->id,
+        ]);
+
+        return response()->json([
+            'message' => 'Đã thêm WiFi được phép.',
+            'item' => $this->wifiPayload($row),
+        ], 201);
+    }
+
+    public function wifiUpdate(Request $request, AttendanceWifiNetwork $attendanceWifiNetwork, AttendanceService $attendance): JsonResponse
+    {
+        if (! $this->canManageAttendance($request->user())) {
+            return response()->json(['message' => 'Không có quyền cập nhật WiFi.'], 403);
+        }
+
+        $validated = $request->validate([
+            'ssid' => ['required', 'string', 'max:120'],
+            'bssid' => ['nullable', 'string', 'max:64'],
+            'note' => ['nullable', 'string', 'max:255'],
+            'is_active' => ['nullable', 'boolean'],
+        ]);
+
+        $attendanceWifiNetwork->update([
+            'ssid' => trim((string) $validated['ssid']),
+            'bssid' => $attendance->normalizeBssid($validated['bssid'] ?? null),
+            'note' => trim((string) ($validated['note'] ?? '')) ?: null,
+            'is_active' => array_key_exists('is_active', $validated)
+                ? (bool) $validated['is_active']
+                : (bool) $attendanceWifiNetwork->is_active,
+            'updated_by' => $request->user()->id,
+        ]);
+
+        return response()->json([
+            'message' => 'Đã cập nhật WiFi được phép.',
+            'item' => $this->wifiPayload($attendanceWifiNetwork->fresh()),
+        ]);
+    }
+
+    public function wifiDestroy(Request $request, AttendanceWifiNetwork $attendanceWifiNetwork): JsonResponse
+    {
+        if (! $this->canManageAttendance($request->user())) {
+            return response()->json(['message' => 'Không có quyền xóa WiFi.'], 403);
+        }
+
+        $attendanceWifiNetwork->delete();
+
+        return response()->json(['message' => 'Đã xóa WiFi được phép.']);
+    }
+
+    public function staffIndex(Request $request): JsonResponse
+    {
+        if (! $this->canManageAttendance($request->user())) {
+            return response()->json(['message' => 'Không có quyền xem cấu hình nhân viên.'], 403);
+        }
+
+        $query = User::query()
+            ->select(['id', 'name', 'email', 'role', 'department', 'department_id', 'is_active', 'attendance_employment_type'])
+            ->where('role', '!=', 'administrator')
+            ->orderBy('name');
+
+        if ($request->filled('search')) {
+            $search = trim((string) $request->input('search'));
+            $query->where(function ($builder) use ($search) {
+                $builder->where('name', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%");
+            });
+        }
+
+        if ($request->filled('role')) {
+            $query->where('role', (string) $request->input('role'));
+        }
+
+        $rows = $query->paginate((int) $request->input('per_page', 20));
+
+        return response()->json($rows);
+    }
+
+    public function staffUpdate(Request $request, User $user): JsonResponse
+    {
+        if (! $this->canManageAttendance($request->user())) {
+            return response()->json(['message' => 'Không có quyền cập nhật cấu hình nhân viên.'], 403);
+        }
+
+        $validated = $request->validate([
+            'attendance_employment_type' => ['required', 'in:full_time,half_day_morning,half_day_afternoon'],
+        ]);
+
+        $user->update([
+            'attendance_employment_type' => (string) $validated['attendance_employment_type'],
+        ]);
+
+        return response()->json([
+            'message' => 'Đã cập nhật hình thức chấm công của nhân viên.',
+            'user' => $user->fresh(['departmentRelation']),
+        ]);
+    }
+
+    public function devices(Request $request): JsonResponse
+    {
+        if (! $this->canManageAttendance($request->user())) {
+            return response()->json(['message' => 'Không có quyền duyệt thiết bị.'], 403);
+        }
+
+        $query = AttendanceDevice::query()
+            ->with(['user:id,name,email,role,department,department_id', 'decider:id,name'])
+            ->orderByRaw("FIELD(status, 'pending', 'rejected', 'approved')")
+            ->orderByDesc('requested_at')
+            ->orderByDesc('id');
+
+        if ($request->filled('status')) {
+            $query->where('status', (string) $request->input('status'));
+        }
+
+        if ($request->filled('search')) {
+            $search = trim((string) $request->input('search'));
+            $query->where(function ($builder) use ($search) {
+                $builder->where('device_name', 'like', "%{$search}%")
+                    ->orWhere('device_model', 'like', "%{$search}%")
+                    ->orWhere('device_uuid', 'like', "%{$search}%")
+                    ->orWhereHas('user', function ($userQuery) use ($search) {
+                        $userQuery->where('name', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%");
+                    });
+            });
+        }
+
+        return response()->json($query->paginate((int) $request->input('per_page', 20)));
+    }
+
+    public function submitDevice(Request $request): JsonResponse
+    {
+        if (! $this->canTrackAttendance($request->user())) {
+            return response()->json(['message' => 'Tài khoản này không thuộc diện chấm công bằng WiFi.'], 403);
+        }
+
+        $validated = $request->validate([
+            'device_uuid' => ['required', 'string', 'max:191'],
+            'device_name' => ['nullable', 'string', 'max:191'],
+            'device_platform' => ['nullable', 'string', 'max:32'],
+            'device_model' => ['nullable', 'string', 'max:191'],
+            'note' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $user = $request->user();
+        $existing = AttendanceDevice::query()->where('user_id', $user->id)->first();
+        $deviceUuid = trim((string) $validated['device_uuid']);
+
+        if ($existing && $existing->status === 'approved' && $existing->device_uuid === $deviceUuid) {
+            $existing->update([
+                'device_name' => trim((string) ($validated['device_name'] ?? '')) ?: $existing->device_name,
+                'device_platform' => trim((string) ($validated['device_platform'] ?? '')) ?: $existing->device_platform,
+                'device_model' => trim((string) ($validated['device_model'] ?? '')) ?: $existing->device_model,
+                'last_seen_at' => now(),
+            ]);
+
+            return response()->json([
+                'message' => 'Thiết bị hiện tại đã được duyệt sẵn.',
+                'item' => $this->devicePayload($existing->fresh()),
+            ]);
+        }
+
+        $item = AttendanceDevice::query()->updateOrCreate(
+            ['user_id' => $user->id],
+            [
+                'device_uuid' => $deviceUuid,
+                'device_name' => trim((string) ($validated['device_name'] ?? '')) ?: null,
+                'device_platform' => trim((string) ($validated['device_platform'] ?? '')) ?: null,
+                'device_model' => trim((string) ($validated['device_model'] ?? '')) ?: null,
+                'status' => 'pending',
+                'note' => trim((string) ($validated['note'] ?? '')) ?: null,
+                'requested_at' => now(),
+                'approved_at' => null,
+                'rejected_at' => null,
+                'decided_by' => null,
+                'last_seen_at' => now(),
+            ]
+        );
+
+        $this->notifyManagers(
+            'Có yêu cầu duyệt thiết bị chấm công',
+            sprintf('%s vừa gửi yêu cầu duyệt thiết bị %s.', $user->name, $item->device_name ?: $item->device_uuid),
+            [
+                'type' => 'attendance_device_request',
+                'category' => 'attendance',
+                'attendance_device_id' => (int) $item->id,
+                'user_id' => (int) $user->id,
+            ]
+        );
+
+        return response()->json([
+            'message' => 'Đã gửi yêu cầu duyệt thiết bị.',
+            'item' => $this->devicePayload($item->fresh()),
+        ], 201);
+    }
+
+    public function reviewDevice(Request $request, AttendanceDevice $attendanceDevice, NotificationService $notifications): JsonResponse
+    {
+        if (! $this->canManageAttendance($request->user())) {
+            return response()->json(['message' => 'Không có quyền duyệt thiết bị.'], 403);
+        }
+
+        $validated = $request->validate([
+            'status' => ['required', 'in:approved,rejected'],
+            'note' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $status = (string) $validated['status'];
+        $attendanceDevice->update([
+            'status' => $status,
+            'note' => trim((string) ($validated['note'] ?? '')) ?: null,
+            'decided_by' => $request->user()->id,
+            'approved_at' => $status === 'approved' ? now() : null,
+            'rejected_at' => $status === 'rejected' ? now() : null,
+        ]);
+
+        if ($attendanceDevice->user) {
+            $notifications->notifyUsers(
+                [$attendanceDevice->user_id],
+                $status === 'approved' ? 'Thiết bị chấm công đã được duyệt' : 'Thiết bị chấm công bị từ chối',
+                $status === 'approved'
+                    ? 'Bạn có thể dùng thiết bị này để chấm công bằng WiFi.'
+                    : ((string) ($attendanceDevice->note ?: 'Vui lòng kiểm tra lại thiết bị và gửi yêu cầu mới.')),
+                [
+                    'type' => 'attendance_device_reviewed',
+                    'category' => 'attendance',
+                    'attendance_device_id' => (int) $attendanceDevice->id,
+                    'status' => $status,
+                ]
+            );
+        }
+
+        return response()->json([
+            'message' => $status === 'approved' ? 'Đã duyệt thiết bị.' : 'Đã từ chối thiết bị.',
+            'item' => $this->devicePayload($attendanceDevice->fresh(['user', 'decider'])),
+        ]);
+    }
+
+    public function checkIn(Request $request, AttendanceService $attendance): JsonResponse
+    {
+        $user = $request->user();
+        if (! $this->canTrackAttendance($user)) {
+            return response()->json(['message' => 'Tài khoản này không thuộc diện chấm công bằng WiFi.'], 403);
+        }
+
+        $validated = $request->validate([
+            'device_uuid' => ['required', 'string', 'max:191'],
+            'device_name' => ['nullable', 'string', 'max:191'],
+            'device_platform' => ['nullable', 'string', 'max:32'],
+            'device_model' => ['nullable', 'string', 'max:191'],
+            'wifi_ssid' => ['required', 'string', 'max:120'],
+            'wifi_bssid' => ['nullable', 'string', 'max:64'],
+        ]);
+
+        $settings = $attendance->settings();
+        if (! $settings['enabled']) {
+            return response()->json(['message' => 'Chức năng chấm công WiFi hiện đang tạm tắt.'], 422);
+        }
+
+        $device = AttendanceDevice::query()->where('user_id', $user->id)->first();
+        $deviceUuid = trim((string) $validated['device_uuid']);
+        if (! $device || $device->status !== 'approved' || $device->device_uuid !== $deviceUuid) {
+            return response()->json(['message' => 'Thiết bị hiện tại chưa được duyệt để chấm công.'], 422);
+        }
+
+        $ssid = $attendance->normalizeWifiValue($validated['wifi_ssid'] ?? null);
+        $bssid = $attendance->normalizeBssid($validated['wifi_bssid'] ?? null);
+        $allowedWifi = AttendanceWifiNetwork::query()
+            ->where('is_active', true)
+            ->where('ssid', $ssid)
+            ->where(function ($query) use ($bssid) {
+                $query->whereNull('bssid');
+                if ($bssid) {
+                    $query->orWhere('bssid', $bssid);
+                }
+            })
+            ->first();
+
+        if (! $allowedWifi) {
+            return response()->json(['message' => 'WiFi hiện tại chưa nằm trong danh sách được phép chấm công.'], 422);
+        }
+
+        $now = Carbon::now('Asia/Ho_Chi_Minh');
+        $holiday = AttendanceHoliday::query()
+            ->where('is_active', true)
+            ->whereDate('holiday_date', $now->toDateString())
+            ->first();
+        if ($holiday) {
+            $record = $attendance->upsertHolidayRecord($user, $now, $holiday);
+            return response()->json([
+                'message' => 'Hôm nay là ngày lễ, hệ thống đã tự tính đủ công cho bạn.',
+                'record' => $this->recordPayload($record),
+            ]);
+        }
+
+        $record = AttendanceRecord::query()->firstOrNew([
+            'user_id' => $user->id,
+            'work_date' => $now->toDateString(),
+        ]);
+
+        if ($record->exists && $record->check_in_at) {
+            return response()->json([
+                'message' => 'Bạn đã chấm công hôm nay rồi.',
+                'record' => $this->recordPayload($record),
+            ]);
+        }
+
+        $evaluation = $attendance->evaluateCheckIn($user, $now, $settings);
+        $existingWorkUnits = (float) ($record->work_units ?? 0);
+        $nextWorkUnits = max($existingWorkUnits, (float) $evaluation['work_units']);
+        $lockedStatus = in_array((string) $record->status, ['approved_full', 'approved_partial'], true)
+            ? (string) $record->status
+            : (string) $evaluation['status'];
+        $lockedSource = in_array((string) $record->status, ['approved_full', 'approved_partial'], true)
+            ? ((string) ($record->source ?: 'request_approval'))
+            : 'wifi';
+
+        $record->fill([
+            'check_in_at' => $now,
+            'required_start_at' => $evaluation['required_start_at'],
+            'allowed_late_until' => $evaluation['allowed_late_until'],
+            'minutes_late' => (int) $evaluation['minutes_late'],
+            'default_work_units' => (float) $evaluation['default_work_units'],
+            'work_units' => $nextWorkUnits,
+            'employment_type' => (string) $evaluation['employment_type'],
+            'status' => $lockedStatus,
+            'source' => $lockedSource,
+            'wifi_ssid' => $ssid,
+            'wifi_bssid' => $bssid,
+            'device_uuid' => $deviceUuid,
+            'device_name' => trim((string) ($validated['device_name'] ?? '')) ?: $device->device_name,
+            'device_platform' => trim((string) ($validated['device_platform'] ?? '')) ?: $device->device_platform,
+            'note' => $record->note,
+        ]);
+        $record->save();
+
+        $device->update([
+            'device_name' => trim((string) ($validated['device_name'] ?? '')) ?: $device->device_name,
+            'device_platform' => trim((string) ($validated['device_platform'] ?? '')) ?: $device->device_platform,
+            'device_model' => trim((string) ($validated['device_model'] ?? '')) ?: $device->device_model,
+            'last_seen_at' => now(),
+        ]);
+
+        return response()->json([
+            'message' => $record->status === 'present'
+                ? 'Chấm công thành công.'
+                : 'Bạn đã chấm công nhưng đang ở trạng thái đi muộn, cần duyệt đơn nếu muốn đủ công.',
+            'record' => $this->recordPayload($record->fresh()),
+        ]);
+    }
+
+    public function myRecords(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        if (! $this->canTrackAttendance($user)) {
+            return response()->json(['data' => []]);
+        }
+
+        $from = $this->resolveDate($request->input('from_date'), Carbon::now('Asia/Ho_Chi_Minh')->startOfMonth());
+        $to = $this->resolveDate($request->input('to_date'), Carbon::now('Asia/Ho_Chi_Minh')->endOfMonth());
+
+        $rows = AttendanceRecord::query()
+            ->where('user_id', $user->id)
+            ->whereBetween('work_date', [$from->toDateString(), $to->toDateString()])
+            ->orderByDesc('work_date')
+            ->get();
+
+        return response()->json([
+            'data' => $rows->map(function (AttendanceRecord $item) {
+                return $this->recordPayload($item);
+            })->values(),
+        ]);
+    }
+
+    public function requests(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $query = AttendanceRequestModel::query()
+            ->with(['user:id,name,email,role,department', 'decider:id,name'])
+            ->orderByDesc('request_date')
+            ->orderByDesc('id');
+
+        if (! $this->canManageAttendance($user)) {
+            $query->where('user_id', $user->id);
+        }
+
+        if ($request->filled('status')) {
+            $query->where('status', (string) $request->input('status'));
+        }
+
+        if ($request->filled('search')) {
+            $search = trim((string) $request->input('search'));
+            $query->where(function ($builder) use ($search) {
+                $builder->where('title', 'like', "%{$search}%")
+                    ->orWhere('content', 'like', "%{$search}%")
+                    ->orWhereHas('user', function ($userQuery) use ($search) {
+                        $userQuery->where('name', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%");
+                    });
+            });
+        }
+
+        return response()->json($query->paginate((int) $request->input('per_page', 20)));
+    }
+
+    public function submitRequest(Request $request, NotificationService $notifications): JsonResponse
+    {
+        $user = $request->user();
+        if (! $this->canTrackAttendance($user)) {
+            return response()->json(['message' => 'Tài khoản này không thuộc diện gửi đơn chấm công.'], 403);
+        }
+
+        $validated = $request->validate([
+            'request_date' => ['required', 'date'],
+            'expected_check_in_time' => ['nullable', 'regex:/^\d{2}:\d{2}$/'],
+            'title' => ['required', 'string', 'max:191'],
+            'content' => ['nullable', 'string', 'max:5000'],
+        ]);
+
+        $item = AttendanceRequestModel::create([
+            'user_id' => $user->id,
+            'request_type' => 'late_arrival',
+            'request_date' => Carbon::parse($validated['request_date'], 'Asia/Ho_Chi_Minh')->toDateString(),
+            'expected_check_in_time' => $validated['expected_check_in_time'] ?? null,
+            'title' => trim((string) $validated['title']),
+            'content' => trim((string) ($validated['content'] ?? '')) ?: null,
+            'status' => 'pending',
+        ]);
+
+        $notifications->notifyUsers(
+            $this->attendanceManagerIds(),
+            'Có đơn xin đi muộn cần duyệt',
+            sprintf('%s vừa gửi đơn cho ngày %s.', $user->name, Carbon::parse($item->request_date)->format('d/m/Y')),
+            [
+                'type' => 'attendance_request_submitted',
+                'category' => 'attendance',
+                'attendance_request_id' => (int) $item->id,
+                'user_id' => (int) $user->id,
+            ]
+        );
+
+        return response()->json([
+            'message' => 'Đã gửi đơn xin đi muộn.',
+            'item' => $this->attendanceRequestPayload($item->fresh(['user', 'decider'])),
+        ], 201);
+    }
+
+    public function reviewRequest(
+        Request $request,
+        AttendanceRequestModel $attendanceRequest,
+        AttendanceService $attendance,
+        NotificationService $notifications
+    ): JsonResponse {
+        if (! $this->canManageAttendance($request->user())) {
+            return response()->json(['message' => 'Không có quyền duyệt đơn chấm công.'], 403);
+        }
+
+        $validated = $request->validate([
+            'status' => ['required', 'in:approved,rejected'],
+            'approval_mode' => ['nullable', 'in:full_work,no_change,manual'],
+            'approved_work_units' => ['nullable', 'numeric', 'min:0', 'max:1'],
+            'decision_note' => ['nullable', 'string', 'max:5000'],
+        ]);
+
+        $status = (string) $validated['status'];
+        $approvalMode = $status === 'approved'
+            ? (string) ($validated['approval_mode'] ?? 'full_work')
+            : null;
+        $approvedUnits = $status === 'approved' && $approvalMode === 'manual'
+            ? (float) ($validated['approved_work_units'] ?? 0)
+            : ($status === 'approved' && $approvalMode === 'full_work' ? null : null);
+
+        $attendanceRequest->update([
+            'status' => $status,
+            'approval_mode' => $approvalMode,
+            'approved_work_units' => $approvedUnits,
+            'decision_note' => trim((string) ($validated['decision_note'] ?? '')) ?: null,
+            'decided_by' => $request->user()->id,
+            'decided_at' => now(),
+        ]);
+
+        $record = null;
+        if ($status === 'approved') {
+            $record = $attendance->applyApprovedRequest($attendanceRequest->fresh(['user']), $request->user());
+        }
+
+        $notifications->notifyUsers(
+            [$attendanceRequest->user_id],
+            $status === 'approved' ? 'Đơn chấm công đã được duyệt' : 'Đơn chấm công bị từ chối',
+            $status === 'approved'
+                ? sprintf('Đơn ngày %s đã được xử lý.', Carbon::parse($attendanceRequest->request_date)->format('d/m/Y'))
+                : ((string) ($attendanceRequest->decision_note ?: 'Vui lòng liên hệ quản trị để biết thêm chi tiết.')),
+            [
+                'type' => 'attendance_request_reviewed',
+                'category' => 'attendance',
+                'attendance_request_id' => (int) $attendanceRequest->id,
+                'status' => $status,
+            ]
+        );
+
+        return response()->json([
+            'message' => $status === 'approved' ? 'Đã duyệt đơn chấm công.' : 'Đã từ chối đơn chấm công.',
+            'item' => $this->attendanceRequestPayload($attendanceRequest->fresh(['user', 'decider'])),
+            'record' => $record ? $this->recordPayload($record) : null,
+        ]);
+    }
+
+    public function holidays(Request $request): JsonResponse
+    {
+        if (! $this->canManageAttendance($request->user())) {
+            return response()->json(['message' => 'Không có quyền xem ngày lễ.'], 403);
+        }
+
+        $query = AttendanceHoliday::query()->orderBy('holiday_date');
+        if ($request->filled('from_date')) {
+            $query->whereDate('holiday_date', '>=', $request->input('from_date'));
+        }
+        if ($request->filled('to_date')) {
+            $query->whereDate('holiday_date', '<=', $request->input('to_date'));
+        }
+
+        return response()->json([
+            'data' => $query->get()->map(function (AttendanceHoliday $item) {
+                return $this->holidayPayload($item);
+            })->values(),
+        ]);
+    }
+
+    public function holidayStore(Request $request): JsonResponse
+    {
+        if (! $this->canManageAttendance($request->user())) {
+            return response()->json(['message' => 'Không có quyền cấu hình ngày lễ.'], 403);
+        }
+
+        $validated = $request->validate([
+            'holiday_date' => ['required', 'date'],
+            'title' => ['required', 'string', 'max:191'],
+            'note' => ['nullable', 'string', 'max:255'],
+            'is_active' => ['nullable', 'boolean'],
+        ]);
+
+        $item = AttendanceHoliday::create([
+            'holiday_date' => Carbon::parse($validated['holiday_date'], 'Asia/Ho_Chi_Minh')->toDateString(),
+            'title' => trim((string) $validated['title']),
+            'note' => trim((string) ($validated['note'] ?? '')) ?: null,
+            'is_active' => array_key_exists('is_active', $validated) ? (bool) $validated['is_active'] : true,
+            'created_by' => $request->user()->id,
+        ]);
+
+        $this->syncHolidayIfToday($item);
+
+        return response()->json([
+            'message' => 'Đã thêm ngày lễ.',
+            'item' => $this->holidayPayload($item),
+        ], 201);
+    }
+
+    public function holidayUpdate(Request $request, AttendanceHoliday $attendanceHoliday): JsonResponse
+    {
+        if (! $this->canManageAttendance($request->user())) {
+            return response()->json(['message' => 'Không có quyền cập nhật ngày lễ.'], 403);
+        }
+
+        $validated = $request->validate([
+            'holiday_date' => ['required', 'date'],
+            'title' => ['required', 'string', 'max:191'],
+            'note' => ['nullable', 'string', 'max:255'],
+            'is_active' => ['nullable', 'boolean'],
+        ]);
+
+        $attendanceHoliday->update([
+            'holiday_date' => Carbon::parse($validated['holiday_date'], 'Asia/Ho_Chi_Minh')->toDateString(),
+            'title' => trim((string) $validated['title']),
+            'note' => trim((string) ($validated['note'] ?? '')) ?: null,
+            'is_active' => array_key_exists('is_active', $validated)
+                ? (bool) $validated['is_active']
+                : (bool) $attendanceHoliday->is_active,
+        ]);
+
+        $this->syncHolidayIfToday($attendanceHoliday->fresh());
+
+        return response()->json([
+            'message' => 'Đã cập nhật ngày lễ.',
+            'item' => $this->holidayPayload($attendanceHoliday->fresh()),
+        ]);
+    }
+
+    public function holidayDestroy(Request $request, AttendanceHoliday $attendanceHoliday): JsonResponse
+    {
+        if (! $this->canManageAttendance($request->user())) {
+            return response()->json(['message' => 'Không có quyền xóa ngày lễ.'], 403);
+        }
+
+        $attendanceHoliday->delete();
+
+        return response()->json(['message' => 'Đã xóa ngày lễ.']);
+    }
+
+    public function report(Request $request): JsonResponse
+    {
+        if (! $this->canManageAttendance($request->user())) {
+            return response()->json(['message' => 'Không có quyền xem báo cáo chấm công.'], 403);
+        }
+
+        [$rows, $summary] = $this->buildReport($request);
+
+        return response()->json([
+            'data' => $rows,
+            'summary' => $summary,
+        ]);
+    }
+
+    public function export(Request $request)
+    {
+        if (! $this->canManageAttendance($request->user())) {
+            return response()->json(['message' => 'Không có quyền xuất báo cáo chấm công.'], 403);
+        }
+
+        [$rows] = $this->buildReport($request);
+
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Cham cong');
+
+        $headers = [
+            'Ngày',
+            'Nhân sự',
+            'Vai trò',
+            'Phòng ban',
+            'Hình thức làm',
+            'Giờ vào',
+            'Trễ (phút)',
+            'Công',
+            'Trạng thái',
+            'Nguồn',
+            'WiFi',
+            'BSSID',
+            'Ghi chú',
+        ];
+
+        $sheet->fromArray($headers, null, 'A1');
+        $rowIndex = 2;
+        foreach ($rows as $row) {
+            $sheet->fromArray([
+                $row['work_date'],
+                $row['user_name'],
+                $row['role'],
+                $row['department'],
+                $row['employment_type_label'],
+                $row['check_in_at'],
+                $row['minutes_late'],
+                $row['work_units'],
+                $row['status_label'],
+                $row['source_label'],
+                $row['wifi_ssid'],
+                $row['wifi_bssid'],
+                $row['note'],
+            ], null, 'A'.$rowIndex);
+            $rowIndex++;
+        }
+
+        foreach (range('A', 'M') as $column) {
+            $sheet->getColumnDimension($column)->setAutoSize(true);
+        }
+
+        $fileName = sprintf(
+            'bao-cao-cham-cong-%s-den-%s.xlsx',
+            $request->input('start_date', Carbon::now('Asia/Ho_Chi_Minh')->startOfMonth()->toDateString()),
+            $request->input('end_date', Carbon::now('Asia/Ho_Chi_Minh')->endOfMonth()->toDateString())
+        );
+
+        return response()->streamDownload(function () use ($spreadsheet) {
+            $writer = new Xlsx($spreadsheet);
+            $writer->save('php://output');
+        }, $fileName, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
+    }
+
+    private function buildReport(Request $request): array
+    {
+        $startDate = $this->resolveDate($request->input('start_date'), Carbon::now('Asia/Ho_Chi_Minh')->startOfMonth());
+        $endDate = $this->resolveDate($request->input('end_date'), Carbon::now('Asia/Ho_Chi_Minh')->endOfMonth());
+
+        $query = AttendanceRecord::query()
+            ->with(['user:id,name,email,role,department,department_id'])
+            ->whereBetween('work_date', [$startDate->toDateString(), $endDate->toDateString()])
+            ->orderBy('work_date')
+            ->orderBy('user_id');
+
+        if ($request->filled('search')) {
+            $search = trim((string) $request->input('search'));
+            $query->whereHas('user', function ($userQuery) use ($search) {
+                $userQuery->where('name', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%");
+            });
+        }
+
+        if ($request->filled('user_id')) {
+            $query->where('user_id', (int) $request->input('user_id'));
+        }
+
+        $records = $query->get();
+        $rows = $records->map(function (AttendanceRecord $item) {
+            return $this->reportRowPayload($item);
+        })->values();
+        $summary = [
+            'total_rows' => $rows->count(),
+            'total_work_units' => round($rows->sum(function ($item) {
+                return (float) ($item['work_units'] ?? 0);
+            }), 2),
+            'late_count' => $rows->where('status', 'late_pending')->count(),
+            'approved_full_count' => $rows->where('status', 'approved_full')->count(),
+            'holiday_count' => $rows->where('status', 'holiday_auto')->count(),
+        ];
+
+        return [$rows, $summary];
+    }
+
+    private function resolveDate($value, Carbon $fallback): Carbon
+    {
+        try {
+            return $value ? Carbon::parse((string) $value, 'Asia/Ho_Chi_Minh')->startOfDay() : $fallback->copy()->startOfDay();
+        } catch (\Throwable $e) {
+            return $fallback->copy()->startOfDay();
+        }
+    }
+
+    private function canManageAttendance(?User $user): bool
+    {
+        return $user && in_array($user->role, ['admin', 'administrator', 'ke_toan'], true);
+    }
+
+    private function canTrackAttendance(?User $user): bool
+    {
+        return $user && $user->is_active && $user->role !== 'administrator';
+    }
+
+    private function attendanceManagerIds(): array
+    {
+        return User::query()
+            ->where('is_active', true)
+            ->whereIn('role', ['admin', 'administrator', 'ke_toan'])
+            ->pluck('id')
+            ->map(function ($id) {
+                return (int) $id;
+            })
+            ->all();
+    }
+
+    private function notifyManagers(string $title, string $body, array $data = []): void
+    {
+        app(NotificationService::class)->notifyUsers(
+            $this->attendanceManagerIds(),
+            $title,
+            $body,
+            $data
+        );
+    }
+
+    private function syncHolidayIfToday(?AttendanceHoliday $holiday): void
+    {
+        if (! $holiday || ! $holiday->is_active) {
+            return;
+        }
+
+        $today = Carbon::now('Asia/Ho_Chi_Minh')->toDateString();
+        if (optional($holiday->holiday_date)->toDateString() !== $today) {
+            return;
+        }
+
+        $attendance = app(AttendanceService::class);
+        $attendance->trackedUsersQuery()
+            ->get()
+            ->each(function (User $user) use ($attendance, $holiday) {
+                $attendance->upsertHolidayRecord($user, Carbon::parse($holiday->holiday_date, 'Asia/Ho_Chi_Minh'), $holiday);
+            });
+    }
+
+    private function devicePayload(AttendanceDevice $item): array
+    {
+        return [
+            'id' => (int) $item->id,
+            'user_id' => (int) $item->user_id,
+            'device_uuid' => (string) $item->device_uuid,
+            'device_name' => (string) ($item->device_name ?: ''),
+            'device_platform' => (string) ($item->device_platform ?: ''),
+            'device_model' => (string) ($item->device_model ?: ''),
+            'status' => (string) $item->status,
+            'note' => $item->note,
+            'requested_at' => optional($item->requested_at)->toIso8601String(),
+            'approved_at' => optional($item->approved_at)->toIso8601String(),
+            'rejected_at' => optional($item->rejected_at)->toIso8601String(),
+            'last_seen_at' => optional($item->last_seen_at)->toIso8601String(),
+            'user' => $item->relationLoaded('user') && $item->user ? [
+                'id' => (int) $item->user->id,
+                'name' => $item->user->name,
+                'email' => $item->user->email,
+                'role' => $item->user->role,
+                'department' => $item->user->department,
+            ] : null,
+            'decider' => $item->relationLoaded('decider') && $item->decider ? [
+                'id' => (int) $item->decider->id,
+                'name' => $item->decider->name,
+            ] : null,
+        ];
+    }
+
+    private function attendanceRequestPayload(AttendanceRequestModel $item): array
+    {
+        return [
+            'id' => (int) $item->id,
+            'user_id' => (int) $item->user_id,
+            'request_type' => (string) $item->request_type,
+            'request_date' => optional($item->request_date)->toDateString(),
+            'expected_check_in_time' => $item->expected_check_in_time,
+            'title' => (string) $item->title,
+            'content' => $item->content,
+            'status' => (string) $item->status,
+            'approval_mode' => $item->approval_mode,
+            'approved_work_units' => $item->approved_work_units,
+            'decision_note' => $item->decision_note,
+            'decided_at' => optional($item->decided_at)->toIso8601String(),
+            'created_at' => optional($item->created_at)->toIso8601String(),
+            'user' => $item->relationLoaded('user') && $item->user ? [
+                'id' => (int) $item->user->id,
+                'name' => $item->user->name,
+                'email' => $item->user->email,
+                'role' => $item->user->role,
+                'department' => $item->user->department,
+            ] : null,
+            'decider' => $item->relationLoaded('decider') && $item->decider ? [
+                'id' => (int) $item->decider->id,
+                'name' => $item->decider->name,
+            ] : null,
+        ];
+    }
+
+    private function recordPayload(AttendanceRecord $item): array
+    {
+        return [
+            'id' => (int) $item->id,
+            'user_id' => (int) $item->user_id,
+            'work_date' => optional($item->work_date)->toDateString(),
+            'check_in_at' => optional($item->check_in_at)->toIso8601String(),
+            'required_start_at' => optional($item->required_start_at)->toIso8601String(),
+            'allowed_late_until' => optional($item->allowed_late_until)->toIso8601String(),
+            'minutes_late' => (int) ($item->minutes_late ?? 0),
+            'default_work_units' => (float) ($item->default_work_units ?? 0),
+            'work_units' => (float) ($item->work_units ?? 0),
+            'employment_type' => (string) ($item->employment_type ?: 'full_time'),
+            'status' => (string) ($item->status ?: 'absent'),
+            'source' => (string) ($item->source ?: 'wifi'),
+            'wifi_ssid' => $item->wifi_ssid,
+            'wifi_bssid' => $item->wifi_bssid,
+            'device_uuid' => $item->device_uuid,
+            'device_name' => $item->device_name,
+            'device_platform' => $item->device_platform,
+            'note' => $item->note,
+        ];
+    }
+
+    private function holidayPayload(AttendanceHoliday $item): array
+    {
+        return [
+            'id' => (int) $item->id,
+            'holiday_date' => optional($item->holiday_date)->toDateString(),
+            'title' => (string) $item->title,
+            'note' => $item->note,
+            'is_active' => (bool) $item->is_active,
+        ];
+    }
+
+    private function wifiPayload(AttendanceWifiNetwork $item): array
+    {
+        return [
+            'id' => (int) $item->id,
+            'ssid' => (string) $item->ssid,
+            'bssid' => $item->bssid,
+            'note' => $item->note,
+            'is_active' => (bool) $item->is_active,
+        ];
+    }
+
+    private function reportRowPayload(AttendanceRecord $item): array
+    {
+        $user = $item->user;
+        $employmentType = (string) ($item->employment_type ?: 'full_time');
+        switch ($employmentType) {
+            case 'half_day_morning':
+                $employmentLabel = 'Nửa buổi sáng';
+                break;
+            case 'half_day_afternoon':
+                $employmentLabel = 'Nửa buổi chiều';
+                break;
+            default:
+                $employmentLabel = 'Full time';
+                break;
+        }
+
+        switch ((string) $item->status) {
+            case 'present':
+                $statusLabel = 'Đúng công';
+                break;
+            case 'late_pending':
+                $statusLabel = 'Đi muộn chờ duyệt';
+                break;
+            case 'approved_full':
+                $statusLabel = 'Duyệt đủ công';
+                break;
+            case 'approved_partial':
+                $statusLabel = 'Duyệt công thủ công';
+                break;
+            case 'holiday_auto':
+                $statusLabel = 'Ngày lễ tự động';
+                break;
+            default:
+                $statusLabel = (string) $item->status;
+                break;
+        }
+
+        switch ((string) $item->source) {
+            case 'wifi':
+                $sourceLabel = 'Chấm WiFi';
+                break;
+            case 'request_approval':
+                $sourceLabel = 'Duyệt đơn';
+                break;
+            case 'holiday_auto':
+                $sourceLabel = 'Cron ngày lễ';
+                break;
+            default:
+                $sourceLabel = (string) $item->source;
+                break;
+        }
+
+        return [
+            'id' => (int) $item->id,
+            'work_date' => optional($item->work_date)->format('d/m/Y'),
+            'user_name' => $user && $user->name ? $user->name : '—',
+            'role' => $user && $user->role ? $user->role : '—',
+            'department' => $user && $user->department ? $user->department : '—',
+            'employment_type' => $employmentType,
+            'employment_type_label' => $employmentLabel,
+            'check_in_at' => $item->check_in_at ? $item->check_in_at->setTimezone('Asia/Ho_Chi_Minh')->format('H:i') : '—',
+            'minutes_late' => (int) ($item->minutes_late ?? 0),
+            'work_units' => (float) ($item->work_units ?? 0),
+            'status' => (string) ($item->status ?: 'absent'),
+            'status_label' => $statusLabel,
+            'source' => (string) ($item->source ?: 'wifi'),
+            'source_label' => $sourceLabel,
+            'wifi_ssid' => $item->wifi_ssid ?: '—',
+            'wifi_bssid' => $item->wifi_bssid ?: '—',
+            'note' => $item->note ?: '',
+        ];
+    }
+}

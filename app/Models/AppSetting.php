@@ -57,6 +57,13 @@ class AppSetting extends Model
         'gsc_recipes_path_token',
         'gsc_brand_terms',
         'gsc_sync_time',
+        'attendance_enabled',
+        'attendance_work_start_time',
+        'attendance_work_end_time',
+        'attendance_afternoon_start_time',
+        'attendance_late_grace_minutes',
+        'attendance_reminder_enabled',
+        'attendance_reminder_minutes_before',
         'updated_by',
     ];
 
@@ -85,6 +92,10 @@ class AppSetting extends Model
         'gsc_row_limit' => 'integer',
         'gsc_alert_threshold_percent' => 'integer',
         'gsc_brand_terms' => 'array',
+        'attendance_enabled' => 'boolean',
+        'attendance_late_grace_minutes' => 'integer',
+        'attendance_reminder_enabled' => 'boolean',
+        'attendance_reminder_minutes_before' => 'integer',
     ];
 
     public static function defaults(): array
@@ -140,6 +151,13 @@ class AppSetting extends Model
             'gsc_recipes_path_token' => '/recipes',
             'gsc_brand_terms' => [],
             'gsc_sync_time' => '11:17',
+            'attendance_enabled' => true,
+            'attendance_work_start_time' => '08:30',
+            'attendance_work_end_time' => '17:30',
+            'attendance_afternoon_start_time' => '13:30',
+            'attendance_late_grace_minutes' => 10,
+            'attendance_reminder_enabled' => true,
+            'attendance_reminder_minutes_before' => 10,
         ];
     }
 }

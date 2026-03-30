@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import AppIcon from '@/Components/AppIcon';
 
 const normalizeIds = (values) => Array.from(new Set((values || [])
@@ -9,10 +9,12 @@ export default function TagMultiSelect({
     options = [],
     selectedIds = [],
     onChange,
-    addPlaceholder = 'Thêm mục',
+    addPlaceholder = 'Tìm và thêm mục',
     emptyLabel = 'Chưa chọn mục nào.',
     disabled = false,
 }) {
+    const [query, setQuery] = useState('');
+
     const normalizedOptions = useMemo(() => (
         options
             .map((option) => ({
@@ -48,6 +50,18 @@ export default function TagMultiSelect({
         return normalizedOptions.filter((option) => !selectedSet.has(option.id));
     }, [normalizedOptions, normalizedSelectedIds]);
 
+    const filteredAvailableOptions = useMemo(() => {
+        const keyword = query.trim().toLowerCase();
+        if (!keyword) {
+            return availableOptions;
+        }
+
+        return availableOptions.filter((option) => {
+            const haystack = `${option.label} ${option.meta}`.trim().toLowerCase();
+            return haystack.includes(keyword);
+        });
+    }, [availableOptions, query]);
+
     const updateSelection = (nextIds) => {
         if (typeof onChange === 'function') {
             onChange(normalizeIds(nextIds).sort((a, b) => a - b));
@@ -58,11 +72,11 @@ export default function TagMultiSelect({
         updateSelection(normalizedSelectedIds.filter((id) => id !== staffId));
     };
 
-    const addSelected = (event) => {
-        const nextId = Number(event.target.value || 0);
-        if (!nextId) return;
-        updateSelection([...normalizedSelectedIds, nextId]);
-        event.target.value = '';
+    const addSelected = (nextId) => {
+        const normalizedNextId = Number(nextId || 0);
+        if (!normalizedNextId) return;
+        updateSelection([...normalizedSelectedIds, normalizedNextId]);
+        setQuery('');
     };
 
     return (
@@ -100,18 +114,50 @@ export default function TagMultiSelect({
             </div>
 
             {!disabled ? (
-                <select
-                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
-                    defaultValue=""
-                    onChange={addSelected}
-                >
-                    <option value="">{availableOptions.length > 0 ? addPlaceholder : 'Đã chọn hết nhân sự khả dụng'}</option>
-                    {availableOptions.map((option) => (
-                        <option key={option.id} value={option.id}>
-                            {option.label}{option.meta ? ` • ${option.meta}` : ''}
-                        </option>
-                    ))}
-                </select>
+                <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 px-3 py-3">
+                    <div className="flex items-center gap-2 rounded-2xl border border-slate-200/80 bg-white px-3 py-2">
+                        <AppIcon name="users" className="h-4 w-4 text-slate-400" strokeWidth={1.9} />
+                        <input
+                            className="w-full border-0 bg-transparent p-0 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-0"
+                            value={query}
+                            onChange={(event) => setQuery(event.target.value)}
+                            placeholder={availableOptions.length > 0 ? addPlaceholder : 'Đã chọn hết nhân sự khả dụng'}
+                        />
+                    </div>
+
+                    <div className="mt-3 rounded-2xl border border-dashed border-slate-200 bg-white/90 p-2">
+                        {availableOptions.length === 0 ? (
+                            <p className="px-2 py-1 text-sm text-text-muted">
+                                Đã chọn hết nhân sự khả dụng.
+                            </p>
+                        ) : filteredAvailableOptions.length === 0 ? (
+                            <p className="px-2 py-1 text-sm text-text-muted">
+                                Không tìm thấy nhân sự phù hợp với từ khóa "{query}".
+                            </p>
+                        ) : (
+                            <div className="flex max-h-52 flex-wrap gap-2 overflow-y-auto pr-1">
+                                {filteredAvailableOptions.map((option) => (
+                                    <button
+                                        key={option.id}
+                                        type="button"
+                                        className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 transition hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-700"
+                                        onClick={() => addSelected(option.id)}
+                                    >
+                                        <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-cyan-50 text-xs font-semibold text-cyan-700">
+                                            +
+                                        </span>
+                                        <span className="truncate max-w-[220px]">{option.label}</span>
+                                        {option.meta ? (
+                                            <span className="max-w-[180px] truncate text-xs text-slate-500">
+                                                {option.meta}
+                                            </span>
+                                        ) : null}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
             ) : null}
         </div>
     );

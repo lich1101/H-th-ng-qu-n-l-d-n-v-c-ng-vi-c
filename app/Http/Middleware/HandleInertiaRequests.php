@@ -59,6 +59,13 @@ class HandleInertiaRequests extends Middleware
                 'contract_expiry_reminder_time' => (string) ($setting->contract_expiry_reminder_time ?: '09:00'),
                 'contract_expiry_reminder_days_before' => (int) ($setting->contract_expiry_reminder_days_before ?? 3),
                 'project_handover_min_progress_percent' => (int) ($setting->project_handover_min_progress_percent ?? 90),
+                'attendance_enabled' => (bool) ($setting->attendance_enabled ?? true),
+                'attendance_work_start_time' => (string) ($setting->attendance_work_start_time ?: '08:30'),
+                'attendance_work_end_time' => (string) ($setting->attendance_work_end_time ?: '17:30'),
+                'attendance_afternoon_start_time' => (string) ($setting->attendance_afternoon_start_time ?: '13:30'),
+                'attendance_late_grace_minutes' => (int) ($setting->attendance_late_grace_minutes ?? 10),
+                'attendance_reminder_enabled' => (bool) ($setting->attendance_reminder_enabled ?? true),
+                'attendance_reminder_minutes_before' => (int) ($setting->attendance_reminder_minutes_before ?? 10),
             ]
             : AppSetting::defaults();
 

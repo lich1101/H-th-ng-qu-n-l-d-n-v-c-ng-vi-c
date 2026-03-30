@@ -3,6 +3,7 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\V1\ActivityLogController;
+use App\Http\Controllers\Api\V1\AttendanceController;
 use App\Http\Controllers\Api\V1\AppSettingController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\ChatbotController;
@@ -92,6 +93,46 @@ Route::prefix('v1')->group(function () {
         Route::get('/notification-preferences', [UserNotificationPreferenceController::class, 'show']);
         Route::put('/notification-preferences', [UserNotificationPreferenceController::class, 'update']);
         Route::get('/firebase/token', [FirebaseTokenController::class, 'show']);
+        Route::get('/attendance/dashboard', [AttendanceController::class, 'dashboard']);
+        Route::get('/attendance/records/my', [AttendanceController::class, 'myRecords']);
+        Route::get('/attendance/requests', [AttendanceController::class, 'requests']);
+        Route::post('/attendance/requests', [AttendanceController::class, 'submitRequest']);
+        Route::post('/attendance/devices/request', [AttendanceController::class, 'submitDevice']);
+        Route::post('/attendance/check-in', [AttendanceController::class, 'checkIn']);
+        Route::get('/attendance/settings', [AttendanceController::class, 'settingsShow'])
+            ->middleware('role:admin,administrator,ke_toan');
+        Route::put('/attendance/settings', [AttendanceController::class, 'settingsUpdate'])
+            ->middleware('role:admin,administrator,ke_toan');
+        Route::get('/attendance/wifi', [AttendanceController::class, 'wifiIndex'])
+            ->middleware('role:admin,administrator,ke_toan');
+        Route::post('/attendance/wifi', [AttendanceController::class, 'wifiStore'])
+            ->middleware('role:admin,administrator,ke_toan');
+        Route::put('/attendance/wifi/{attendanceWifiNetwork}', [AttendanceController::class, 'wifiUpdate'])
+            ->middleware('role:admin,administrator,ke_toan');
+        Route::delete('/attendance/wifi/{attendanceWifiNetwork}', [AttendanceController::class, 'wifiDestroy'])
+            ->middleware('role:admin,administrator,ke_toan');
+        Route::get('/attendance/staff', [AttendanceController::class, 'staffIndex'])
+            ->middleware('role:admin,administrator,ke_toan');
+        Route::put('/attendance/staff/{user}', [AttendanceController::class, 'staffUpdate'])
+            ->middleware('role:admin,administrator,ke_toan');
+        Route::get('/attendance/devices', [AttendanceController::class, 'devices'])
+            ->middleware('role:admin,administrator,ke_toan');
+        Route::post('/attendance/devices/{attendanceDevice}/review', [AttendanceController::class, 'reviewDevice'])
+            ->middleware('role:admin,administrator,ke_toan');
+        Route::post('/attendance/requests/{attendanceRequest}/review', [AttendanceController::class, 'reviewRequest'])
+            ->middleware('role:admin,administrator,ke_toan');
+        Route::get('/attendance/holidays', [AttendanceController::class, 'holidays'])
+            ->middleware('role:admin,administrator,ke_toan');
+        Route::post('/attendance/holidays', [AttendanceController::class, 'holidayStore'])
+            ->middleware('role:admin,administrator,ke_toan');
+        Route::put('/attendance/holidays/{attendanceHoliday}', [AttendanceController::class, 'holidayUpdate'])
+            ->middleware('role:admin,administrator,ke_toan');
+        Route::delete('/attendance/holidays/{attendanceHoliday}', [AttendanceController::class, 'holidayDestroy'])
+            ->middleware('role:admin,administrator,ke_toan');
+        Route::get('/attendance/report', [AttendanceController::class, 'report'])
+            ->middleware('role:admin,administrator,ke_toan');
+        Route::get('/attendance/export', [AttendanceController::class, 'export'])
+            ->middleware('role:admin,administrator,ke_toan');
         Route::post('/push/test', [PushTestController::class, 'store'])
             ->middleware('role:administrator');
         Route::get('/system/status', [SystemStatusController::class, 'show'])

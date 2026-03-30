@@ -28,6 +28,7 @@ class User extends Authenticatable
         'avatar_url',
         'workload_capacity',
         'is_active',
+        'attendance_employment_type',
         'facebook_user_access_token',
         'facebook_user_token_expires_at',
     ];
@@ -81,6 +82,21 @@ class User extends Authenticatable
         return $this->hasMany(ContractCareNote::class);
     }
 
+    public function attendanceDevice()
+    {
+        return $this->hasOne(AttendanceDevice::class);
+    }
+
+    public function attendanceRequests()
+    {
+        return $this->hasMany(AttendanceRequest::class);
+    }
+
+    public function attendanceRecords()
+    {
+        return $this->hasMany(AttendanceRecord::class);
+    }
+
     /**
      * The attributes that should be hidden for serialization.
      *
@@ -100,6 +116,7 @@ class User extends Authenticatable
     protected $casts = [
         'email_verified_at' => 'datetime',
         'is_active' => 'boolean',
+        'attendance_employment_type' => 'string',
         'facebook_user_token_expires_at' => 'datetime',
     ];
 }
