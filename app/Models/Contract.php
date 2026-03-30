@@ -30,6 +30,9 @@ class Contract extends Model
         'approved_by',
         'approved_at',
         'approval_note',
+        'handover_receive_status',
+        'handover_received_by',
+        'handover_received_at',
         'signed_at',
         'start_date',
         'end_date',
@@ -50,6 +53,7 @@ class Contract extends Model
         'duration_months' => 'integer',
         'imported_paid_periods' => 'integer',
         'approved_at' => 'datetime',
+        'handover_received_at' => 'datetime',
     ];
 
     protected $appends = [
@@ -91,6 +95,11 @@ class Contract extends Model
     public function collector()
     {
         return $this->belongsTo(User::class, 'collector_user_id');
+    }
+
+    public function handoverReceiver()
+    {
+        return $this->belongsTo(User::class, 'handover_received_by');
     }
 
     public function items()

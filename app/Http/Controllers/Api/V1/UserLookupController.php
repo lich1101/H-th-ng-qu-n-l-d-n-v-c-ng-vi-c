@@ -18,6 +18,7 @@ class UserLookupController extends Controller
 
         $purpose = (string) $request->input('purpose', '');
         $skipDefaultRoleScope = false;
+        $blockedAssignmentRoles = ['admin', 'administrator', 'ke_toan'];
 
         if ($purpose === 'contract_collector') {
             $skipDefaultRoleScope = true;
@@ -28,12 +29,12 @@ class UserLookupController extends Controller
                 $query->where(function ($builder) use ($deptIds, $user) {
                     $builder->where('id', $user->id)
                         ->orWhere(function ($employeeBuilder) use ($deptIds) {
-                            $employeeBuilder->where('role', 'nhan_vien')
+                            $employeeBuilder->whereNotIn('role', ['admin', 'administrator', 'ke_toan'])
                                 ->whereIn('department_id', $deptIds);
                         });
                 });
             } elseif ($user && in_array($user->role, ['admin', 'ke_toan'], true)) {
-                $query->where('role', 'nhan_vien');
+                $query->whereNotIn('role', ['admin', 'administrator', 'ke_toan']);
             } else {
                 $query->whereRaw('1 = 0');
             }
@@ -47,6 +48,31 @@ class UserLookupController extends Controller
                     ->whereIn('department_id', $deptIds);
             } elseif ($user && in_array($user->role, ['admin', 'ke_toan'], true)) {
                 $query->where('role', 'nhan_vien');
+            } else {
+                $query->whereRaw('1 = 0');
+            }
+        }
+
+        if ($purpose === 'project_owner') {
+            $skipDefaultRoleScope = true;
+            if (! $user) {
+                $query->whereRaw('1 = 0');
+            } elseif ($user->role === 'nhan_vien') {
+                $query->where('id', $user->id)
+                    ->whereNotIn('role', $blockedAssignmentRoles);
+            } elseif ($user->role === 'quan_ly') {
+                $deptIds = $user->managedDepartments()->pluck('id');
+                $query->where(function ($builder) use ($deptIds, $user, $blockedAssignmentRoles) {
+                    $builder->where(function ($selfBuilder) use ($user, $blockedAssignmentRoles) {
+                        $selfBuilder->where('id', $user->id)
+                            ->whereNotIn('role', $blockedAssignmentRoles);
+                    })->orWhere(function ($staffBuilder) use ($deptIds, $blockedAssignmentRoles) {
+                        $staffBuilder->whereNotIn('role', $blockedAssignmentRoles)
+                            ->whereIn('department_id', $deptIds);
+                    });
+                });
+            } elseif (in_array($user->role, ['admin', 'administrator', 'ke_toan'], true)) {
+                $query->whereNotIn('role', $blockedAssignmentRoles);
             } else {
                 $query->whereRaw('1 = 0');
             }

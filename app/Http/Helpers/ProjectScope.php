@@ -183,18 +183,25 @@ class ProjectScope
             return false;
         }
 
-        if ($user->role !== 'nhan_vien') {
-            return false;
+        if ($user->role === 'admin') {
+            $progress = (int) ($project->progress_percent ?? 0);
+
+            return $progress >= max(0, min(100, $minimumProgressPercent))
+                && ! in_array((string) ($project->handover_status ?? ''), ['pending', 'approved'], true);
         }
 
         if ((int) $project->owner_id !== (int) $user->id) {
             return false;
         }
 
+        if (! in_array((string) $user->role, ['nhan_vien', 'quan_ly'], true)) {
+            return false;
+        }
+
         $progress = (int) ($project->progress_percent ?? 0);
 
         return $progress >= max(0, min(100, $minimumProgressPercent))
-            && (string) ($project->handover_status ?? '') !== 'pending';
+            && ! in_array((string) ($project->handover_status ?? ''), ['pending', 'approved'], true);
     }
 
     public static function canReviewProjectHandover(?User $user, Project $project): bool

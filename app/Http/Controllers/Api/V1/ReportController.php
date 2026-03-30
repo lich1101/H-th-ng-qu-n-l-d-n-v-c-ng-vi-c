@@ -16,6 +16,7 @@ use App\Models\Contract;
 use App\Models\ContractPayment;
 use App\Models\ContractCost;
 use App\Models\Client;
+use App\Models\Opportunity;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -27,6 +28,14 @@ class ReportController extends Controller
 {
     public function dashboardSummary(): JsonResponse
     {
+        $now = now();
+        $currentPeriodStart = $now->copy()->startOfMonth();
+        $currentPeriodEnd = $now->copy()->endOfMonth();
+        $previousPeriodStart = $currentPeriodStart->copy()->subMonthNoOverflow()->startOfMonth();
+        $previousPeriodEnd = $previousPeriodStart->copy()->endOfMonth();
+        $samePeriodLastYearStart = $currentPeriodStart->copy()->subYear();
+        $samePeriodLastYearEnd = $currentPeriodEnd->copy()->subYear();
+
         $totalProjects = Project::count();
         $inProgressProjects = Project::where('status', 'dang_trien_khai')->count();
         $pendingReviewProjects = Project::where('status', 'cho_duyet')->count();
@@ -100,6 +109,245 @@ class ReportController extends Controller
             })
             ->values();
 
+        $employeeUsers = User::query()
+            ->whereIn('role', ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'])
+            ->with('departmentRelation:id,name')
+            ->orderBy('name')
+            ->get(['id', 'name', 'role', 'department_id', 'avatar_url', 'is_active']);
+
+        $contractsForCurrentPeriod = Contract::query()
+            ->with('client:id,assigned_staff_id')
+            ->where('approval_status', 'approved')
+            ->whereBetween('created_at', [$currentPeriodStart, $currentPeriodEnd])
+            ->get();
+
+        $contractsForPreviousPeriod = Contract::query()
+            ->with('client:id,assigned_staff_id')
+            ->where('approval_status', 'approved')
+            ->whereBetween('created_at', [$previousPeriodStart, $previousPeriodEnd])
+            ->get();
+
+        $contractsForSamePeriodLastYear = Contract::query()
+            ->with('client:id,assigned_staff_id')
+            ->where('approval_status', 'approved')
+            ->whereBetween('created_at', [$samePeriodLastYearStart, $samePeriodLastYearEnd])
+            ->get();
+
+        $resolveStaffId = function (Contract $contract): int {
+            return (int) (
+                $contract->collector_user_id
+                ?: $contract->created_by
+                ?: optional($contract->client)->assigned_staff_id
+                ?: 0
+            );
+        };
+
+        $aggregateRevenueByStaff = function ($contracts) use ($resolveStaffId): array {
+            $totals = [];
+            foreach ($contracts as $contract) {
+                $staffId = $resolveStaffId($contract);
+                if (! isset($totals[$staffId])) {
+                    $totals[$staffId] = [
+                        'revenue' => 0.0,
+                        'cashflow' => 0.0,
+                        'contracts_count' => 0,
+                    ];
+                }
+
+                $totals[$staffId]['revenue'] += (float) $contract->effective_value;
+                $totals[$staffId]['cashflow'] += (float) $contract->payments_total;
+                $totals[$staffId]['contracts_count'] += 1;
+            }
+
+            return $totals;
+        };
+
+        $currentStaffMetrics = $aggregateRevenueByStaff($contractsForCurrentPeriod);
+        $previousStaffMetrics = $aggregateRevenueByStaff($contractsForPreviousPeriod);
+        $samePeriodLastYearMetrics = $aggregateRevenueByStaff($contractsForSamePeriodLastYear);
+        $totalCurrentRevenue = collect($currentStaffMetrics)->sum('revenue');
+
+        $newClientsByStaff = Client::query()
+            ->selectRaw('assigned_staff_id as staff_id, COUNT(*) as total')
+            ->whereNotNull('assigned_staff_id')
+            ->whereBetween('created_at', [$currentPeriodStart, $currentPeriodEnd])
+            ->groupBy('assigned_staff_id')
+            ->pluck('total', 'staff_id');
+
+        $newOpportunitiesByStaff = Opportunity::query()
+            ->selectRaw('COALESCE(assigned_to, created_by) as staff_id, COUNT(*) as total')
+            ->whereRaw('COALESCE(assigned_to, created_by) IS NOT NULL')
+            ->whereBetween('created_at', [$currentPeriodStart, $currentPeriodEnd])
+            ->groupBy(DB::raw('COALESCE(assigned_to, created_by)'))
+            ->pluck('total', 'staff_id');
+
+        $activeTasksByStaff = Task::query()
+            ->selectRaw('assignee_id as staff_id, COUNT(*) as total')
+            ->whereNotNull('assignee_id')
+            ->whereNotIn('status', ['done'])
+            ->groupBy('assignee_id')
+            ->pluck('total', 'staff_id');
+
+        $percentageChange = function (float $current, float $previous): float {
+            if ($previous <= 0.0) {
+                return $current > 0.0 ? 100.0 : 0.0;
+            }
+
+            return round((($current - $previous) / $previous) * 100, 1);
+        };
+
+        $staffSalesBreakdown = $employeeUsers
+            ->map(function (User $user) use ($currentStaffMetrics, $totalCurrentRevenue) {
+                $metrics = $currentStaffMetrics[$user->id] ?? [
+                    'revenue' => 0.0,
+                    'cashflow' => 0.0,
+                    'contracts_count' => 0,
+                ];
+
+                return [
+                    'staff_id' => (int) $user->id,
+                    'staff_name' => (string) ($user->name ?: 'Nhân sự'),
+                    'avatar_url' => $user->avatar_url,
+                    'revenue' => round((float) $metrics['revenue'], 2),
+                    'cashflow' => round((float) $metrics['cashflow'], 2),
+                    'contracts_count' => (int) $metrics['contracts_count'],
+                    'share_percent' => $totalCurrentRevenue > 0
+                        ? round((((float) $metrics['revenue']) / $totalCurrentRevenue) * 100, 1)
+                        : 0.0,
+                ];
+            })
+            ->sortByDesc('revenue')
+            ->take(8)
+            ->values();
+
+        $employeeStats = $employeeUsers
+            ->map(function (User $user) use (
+                $currentStaffMetrics,
+                $previousStaffMetrics,
+                $samePeriodLastYearMetrics,
+                $newClientsByStaff,
+                $newOpportunitiesByStaff,
+                $activeTasksByStaff,
+                $totalCurrentRevenue,
+                $percentageChange
+            ) {
+                $currentRevenue = (float) ($currentStaffMetrics[$user->id]['revenue'] ?? 0);
+                $previousRevenue = (float) ($previousStaffMetrics[$user->id]['revenue'] ?? 0);
+                $samePeriodRevenue = (float) ($samePeriodLastYearMetrics[$user->id]['revenue'] ?? 0);
+                $contractsCount = (int) ($currentStaffMetrics[$user->id]['contracts_count'] ?? 0);
+
+                return [
+                    'staff_id' => (int) $user->id,
+                    'staff_name' => (string) ($user->name ?: 'Nhân sự'),
+                    'role' => (string) ($user->role ?: 'user'),
+                    'role_label' => $this->roleLabel((string) $user->role),
+                    'department' => optional($user->departmentRelation)->name ?: ($user->department ?: '—'),
+                    'avatar_url' => $user->avatar_url,
+                    'revenue' => round($currentRevenue, 2),
+                    'share_percent' => $totalCurrentRevenue > 0
+                        ? round(($currentRevenue / $totalCurrentRevenue) * 100, 1)
+                        : 0.0,
+                    'growth_percent' => $percentageChange($currentRevenue, $previousRevenue),
+                    'same_period_percent' => $percentageChange($currentRevenue, $samePeriodRevenue),
+                    'new_clients' => (int) ($newClientsByStaff[$user->id] ?? 0),
+                    'new_opportunities' => (int) ($newOpportunitiesByStaff[$user->id] ?? 0),
+                    'new_contracts' => $contractsCount,
+                    'active_tasks' => (int) ($activeTasksByStaff[$user->id] ?? 0),
+                    'is_active' => (bool) $user->is_active,
+                ];
+            })
+            ->sortByDesc('revenue')
+            ->values();
+
+        $customerGrowthPeriods = collect(range(11, 0))
+            ->map(function ($monthsAgo) use ($now) {
+                $point = $now->copy()->startOfMonth()->subMonths($monthsAgo);
+                return [
+                    'key' => $point->format('Y-m'),
+                    'label' => 'T' . $point->format('m'),
+                    'start' => $point->copy()->startOfMonth(),
+                    'end' => $point->copy()->endOfMonth(),
+                ];
+            })
+            ->values();
+
+        $customerGrowthSeed = $customerGrowthPeriods->mapWithKeys(function ($period) {
+            return [
+                $period['key'] => [
+                    'label' => $period['label'],
+                    'first_purchase' => 0,
+                    'repeat_purchase' => 0,
+                    'created_clients' => 0,
+                ],
+            ];
+        });
+
+        $createdClientsTimeline = Client::query()
+            ->whereBetween('created_at', [
+                $customerGrowthPeriods->first()['start'],
+                $customerGrowthPeriods->last()['end'],
+            ])
+            ->get(['created_at']);
+
+        foreach ($createdClientsTimeline as $client) {
+            $key = optional($client->created_at)->format('Y-m');
+            if ($key && isset($customerGrowthSeed[$key])) {
+                $customerGrowthSeed[$key]['created_clients'] += 1;
+            }
+        }
+
+        $approvedContractsTimeline = Contract::query()
+            ->where('approval_status', 'approved')
+            ->whereBetween('created_at', [
+                $customerGrowthPeriods->first()['start'],
+                $customerGrowthPeriods->last()['end'],
+            ])
+            ->orderBy('client_id')
+            ->orderBy('created_at')
+            ->get(['client_id', 'created_at']);
+
+        $seenClientFirstContract = [];
+        foreach ($approvedContractsTimeline as $contract) {
+            $key = optional($contract->created_at)->format('Y-m');
+            if (! $key || ! isset($customerGrowthSeed[$key])) {
+                continue;
+            }
+
+            $clientId = (int) ($contract->client_id ?: 0);
+            if ($clientId > 0 && ! isset($seenClientFirstContract[$clientId])) {
+                $seenClientFirstContract[$clientId] = true;
+                $customerGrowthSeed[$key]['first_purchase'] += 1;
+            } else {
+                $customerGrowthSeed[$key]['repeat_purchase'] += 1;
+            }
+        }
+
+        $customerGrowth = $customerGrowthPeriods
+            ->map(function ($period) use ($customerGrowthSeed) {
+                $row = $customerGrowthSeed[$period['key']];
+                return [
+                    'label' => $row['label'],
+                    'first_purchase' => $row['first_purchase'],
+                    'repeat_purchase' => $row['repeat_purchase'],
+                    'created_clients' => $row['created_clients'],
+                ];
+            })
+            ->values();
+
+        $employeeRoleBreakdown = User::query()
+            ->whereIn('role', ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'])
+            ->selectRaw('role, COUNT(*) as total')
+            ->groupBy('role')
+            ->orderByDesc('total')
+            ->get()
+            ->map(function ($item) {
+                return [
+                    'label' => $this->roleLabel((string) $item->role),
+                    'value' => (int) $item->total,
+                ];
+            })
+            ->values();
+
         return response()->json([
             'projects' => [
                 'total' => $totalProjects,
@@ -133,6 +381,21 @@ class ReportController extends Controller
             'website_ranking_avg' => $websiteRanking,
             'da_buckets' => $daBuckets,
             'recent_links' => $recentLinks,
+            'staff_sales_breakdown' => $staffSalesBreakdown,
+            'customer_growth' => $customerGrowth,
+            'employee_stats' => $employeeStats,
+            'employee_role_breakdown' => $employeeRoleBreakdown,
+            'employee_summary' => [
+                'total' => (int) $employeeUsers->count(),
+                'active' => (int) $employeeUsers->where('is_active', true)->count(),
+                'managers' => (int) $employeeUsers->where('role', 'quan_ly')->count(),
+                'staff' => (int) $employeeUsers->where('role', 'nhan_vien')->count(),
+            ],
+            'period' => [
+                'current_label' => 'Tháng này',
+                'current_from' => $currentPeriodStart->toDateString(),
+                'current_to' => $currentPeriodEnd->toDateString(),
+            ],
         ]);
     }
 
@@ -626,6 +889,24 @@ class ReportController extends Controller
             ->values();
 
         return $dates->isEmpty() ? null : $dates->last();
+    }
+
+    private function roleLabel(string $role): string
+    {
+        switch ($role) {
+            case 'admin':
+                return 'Admin';
+            case 'administrator':
+                return 'Administrator';
+            case 'quan_ly':
+                return 'Quản lý';
+            case 'nhan_vien':
+                return 'Nhân viên';
+            case 'ke_toan':
+                return 'Kế toán';
+            default:
+                return $role ?: 'Người dùng';
+        }
     }
 
     private function summarizeContracts($contracts): array

@@ -248,6 +248,7 @@ class TaskController extends Controller
         }
 
         if (isset($validated['assignee_id'])) {
+            $this->assertAssignableStaffRole($validated['assignee_id'], 'Nhân sự phụ trách công việc');
             $assignee = User::find($validated['assignee_id']);
             if ($assignee && empty($validated['department_id'])) {
                 $validated['department_id'] = $assignee->department_id;
@@ -273,6 +274,25 @@ class TaskController extends Controller
 
         if (empty($validated['reviewer_id'])) {
             $validated['reviewer_id'] = $user->id;
+        }
+    }
+
+    private function assertAssignableStaffRole($assigneeId, string $label): void
+    {
+        $assigneeId = (int) ($assigneeId ?? 0);
+        if ($assigneeId <= 0) {
+            return;
+        }
+
+        $assignee = User::query()->select(['id', 'role'])->find($assigneeId);
+        if (! $assignee) {
+            return;
+        }
+
+        if (in_array((string) $assignee->role, ['admin', 'administrator', 'ke_toan'], true)) {
+            abort(response()->json([
+                'message' => "{$label} không được chọn role admin/administrator/kế toán.",
+            ], 422));
         }
     }
 }

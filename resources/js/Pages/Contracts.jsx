@@ -23,6 +23,11 @@ const APPROVAL_LABELS = {
     rejected: 'Từ chối',
 };
 
+const HANDOVER_RECEIVE_LABELS = {
+    chua_nhan_ban_giao: 'Chưa nhận bàn giao',
+    da_nhan_ban_giao: 'Đã nhận bàn giao',
+};
+
 const approvalLabel = (value) => APPROVAL_LABELS[value] || APPROVAL_LABELS.pending;
 const formatCurrency = (value) => Number(value || 0).toLocaleString('vi-VN');
 const formatDateDisplay = (value) => (value ? new Date(value).toLocaleDateString('vi-VN') : '—');
@@ -79,6 +84,11 @@ const approvalBadgeClass = (value) => ({
     rejected: 'bg-rose-100 text-rose-700',
     pending: 'bg-amber-100 text-amber-700',
 }[value] || 'bg-amber-100 text-amber-700');
+const handoverReceiveBadgeClass = (value) => ({
+    da_nhan_ban_giao: 'bg-emerald-100 text-emerald-700',
+    chua_nhan_ban_giao: 'bg-slate-100 text-slate-700',
+}[value] || 'bg-slate-100 text-slate-700');
+const handoverReceiveLabel = (value) => HANDOVER_RECEIVE_LABELS[value] || HANDOVER_RECEIVE_LABELS.chua_nhan_ban_giao;
 
 function LabeledField({ label, required = false, hint = '', className = '', children }) {
     return (
@@ -112,10 +122,12 @@ export default function Contracts(props) {
     const toast = useToast();
     const userRole = props?.auth?.user?.role || '';
     const currentUserId = Number(props?.auth?.user?.id || 0) || null;
+    const canCreate = ['admin', 'quan_ly', 'nhan_vien', 'ke_toan'].includes(userRole);
     const canManage = ['admin', 'quan_ly', 'ke_toan'].includes(userRole);
     const canDelete = ['admin', 'quan_ly', 'ke_toan'].includes(userRole);
     const canApprove = ['admin', 'ke_toan'].includes(userRole);
     const canFinance = ['admin', 'ke_toan'].includes(userRole);
+    const canBulkActions = canApprove || canDelete;
     const isEmployee = userRole === 'nhan_vien';
     const canChooseCollector = ['admin', 'quan_ly', 'ke_toan'].includes(userRole);
     const defaultCollectorUserId = userRole === 'nhan_vien' || userRole === 'quan_ly'
@@ -137,7 +149,7 @@ export default function Contracts(props) {
     const [careNoteForm, setCareNoteForm] = useState({ title: '', detail: '' });
     const [savingCareNote, setSavingCareNote] = useState(false);
     const [contractMeta, setContractMeta] = useState({ current_page: 1, last_page: 1, total: 0 });
-    const [filters, setFilters] = useState({ search: '', status: '', client_id: '', approval_status: '', per_page: 20, page: 1 });
+    const [filters, setFilters] = useState({ search: '', status: '', client_id: '', approval_status: '', handover_receive_status: '', per_page: 20, page: 1 });
     const [form, setForm] = useState({
         code: '',
         title: '',
@@ -177,6 +189,8 @@ export default function Contracts(props) {
     const [importing, setImporting] = useState(false);
     const [importReport, setImportReport] = useState(null);
     const [editingCanManage, setEditingCanManage] = useState(true);
+    const [selectedContractIds, setSelectedContractIds] = useState([]);
+    const [bulkLoading, setBulkLoading] = useState(false);
 
     const extractValidationMessages = (error) => {
         const errors = error?.response?.data?.errors;
@@ -356,9 +370,13 @@ export default function Contracts(props) {
                     ...(nextFilters.status ? { status: nextFilters.status } : {}),
                     ...(nextFilters.client_id ? { client_id: nextFilters.client_id } : {}),
                     ...(nextFilters.approval_status ? { approval_status: nextFilters.approval_status } : {}),
+                    ...(nextFilters.handover_receive_status ? { handover_receive_status: nextFilters.handover_receive_status } : {}),
                 },
             });
-            setContracts(res.data?.data || []);
+            const rows = res.data?.data || [];
+            setContracts(rows);
+            const visibleIds = new Set(rows.map((row) => Number(row.id)));
+            setSelectedContractIds((prev) => prev.filter((id) => visibleIds.has(Number(id))));
             setContractMeta({
                 current_page: res.data?.current_page || 1,
                 last_page: res.data?.last_page || 1,
@@ -394,6 +412,87 @@ export default function Contracts(props) {
             { label: 'Chờ duyệt', value: String(pendingApproval) },
         ];
     }, [contractMeta.total, contracts]);
+
+    const visibleContractIds = useMemo(
+        () => contracts.map((contract) => Number(contract.id)).filter((id) => id > 0),
+        [contracts]
+    );
+    const selectedContractSet = useMemo(
+        () => new Set(selectedContractIds.map((id) => Number(id))),
+        [selectedContractIds]
+    );
+    const allVisibleSelected = visibleContractIds.length > 0
+        && visibleContractIds.every((id) => selectedContractSet.has(id));
+
+    const toggleContractSelection = (contractId) => {
+        const normalizedId = Number(contractId || 0);
+        if (normalizedId <= 0) return;
+        setSelectedContractIds((prev) => (
+            prev.includes(normalizedId)
+                ? prev.filter((id) => id !== normalizedId)
+                : [...prev, normalizedId]
+        ));
+    };
+
+    const toggleSelectAllVisible = () => {
+        if (allVisibleSelected) {
+            setSelectedContractIds((prev) => prev.filter((id) => !visibleContractIds.includes(Number(id))));
+            return;
+        }
+
+        setSelectedContractIds((prev) => {
+            const set = new Set(prev.map((id) => Number(id)));
+            visibleContractIds.forEach((id) => set.add(id));
+            return Array.from(set.values());
+        });
+    };
+
+    const bulkApproveContracts = async () => {
+        if (!canApprove) {
+            toast.error('Bạn không có quyền duyệt hợp đồng.');
+            return;
+        }
+        if (!selectedContractIds.length) {
+            toast.error('Vui lòng chọn hợp đồng cần duyệt.');
+            return;
+        }
+
+        setBulkLoading(true);
+        try {
+            await Promise.all(selectedContractIds.map((id) => axios.post(`/api/v1/contracts/${id}/approve`, {})));
+            toast.success(`Đã duyệt ${selectedContractIds.length} hợp đồng đã chọn.`);
+            setSelectedContractIds([]);
+            await fetchContracts(filters);
+        } catch (error) {
+            toast.error(getErrorMessage(error, 'Không thể duyệt hàng loạt hợp đồng.'));
+        } finally {
+            setBulkLoading(false);
+        }
+    };
+
+    const bulkDeleteContracts = async () => {
+        if (!canDelete) {
+            toast.error('Bạn không có quyền xóa hợp đồng.');
+            return;
+        }
+        if (!selectedContractIds.length) {
+            toast.error('Vui lòng chọn hợp đồng cần xóa.');
+            return;
+        }
+        if (!confirm(`Xóa ${selectedContractIds.length} hợp đồng đã chọn?`)) return;
+
+        setBulkLoading(true);
+        try {
+            await Promise.all(selectedContractIds.map((id) => axios.delete(`/api/v1/contracts/${id}`)));
+            toast.success(`Đã xóa ${selectedContractIds.length} hợp đồng đã chọn.`);
+            setSelectedContractIds([]);
+            await fetchContracts(filters);
+        } catch (error) {
+            toast.error(getErrorMessage(error, 'Không thể xóa hàng loạt hợp đồng.'));
+        } finally {
+            setBulkLoading(false);
+        }
+    };
 
     const resetForm = () => {
         setEditingId(null);
@@ -713,7 +812,8 @@ export default function Contracts(props) {
     };
 
     const save = async (createAndApprove = false) => {
-        if (!canManage) return toast.error('Bạn không có quyền quản lý hợp đồng.');
+        if (!editingId && !canCreate) return toast.error('Bạn không có quyền tạo hợp đồng.');
+        if (editingId && !canManage) return toast.error('Bạn không có quyền quản lý hợp đồng.');
         if (editingId && !editingCanManage) {
             return toast.error('Bạn chỉ có quyền xem hợp đồng này.');
         }
@@ -832,7 +932,7 @@ export default function Contracts(props) {
                     title="Danh sách hợp đồng"
                     description="Lọc theo mã, trạng thái thực hiện và trạng thái duyệt trước khi thao tác chi tiết từng hợp đồng."
                 >
-                    <div className="grid gap-3 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.7fr)_minmax(0,0.7fr)_auto]">
+                    <div className="grid gap-3 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.7fr)_minmax(0,0.7fr)_minmax(0,0.8fr)_auto]">
                         <FilterField label="Tìm kiếm">
                             <input className={filterControlClass} placeholder="Tìm theo mã hợp đồng hoặc tiêu đề" value={filters.search} onChange={(e) => setFilters((s) => ({ ...s, search: e.target.value }))} />
                         </FilterField>
@@ -852,8 +952,15 @@ export default function Contracts(props) {
                                 <option value="rejected">Từ chối</option>
                             </select>
                         </FilterField>
+                        <FilterField label="Nhận bàn giao">
+                            <select className={filterControlClass} value={filters.handover_receive_status} onChange={(e) => setFilters((s) => ({ ...s, handover_receive_status: e.target.value }))}>
+                                <option value="">Tất cả</option>
+                                <option value="chua_nhan_ban_giao">Chưa nhận bàn giao</option>
+                                <option value="da_nhan_ban_giao">Đã nhận bàn giao</option>
+                            </select>
+                        </FilterField>
                         <FilterActionGroup className="xl:self-end xl:justify-end">
-                            {canManage && (
+                            {canCreate && (
                                 <button
                                     type="button"
                                     className="rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-sm"
@@ -881,17 +988,65 @@ export default function Contracts(props) {
                 </FilterToolbar>
                 <div className="mb-4 rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3 text-xs text-slate-600">
                     {isEmployee
-                        ? 'Nhân viên chăm sóc chỉ có quyền xem hợp đồng được giao và thêm nhật ký chăm sóc, không được sửa hoặc xóa hợp đồng.'
+                        ? 'Nhân viên có thể tạo hợp đồng mới trong phạm vi khách hàng phụ trách, nhưng không có quyền duyệt và không được sửa/xóa hợp đồng đã tạo.'
                         : userRole === 'quan_ly'
                             ? 'Trưởng phòng được sửa/xóa hợp đồng trong phạm vi phòng ban, đồng thời có thể gắn nhân viên thu và nhóm chăm sóc theo tag.'
                             : canApprove
                                 ? 'Admin và Kế toán có thể theo dõi toàn bộ hợp đồng, duyệt nhanh, gắn nhóm chăm sóc và quản lý công nợ trên cùng một màn.'
                                 : 'Theo dõi hợp đồng theo phạm vi khách hàng bạn đang quản lý.'}
                 </div>
+                {canBulkActions && selectedContractIds.length > 0 && (
+                    <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3">
+                        <div className="text-sm font-medium text-cyan-900">
+                            Đã chọn {selectedContractIds.length} hợp đồng.
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <button
+                                type="button"
+                                className="rounded-xl border border-cyan-300 bg-white px-3 py-2 text-xs font-semibold text-cyan-700"
+                                onClick={() => setSelectedContractIds([])}
+                                disabled={bulkLoading}
+                            >
+                                Bỏ chọn
+                            </button>
+                            {canApprove && (
+                                <button
+                                    type="button"
+                                    className="rounded-xl border border-emerald-300 bg-emerald-100 px-3 py-2 text-xs font-semibold text-emerald-800"
+                                    onClick={bulkApproveContracts}
+                                    disabled={bulkLoading}
+                                >
+                                    {bulkLoading ? 'Đang xử lý...' : 'Duyệt đã chọn'}
+                                </button>
+                            )}
+                            {canDelete && (
+                                <button
+                                    type="button"
+                                    className="rounded-xl border border-rose-300 bg-rose-100 px-3 py-2 text-xs font-semibold text-rose-800"
+                                    onClick={bulkDeleteContracts}
+                                    disabled={bulkLoading}
+                                >
+                                    {bulkLoading ? 'Đang xử lý...' : 'Xóa đã chọn'}
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                )}
                 <div className="overflow-x-auto">
                     <table className="min-w-full text-sm">
                             <thead>
                                 <tr className="text-left text-xs uppercase tracking-wider text-text-subtle border-b border-slate-200">
+                                    {canBulkActions && (
+                                        <th className="py-2 pr-3">
+                                            <input
+                                                type="checkbox"
+                                                className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary/40"
+                                                checked={allVisibleSelected}
+                                                onChange={toggleSelectAllVisible}
+                                                aria-label="Chọn tất cả hợp đồng đang hiển thị"
+                                            />
+                                        </th>
+                                    )}
                                     <th className="py-2">Hợp đồng</th>
                                     <th className="py-2">Khách hàng</th>
                                     <th className="py-2">Nhân viên thu</th>
@@ -902,12 +1057,24 @@ export default function Contracts(props) {
                                     <th className="py-2">TT</th>
                                     <th className="py-2">Trạng thái</th>
                                     <th className="py-2">Duyệt</th>
+                                    <th className="py-2">Bàn giao</th>
                                     <th className="py-2"></th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {contracts.map((c) => (
-                                    <tr key={c.id} className="border-b border-slate-100">
+                                    <tr key={c.id} className={`border-b border-slate-100 ${selectedContractSet.has(Number(c.id)) ? 'bg-primary/5' : ''}`}>
+                                        {canBulkActions && (
+                                            <td className="py-2 pr-3 align-top">
+                                                <input
+                                                    type="checkbox"
+                                                    className="mt-1 h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary/40"
+                                                    checked={selectedContractSet.has(Number(c.id))}
+                                                    onChange={() => toggleContractSelection(c.id)}
+                                                    aria-label={`Chọn hợp đồng ${c.code || c.id}`}
+                                                />
+                                            </td>
+                                        )}
                                         <td className="py-2">
                                             <button
                                                 type="button"
@@ -940,6 +1107,11 @@ export default function Contracts(props) {
                                         <td className="py-2">
                                             <span className={`rounded-full px-2 py-1 text-xs font-semibold ${approvalBadgeClass(c.approval_status)}`}>
                                                 {approvalLabel(c.approval_status)}
+                                            </span>
+                                        </td>
+                                        <td className="py-2">
+                                            <span className={`rounded-full px-2 py-1 text-xs font-semibold ${handoverReceiveBadgeClass(c.handover_receive_status)}`}>
+                                                {handoverReceiveLabel(c.handover_receive_status)}
                                             </span>
                                         </td>
                                         <td className="py-2 text-right">
@@ -992,7 +1164,7 @@ export default function Contracts(props) {
                                 ))}
                                 {contracts.length === 0 && (
                                     <tr>
-                                        <td className="py-6 text-center text-sm text-text-muted" colSpan={11}>
+                                        <td className="py-6 text-center text-sm text-text-muted" colSpan={canBulkActions ? 13 : 12}>
                                             Chưa có hợp đồng nào.
                                         </td>
                                     </tr>
@@ -1483,6 +1655,9 @@ export default function Contracts(props) {
                                     <span className={`rounded-full px-3 py-1 text-xs font-semibold ${approvalBadgeClass(detailContract.approval_status)}`}>
                                         {approvalLabel(detailContract.approval_status)}
                                     </span>
+                                    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${handoverReceiveBadgeClass(detailContract.handover_receive_status)}`}>
+                                        {handoverReceiveLabel(detailContract.handover_receive_status)}
+                                    </span>
                                 </div>
                             </div>
                         </div>
@@ -1521,6 +1696,10 @@ export default function Contracts(props) {
                                     <div className="flex items-center justify-between gap-3">
                                         <span className="text-text-muted">Số kỳ thanh toán</span>
                                         <span className="font-semibold text-slate-900">{detailContract.payments_count || 0}/{detailContract.payment_times || 1}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-3">
+                                        <span className="text-text-muted">Nhận bàn giao dự án</span>
+                                        <span className="font-semibold text-slate-900">{handoverReceiveLabel(detailContract.handover_receive_status)}</span>
                                     </div>
                                     <div className="pt-2">
                                         <div className="text-text-muted">Nhóm chăm sóc hợp đồng</div>

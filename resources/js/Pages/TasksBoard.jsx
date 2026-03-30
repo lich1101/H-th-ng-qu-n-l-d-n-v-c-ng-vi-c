@@ -54,6 +54,8 @@ const REVIEW_STATUS_STYLES = {
     rejected: 'bg-rose-50 text-rose-700 border-rose-200',
 };
 
+const BLOCKED_ASSIGNMENT_ROLES = ['admin', 'administrator', 'ke_toan'];
+
 const clampPercent = (value) => {
     const parsed = Number(value || 0);
     if (Number.isNaN(parsed)) return 0;
@@ -1328,14 +1330,15 @@ export default function TasksBoard(props) {
     );
 
     const staffOptions = useMemo(() => {
+        const isAllowedRole = (user) => !BLOCKED_ASSIGNMENT_ROLES.includes(String(user?.role || '').toLowerCase());
         if (selectedDepartment?.staff?.length) {
-            return selectedDepartment.staff;
+            return selectedDepartment.staff.filter(isAllowedRole);
         }
         if (userRole === 'admin' && departments.length) {
             const all = departments.flatMap((d) => d.staff || []);
             const map = new Map();
             all.forEach((u) => {
-                if (u?.id) map.set(u.id, u);
+                if (u?.id && isAllowedRole(u)) map.set(u.id, u);
             });
             return Array.from(map.values());
         }
@@ -1343,20 +1346,26 @@ export default function TasksBoard(props) {
     }, [selectedDepartment, departments, userRole]);
 
     const itemStaffOptions = useMemo(() => {
+        const isAllowedRole = (user) => !BLOCKED_ASSIGNMENT_ROLES.includes(String(user?.role || '').toLowerCase());
         if (!itemsTask) return [];
         const deptId = itemsTask.department_id || itemsTask.department?.id;
         const dept = departments.find((d) => String(d.id) === String(deptId));
-        if (dept?.staff?.length) return dept.staff;
+        if (dept?.staff?.length) return dept.staff.filter(isAllowedRole);
         if (userRole === 'admin') {
             const all = departments.flatMap((d) => d.staff || []);
             const map = new Map();
             all.forEach((u) => {
-                if (u?.id) map.set(u.id, u);
+                if (u?.id && isAllowedRole(u)) map.set(u.id, u);
             });
             return Array.from(map.values());
         }
         return [];
     }, [itemsTask, departments, userRole]);
+
+    const assignableUserOptions = useMemo(
+        () => userOptions.filter((user) => !BLOCKED_ASSIGNMENT_ROLES.includes(String(user?.role || '').toLowerCase())),
+        [userOptions]
+    );
 
     const siblingTaskItems = useMemo(
         () => taskItems.filter((item) => Number(item.id) !== Number(editingItemId || 0)),
@@ -1698,7 +1707,7 @@ export default function TasksBoard(props) {
                                 onChange={(e) => setFilters((s) => ({ ...s, assignee_id: e.target.value }))}
                             >
                                 <option value="">Tất cả nhân sự</option>
-                                {userOptions.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                                {assignableUserOptions.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                             </select>
                         </FilterField>
                         <FilterField label="Tìm kiếm">

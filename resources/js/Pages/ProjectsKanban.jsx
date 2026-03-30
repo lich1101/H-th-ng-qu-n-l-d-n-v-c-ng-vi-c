@@ -60,6 +60,8 @@ const HANDOVER_STYLES = {
     approved: 'bg-emerald-50 text-emerald-700 border-emerald-200',
 };
 
+const BLOCKED_ASSIGNMENT_ROLES = ['admin', 'administrator', 'ke_toan'];
+
 export default function ProjectsKanban(props) {
     const toast = useToast();
     const userRole = props?.auth?.user?.role || '';
@@ -170,12 +172,19 @@ export default function ProjectsKanban(props) {
 
     const fetchOwners = async () => {
         try {
-            const res = await axios.get('/api/v1/users/lookup');
+            const res = await axios.get('/api/v1/users/lookup', {
+                params: { purpose: 'project_owner' },
+            });
             setOwners(res.data?.data || []);
         } catch {
             // ignore
         }
     };
+
+    const ownerOptions = useMemo(
+        () => owners.filter((owner) => !BLOCKED_ASSIGNMENT_ROLES.includes(String(owner?.role || '').toLowerCase())),
+        [owners]
+    );
 
     useEffect(() => {
         fetchMeta();
@@ -881,7 +890,7 @@ export default function ProjectsKanban(props) {
                                 onChange={(e) => setForm((s) => ({ ...s, owner_id: e.target.value }))}
                             >
                                 <option value="">Chọn người phụ trách dự án</option>
-                                {owners.map((u) => (
+                                {ownerOptions.map((u) => (
                                     <option key={u.id} value={u.id}>
                                         {u.name} ({u.role})
                                     </option>

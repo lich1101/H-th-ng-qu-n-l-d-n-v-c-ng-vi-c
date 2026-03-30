@@ -256,6 +256,10 @@ class AttendanceController extends Controller
             $query->where('status', (string) $request->input('status'));
         }
 
+        if ($request->filled('request_type')) {
+            $query->where('request_type', (string) $request->input('request_type'));
+        }
+
         if ($request->filled('search')) {
             $search = trim((string) $request->input('search'));
             $query->where(function ($builder) use ($search) {
@@ -590,15 +594,18 @@ class AttendanceController extends Controller
         }
 
         $validated = $request->validate([
+            'request_type' => ['required', 'in:late_arrival,leave_request'],
             'request_date' => ['required', 'date'],
             'expected_check_in_time' => ['nullable', 'regex:/^\d{2}:\d{2}$/'],
             'title' => ['required', 'string', 'max:191'],
             'content' => ['nullable', 'string', 'max:5000'],
         ]);
 
+        $requestType = (string) $validated['request_type'];
+
         $item = AttendanceRequestModel::create([
             'user_id' => $user->id,
-            'request_type' => 'late_arrival',
+            'request_type' => $requestType,
             'request_date' => Carbon::parse($validated['request_date'], 'Asia/Ho_Chi_Minh')->toDateString(),
             'expected_check_in_time' => $validated['expected_check_in_time'] ?? null,
             'title' => trim((string) $validated['title']),
@@ -606,10 +613,12 @@ class AttendanceController extends Controller
             'status' => 'pending',
         ]);
 
+        $requestTypeLabel = $this->attendanceRequestTypeLabel($requestType);
+
         $notifications->notifyUsers(
             $this->attendanceManagerIds(),
-            'Có đơn xin đi muộn cần duyệt',
-            sprintf('%s vừa gửi đơn cho ngày %s.', $user->name, Carbon::parse($item->request_date)->format('d/m/Y')),
+            sprintf('Có %s cần duyệt', mb_strtolower($requestTypeLabel)),
+            sprintf('%s vừa gửi %s cho ngày %s.', $user->name, mb_strtolower($requestTypeLabel), Carbon::parse($item->request_date)->format('d/m/Y')),
             [
                 'type' => 'attendance_request_submitted',
                 'category' => 'attendance',
@@ -619,7 +628,7 @@ class AttendanceController extends Controller
         );
 
         return response()->json([
-            'message' => 'Đã gửi đơn xin đi muộn.',
+            'message' => sprintf('Đã gửi %s.', mb_strtolower($requestTypeLabel)),
             'item' => $this->attendanceRequestPayload($item->fresh(['user', 'decider'])),
         ], 201);
     }
@@ -670,7 +679,9 @@ class AttendanceController extends Controller
 
         $notifications->notifyUsers(
             [$attendanceRequest->user_id],
-            $status === 'approved' ? 'Đơn chấm công đã được duyệt' : 'Đơn chấm công bị từ chối',
+            $status === 'approved'
+                ? sprintf('%s đã được duyệt', $this->attendanceRequestTypeLabel((string) $attendanceRequest->request_type))
+                : sprintf('%s bị từ chối', $this->attendanceRequestTypeLabel((string) $attendanceRequest->request_type)),
             $status === 'approved'
                 ? sprintf('Đơn ngày %s đã được xử lý.', Carbon::parse($attendanceRequest->request_date)->format('d/m/Y'))
                 : ((string) ($attendanceRequest->decision_note ?: 'Vui lòng liên hệ quản trị để biết thêm chi tiết.')),
@@ -1223,6 +1234,7 @@ class AttendanceController extends Controller
             'id' => (int) $item->id,
             'user_id' => (int) $item->user_id,
             'request_type' => (string) $item->request_type,
+            'request_type_label' => $this->attendanceRequestTypeLabel((string) $item->request_type),
             'request_date' => optional($item->request_date)->toDateString(),
             'expected_check_in_time' => $item->expected_check_in_time,
             'title' => (string) $item->title,
@@ -1374,7 +1386,17 @@ class AttendanceController extends Controller
             case 'half_day_afternoon':
                 return 'Mỗi chiều';
             default:
-                return 'Full time';
+                return 'Toàn thời gian';
+        }
+    }
+
+    private function attendanceRequestTypeLabel(string $requestType): string
+    {
+        switch ($requestType) {
+            case 'leave_request':
+                return 'Đơn xin nghỉ phép';
+            default:
+                return 'Đơn xin đi muộn';
         }
     }
 

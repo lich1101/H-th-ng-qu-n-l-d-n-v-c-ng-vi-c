@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import AppIcon from '@/Components/AppIcon';
+import ChatbotAssistantPanel from '@/Components/ChatbotAssistantPanel';
 import Dropdown from '@/Components/Dropdown';
 import { Link, usePage } from '@inertiajs/inertia-react';
 
 export default function Authenticated({ auth, header, children }) {
-    const { settings } = usePage().props;
+    const { settings, chatbotQuickOpen = false, chatbotInitialBotId = null } = usePage().props;
     const [showSidebar, setShowSidebar] = useState(false);
     const currentRole = auth?.user?.role || '';
     const canUseChatbot = ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'].includes(currentRole);
@@ -32,6 +33,11 @@ export default function Authenticated({ auth, header, children }) {
     const [chatItems, setChatItems] = useState([]);
     const [chatLoading, setChatLoading] = useState(false);
     const [chatUnread, setChatUnread] = useState(0);
+    const [assistantDockOpen, setAssistantDockOpen] = useState(!!chatbotQuickOpen);
+    const [assistantDockBotId, setAssistantDockBotId] = useState(() => {
+        const parsed = Number(chatbotInitialBotId || 0);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+    });
     const CHAT_NOTIFICATION_TYPES = useMemo(
         () => new Set(['task_chat_message', 'task_comment_tag']),
         []
@@ -77,6 +83,22 @@ export default function Authenticated({ auth, header, children }) {
     };
 
     const closeQuickPanels = () => setActiveQuickPanel(null);
+    const openAssistantDock = (botId = null) => {
+        const parsed = Number(botId || 0);
+        if (Number.isFinite(parsed) && parsed > 0) {
+            setAssistantDockBotId(parsed);
+        } else if (!assistantDockBotId && botItems.length > 0) {
+            setAssistantDockBotId(Number(botItems[0]?.id || 0) || null);
+        }
+        setAssistantDockOpen(true);
+        closeQuickPanels();
+    };
+    const closeAssistantDock = () => {
+        setAssistantDockOpen(false);
+        if (route().current('chatbot.assistant')) {
+            window.location.href = route('dashboard');
+        }
+    };
 
     const toggleQuickPanel = (panelKey) => {
         setActiveQuickPanel((prev) => (prev === panelKey ? null : panelKey));
@@ -184,6 +206,14 @@ export default function Authenticated({ auth, header, children }) {
         }, 30000);
         return () => clearInterval(timer);
     }, [canUseChatbot]);
+
+    useEffect(() => {
+        if (!canUseChatbot || !chatbotQuickOpen) return;
+        const parsed = Number(chatbotInitialBotId || 0);
+        setAssistantDockBotId(Number.isFinite(parsed) && parsed > 0 ? parsed : null);
+        setAssistantDockOpen(true);
+        closeQuickPanels();
+    }, [canUseChatbot, chatbotInitialBotId, chatbotQuickOpen]);
 
     useEffect(() => {
         if (!notificationOpen && !chatOpen && !botOpen) return;
@@ -537,16 +567,42 @@ export default function Authenticated({ auth, header, children }) {
                                         }`}
                                     >
                                         {group.items.map((menu) => {
-                                            const active = route().current(menu.routeName);
+                                            const isAssistantMenu = menu.routeName === 'chatbot.assistant';
+                                            const active = isAssistantMenu
+                                                ? (assistantDockOpen || route().current(menu.routeName))
+                                                : route().current(menu.routeName);
+                                            const sharedClassName = `flex w-full items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition ${
+                                                active
+                                                    ? 'bg-primary/10 text-primary'
+                                                    : 'text-slate-600 hover:bg-slate-100'
+                                            }`;
+
+                                            if (isAssistantMenu) {
+                                                return (
+                                                    <button
+                                                        key={menu.routeName}
+                                                        type="button"
+                                                        className={sharedClassName}
+                                                        onClick={() => {
+                                                            setShowSidebar(false);
+                                                            openAssistantDock();
+                                                        }}
+                                                    >
+                                                        <span className="flex items-center gap-2">
+                                                            <span className="text-slate-500">
+                                                                <AppIcon name={menu.icon} className="h-4 w-4" />
+                                                            </span>
+                                                            <span>{menu.label}</span>
+                                                        </span>
+                                                    </button>
+                                                );
+                                            }
+
                                             return (
                                                 <Link
                                                     key={menu.routeName}
                                                     href={menu.href}
-                                                    className={`flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition ${
-                                                        active
-                                                            ? 'bg-primary/10 text-primary'
-                                                            : 'text-slate-600 hover:bg-slate-100'
-                                                    }`}
+                                                    className={sharedClassName}
                                                     onClick={() => setShowSidebar(false)}
                                                 >
                                                     <span className="flex items-center gap-2">
@@ -616,13 +672,13 @@ export default function Authenticated({ auth, header, children }) {
                                                 <div className="border-b border-slate-100 px-4 pt-4 pb-3">
                                                     <div className="flex items-center justify-between gap-3">
                                                         <p className="text-xl font-bold text-slate-900">Danh sách chatbot</p>
-                                                        <Link
-                                                            href={route('chatbot.assistant')}
+                                                        <button
+                                                            type="button"
                                                             className="text-xs font-semibold text-primary"
-                                                            onClick={closeQuickPanels}
+                                                            onClick={() => openAssistantDock()}
                                                         >
-                                                            Mở trợ lý AI
-                                                        </Link>
+                                                            Mở popup chat
+                                                        </button>
                                                     </div>
                                                     <p className="mt-1 text-xs text-slate-500">
                                                         Chọn nhanh chatbot để mở đúng bot trên trang chat.
@@ -643,11 +699,11 @@ export default function Authenticated({ auth, header, children }) {
                                                     )}
 
                                                     {!botLoading && botItems.map((bot) => (
-                                                        <Link
+                                                        <button
                                                             key={bot.id}
-                                                            href={`${route('chatbot.assistant')}?bot_id=${bot.id}`}
-                                                            className="flex items-start gap-3 rounded-xl px-3 py-3 transition hover:bg-slate-50"
-                                                            onClick={closeQuickPanels}
+                                                            type="button"
+                                                            className="flex w-full items-start gap-3 rounded-xl px-3 py-3 text-left transition hover:bg-slate-50"
+                                                            onClick={() => openAssistantDock(bot.id)}
                                                         >
                                                             {bot.avatar_url ? (
                                                                 <img
@@ -683,7 +739,7 @@ export default function Authenticated({ auth, header, children }) {
                                                                     </span>
                                                                 )}
                                                             </span>
-                                                        </Link>
+                                                        </button>
                                                     ))}
                                                 </div>
                                             </div>
@@ -1032,6 +1088,36 @@ export default function Authenticated({ auth, header, children }) {
                     <main className="px-4 md:px-8 pb-10">{children}</main>
                 </div>
             </div>
+
+            {canUseChatbot && assistantDockOpen && (
+                <div className="pointer-events-none fixed inset-0 z-[70]">
+                    <div className="pointer-events-auto absolute bottom-5 right-5 w-[min(96vw,520px)]">
+                        <div className="overflow-hidden rounded-[24px] border border-slate-200/90 bg-white shadow-[0_28px_90px_-40px_rgba(15,23,42,0.58)]">
+                            <div className="flex items-center justify-between border-b border-slate-200/80 bg-white px-3.5 py-2.5">
+                                <div className="flex items-center gap-2.5">
+                                    <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                                    <p className="text-sm font-semibold text-slate-900">Trợ lý AI</p>
+                                </div>
+                                <button
+                                    type="button"
+                                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 hover:bg-slate-100"
+                                    onClick={closeAssistantDock}
+                                    aria-label="Đóng popup trợ lý AI"
+                                >
+                                    <AppIcon name="x-mark" className="h-4 w-4" />
+                                </button>
+                            </div>
+                            <div className="max-h-[76vh] overflow-y-auto bg-gradient-to-b from-slate-50/70 to-white p-2.5">
+                                <ChatbotAssistantPanel
+                                    auth={auth}
+                                    embedded
+                                    initialBotId={assistantDockBotId}
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

@@ -134,7 +134,7 @@ export default function HandoverCenter(props) {
         <PageContainer
             auth={props.auth}
             title="Bàn giao dự án"
-            description="Danh sách dự án đang gửi duyệt bàn giao. Admin và nhân viên lên hợp đồng của dự án có quyền phản hồi duyệt hoặc từ chối."
+            description="Danh sách dự án đang gửi duyệt bàn giao. Admin và người phụ trách hợp đồng của dự án có quyền duyệt hoặc từ chối."
             stats={stats}
         >
             <div className="space-y-4">

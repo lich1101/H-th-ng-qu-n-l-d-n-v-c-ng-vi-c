@@ -110,7 +110,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::redirect('/thong-bao', '/dashboard');
 
     Route::get('/tro-ly-ai', function () {
-        return Inertia::render('ChatbotAssistant');
+        return Inertia::render('Dashboard', [
+            'chatbotQuickOpen' => true,
+            'chatbotInitialBotId' => request()->query('bot_id'),
+        ]);
     })->name('chatbot.assistant')->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
 
     Route::get('/cham-cong-wifi', function () {

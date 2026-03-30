@@ -79,6 +79,9 @@ class ProjectController extends Controller
         }
 
         $validated = $request->validate($this->rules());
+        if ($error = $this->validateProjectOwner($validated['owner_id'] ?? null)) {
+            return response()->json(['message' => $error], 422);
+        }
 
         if (($validated['service_type'] ?? '') === 'khac') {
             $validated['service_type_other'] = trim((string) ($validated['service_type_other'] ?? ''));
@@ -140,6 +143,11 @@ class ProjectController extends Controller
         }
 
         $validated = $request->validate($this->rules($project->id));
+        if (array_key_exists('owner_id', $validated)) {
+            if ($error = $this->validateProjectOwner($validated['owner_id'])) {
+                return response()->json(['message' => $error], 422);
+            }
+        }
         $nextStatus = (string) ($validated['status'] ?? $project->status);
         $currentHandoverStatus = (string) ($project->handover_status ?? 'chua_ban_giao');
 
@@ -242,7 +250,7 @@ class ProjectController extends Controller
         $minimum = $this->handoverMinimumProgressPercent();
         if (! ProjectScope::canSubmitProjectHandover($request->user(), $project, $minimum)) {
             return response()->json([
-                'message' => "Chỉ phụ trách dự án mới được gửi duyệt, và tiến độ phải từ {$minimum}% trở lên.",
+                'message' => "Chỉ admin hoặc phụ trách dự án mới được gửi duyệt, và tiến độ phải từ {$minimum}% trở lên.",
             ], 422);
         }
 
@@ -291,6 +299,8 @@ class ProjectController extends Controller
                 'approved_at' => now(),
                 'handover_review_note' => $reason !== '' ? $reason : null,
             ]);
+
+            $this->markLinkedContractHandoverReceived($project, $request->user());
         } else {
             $project->update([
                 'handover_status' => 'rejected',
@@ -377,7 +387,7 @@ class ProjectController extends Controller
             'owner:id,name,email,role,avatar_url,department_id',
             'approver:id,name,email,role,avatar_url',
             'handoverRequester:id,name,email,role,avatar_url',
-            'contract:id,code,title,client_id,project_id,value,status,approval_status,start_date,end_date,signed_at,collector_user_id',
+            'contract:id,code,title,client_id,project_id,value,status,approval_status,start_date,end_date,signed_at,collector_user_id,handover_receive_status,handover_received_by,handover_received_at',
             'contract.collector:id,name,email,role,avatar_url,department_id',
         ];
     }
@@ -487,5 +497,49 @@ class ProjectController extends Controller
                 'reason' => $reason,
             ]
         );
+    }
+
+    private function validateProjectOwner($ownerId): ?string
+    {
+        $ownerId = (int) ($ownerId ?? 0);
+        if ($ownerId <= 0) {
+            return null;
+        }
+
+        $owner = User::query()->select(['id', 'role'])->find($ownerId);
+        if (! $owner) {
+            return 'Người phụ trách dự án không tồn tại.';
+        }
+
+        if (in_array((string) $owner->role, ['admin', 'administrator', 'ke_toan'], true)) {
+            return 'Không thể chọn admin/administrator/kế toán làm người phụ trách dự án.';
+        }
+
+        return null;
+    }
+
+    private function markLinkedContractHandoverReceived(Project $project, User $reviewer): void
+    {
+        $contract = null;
+
+        if ($project->relationLoaded('contract') && $project->contract) {
+            $contract = $project->contract;
+        } elseif (! empty($project->contract_id)) {
+            $contract = Contract::query()->find((int) $project->contract_id);
+        } else {
+            $contract = Contract::query()
+                ->where('project_id', $project->id)
+                ->first();
+        }
+
+        if (! $contract) {
+            return;
+        }
+
+        $contract->update([
+            'handover_receive_status' => 'da_nhan_ban_giao',
+            'handover_received_by' => $reviewer->id,
+            'handover_received_at' => now(),
+        ]);
     }
 }

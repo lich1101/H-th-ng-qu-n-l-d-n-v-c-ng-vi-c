@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
+import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import PaginationControls from '@/Components/PaginationControls';
@@ -7,7 +8,7 @@ import { useToast } from '@/Contexts/ToastContext';
 
 const attendanceTabs = {
     personal: 'Cá nhân',
-    requests: 'Đơn đi muộn',
+    requests: 'Đơn xin phép',
     settings: 'Cấu hình',
     wifi: 'WiFi',
     devices: 'Thiết bị',
@@ -28,9 +29,14 @@ const statusLabels = {
 };
 
 const employmentOptions = [
-    { value: 'full_time', label: 'Full time' },
-    { value: 'half_day_morning', label: 'Nửa buổi sáng' },
-    { value: 'half_day_afternoon', label: 'Nửa buổi chiều' },
+    { value: 'full_time', label: 'Toàn thời gian' },
+    { value: 'half_day_morning', label: 'Mỗi sáng' },
+    { value: 'half_day_afternoon', label: 'Mỗi chiều' },
+];
+
+const requestTypeOptions = [
+    { value: 'late_arrival', label: 'Đi muộn' },
+    { value: 'leave_request', label: 'Nghỉ phép' },
 ];
 
 const approvalModeOptions = [
@@ -91,6 +97,11 @@ function toneForStatus(status) {
     if (['late_pending', 'pending', 'approved_partial'].includes(status)) return 'amber';
     if (['rejected'].includes(status)) return 'rose';
     return 'slate';
+}
+
+function requestTypeLabel(type) {
+    if (type === 'leave_request') return 'Nghỉ phép';
+    return 'Đi muộn';
 }
 
 function todayIso() {
@@ -170,6 +181,7 @@ export default function AttendanceWifi(props) {
     const [requestPaging, setRequestPaging] = useState({ current_page: 1, last_page: 1, total: 0, per_page: 20 });
     const [requestFilters, setRequestFilters] = useState({ search: '', status: '', per_page: 20, page: 1 });
     const [requestForm, setRequestForm] = useState({
+        request_type: 'late_arrival',
         request_date: todayIso(),
         expected_check_in_time: '',
         title: '',
@@ -429,8 +441,8 @@ export default function AttendanceWifi(props) {
     const submitLateRequest = async () => {
         try {
             await axios.post('/api/v1/attendance/requests', requestForm);
-            toast.success('Đã gửi đơn xin đi muộn.');
-            setRequestForm({ request_date: todayIso(), expected_check_in_time: '', title: '', content: '' });
+            toast.success(requestForm.request_type === 'leave_request' ? 'Đã gửi đơn xin nghỉ phép.' : 'Đã gửi đơn xin đi muộn.');
+            setRequestForm({ request_type: 'late_arrival', request_date: todayIso(), expected_check_in_time: '', title: '', content: '' });
             await Promise.all([loadRequests({ ...requestFilters, page: 1 }), loadDashboard()]);
         } catch (error) {
             const body = error?.response?.data;
@@ -543,7 +555,7 @@ export default function AttendanceWifi(props) {
         <PageContainer
             auth={props.auth}
             title="Chấm công Wi-Fi"
-            description="Check-in bằng WiFi/BSSID trên app mobile, đồng thời quản trị thiết bị, đơn đi muộn, ngày lễ và báo cáo công trên web."
+            description="Check-in bằng Wi‑Fi/BSSID trên app mobile, đồng thời quản trị thiết bị, đơn xin phép, ngày lễ và báo cáo công trên web."
             stats={stats}
         >
             <div className="mt-1 rounded-[30px] border border-slate-200/70 bg-white p-6 shadow-soft">
@@ -605,19 +617,27 @@ export default function AttendanceWifi(props) {
                                 <h3 className="text-lg font-semibold text-slate-900">Công cá nhân</h3>
                                 <p className="mt-1 text-sm text-text-muted">Theo dõi bản ghi công của bạn trong khoảng ngày cần xem.</p>
                             </div>
-                            <div className="mt-4 grid gap-4 md:grid-cols-2">
-                                <FormField label="Từ ngày">
-                                    <input type="date" className={inputClass} value={recordFilters.from_date} onChange={(e) => setRecordFilters((s) => ({ ...s, from_date: e.target.value }))} />
-                                </FormField>
-                                <FormField label="Đến ngày">
-                                    <input type="date" className={inputClass} value={recordFilters.to_date} onChange={(e) => setRecordFilters((s) => ({ ...s, to_date: e.target.value }))} />
-                                </FormField>
-                            </div>
-                            <div className="mt-4 flex justify-end">
-                                <button type="button" className={buttonPrimaryClass} onClick={() => loadRecords(recordFilters)}>
-                                    Xem công
-                                </button>
-                            </div>
+                            <FilterToolbar
+                                className="mt-4 mb-4"
+                                title="Bộ lọc bảng công"
+                                description="Chọn khoảng ngày để xem lịch sử công cá nhân theo đúng chuẩn hiển thị chung của hệ thống."
+                                actions={(
+                                    <FilterActionGroup className="xl:justify-end">
+                                        <button type="button" className={buttonPrimaryClass} onClick={() => loadRecords(recordFilters)}>
+                                            Xem công
+                                        </button>
+                                    </FilterActionGroup>
+                                )}
+                            >
+                                <div className="grid gap-4 md:grid-cols-2">
+                                    <FilterField label="Từ ngày">
+                                        <input type="date" className={filterControlClass} value={recordFilters.from_date} onChange={(e) => setRecordFilters((s) => ({ ...s, from_date: e.target.value }))} />
+                                    </FilterField>
+                                    <FilterField label="Đến ngày">
+                                        <input type="date" className={filterControlClass} value={recordFilters.to_date} onChange={(e) => setRecordFilters((s) => ({ ...s, to_date: e.target.value }))} />
+                                    </FilterField>
+                                </div>
+                            </FilterToolbar>
                             <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200/80">
                                 <table className="min-w-full divide-y divide-slate-200 text-sm">
                                     <thead className="bg-slate-50">
@@ -677,17 +697,26 @@ export default function AttendanceWifi(props) {
                 {activeTab === 'requests' && (
                     <div className="grid gap-5 xl:grid-cols-[0.92fr_1.08fr]">
                         <div className={cardClass}>
-                            <h3 className="text-lg font-semibold text-slate-900">Gửi đơn xin đi muộn</h3>
-                            <p className="mt-1 text-sm text-text-muted">Nhân viên có thể gửi đơn xin đi muộn. Admin, administrator và kế toán có thể duyệt đủ công hoặc không đủ công.</p>
+                                <h3 className="text-lg font-semibold text-slate-900">Gửi đơn xin phép</h3>
+                                <p className="mt-1 text-sm text-text-muted">Nhân viên có thể gửi đơn đi muộn hoặc nghỉ phép. Admin, quản trị hệ thống và kế toán có thể duyệt và quyết định số công.</p>
                             <div className="mt-4 grid gap-4">
+                                <FormField label="Loại đơn" required>
+                                    <select className={inputClass} value={requestForm.request_type} onChange={(e) => setRequestForm((s) => ({ ...s, request_type: e.target.value }))}>
+                                        {requestTypeOptions.map((option) => (
+                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                        ))}
+                                    </select>
+                                </FormField>
                                 <FormField label="Ngày áp dụng" required>
                                     <input type="date" className={inputClass} value={requestForm.request_date} onChange={(e) => setRequestForm((s) => ({ ...s, request_date: e.target.value }))} />
                                 </FormField>
-                                <FormField label="Giờ dự kiến vào" hint="Tùy chọn, ví dụ 09:10">
-                                    <input type="time" className={inputClass} value={requestForm.expected_check_in_time} onChange={(e) => setRequestForm((s) => ({ ...s, expected_check_in_time: e.target.value }))} />
-                                </FormField>
+                                {requestForm.request_type === 'late_arrival' ? (
+                                    <FormField label="Giờ dự kiến vào" hint="Tùy chọn, ví dụ 09:10">
+                                        <input type="time" className={inputClass} value={requestForm.expected_check_in_time} onChange={(e) => setRequestForm((s) => ({ ...s, expected_check_in_time: e.target.value }))} />
+                                    </FormField>
+                                ) : null}
                                 <FormField label="Tiêu đề" required>
-                                    <input className={inputClass} value={requestForm.title} onChange={(e) => setRequestForm((s) => ({ ...s, title: e.target.value }))} placeholder="Ví dụ: Xin đi muộn do kẹt xe" />
+                                    <input className={inputClass} value={requestForm.title} onChange={(e) => setRequestForm((s) => ({ ...s, title: e.target.value }))} placeholder={requestForm.request_type === 'leave_request' ? 'Ví dụ: Xin nghỉ phép ngày 30/03' : 'Ví dụ: Xin đi muộn do kẹt xe'} />
                                 </FormField>
                                 <FormField label="Nội dung">
                                     <textarea className={textAreaClass} value={requestForm.content} onChange={(e) => setRequestForm((s) => ({ ...s, content: e.target.value }))} placeholder="Mô tả lý do và thông tin liên quan" />
@@ -698,25 +727,25 @@ export default function AttendanceWifi(props) {
                             </div>
                         </div>
                         <div className={cardClass}>
-                            <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-                                <div>
-                                    <h3 className="text-lg font-semibold text-slate-900">Danh sách đơn</h3>
-                                    <p className="mt-1 text-sm text-text-muted">{canManage ? 'Xem và duyệt toàn bộ đơn đi muộn của nhân sự.' : 'Theo dõi trạng thái đơn của bạn.'}</p>
-                                </div>
-                                <div className="grid gap-3 md:grid-cols-2">
-                                    <FormField label="Tìm kiếm" className="min-w-[220px]">
-                                        <input className={inputClass} value={requestFilters.search} onChange={(e) => setRequestFilters((s) => ({ ...s, search: e.target.value }))} placeholder="Tên nhân viên, tiêu đề..." />
-                                    </FormField>
-                                    <FormField label="Trạng thái">
-                                        <select className={inputClass} value={requestFilters.status} onChange={(e) => setRequestFilters((s) => ({ ...s, status: e.target.value, page: 1 }))}>
+                            <FilterToolbar
+                                className="mb-4"
+                                title="Danh sách đơn"
+                                description={canManage ? 'Xem và duyệt toàn bộ đơn đi muộn hoặc nghỉ phép của nhân sự.' : 'Theo dõi trạng thái đơn của bạn.'}
+                            >
+                                <div className="grid gap-4 md:grid-cols-2">
+                                    <FilterField label="Tìm kiếm" className="min-w-[220px]">
+                                        <input className={filterControlClass} value={requestFilters.search} onChange={(e) => setRequestFilters((s) => ({ ...s, search: e.target.value }))} placeholder="Tên nhân viên, tiêu đề..." />
+                                    </FilterField>
+                                    <FilterField label="Trạng thái">
+                                        <select className={filterControlClass} value={requestFilters.status} onChange={(e) => setRequestFilters((s) => ({ ...s, status: e.target.value, page: 1 }))}>
                                             <option value="">Tất cả trạng thái</option>
                                             <option value="pending">Chờ duyệt</option>
                                             <option value="approved">Đã duyệt</option>
                                             <option value="rejected">Từ chối</option>
                                         </select>
-                                    </FormField>
+                                    </FilterField>
                                 </div>
-                            </div>
+                            </FilterToolbar>
                             <div className="mt-4 space-y-3">
                                 {requests.length === 0 && (
                                     <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-center text-text-muted">Chưa có đơn nào.</div>
@@ -727,6 +756,7 @@ export default function AttendanceWifi(props) {
                                             <div>
                                                 <div className="flex flex-wrap items-center gap-2">
                                                     <h4 className="font-semibold text-slate-900">{item.title}</h4>
+                                                    <Badge tone="blue">{item.request_type_label || requestTypeLabel(item.request_type)}</Badge>
                                                     <Badge tone={toneForStatus(item.status)}>{statusLabels[item.status] || item.status}</Badge>
                                                 </div>
                                                 <div className="mt-1 text-sm text-text-muted">
@@ -860,25 +890,25 @@ export default function AttendanceWifi(props) {
 
                 {activeTab === 'devices' && canManage && (
                     <div className={cardClass}>
-                        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-                            <div>
-                                <h3 className="text-lg font-semibold text-slate-900">Thiết bị nhân viên</h3>
-                                <p className="mt-1 text-sm text-text-muted">Mỗi nhân viên chỉ dùng một thiết bị đã được duyệt để chấm công trên đúng WiFi/BSSID công ty.</p>
-                            </div>
-                            <div className="grid gap-3 md:grid-cols-2">
-                                <FormField label="Tìm kiếm" className="min-w-[220px]">
-                                    <input className={inputClass} value={deviceFilters.search} onChange={(e) => setDeviceFilters((s) => ({ ...s, search: e.target.value }))} placeholder="Nhân viên, model, UUID..." />
-                                </FormField>
-                                <FormField label="Trạng thái">
-                                    <select className={inputClass} value={deviceFilters.status} onChange={(e) => setDeviceFilters((s) => ({ ...s, status: e.target.value, page: 1 }))}>
+                        <FilterToolbar
+                            className="mb-4"
+                            title="Thiết bị nhân viên"
+                            description="Mỗi nhân viên chỉ dùng một thiết bị đã được duyệt để chấm công trên đúng Wi-Fi/BSSID công ty."
+                        >
+                            <div className="grid gap-4 md:grid-cols-2">
+                                <FilterField label="Tìm kiếm" className="min-w-[220px]">
+                                    <input className={filterControlClass} value={deviceFilters.search} onChange={(e) => setDeviceFilters((s) => ({ ...s, search: e.target.value }))} placeholder="Nhân viên, model, UUID..." />
+                                </FilterField>
+                                <FilterField label="Trạng thái">
+                                    <select className={filterControlClass} value={deviceFilters.status} onChange={(e) => setDeviceFilters((s) => ({ ...s, status: e.target.value, page: 1 }))}>
                                         <option value="">Tất cả trạng thái</option>
                                         <option value="pending">Chờ duyệt</option>
                                         <option value="approved">Đã duyệt</option>
                                         <option value="rejected">Từ chối</option>
                                     </select>
-                                </FormField>
+                                </FilterField>
                             </div>
-                        </div>
+                        </FilterToolbar>
                         <div className="mt-4 space-y-3">
                             {devices.length === 0 && <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-center text-text-muted">Chưa có thiết bị nào.</div>}
                             {devices.map((item) => (
@@ -958,26 +988,26 @@ export default function AttendanceWifi(props) {
 
                 {activeTab === 'staff' && canManage && (
                     <div className={cardClass}>
-                        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-                            <div>
-                                <h3 className="text-lg font-semibold text-slate-900">Cấu hình từng nhân viên</h3>
-                                <p className="mt-1 text-sm text-text-muted">Full time phải chấm trong khung đầu giờ để được 1 công. Nửa buổi chiều lấy mốc từ giờ bắt đầu buổi chiều.</p>
-                            </div>
-                            <div className="grid gap-3 md:grid-cols-2">
-                                <FormField label="Tìm kiếm" className="min-w-[220px]">
-                                    <input className={inputClass} value={staffFilters.search} onChange={(e) => setStaffFilters((s) => ({ ...s, search: e.target.value }))} placeholder="Tên hoặc email..." />
-                                </FormField>
-                                <FormField label="Vai trò">
-                                    <select className={inputClass} value={staffFilters.role} onChange={(e) => setStaffFilters((s) => ({ ...s, role: e.target.value, page: 1 }))}>
+                        <FilterToolbar
+                            className="mb-4"
+                            title="Cấu hình từng nhân viên"
+                            description="Toàn thời gian phải chấm trong khung đầu giờ để được 1 công. Mỗi chiều lấy mốc từ giờ bắt đầu buổi chiều."
+                        >
+                            <div className="grid gap-4 md:grid-cols-2">
+                                <FilterField label="Tìm kiếm" className="min-w-[220px]">
+                                    <input className={filterControlClass} value={staffFilters.search} onChange={(e) => setStaffFilters((s) => ({ ...s, search: e.target.value }))} placeholder="Tên hoặc email..." />
+                                </FilterField>
+                                <FilterField label="Vai trò">
+                                    <select className={filterControlClass} value={staffFilters.role} onChange={(e) => setStaffFilters((s) => ({ ...s, role: e.target.value, page: 1 }))}>
                                         <option value="">Tất cả vai trò</option>
                                         <option value="admin">Admin</option>
                                         <option value="quan_ly">Quản lý</option>
                                         <option value="nhan_vien">Nhân viên</option>
                                         <option value="ke_toan">Kế toán</option>
                                     </select>
-                                </FormField>
+                                </FilterField>
                             </div>
-                        </div>
+                        </FilterToolbar>
                         <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200/80">
                             <table className="min-w-full divide-y divide-slate-200 text-sm">
                                 <thead className="bg-slate-50">
@@ -1010,7 +1040,7 @@ export default function AttendanceWifi(props) {
                                                     ))}
                                                 </select>
                                             </td>
-                                            <td className="px-4 py-3"><Badge tone={item.is_active ? 'emerald' : 'slate'}>{item.is_active ? 'Active' : 'Inactive'}</Badge></td>
+                                            <td className="px-4 py-3"><Badge tone={item.is_active ? 'emerald' : 'slate'}>{item.is_active ? 'Đang hoạt động' : 'Ngừng hoạt động'}</Badge></td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -1038,31 +1068,30 @@ export default function AttendanceWifi(props) {
 
                 {activeTab === 'report' && canManage && (
                     <div className={cardClass}>
-                        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-                            <div>
-                                <h3 className="text-lg font-semibold text-slate-900">Báo cáo công</h3>
-                                <p className="mt-1 text-sm text-text-muted">Lọc theo ngày bắt đầu/kết thúc để tổng hợp công, sửa công tay theo bước 0.1 và xuất file Excel. 1.0 là đủ ngày công.</p>
+                        <FilterToolbar
+                            className="mb-4"
+                            title="Báo cáo công"
+                            description="Lọc theo ngày bắt đầu/kết thúc để tổng hợp công, sửa công tay theo bước 0.1 và xuất file Excel. 1.0 là đủ ngày công."
+                            actions={(
+                                <FilterActionGroup className="xl:justify-end">
+                                    <button type="button" className={buttonSecondaryClass} onClick={() => openManualRecord()}>Sửa công tay</button>
+                                    <button type="button" className={buttonSecondaryClass} onClick={() => loadReport(reportFilters)}>Xem báo cáo</button>
+                                    <button type="button" className={buttonPrimaryClass} onClick={exportReport}>Xuất Excel</button>
+                                </FilterActionGroup>
+                            )}
+                        >
+                            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                                <FilterField label="Từ ngày">
+                                    <input type="date" className={filterControlClass} value={reportFilters.start_date} onChange={(e) => setReportFilters((s) => ({ ...s, start_date: e.target.value }))} />
+                                </FilterField>
+                                <FilterField label="Đến ngày">
+                                    <input type="date" className={filterControlClass} value={reportFilters.end_date} onChange={(e) => setReportFilters((s) => ({ ...s, end_date: e.target.value }))} />
+                                </FilterField>
+                                <FilterField label="Tìm nhân sự">
+                                    <input className={filterControlClass} value={reportFilters.search} onChange={(e) => setReportFilters((s) => ({ ...s, search: e.target.value }))} placeholder="Tên hoặc email" />
+                                </FilterField>
                             </div>
-                            <div className="flex flex-wrap gap-2">
-                                <button type="button" className={buttonSecondaryClass} onClick={() => openManualRecord()}>Sửa công tay</button>
-                                <button type="button" className={buttonSecondaryClass} onClick={() => loadReport(reportFilters)}>Xem báo cáo</button>
-                                <button type="button" className={buttonPrimaryClass} onClick={exportReport}>Xuất Excel</button>
-                            </div>
-                        </div>
-                        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                            <FormField label="Từ ngày">
-                                <input type="date" className={inputClass} value={reportFilters.start_date} onChange={(e) => setReportFilters((s) => ({ ...s, start_date: e.target.value }))} />
-                            </FormField>
-                            <FormField label="Đến ngày">
-                                <input type="date" className={inputClass} value={reportFilters.end_date} onChange={(e) => setReportFilters((s) => ({ ...s, end_date: e.target.value }))} />
-                            </FormField>
-                            <FormField label="Tìm nhân sự">
-                                <input className={inputClass} value={reportFilters.search} onChange={(e) => setReportFilters((s) => ({ ...s, search: e.target.value }))} placeholder="Tên hoặc email" />
-                            </FormField>
-                            <FormField label="User ID">
-                                <input className={inputClass} value={reportFilters.user_id} onChange={(e) => setReportFilters((s) => ({ ...s, user_id: e.target.value }))} placeholder="Lọc nhanh theo ID" />
-                            </FormField>
-                        </div>
+                        </FilterToolbar>
                         <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
                             <StatCard label="Tổng dòng" value={String(reportSummary.total_rows || 0)} />
                             <StatCard label="Tổng công" value={String(reportSummary.total_work_units || 0)} />

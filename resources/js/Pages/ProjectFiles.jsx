@@ -74,6 +74,8 @@ export default function ProjectFiles(props) {
   const toast = useToast();
   const projectId = props.projectId;
   const fileInputRef = useRef(null);
+  const folderInputRef = useRef(null);
+  const workspaceRef = useRef(null);
 
   const [items, setItems] = useState([]);
   const [parentId, setParentId] = useState(null);
@@ -90,6 +92,26 @@ export default function ProjectFiles(props) {
   const [contextMenu, setContextMenu] = useState(null);
 
   const currentFolder = breadcrumbs[breadcrumbs.length - 1] || null;
+
+  const normalizeMenuPosition = (clientX, clientY) => ({
+    x: Math.min(clientX, window.innerWidth - 300),
+    y: Math.min(clientY, window.innerHeight - 320),
+  });
+
+  const buildNextFolderName = () => {
+    const base = 'Thư mục mới';
+    const used = new Set(
+      (items || [])
+        .filter((item) => item?.is_folder)
+        .map((item) => String(item?.name || '').toLowerCase()),
+    );
+    if (!used.has(base.toLowerCase())) return base;
+    let index = 2;
+    while (used.has(`${base} (${index})`.toLowerCase())) {
+      index += 1;
+    }
+    return `${base} (${index})`;
+  };
 
   const fetchItems = async () => {
     setLoading(true);
@@ -154,12 +176,22 @@ export default function ProjectFiles(props) {
     setParentId(next[next.length - 1]?.id || null);
   };
 
-  const createFolder = async () => {
-    if (!folderName.trim()) return;
+  const createFolder = async (overrideName = null) => {
+    const nextName = String(overrideName ?? folderName ?? '').trim();
+    if (!nextName) {
+      const suggested = buildNextFolderName();
+      setFolderName(suggested);
+      requestAnimationFrame(() => {
+        folderInputRef.current?.focus();
+        folderInputRef.current?.select();
+      });
+      toast.info('Đã điền tên thư mục mẫu. Bạn có thể chỉnh lại rồi bấm Enter.');
+      return;
+    }
     setCreatingFolder(true);
     try {
       await axios.post(`/api/v1/projects/${projectId}/files/folder`, {
-        name: folderName.trim(),
+        name: nextName,
         parent_id: parentId,
       });
       toast.success('Đã tạo thư mục.');
@@ -280,8 +312,9 @@ export default function ProjectFiles(props) {
   ];
 
   const renderContextMenu = () => {
-    if (!contextMenu?.item) return null;
-    const item = contextMenu.item;
+    if (!contextMenu) return null;
+    const item = contextMenu.item || null;
+    const isWorkspaceMenu = !item || contextMenu.scope === 'workspace';
 
     return (
       <div
@@ -289,7 +322,68 @@ export default function ProjectFiles(props) {
         style={{ left: contextMenu.x, top: contextMenu.y }}
         onClick={(e) => e.stopPropagation()}
       >
-        {!trashMode && (
+        {isWorkspaceMenu && !trashMode && (
+          <>
+            <button
+              type="button"
+              className="w-full rounded-xl px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100"
+              onClick={() => {
+                setContextMenu(null);
+                createFolder(buildNextFolderName());
+              }}
+            >
+              Thư mục mới
+            </button>
+            <button
+              type="button"
+              className="w-full rounded-xl px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100"
+              onClick={() => {
+                setContextMenu(null);
+                fileInputRef.current?.click();
+              }}
+            >
+              Tải tệp lên đây
+            </button>
+            <button
+              type="button"
+              className="w-full rounded-xl px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100"
+              onClick={() => {
+                setContextMenu(null);
+                fetchItems();
+              }}
+            >
+              Làm mới danh sách
+            </button>
+          </>
+        )}
+
+        {isWorkspaceMenu && trashMode && (
+          <>
+            <button
+              type="button"
+              className="w-full rounded-xl px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100"
+              onClick={() => {
+                setContextMenu(null);
+                fetchItems();
+              }}
+            >
+              Làm mới danh sách
+            </button>
+            <button
+              type="button"
+              className="w-full rounded-xl px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100"
+              onClick={() => {
+                setContextMenu(null);
+                setTrashMode(false);
+                goRoot();
+              }}
+            >
+              Quay lại kho dự án
+            </button>
+          </>
+        )}
+
+        {!isWorkspaceMenu && !trashMode && (
           <>
             <button
               type="button"
@@ -340,7 +434,7 @@ export default function ProjectFiles(props) {
           </>
         )}
 
-        {trashMode && (
+        {!isWorkspaceMenu && trashMode && (
           <>
             <button
               type="button"
@@ -457,7 +551,7 @@ export default function ProjectFiles(props) {
                       <ToolbarButton onClick={() => fileInputRef.current?.click()}>
                         {uploading ? 'Đang tải...' : 'Tải tệp'}
                       </ToolbarButton>
-                      <ToolbarButton onClick={createFolder}>
+                      <ToolbarButton onClick={() => createFolder(folderName.trim() || buildNextFolderName())}>
                         {creatingFolder ? 'Đang tạo...' : 'Thư mục mới'}
                       </ToolbarButton>
                     </>
@@ -491,6 +585,7 @@ export default function ProjectFiles(props) {
               {!trashMode && (
                 <div className="mt-4 flex flex-wrap items-center gap-3">
                   <input
+                    ref={folderInputRef}
                     className="w-full max-w-sm rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm"
                     placeholder="Tên thư mục mới"
                     value={folderName}
@@ -506,7 +601,18 @@ export default function ProjectFiles(props) {
               )}
             </div>
 
-            <div className="p-4">
+            <div
+              ref={workspaceRef}
+              className="p-4"
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setSelectedId(null);
+                setContextMenu({
+                  scope: 'workspace',
+                  ...normalizeMenuPosition(e.clientX, e.clientY),
+                });
+              }}
+            >
               {loading && (
                 <div className="rounded-2xl border border-slate-200 bg-white px-4 py-10 text-center text-sm text-slate-500">
                   Đang tải dữ liệu...
@@ -534,6 +640,7 @@ export default function ProjectFiles(props) {
                         <button
                           key={item.id}
                           type="button"
+                          data-file-item="1"
                           className={`grid w-full grid-cols-[minmax(0,1.6fr)_160px_120px_200px] gap-4 px-4 py-3 text-left transition ${
                             active ? 'bg-sky-50' : 'hover:bg-slate-50'
                           }`}
@@ -541,11 +648,11 @@ export default function ProjectFiles(props) {
                           onDoubleClick={() => openItem(item)}
                           onContextMenu={(e) => {
                             e.preventDefault();
+                            e.stopPropagation();
                             setSelectedId(item.id);
                             setContextMenu({
                               item,
-                              x: Math.min(e.clientX, window.innerWidth - 280),
-                              y: Math.min(e.clientY, window.innerHeight - 280),
+                              ...normalizeMenuPosition(e.clientX, e.clientY),
                             });
                           }}
                         >
@@ -578,6 +685,7 @@ export default function ProjectFiles(props) {
                       <button
                         key={item.id}
                         type="button"
+                        data-file-item="1"
                         className={`rounded-2xl border p-4 text-left transition ${
                           active
                             ? 'border-sky-300 bg-sky-50'
@@ -587,11 +695,11 @@ export default function ProjectFiles(props) {
                         onDoubleClick={() => openItem(item)}
                         onContextMenu={(e) => {
                           e.preventDefault();
+                          e.stopPropagation();
                           setSelectedId(item.id);
                           setContextMenu({
                             item,
-                            x: Math.min(e.clientX, window.innerWidth - 280),
-                            y: Math.min(e.clientY, window.innerHeight - 280),
+                            ...normalizeMenuPosition(e.clientX, e.clientY),
                           });
                         }}
                       >

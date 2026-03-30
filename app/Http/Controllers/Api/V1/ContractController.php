@@ -32,6 +32,7 @@ class ContractController extends Controller
                 'creator:id,name,email,avatar_url',
                 'approver:id,name,email,avatar_url',
                 'collector:id,name,email,avatar_url',
+                'handoverReceiver:id,name,email,avatar_url',
                 'careStaffUsers:id,name,email,avatar_url,department_id',
             ])
             ->withCount('items')
@@ -53,6 +54,9 @@ class ContractController extends Controller
         }
         if ($request->filled('approval_status')) {
             $query->where('approval_status', (string) $request->input('approval_status'));
+        }
+        if ($request->filled('handover_receive_status')) {
+            $query->where('handover_receive_status', (string) $request->input('handover_receive_status'));
         }
         if ($request->boolean('available_only')) {
             $projectId = (int) $request->input('project_id', 0);
@@ -472,7 +476,7 @@ class ContractController extends Controller
     {
         return User::query()
             ->where('is_active', true)
-            ->where('role', 'nhan_vien')
+            ->whereNotIn('role', ['admin', 'administrator', 'ke_toan'])
             ->pluck('id')
             ->map(function ($id) {
                 return (int) $id;
@@ -739,7 +743,7 @@ class ContractController extends Controller
 
     private function canManageContractClient(User $user, Client $client, ?Contract $contract = null): bool
     {
-        if (in_array($user->role, ['admin', 'ke_toan'], true)) {
+        if (in_array($user->role, ['admin', 'administrator', 'ke_toan'], true)) {
             return true;
         }
 
@@ -751,6 +755,10 @@ class ContractController extends Controller
             }
 
             return $contract ? $this->isManagerOfContractDepartment($user, $contract) : false;
+        }
+
+        if ($user->role === 'nhan_vien') {
+            return $this->isEmployeeLinkedToClient($user, $client);
         }
 
         return false;
@@ -836,6 +844,19 @@ class ContractController extends Controller
         return $includeClientCareStaff && $this->isCareStaff($user, $client);
     }
 
+    private function isEmployeeLinkedToClient(User $user, Client $client): bool
+    {
+        if ((int) ($client->assigned_staff_id ?? 0) === (int) $user->id) {
+            return true;
+        }
+
+        if ((int) ($client->sales_owner_id ?? 0) === (int) $user->id) {
+            return true;
+        }
+
+        return $this->isCareStaff($user, $client);
+    }
+
     private function isCareStaff(User $user, Client $client): bool
     {
         if ($client->relationLoaded('careStaffUsers')) {
@@ -872,6 +893,7 @@ class ContractController extends Controller
             'creator:id,name,email,avatar_url',
             'approver:id,name,email,avatar_url',
             'collector:id,name,email,avatar_url',
+            'handoverReceiver:id,name,email,avatar_url',
             'items',
             'payments',
             'costs',
