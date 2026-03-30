@@ -39,7 +39,7 @@ const approvalModeOptions = [
     { value: 'manual', label: 'Nhập số công thủ công' },
 ];
 
-const cardClass = 'rounded-[28px] border border-slate-200/70 bg-white/92 p-6 shadow-soft backdrop-blur';
+const cardClass = 'rounded-[28px] border border-slate-200/70 bg-white p-6 shadow-soft';
 const inputClass = 'w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm transition focus:border-primary focus:outline-none focus:ring-4 focus:ring-primary/10';
 const textAreaClass = `${inputClass} min-h-[120px] resize-y`;
 const buttonPrimaryClass = 'inline-flex items-center justify-center rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-primary/15 transition hover:-translate-y-0.5 hover:bg-primary/95';
@@ -59,15 +59,12 @@ function FormField({ label, required = false, hint = '', children, className = '
 
 function StatCard({ label, value, hint = '' }) {
     return (
-        <div className="relative overflow-hidden rounded-[24px] border border-slate-200/70 bg-white/92 p-5 shadow-card">
-            <div className="absolute -right-8 -top-8 h-24 w-24 rounded-full bg-primary/10 blur-2xl" />
-            <div className="relative">
-                <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-text-subtle">
-                    <span className="h-2 w-2 rounded-full bg-primary" />
-                    {label}
-                </div>
+        <div className="rounded-[24px] border border-slate-200/70 bg-white p-5 shadow-card">
+            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-text-subtle">
+                <span className="h-2 w-2 rounded-full bg-primary" />
+                {label}
             </div>
-            <div className="relative mt-3 text-3xl font-semibold text-slate-900">{value}</div>
+            <div className="mt-3 text-3xl font-semibold text-slate-900">{value}</div>
             {hint ? <div className="mt-1 text-xs text-text-muted">{hint}</div> : null}
         </div>
     );
@@ -549,9 +546,8 @@ export default function AttendanceWifi(props) {
             description="Check-in bằng WiFi/BSSID trên app mobile, đồng thời quản trị thiết bị, đơn đi muộn, ngày lễ và báo cáo công trên web."
             stats={stats}
         >
-            <div className="relative mt-1 overflow-hidden rounded-[30px] border border-slate-200/70 bg-white/90 p-6 shadow-soft">
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(20,184,166,0.14),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(15,23,42,0.06),transparent_28%)]" />
-                <div className="relative grid gap-5 xl:grid-cols-[1.12fr_0.88fr]">
+            <div className="mt-1 rounded-[30px] border border-slate-200/70 bg-white p-6 shadow-soft">
+                <div className="grid gap-5 xl:grid-cols-[1.12fr_0.88fr]">
                     <div>
                         <p className="text-xs font-semibold uppercase tracking-[0.22em] text-primary/80">Mobile-first workflow</p>
                         <h2 className="mt-3 text-3xl font-semibold leading-tight text-slate-900">Check-in diễn ra trên app, quản trị diễn ra trên web.</h2>
@@ -561,15 +557,15 @@ export default function AttendanceWifi(props) {
                         </p>
                     </div>
                     <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-1">
-                        <div className="rounded-[22px] border border-slate-200/70 bg-slate-50/90 p-4">
+                        <div className="rounded-[22px] border border-slate-200/70 bg-white p-4">
                             <div className="text-sm font-semibold text-slate-900">Xin quyền ngay từ đầu</div>
                             <div className="mt-1 text-sm leading-6 text-text-muted">App nên hỏi Wi-Fi/location và thông báo ngay khi vào để tránh ngắt luồng khi check-in.</div>
                         </div>
-                        <div className="rounded-[22px] border border-slate-200/70 bg-slate-50/90 p-4">
+                        <div className="rounded-[22px] border border-slate-200/70 bg-white p-4">
                             <div className="text-sm font-semibold text-slate-900">Thiết bị và Wi-Fi tách vai</div>
                             <div className="mt-1 text-sm leading-6 text-text-muted">Mobile dùng để đọc BSSID. Web tập trung phê duyệt và cấu hình, không cố thay thế quyền hệ thống.</div>
                         </div>
-                        <div className="rounded-[22px] border border-slate-200/70 bg-slate-50/90 p-4">
+                        <div className="rounded-[22px] border border-slate-200/70 bg-white p-4">
                             <div className="text-sm font-semibold text-slate-900">Giao diện đồng nhất</div>
                             <div className="mt-1 text-sm leading-6 text-text-muted">Palette teal/slate, card bo lớn và surface sáng giúp app lẫn web nhìn liền mạch hơn.</div>
                         </div>
