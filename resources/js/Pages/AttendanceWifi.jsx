@@ -39,11 +39,11 @@ const approvalModeOptions = [
     { value: 'manual', label: 'Nhập số công thủ công' },
 ];
 
-const cardClass = 'rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card';
-const inputClass = 'w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-700 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15';
+const cardClass = 'rounded-[28px] border border-slate-200/70 bg-white/92 p-6 shadow-soft backdrop-blur';
+const inputClass = 'w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm transition focus:border-primary focus:outline-none focus:ring-4 focus:ring-primary/10';
 const textAreaClass = `${inputClass} min-h-[120px] resize-y`;
-const buttonPrimaryClass = 'rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:opacity-95';
-const buttonSecondaryClass = 'rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50';
+const buttonPrimaryClass = 'inline-flex items-center justify-center rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-primary/15 transition hover:-translate-y-0.5 hover:bg-primary/95';
+const buttonSecondaryClass = 'inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:-translate-y-0.5 hover:bg-slate-50';
 
 function FormField({ label, required = false, hint = '', children, className = '' }) {
     return (
@@ -59,9 +59,15 @@ function FormField({ label, required = false, hint = '', children, className = '
 
 function StatCard({ label, value, hint = '' }) {
     return (
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-card">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-subtle">{label}</div>
-            <div className="mt-2 text-2xl font-semibold text-slate-900">{value}</div>
+        <div className="relative overflow-hidden rounded-[24px] border border-slate-200/70 bg-white/92 p-5 shadow-card">
+            <div className="absolute -right-8 -top-8 h-24 w-24 rounded-full bg-primary/10 blur-2xl" />
+            <div className="relative">
+                <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-text-subtle">
+                    <span className="h-2 w-2 rounded-full bg-primary" />
+                    {label}
+                </div>
+            </div>
+            <div className="relative mt-3 text-3xl font-semibold text-slate-900">{value}</div>
             {hint ? <div className="mt-1 text-xs text-text-muted">{hint}</div> : null}
         </div>
     );
@@ -69,10 +75,10 @@ function StatCard({ label, value, hint = '' }) {
 
 function Badge({ children, tone = 'slate' }) {
     const toneClass = {
-        emerald: 'bg-emerald-100 text-emerald-700',
-        amber: 'bg-amber-100 text-amber-700',
-        rose: 'bg-rose-100 text-rose-700',
-        blue: 'bg-blue-100 text-blue-700',
+        emerald: 'bg-emerald-100/90 text-emerald-700',
+        amber: 'bg-amber-100/90 text-amber-700',
+        rose: 'bg-rose-100/90 text-rose-700',
+        blue: 'bg-cyan-100/90 text-cyan-800',
         slate: 'bg-slate-100 text-slate-700',
     }[tone] || 'bg-slate-100 text-slate-700';
 
@@ -103,6 +109,15 @@ function monthStartIso() {
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
     return `${year}-${month}-01`;
+}
+
+function displayDateToIso(value) {
+    if (!value || typeof value !== 'string') return todayIso();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+    const parts = value.split('/');
+    if (parts.length !== 3) return todayIso();
+    const [day, month, year] = parts;
+    return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
 export default function AttendanceWifi(props) {
@@ -147,11 +162,13 @@ export default function AttendanceWifi(props) {
     const [holidayModal, setHolidayModal] = useState({ open: false, item: null });
     const [holidayForm, setHolidayForm] = useState({ holiday_date: todayIso(), title: '', note: '', is_active: true });
     const [staffRows, setStaffRows] = useState([]);
-    const [staffPaging, setStaffPaging] = useState({ current_page: 1, last_page: 1, total: 0, per_page: 20 });
-    const [staffFilters, setStaffFilters] = useState({ search: '', role: '', per_page: 20, page: 1 });
+    const [staffPaging, setStaffPaging] = useState({ current_page: 1, last_page: 1, total: 0, per_page: 200 });
+    const [staffFilters, setStaffFilters] = useState({ search: '', role: '', per_page: 200, page: 1 });
     const [reportRows, setReportRows] = useState([]);
     const [reportSummary, setReportSummary] = useState({ total_rows: 0, total_work_units: 0, late_count: 0, approved_full_count: 0, holiday_count: 0 });
     const [reportFilters, setReportFilters] = useState({ start_date: monthStartIso(), end_date: todayIso(), user_id: '', search: '' });
+    const [manualRecordModal, setManualRecordModal] = useState({ open: false, item: null });
+    const [manualRecordForm, setManualRecordForm] = useState({ user_id: '', work_date: todayIso(), work_units: '1.0', check_in_time: '', note: '' });
 
     const tabs = useMemo(() => {
         const base = ['personal', 'requests'];
@@ -160,6 +177,20 @@ export default function AttendanceWifi(props) {
         }
         return base;
     }, [canManage]);
+
+    const manualStaffOptions = useMemo(() => {
+        const rows = [...staffRows];
+        const currentUserId = Number(manualRecordModal.item?.user_id || 0);
+        if (currentUserId && !rows.some((item) => Number(item.id) === currentUserId)) {
+            rows.unshift({
+                id: currentUserId,
+                name: manualRecordModal.item?.user_name || `Nhân sự #${currentUserId}`,
+                role: manualRecordModal.item?.role || '—',
+                department: manualRecordModal.item?.department || '—',
+            });
+        }
+        return rows;
+    }, [manualRecordModal.item, staffRows]);
 
     const stats = useMemo(() => {
         const todayRecord = dashboard?.today_record;
@@ -217,6 +248,20 @@ export default function AttendanceWifi(props) {
             decision_note: '',
         });
         setReviewModal({ open: true, item });
+    };
+
+    const openManualRecord = (item = null) => {
+        const fallbackUnits = Number.isFinite(Number(item?.work_units))
+            ? Number(item.work_units).toFixed(1)
+            : ((item?.employment_type || 'full_time') === 'full_time' ? '1.0' : '0.5');
+        setManualRecordForm({
+            user_id: item?.user_id ? String(item.user_id) : '',
+            work_date: displayDateToIso(item?.work_date),
+            work_units: fallbackUnits,
+            check_in_time: item?.check_in_at && item.check_in_at !== '—' ? String(item.check_in_at) : '',
+            note: item?.note || '',
+        });
+        setManualRecordModal({ open: true, item });
     };
 
     const loadDashboard = async () => {
@@ -457,21 +502,67 @@ export default function AttendanceWifi(props) {
         window.open(`/api/v1/attendance/export?${params.toString()}`, '_blank');
     };
 
+    const saveManualRecord = async () => {
+        try {
+            await axios.post('/api/v1/attendance/records/manual', {
+                user_id: Number(manualRecordForm.user_id),
+                work_date: manualRecordForm.work_date,
+                work_units: Number(manualRecordForm.work_units || 0),
+                check_in_time: manualRecordForm.check_in_time || null,
+                note: manualRecordForm.note || null,
+            });
+            toast.success('Đã cập nhật công thủ công.');
+            setManualRecordModal({ open: false, item: null });
+            await Promise.all([loadReport(reportFilters), loadRecords(recordFilters), loadDashboard()]);
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Cập nhật công thủ công thất bại.');
+        }
+    };
+
     return (
         <PageContainer
             auth={props.auth}
-            title="Chấm công WiFi"
+            title="Chấm công Wi-Fi"
             description="Check-in bằng WiFi/BSSID trên app mobile, đồng thời quản trị thiết bị, đơn đi muộn, ngày lễ và báo cáo công trên web."
             stats={stats}
         >
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="relative mt-1 overflow-hidden rounded-[30px] border border-slate-200/70 bg-white/90 p-6 shadow-soft">
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(20,184,166,0.14),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(15,23,42,0.06),transparent_28%)]" />
+                <div className="relative grid gap-5 xl:grid-cols-[1.12fr_0.88fr]">
+                    <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-primary/80">Mobile-first workflow</p>
+                        <h2 className="mt-3 text-3xl font-semibold leading-tight text-slate-900">Check-in diễn ra trên app, quản trị diễn ra trên web.</h2>
+                        <p className="mt-3 max-w-2xl text-sm leading-6 text-text-muted">
+                            Người dùng chấm công trên mobile với Wi-Fi/BSSID và thiết bị đã duyệt. Trên web, admin tập trung cấu hình rule,
+                            duyệt thiết bị, xử lý đơn đi muộn và theo dõi báo cáo theo cùng một ngôn ngữ giao diện.
+                        </p>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-1">
+                        <div className="rounded-[22px] border border-slate-200/70 bg-slate-50/90 p-4">
+                            <div className="text-sm font-semibold text-slate-900">Xin quyền ngay từ đầu</div>
+                            <div className="mt-1 text-sm leading-6 text-text-muted">App nên hỏi Wi-Fi/location và thông báo ngay khi vào để tránh ngắt luồng khi check-in.</div>
+                        </div>
+                        <div className="rounded-[22px] border border-slate-200/70 bg-slate-50/90 p-4">
+                            <div className="text-sm font-semibold text-slate-900">Thiết bị và Wi-Fi tách vai</div>
+                            <div className="mt-1 text-sm leading-6 text-text-muted">Mobile dùng để đọc BSSID. Web tập trung phê duyệt và cấu hình, không cố thay thế quyền hệ thống.</div>
+                        </div>
+                        <div className="rounded-[22px] border border-slate-200/70 bg-slate-50/90 p-4">
+                            <div className="text-sm font-semibold text-slate-900">Giao diện đồng nhất</div>
+                            <div className="mt-1 text-sm leading-6 text-text-muted">Palette teal/slate, card bo lớn và surface sáng giúp app lẫn web nhìn liền mạch hơn.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 {stats.map((item) => (
                     <StatCard key={item.label} label={item.label} value={item.value} hint={item.hint} />
                 ))}
             </div>
 
-            <div className="mt-5 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
-                Check-in và lấy BSSID WiFi hiện tại chỉ hỗ trợ trên app mobile vì trình duyệt web không có quyền đọc BSSID hệ thống. Màn web này dùng để duyệt, cấu hình, xem công và xuất báo cáo.
+            <div className="mt-5 rounded-[24px] border border-teal-200/70 bg-teal-50/85 px-5 py-4 text-sm leading-6 text-teal-900 shadow-card">
+                Check-in và lấy BSSID Wi-Fi hiện tại chỉ hỗ trợ trên app mobile vì trình duyệt web không có quyền đọc BSSID hệ thống.
+                Màn web này dành cho duyệt, cấu hình, xem công và xuất báo cáo theo cùng chuẩn hiển thị với app.
             </div>
 
             <div className="mt-5 flex flex-wrap gap-2">
@@ -480,7 +571,7 @@ export default function AttendanceWifi(props) {
                         key={key}
                         type="button"
                         onClick={() => setActiveTab(key)}
-                        className={`rounded-full px-4 py-2 text-sm font-semibold transition ${activeTab === key ? 'bg-primary text-white' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'}`}
+                        className={`rounded-full px-4 py-2.5 text-sm font-semibold transition ${activeTab === key ? 'bg-primary text-white shadow-lg shadow-primary/15' : 'border border-slate-200 bg-white text-slate-700 hover:-translate-y-0.5 hover:bg-slate-50'}`}
                     >
                         {attendanceTabs[key]}
                     </button>
@@ -931,9 +1022,10 @@ export default function AttendanceWifi(props) {
                         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
                             <div>
                                 <h3 className="text-lg font-semibold text-slate-900">Báo cáo công</h3>
-                                <p className="mt-1 text-sm text-text-muted">Lọc theo ngày bắt đầu/kết thúc để tổng hợp công và xuất file Excel.</p>
+                                <p className="mt-1 text-sm text-text-muted">Lọc theo ngày bắt đầu/kết thúc để tổng hợp công, sửa công tay theo bước 0.1 và xuất file Excel. 1.0 là đủ ngày công.</p>
                             </div>
                             <div className="flex flex-wrap gap-2">
+                                <button type="button" className={buttonSecondaryClass} onClick={() => openManualRecord()}>Sửa công tay</button>
                                 <button type="button" className={buttonSecondaryClass} onClick={() => loadReport(reportFilters)}>Xem báo cáo</button>
                                 <button type="button" className={buttonPrimaryClass} onClick={exportReport}>Xuất Excel</button>
                             </div>
@@ -971,12 +1063,13 @@ export default function AttendanceWifi(props) {
                                         <th className="px-4 py-3 text-left font-semibold text-slate-700">Công</th>
                                         <th className="px-4 py-3 text-left font-semibold text-slate-700">Trạng thái</th>
                                         <th className="px-4 py-3 text-left font-semibold text-slate-700">Nguồn</th>
+                                        <th className="px-4 py-3 text-right font-semibold text-slate-700">Thao tác</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 bg-white">
                                     {reportRows.length === 0 && (
                                         <tr>
-                                            <td className="px-4 py-6 text-center text-text-muted" colSpan={8}>Chưa có dữ liệu báo cáo trong khoảng này.</td>
+                                            <td className="px-4 py-6 text-center text-text-muted" colSpan={9}>Chưa có dữ liệu báo cáo trong khoảng này.</td>
                                         </tr>
                                     )}
                                     {reportRows.map((item) => (
@@ -989,6 +1082,9 @@ export default function AttendanceWifi(props) {
                                             <td className="px-4 py-3">{item.work_units}</td>
                                             <td className="px-4 py-3"><Badge tone={toneForStatus(item.status)}>{item.status_label}</Badge></td>
                                             <td className="px-4 py-3">{item.source_label}</td>
+                                            <td className="px-4 py-3 text-right">
+                                                <button type="button" className={buttonSecondaryClass} onClick={() => openManualRecord(item)}>Sửa công</button>
+                                            </td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -1084,6 +1180,7 @@ export default function AttendanceWifi(props) {
                     {reviewForm.status === 'approved' && reviewForm.approval_mode === 'manual' ? (
                         <FormField label="Số công duyệt" required className="md:col-span-2">
                             <input type="number" step="0.1" min="0" max="1" className={inputClass} value={reviewForm.approved_work_units} onChange={(e) => setReviewForm((s) => ({ ...s, approved_work_units: e.target.value }))} />
+                            <span className="mt-1 block text-xs text-text-muted">Hệ thống nhận bước 0.1. 1.0 là đủ ngày công, 0.5 là nửa buổi.</span>
                         </FormField>
                     ) : null}
                     <FormField label="Ghi chú duyệt" className="md:col-span-2">
@@ -1093,6 +1190,44 @@ export default function AttendanceWifi(props) {
                 <div className="mt-5 flex justify-end gap-3">
                     <button type="button" className={buttonSecondaryClass} onClick={() => setReviewModal({ open: false, item: null })}>Hủy</button>
                     <button type="button" className={buttonPrimaryClass} onClick={reviewRequest}>Xác nhận</button>
+                </div>
+            </Modal>
+
+            <Modal
+                open={manualRecordModal.open}
+                onClose={() => setManualRecordModal({ open: false, item: null })}
+                title={manualRecordModal.item ? `Sửa công ${manualRecordModal.item.user_name}` : 'Sửa công thủ công'}
+                description="Admin, administrator và kế toán có thể sửa công cho bất kỳ nhân sự nào theo bước 0.1. 1.0 là đủ ngày công."
+                size="md"
+            >
+                <div className="grid gap-4 md:grid-cols-2">
+                    <FormField label="Nhân sự" required className="md:col-span-2">
+                        <select className={inputClass} value={manualRecordForm.user_id} onChange={(e) => setManualRecordForm((s) => ({ ...s, user_id: e.target.value }))}>
+                            <option value="">Chọn nhân sự</option>
+                            {manualStaffOptions.map((item) => (
+                                <option key={item.id} value={item.id}>
+                                    {item.name} • {item.role} • {item.department || 'Không có phòng ban'}
+                                </option>
+                            ))}
+                        </select>
+                    </FormField>
+                    <FormField label="Ngày công" required>
+                        <input type="date" className={inputClass} value={manualRecordForm.work_date} onChange={(e) => setManualRecordForm((s) => ({ ...s, work_date: e.target.value }))} />
+                    </FormField>
+                    <FormField label="Giờ vào">
+                        <input type="time" className={inputClass} value={manualRecordForm.check_in_time} onChange={(e) => setManualRecordForm((s) => ({ ...s, check_in_time: e.target.value }))} />
+                    </FormField>
+                    <FormField label="Số công" required>
+                        <input type="number" step="0.1" min="0" max="1" className={inputClass} value={manualRecordForm.work_units} onChange={(e) => setManualRecordForm((s) => ({ ...s, work_units: e.target.value }))} />
+                        <span className="mt-1 block text-xs text-text-muted">Nhập từ 0.0 đến 1.0 theo bước 0.1. Ví dụ: 1.0 đủ ngày, 0.5 nửa buổi.</span>
+                    </FormField>
+                    <FormField label="Ghi chú" className="md:col-span-2">
+                        <textarea className={textAreaClass} value={manualRecordForm.note} onChange={(e) => setManualRecordForm((s) => ({ ...s, note: e.target.value }))} placeholder="Ví dụ: Điều chỉnh tay theo quyết định quản lý" />
+                    </FormField>
+                </div>
+                <div className="mt-5 flex justify-end gap-3">
+                    <button type="button" className={buttonSecondaryClass} onClick={() => setManualRecordModal({ open: false, item: null })}>Hủy</button>
+                    <button type="button" className={buttonPrimaryClass} onClick={saveManualRecord} disabled={!manualRecordForm.user_id || !manualRecordForm.work_date}>Lưu công</button>
                 </div>
             </Modal>
         </PageContainer>

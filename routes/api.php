@@ -121,6 +121,8 @@ Route::prefix('v1')->group(function () {
             ->middleware('role:admin,administrator,ke_toan');
         Route::post('/attendance/requests/{attendanceRequest}/review', [AttendanceController::class, 'reviewRequest'])
             ->middleware('role:admin,administrator,ke_toan');
+        Route::post('/attendance/records/manual', [AttendanceController::class, 'manualUpdateRecord'])
+            ->middleware('role:admin,administrator,ke_toan');
         Route::get('/attendance/holidays', [AttendanceController::class, 'holidays'])
             ->middleware('role:admin,administrator,ke_toan');
         Route::post('/attendance/holidays', [AttendanceController::class, 'holidayStore'])

@@ -610,8 +610,13 @@ class AttendanceController extends Controller
         $approvalMode = $status === 'approved'
             ? (string) ($validated['approval_mode'] ?? 'full_work')
             : null;
+        if ($status === 'approved' && $approvalMode === 'manual' && ! $this->isValidWorkUnitStep($validated['approved_work_units'] ?? null)) {
+            return response()->json([
+                'message' => 'Số công thủ công chỉ nhận bước 0.1 và tối đa 1.0 công.',
+            ], 422);
+        }
         $approvedUnits = $status === 'approved' && $approvalMode === 'manual'
-            ? (float) ($validated['approved_work_units'] ?? 0)
+            ? $this->normalizeWorkUnits($validated['approved_work_units'] ?? 0)
             : ($status === 'approved' && $approvalMode === 'full_work' ? null : null);
 
         $attendanceRequest->update([
@@ -646,6 +651,81 @@ class AttendanceController extends Controller
             'message' => $status === 'approved' ? 'Đã duyệt đơn chấm công.' : 'Đã từ chối đơn chấm công.',
             'item' => $this->attendanceRequestPayload($attendanceRequest->fresh(['user', 'decider'])),
             'record' => $record ? $this->recordPayload($record) : null,
+        ]);
+    }
+
+    public function manualUpdateRecord(
+        Request $request,
+        AttendanceService $attendance
+    ): JsonResponse {
+        if (! $this->canManageAttendance($request->user())) {
+            return response()->json(['message' => 'Không có quyền sửa công thủ công.'], 403);
+        }
+
+        $validated = $request->validate([
+            'user_id' => ['required', 'integer', 'exists:users,id'],
+            'work_date' => ['required', 'date'],
+            'work_units' => ['required', 'numeric', 'min:0', 'max:1'],
+            'check_in_time' => ['nullable', 'regex:/^\d{2}:\d{2}$/'],
+            'note' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        if (! $this->isValidWorkUnitStep($validated['work_units'])) {
+            return response()->json([
+                'message' => 'Số công thủ công chỉ nhận bước 0.1 trong khoảng từ 0.0 đến 1.0 công.',
+            ], 422);
+        }
+
+        $targetUser = User::query()->findOrFail((int) $validated['user_id']);
+        if (! $this->canTrackAttendance($targetUser)) {
+            return response()->json([
+                'message' => 'Nhân sự này hiện không thuộc diện chấm công WiFi.',
+            ], 422);
+        }
+
+        $workDate = Carbon::parse($validated['work_date'], 'Asia/Ho_Chi_Minh')->startOfDay();
+        $settings = $attendance->settings();
+        $evaluation = $attendance->evaluateCheckIn($targetUser, $workDate, $settings);
+        $record = AttendanceRecord::query()->firstOrNew([
+            'user_id' => (int) $targetUser->id,
+            'work_date' => $workDate->toDateString(),
+        ]);
+
+        $checkInAt = $record->check_in_at;
+        if (! empty($validated['check_in_time'])) {
+            [$hour, $minute] = array_map('intval', explode(':', (string) $validated['check_in_time']));
+            $checkInAt = $workDate->copy()->setTime($hour, $minute, 0);
+        }
+
+        $workUnits = $this->normalizeWorkUnits($validated['work_units']);
+        $defaultWorkUnits = (float) $evaluation['default_work_units'];
+        $status = $workUnits >= $defaultWorkUnits ? 'approved_full' : 'approved_partial';
+        $minutesLate = $checkInAt
+            ? max(0, $evaluation['required_start_at']->diffInMinutes($checkInAt, false))
+            : 0;
+
+        $record->fill([
+            'check_in_at' => $checkInAt,
+            'required_start_at' => $evaluation['required_start_at'],
+            'allowed_late_until' => $evaluation['allowed_late_until'],
+            'minutes_late' => $minutesLate,
+            'default_work_units' => $defaultWorkUnits,
+            'work_units' => $workUnits,
+            'employment_type' => (string) $evaluation['employment_type'],
+            'status' => $status,
+            'source' => 'manual_adjustment',
+            'note' => trim((string) ($validated['note'] ?? '')) ?: $record->note,
+            'approved_by' => (int) $request->user()->id,
+        ]);
+        $record->save();
+
+        return response()->json([
+            'message' => sprintf(
+                'Đã cập nhật công ngày %s cho %s.',
+                $workDate->format('d/m/Y'),
+                $targetUser->name
+            ),
+            'record' => $this->recordPayload($record->fresh()),
         ]);
     }
 
@@ -1070,6 +1150,9 @@ class AttendanceController extends Controller
             case 'request_approval':
                 $sourceLabel = 'Duyệt đơn';
                 break;
+            case 'manual_adjustment':
+                $sourceLabel = 'Điều chỉnh tay';
+                break;
             case 'holiday_auto':
                 $sourceLabel = 'Cron ngày lễ';
                 break;
@@ -1080,6 +1163,7 @@ class AttendanceController extends Controller
 
         return [
             'id' => (int) $item->id,
+            'user_id' => $user ? (int) $user->id : 0,
             'work_date' => optional($item->work_date)->format('d/m/Y'),
             'user_name' => $user && $user->name ? $user->name : '—',
             'role' => $user && $user->role ? $user->role : '—',
@@ -1097,5 +1181,22 @@ class AttendanceController extends Controller
             'wifi_bssid' => $item->wifi_bssid ?: '—',
             'note' => $item->note ?: '',
         ];
+    }
+
+    private function normalizeWorkUnits($value): float
+    {
+        return round((float) $value, 1);
+    }
+
+    private function isValidWorkUnitStep($value): bool
+    {
+        if (! is_numeric($value)) {
+            return false;
+        }
+
+        $numeric = (float) $value;
+        $scaled = round($numeric * 10, 6);
+
+        return abs($scaled - round($scaled)) < 0.0001;
     }
 }

@@ -13,12 +13,13 @@ export default function PageContainer({
         <Authenticated
             auth={auth}
             header={
-                <div className="rounded-2xl bg-white border border-slate-200/80 p-6 shadow-card">
+                <div className="relative overflow-hidden rounded-[28px] border border-slate-200/70 bg-slate-950 p-6 shadow-soft">
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(20,184,166,0.34),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(148,163,184,0.18),transparent_32%)]" />
                     <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                        <div>
-                        <p className="text-xs uppercase tracking-[0.2em] text-text-subtle">Tổng quan</p>
-                            <h1 className="text-2xl font-semibold text-slate-900">{title}</h1>
-                            <p className="text-sm text-text-muted mt-1">{description}</p>
+                        <div className="relative z-10">
+                            <p className="text-xs uppercase tracking-[0.22em] text-white/60">Workspace overview</p>
+                            <h1 className="mt-2 text-2xl font-semibold text-white">{title}</h1>
+                            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-200/82">{description}</p>
                         </div>
                     </div>
                 </div>
