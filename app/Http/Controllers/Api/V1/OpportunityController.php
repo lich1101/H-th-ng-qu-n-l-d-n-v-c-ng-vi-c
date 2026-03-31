@@ -69,6 +69,9 @@ class OpportunityController extends Controller
         ]);
         $validated['status'] = $validated['status'] ?? $this->defaultStatusCode();
         $validated['created_by'] = $request->user()->id;
+        if (empty($validated['assigned_to'])) {
+            $validated['assigned_to'] = (int) $request->user()->id;
+        }
         $validated['watcher_ids'] = $this->normalizeWatcherIds($validated['watcher_ids'] ?? []);
 
         $opportunity = Opportunity::create($validated);

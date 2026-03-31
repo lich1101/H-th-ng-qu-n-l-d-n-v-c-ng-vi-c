@@ -8,12 +8,37 @@ import AppIcon from '@/Components/AppIcon';
 import PaginationControls from '@/Components/PaginationControls';
 import TagMultiSelect from '@/Components/TagMultiSelect';
 import { useToast } from '@/Contexts/ToastContext';
+import { formatVietnamDate } from '@/lib/vietnamTime';
 
 const badgeStyle = (hex) => ({
     borderColor: hex,
     color: hex,
     backgroundColor: `${hex}20`,
 });
+
+const parseProductCategories = (rawValue) => {
+    if (!rawValue) return [];
+    if (Array.isArray(rawValue)) {
+        return rawValue.map((item) => String(item || '').trim()).filter(Boolean);
+    }
+
+    const text = String(rawValue || '').trim();
+    if (!text) return [];
+
+    try {
+        const parsed = JSON.parse(text);
+        if (Array.isArray(parsed)) {
+            return parsed.map((item) => String(item || '').trim()).filter(Boolean);
+        }
+    } catch {
+        // ignore parsing error and fallback to delimiter split
+    }
+
+    return text
+        .split(/[,;\n|]/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+};
 
 function LabeledField({ label, required = false, hint = '', className = '', children }) {
     return (
@@ -960,7 +985,10 @@ export default function CRM(props) {
                                         <th className="py-2">Phòng ban</th>
                                         <th className="py-2">Phụ trách</th>
                                         <th className="py-2">Chăm sóc</th>
-                                        <th className="py-2">Doanh thu</th>
+                                        <th className="py-2">Ngày tạo</th>
+                                        <th className="py-2">Danh mục sản phẩm</th>
+                                        <th className="py-2">Ghi chú</th>
+                                        <th className="py-2">Doanh số lũy kế</th>
                                         <th className="py-2">Công nợ</th>
                                         <th className="py-2">Số cơ hội</th>
                                         <th className="py-2">Số hợp đồng</th>
@@ -1026,6 +1054,19 @@ export default function CRM(props) {
                                                         + (client.care_staff_users.length > 2 ? ` +${client.care_staff_users.length - 2}` : '')
                                                     : '—'}
                                             </td>
+                                            <td className="py-2 text-xs text-text-muted">
+                                                {formatVietnamDate(client.created_at)}
+                                            </td>
+                                            <td className="allow-wrap py-2 text-xs text-text-muted">
+                                                {(() => {
+                                                    const categories = parseProductCategories(client.product_categories);
+                                                    if (categories.length === 0) return '—';
+                                                    return categories.slice(0, 2).join(', ') + (categories.length > 2 ? ` +${categories.length - 2}` : '');
+                                                })()}
+                                            </td>
+                                            <td className="allow-wrap py-2 text-xs text-text-muted">
+                                                {client.notes ? client.notes : '—'}
+                                            </td>
                                             <td className="py-2 text-slate-700">
                                                 {Number(client.total_revenue || 0).toLocaleString('vi-VN')}
                                             </td>
@@ -1081,7 +1122,7 @@ export default function CRM(props) {
                                     ))}
                                     {clients.length === 0 && (
                                         <tr>
-                                            <td className="py-6 text-center text-sm text-text-muted" colSpan={canBulkClientActions ? 14 : 13}>
+                                            <td className="py-6 text-center text-sm text-text-muted" colSpan={canBulkClientActions ? 17 : 16}>
                                                 Chưa có khách hàng nào.
                                             </td>
                                         </tr>

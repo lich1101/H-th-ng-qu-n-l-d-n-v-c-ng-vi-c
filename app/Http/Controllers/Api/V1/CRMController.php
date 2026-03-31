@@ -26,7 +26,10 @@ class CRMController extends Controller
                 'facebookPage',
                 'careStaffUsers:id,name,email',
             ])
-            ->withCount(['opportunities', 'contracts']);
+            ->withCount(['opportunities', 'contracts'])
+            ->withMax('careNotes as last_care_note_at', 'created_at')
+            ->withMax('opportunities as last_opportunity_activity_at', 'updated_at')
+            ->withMax('contracts as last_contract_activity_at', 'updated_at');
         CrmScope::applyClientScope($query, $request->user());
         if ($request->filled('search')) {
             $search = (string) $request->input('search');
@@ -74,7 +77,21 @@ class CRMController extends Controller
         if ($request->boolean('lead_only')) {
             $query->whereNotNull('lead_type_id');
         }
-        return response()->json($query->orderByDesc('id')->paginate((int) $request->input('per_page', 10)));
+        $query->select('clients.*')->selectRaw(
+            'GREATEST(
+                COALESCE(last_care_note_at, clients.updated_at),
+                COALESCE(last_opportunity_activity_at, clients.updated_at),
+                COALESCE(last_contract_activity_at, clients.updated_at),
+                clients.updated_at
+            ) as last_activity_at'
+        );
+
+        return response()->json(
+            $query
+                ->orderByDesc('last_activity_at')
+                ->orderByDesc('clients.id')
+                ->paginate((int) $request->input('per_page', 10))
+        );
     }
 
     public function storeClient(Request $request): JsonResponse

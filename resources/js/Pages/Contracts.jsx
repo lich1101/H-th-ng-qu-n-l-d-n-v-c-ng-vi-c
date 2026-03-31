@@ -1074,7 +1074,7 @@ export default function Contracts(props) {
                     </div>
                 )}
                 <div className="overflow-x-auto">
-                    <table className="min-w-full text-sm">
+                    <table className="table-spacious min-w-full text-sm">
                             <thead>
                                 <tr className="text-left text-xs uppercase tracking-wider text-text-subtle border-b border-slate-200">
                                     {canBulkActions && (
@@ -1090,6 +1090,10 @@ export default function Contracts(props) {
                                     )}
                                     <th className="py-2">Hợp đồng</th>
                                     <th className="py-2">Khách hàng</th>
+                                    <th className="py-2">SĐT khách hàng</th>
+                                    <th className="py-2">Ngày ký</th>
+                                    <th className="py-2">Ngày kết thúc</th>
+                                    <th className="py-2">Ghi chú</th>
                                     <th className="py-2">Nhân viên thu</th>
                                     <th className="py-2">Giá trị</th>
                                     <th className="py-2">Đã thu</th>
@@ -1130,6 +1134,10 @@ export default function Contracts(props) {
                                             </button>
                                         </td>
                                         <td className="py-2 text-slate-700">{c.client?.name || '—'}</td>
+                                        <td className="py-2 text-slate-700">{c.client?.phone || '—'}</td>
+                                        <td className="py-2 text-slate-700">{formatDateDisplay(c.signed_at)}</td>
+                                        <td className="py-2 text-slate-700">{formatDateDisplay(c.end_date)}</td>
+                                        <td className="allow-wrap py-2 text-slate-700">{c.notes || '—'}</td>
                                         <td className="py-2 text-slate-700">{c.collector?.name || '—'}</td>
                                         <td className="py-2 text-slate-700">{formatCurrency(resolveContractValue(c))}</td>
                                         <td className="py-2 text-slate-700">{formatCurrency(c.payments_total || 0)}</td>
@@ -1203,7 +1211,7 @@ export default function Contracts(props) {
                                 ))}
                                 {contracts.length === 0 && (
                                     <tr>
-                                        <td className="py-6 text-center text-sm text-text-muted" colSpan={canBulkActions ? 13 : 12}>
+                                        <td className="py-6 text-center text-sm text-text-muted" colSpan={canBulkActions ? 17 : 16}>
                                             Chưa có hợp đồng nào.
                                         </td>
                                     </tr>

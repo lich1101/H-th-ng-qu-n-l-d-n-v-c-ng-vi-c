@@ -52,6 +52,7 @@ function Field({ label, required = false, children, hint = '' }) {
 export default function Opportunities(props) {
     const toast = useToast();
     const userRole = props?.auth?.user?.role || '';
+    const currentUserId = Number(props?.auth?.user?.id || 0) || null;
     const canCreate = ['admin', 'quan_ly', 'nhan_vien'].includes(userRole);
     const canManageStatuses = userRole === 'admin';
     const canDelete = userRole === 'admin';
@@ -200,7 +201,11 @@ export default function Opportunities(props) {
 
     const openCreateForm = () => {
         setEditingId(null);
-        setForm(emptyOpportunityForm(defaultStatusCode));
+        const nextForm = emptyOpportunityForm(defaultStatusCode);
+        if (currentUserId) {
+            nextForm.assigned_to = String(currentUserId);
+        }
+        setForm(nextForm);
         setShowForm(true);
     };
 
@@ -593,7 +598,7 @@ export default function Opportunities(props) {
                             </select>
                         </Field>
 
-                        <Field label="Người quản lý/phụ trách">
+                        <Field label="Người quản lý/phụ trách" hint="Mặc định hệ thống gán tài khoản đang tạo cơ hội.">
                             <select
                                 className={filterControlClass}
                                 value={form.assigned_to}

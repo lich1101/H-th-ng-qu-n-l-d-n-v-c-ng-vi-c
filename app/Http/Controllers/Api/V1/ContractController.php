@@ -80,7 +80,11 @@ class ContractController extends Controller
             });
         }
 
-        $contracts = $query->orderByDesc('id')->paginate((int) $request->input('per_page', 15));
+        $contracts = $query
+            ->orderByRaw('CASE WHEN signed_at IS NULL THEN 1 ELSE 0 END')
+            ->orderByDesc('signed_at')
+            ->orderByDesc('id')
+            ->paginate((int) $request->input('per_page', 15));
         $contracts->getCollection()->transform(function (Contract $contract) use ($request) {
             return $this->appendContractPermissions($contract, $request->user());
         });
