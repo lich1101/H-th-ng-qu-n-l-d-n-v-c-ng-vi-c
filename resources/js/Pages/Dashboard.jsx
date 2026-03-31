@@ -69,12 +69,22 @@ export default function Dashboard(props) {
         const fetchData = async () => {
             setLoading(true);
             try {
-                const [summaryRes, reportRes] = await Promise.all([
+                const [summaryRes, reportRes] = await Promise.allSettled([
                     axios.get('/api/v1/public/summary'),
                     axios.get('/api/v1/reports/dashboard-summary'),
                 ]);
-                setSummary(summaryRes.data || {});
-                setReport(reportRes.data || {});
+
+                if (summaryRes.status === 'fulfilled') {
+                    setSummary(summaryRes.value.data || {});
+                } else {
+                    setSummary({});
+                }
+
+                if (reportRes.status === 'fulfilled') {
+                    setReport(reportRes.value.data || {});
+                } else {
+                    setReport({});
+                }
             } catch {
                 // ignore dashboard bootstrap errors
             } finally {
@@ -243,7 +253,7 @@ export default function Dashboard(props) {
                         {roleBreakdown.length === 0 ? (
                             <p className="text-sm text-text-muted">Chưa có dữ liệu phân bổ vai trò.</p>
                         ) : (
-                            <DonutChart data={roleBreakdown} centerLabel="Vai trò" layout="horizontal" size={180} thickness={28} />
+                            <DonutChart data={roleBreakdown} centerLabel="Vai trò" layout="vertical" size={196} thickness={30} />
                         )}
                     </div>
                 </section>

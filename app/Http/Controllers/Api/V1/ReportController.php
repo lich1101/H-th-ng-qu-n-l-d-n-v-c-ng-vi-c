@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Http\Helpers\CrmScope;
+use App\Http\Helpers\ProjectScope;
 use App\Models\Project;
 use App\Models\ContractItem;
 use App\Models\ServiceBacklinkItem;
@@ -28,6 +30,14 @@ class ReportController extends Controller
 {
     public function dashboardSummary(): JsonResponse
     {
+        try {
+        $viewer = request()->user();
+        $projectBaseQuery = ProjectScope::applyProjectScope(Project::query(), $viewer);
+        $taskBaseQuery = ProjectScope::applyTaskScope(Task::query(), $viewer);
+        $clientBaseQuery = CrmScope::applyClientScope(Client::query(), $viewer);
+        $opportunityBaseQuery = CrmScope::applyOpportunityScope(Opportunity::query(), $viewer);
+        $contractBaseQuery = CrmScope::applyContractScope(Contract::query(), $viewer);
+
         $now = now();
         $currentPeriodStart = $now->copy()->startOfMonth();
         $currentPeriodEnd = $now->copy()->endOfMonth();
@@ -36,18 +46,26 @@ class ReportController extends Controller
         $samePeriodLastYearStart = $currentPeriodStart->copy()->subYear();
         $samePeriodLastYearEnd = $currentPeriodEnd->copy()->subYear();
 
-        $totalProjects = Project::count();
-        $inProgressProjects = Project::where('status', 'dang_trien_khai')->count();
-        $pendingReviewProjects = Project::where('status', 'cho_duyet')->count();
+        $totalProjects = (clone $projectBaseQuery)->count();
+        $inProgressProjects = (clone $projectBaseQuery)
+            ->where('status', 'dang_trien_khai')
+            ->count();
+        $pendingReviewProjects = (clone $projectBaseQuery)
+            ->where('status', 'cho_duyet')
+            ->count();
 
-        $totalTasks = Task::count();
-        $completedTasks = Task::whereIn('status', ['done'])->count();
-        $overdueTasks = Task::whereNotNull('deadline')
+        $totalTasks = (clone $taskBaseQuery)->count();
+        $completedTasks = (clone $taskBaseQuery)
+            ->whereIn('status', ['done'])
+            ->count();
+        $overdueTasks = (clone $taskBaseQuery)
+            ->whereNotNull('deadline')
             ->where('deadline', '<', now())
             ->whereNotIn('status', ['done'])
             ->count();
 
-        $serviceBreakdown = Project::selectRaw('service_type, COUNT(*) as total')
+        $serviceBreakdown = (clone $projectBaseQuery)
+            ->selectRaw('service_type, COUNT(*) as total')
             ->groupBy('service_type')
             ->orderByDesc('total')
             ->get()
@@ -109,25 +127,34 @@ class ReportController extends Controller
             })
             ->values();
 
-        $employeeUsers = User::query()
-            ->whereIn('role', ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'])
+        $employeeUsersQuery = User::query()
+            ->whereIn('role', ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan']);
+        if (! CrmScope::hasGlobalScope($viewer)) {
+            if ($viewer->role === 'quan_ly') {
+                $employeeUsersQuery->whereIn('id', CrmScope::managerVisibleUserIds($viewer)->all());
+            } else {
+                $employeeUsersQuery->where('id', $viewer->id);
+            }
+        }
+
+        $employeeUsers = $employeeUsersQuery
             ->with('departmentRelation:id,name')
             ->orderBy('name')
             ->get(['id', 'name', 'role', 'department_id', 'avatar_url', 'is_active']);
 
-        $contractsForCurrentPeriod = Contract::query()
+        $contractsForCurrentPeriod = (clone $contractBaseQuery)
             ->with('client:id,assigned_staff_id')
             ->where('approval_status', 'approved')
             ->whereBetween('created_at', [$currentPeriodStart, $currentPeriodEnd])
             ->get();
 
-        $contractsForPreviousPeriod = Contract::query()
+        $contractsForPreviousPeriod = (clone $contractBaseQuery)
             ->with('client:id,assigned_staff_id')
             ->where('approval_status', 'approved')
             ->whereBetween('created_at', [$previousPeriodStart, $previousPeriodEnd])
             ->get();
 
-        $contractsForSamePeriodLastYear = Contract::query()
+        $contractsForSamePeriodLastYear = (clone $contractBaseQuery)
             ->with('client:id,assigned_staff_id')
             ->where('approval_status', 'approved')
             ->whereBetween('created_at', [$samePeriodLastYearStart, $samePeriodLastYearEnd])
@@ -167,21 +194,21 @@ class ReportController extends Controller
         $samePeriodLastYearMetrics = $aggregateRevenueByStaff($contractsForSamePeriodLastYear);
         $totalCurrentRevenue = collect($currentStaffMetrics)->sum('revenue');
 
-        $newClientsByStaff = Client::query()
+        $newClientsByStaff = (clone $clientBaseQuery)
             ->selectRaw('assigned_staff_id as staff_id, COUNT(*) as total')
             ->whereNotNull('assigned_staff_id')
             ->whereBetween('created_at', [$currentPeriodStart, $currentPeriodEnd])
             ->groupBy('assigned_staff_id')
             ->pluck('total', 'staff_id');
 
-        $newOpportunitiesByStaff = Opportunity::query()
+        $newOpportunitiesByStaff = (clone $opportunityBaseQuery)
             ->selectRaw('COALESCE(assigned_to, created_by) as staff_id, COUNT(*) as total')
             ->whereRaw('COALESCE(assigned_to, created_by) IS NOT NULL')
             ->whereBetween('created_at', [$currentPeriodStart, $currentPeriodEnd])
             ->groupBy(DB::raw('COALESCE(assigned_to, created_by)'))
             ->pluck('total', 'staff_id');
 
-        $activeTasksByStaff = Task::query()
+        $activeTasksByStaff = (clone $taskBaseQuery)
             ->selectRaw('assignee_id as staff_id, COUNT(*) as total')
             ->whereNotNull('assignee_id')
             ->whereNotIn('status', ['done'])
@@ -282,7 +309,7 @@ class ReportController extends Controller
             ];
         });
 
-        $createdClientsTimeline = Client::query()
+        $createdClientsTimeline = (clone $clientBaseQuery)
             ->whereBetween('created_at', [
                 $customerGrowthPeriods->first()['start'],
                 $customerGrowthPeriods->last()['end'],
@@ -296,7 +323,7 @@ class ReportController extends Controller
             }
         }
 
-        $approvedContractsTimeline = Contract::query()
+        $approvedContractsTimeline = (clone $contractBaseQuery)
             ->where('approval_status', 'approved')
             ->whereBetween('created_at', [
                 $customerGrowthPeriods->first()['start'],
@@ -334,8 +361,17 @@ class ReportController extends Controller
             })
             ->values();
 
-        $employeeRoleBreakdown = User::query()
+        $employeeRoleBreakdownQuery = User::query()
             ->whereIn('role', ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'])
+            ->when(! CrmScope::hasGlobalScope($viewer), function ($query) use ($viewer) {
+                if ($viewer->role === 'quan_ly') {
+                    $query->whereIn('id', CrmScope::managerVisibleUserIds($viewer)->all());
+                } else {
+                    $query->where('id', $viewer->id);
+                }
+            });
+
+        $employeeRoleBreakdown = $employeeRoleBreakdownQuery
             ->selectRaw('role, COUNT(*) as total')
             ->groupBy('role')
             ->orderByDesc('total')
@@ -397,6 +433,59 @@ class ReportController extends Controller
                 'current_to' => $currentPeriodEnd->toDateString(),
             ],
         ]);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'projects' => [
+                    'total' => 0,
+                    'in_progress' => 0,
+                    'pending_review' => 0,
+                ],
+                'tasks' => [
+                    'total' => 0,
+                    'completed' => 0,
+                    'overdue' => 0,
+                    'on_time_rate' => 0,
+                ],
+                'service_breakdown' => [],
+                'projects_total' => 0,
+                'projects_in_progress' => 0,
+                'projects_pending_review' => 0,
+                'tasks_total' => 0,
+                'tasks_overdue' => 0,
+                'on_time_rate' => 0,
+                'links_total' => 0,
+                'links_live' => 0,
+                'links_pending' => 0,
+                'content_words' => 0,
+                'seo_score' => 0,
+                'audit_total' => 0,
+                'audit_done' => 0,
+                'audit_open' => 0,
+                'website_total' => 0,
+                'website_indexed' => 0,
+                'website_traffic_avg' => 0,
+                'website_ranking_avg' => 0,
+                'da_buckets' => [],
+                'recent_links' => [],
+                'staff_sales_breakdown' => [],
+                'customer_growth' => [],
+                'employee_stats' => [],
+                'employee_role_breakdown' => [],
+                'employee_summary' => [
+                    'total' => 0,
+                    'active' => 0,
+                    'managers' => 0,
+                    'staff' => 0,
+                ],
+                'period' => [
+                    'current_label' => 'Tháng này',
+                    'current_from' => now()->startOfMonth()->toDateString(),
+                    'current_to' => now()->endOfMonth()->toDateString(),
+                ],
+            ]);
+        }
     }
 
     public function revenueByDepartment(Request $request): JsonResponse

@@ -151,7 +151,6 @@ export default function Contracts(props) {
     const [contractMeta, setContractMeta] = useState({ current_page: 1, last_page: 1, total: 0 });
     const [filters, setFilters] = useState({ search: '', status: '', client_id: '', approval_status: '', handover_receive_status: '', per_page: 20, page: 1 });
     const [form, setForm] = useState({
-        code: '',
         title: '',
         client_id: '',
         project_id: '',
@@ -498,7 +497,6 @@ export default function Contracts(props) {
         setEditingId(null);
         setEditingCanManage(true);
         setForm({
-            code: '',
             title: '',
             client_id: '',
             project_id: '',
@@ -536,7 +534,6 @@ export default function Contracts(props) {
             }
             setEditingCanManage(true);
             setForm({
-                code: detail.code || '',
                 title: detail.title || '',
                 client_id: detail.client_id || '',
                 project_id: detail.project_id || '',
@@ -821,7 +818,6 @@ export default function Contracts(props) {
             return toast.error('Vui lòng chọn khách hàng và nhập tiêu đề hợp đồng.');
         }
         const payload = {
-            code: form.code || null,
             title: form.title,
             client_id: Number(form.client_id),
             project_id: form.project_id ? Number(form.project_id) : null,
@@ -1192,24 +1188,12 @@ export default function Contracts(props) {
                 open={showForm}
                 onClose={closeForm}
                 title={editingId ? `Sửa hợp đồng #${editingId}` : 'Tạo hợp đồng'}
-                description="Thiết lập thông tin hợp đồng và danh sách sản phẩm."
+                description="Mã hợp đồng sẽ tự sinh. Bạn chỉ cần nhập nghiệp vụ, người phụ trách và danh sách sản phẩm."
                 size="xl"
             >
                 <div className="space-y-4 text-sm">
                     <div className="rounded-2xl border border-slate-200/80 bg-slate-50 p-4">
                         <div className="grid gap-4 md:grid-cols-2">
-                            <LabeledField
-                                label="Mã hợp đồng"
-                                hint="Có thể để trống để hệ thống tự sinh mã."
-                                className="md:col-span-2"
-                            >
-                                <input
-                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
-                                    placeholder="Ví dụ: CTR-20260318-ABCD"
-                                    value={form.code}
-                                    onChange={(e) => setForm((s) => ({ ...s, code: e.target.value }))}
-                                />
-                            </LabeledField>
                             <LabeledField label="Tiêu đề hợp đồng" required className="md:col-span-2">
                                 <input
                                     className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"

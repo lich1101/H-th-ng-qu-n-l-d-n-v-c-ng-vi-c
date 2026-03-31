@@ -107,16 +107,16 @@ export default function DonutChart({
     const isHorizontal = layout === 'horizontal';
 
     return (
-        <div className={isHorizontal ? 'grid h-full gap-6 lg:grid-cols-[minmax(280px,360px)_1fr] lg:items-start' : 'flex flex-col items-center gap-3'}>
+        <div className={isHorizontal ? 'grid h-full gap-6 xl:grid-cols-[minmax(220px,280px)_minmax(0,1fr)] xl:items-center' : 'flex flex-col items-center gap-4'}>
             <div
-                className={isHorizontal ? 'flex justify-center' : ''}
+                className={isHorizontal ? 'flex justify-center xl:justify-start' : ''}
             >
-                <div className="relative" style={{ width: size, height: size }}>
+                <div className="relative mx-auto" style={{ width: size, height: size }}>
                 {hoveredSegment ? (
-                    <div className="pointer-events-none absolute left-1/2 top-2 z-20 -translate-x-1/2 rounded-xl bg-slate-900/95 px-3 py-2 text-center text-[11px] text-white shadow-xl">
+                    <div className="pointer-events-none absolute left-1/2 top-2 z-20 -translate-x-1/2 rounded-2xl bg-slate-900/95 px-3.5 py-2.5 text-center text-xs text-white shadow-xl">
                         <div className="font-semibold">{hoveredSegment.label}</div>
-                        <div>{hoveredSegment.value.toLocaleString('vi-VN')}</div>
-                        <div className="text-slate-200">
+                        <div className="mt-0.5">{hoveredSegment.value.toLocaleString('vi-VN')}</div>
+                        <div className="mt-0.5 text-[11px] text-slate-200">
                             {hoveredSegment.percent.toLocaleString('vi-VN', { maximumFractionDigits: 1 })}%
                         </div>
                     </div>
@@ -162,32 +162,32 @@ export default function DonutChart({
                         left: thickness,
                     }}
                 >
-                    <p className="text-xs text-text-muted">{centerLabel}</p>
-                    <p className="text-lg font-semibold text-slate-900">{total.toLocaleString('vi-VN')}</p>
+                    <p className="text-[13px] font-medium text-text-muted">{centerLabel}</p>
+                    <p className="mt-1 text-[28px] font-semibold leading-none text-slate-900">{total.toLocaleString('vi-VN')}</p>
                 </div>
                 </div>
             </div>
-            <div className={`w-full text-xs ${isHorizontal ? 'grid content-start auto-rows-min gap-2 sm:grid-cols-2' : 'space-y-2'}`}>
+            <div className={`w-full ${isHorizontal ? 'grid content-start auto-rows-min gap-2.5' : 'space-y-2.5'}`}>
                 {normalized.map((item) => (
                     <button
                         key={item.label}
                         type="button"
-                        className={`flex w-full items-center justify-between gap-3 rounded-xl text-left hover:bg-slate-50 ${isHorizontal ? 'px-3 py-2' : 'px-2 py-1'}`}
+                        className={`flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white text-left shadow-sm transition hover:border-slate-300 hover:bg-slate-50 ${isHorizontal ? 'px-3.5 py-3' : 'px-3 py-2.5'}`}
                         onMouseEnter={() => {
                             const segment = segments.find((seg) => seg.label === item.label);
                             if (segment) setHoveredSegment(segment);
                         }}
                         onMouseLeave={() => setHoveredSegment((current) => (current?.label === item.label ? null : current))}
                     >
-                        <div className="flex items-center gap-2">
-                            <span className="h-2.5 w-2.5 rounded-full" style={{ background: item.color }} />
-                            <span className="text-slate-700">{item.label}</span>
+                        <div className="flex min-w-0 items-center gap-2.5">
+                            <span className="h-3 w-3 flex-none rounded-full ring-4 ring-slate-50" style={{ background: item.color }} />
+                            <span className="truncate text-sm font-medium text-slate-700">{item.label}</span>
                         </div>
-                        <span className="font-semibold text-slate-900">{item.value.toLocaleString('vi-VN')}</span>
+                        <span className="flex-none text-sm font-semibold text-slate-900">{item.value.toLocaleString('vi-VN')}</span>
                     </button>
                 ))}
                 {normalized.length === 0 && (
-                    <p className="text-xs text-text-muted text-center">Chưa có dữ liệu.</p>
+                    <p className="py-2 text-sm text-text-muted text-center">Chưa có dữ liệu.</p>
                 )}
             </div>
         </div>

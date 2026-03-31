@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Http\Helpers\CrmScope;
 use App\Models\ClientCareNote;
 use App\Models\Client;
 use App\Models\Opportunity;
@@ -234,14 +235,11 @@ class ClientFlowController extends Controller
         if (! $user) {
             return false;
         }
-        if (in_array($user->role, ['admin', 'ke_toan'], true)) {
+        if (CrmScope::hasGlobalScope($user)) {
             return true;
         }
         if ($user->role === 'quan_ly') {
-            $deptIds = $user->managedDepartments()->pluck('id');
-            if ($client->assigned_department_id && $deptIds->contains($client->assigned_department_id)) {
-                return true;
-            }
+            return CrmScope::canManagerAccessClient($user, $client);
         }
 
         if ((int) $client->assigned_staff_id === (int) $user->id) {
@@ -268,8 +266,7 @@ class ClientFlowController extends Controller
         }
 
         if ($user->role === 'quan_ly') {
-            $deptIds = $user->managedDepartments()->pluck('id');
-            return $client->assigned_department_id && $deptIds->contains($client->assigned_department_id);
+            return CrmScope::canManagerAccessClient($user, $client);
         }
 
         if ((int) $client->assigned_staff_id === (int) $user->id) {

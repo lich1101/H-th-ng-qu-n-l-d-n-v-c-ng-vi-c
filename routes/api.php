@@ -293,7 +293,7 @@ Route::prefix('v1')->group(function () {
         Route::get('/contracts/{contract}', [ContractController::class, 'show'])
             ->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
         Route::post('/contracts', [ContractController::class, 'store'])
-            ->middleware('role:admin,quan_ly,ke_toan');
+            ->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
         Route::put('/contracts/{contract}', [ContractController::class, 'update'])
             ->middleware('role:admin,quan_ly,ke_toan');
         Route::delete('/contracts/{contract}', [ContractController::class, 'destroy'])

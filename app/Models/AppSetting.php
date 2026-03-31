@@ -64,6 +64,10 @@ class AppSetting extends Model
         'attendance_late_grace_minutes',
         'attendance_reminder_enabled',
         'attendance_reminder_minutes_before',
+        'app_android_apk_url',
+        'app_ios_testflight_url',
+        'app_release_notes',
+        'app_release_version',
         'updated_by',
     ];
 
@@ -158,6 +162,10 @@ class AppSetting extends Model
             'attendance_late_grace_minutes' => 10,
             'attendance_reminder_enabled' => true,
             'attendance_reminder_minutes_before' => 10,
+            'app_android_apk_url' => null,
+            'app_ios_testflight_url' => null,
+            'app_release_notes' => null,
+            'app_release_version' => null,
         ];
     }
 }

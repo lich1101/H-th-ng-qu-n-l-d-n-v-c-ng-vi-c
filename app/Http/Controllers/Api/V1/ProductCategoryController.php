@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\ProductCategory;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
 
 class ProductCategoryController extends Controller
 {
@@ -32,14 +31,12 @@ class ProductCategoryController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'code' => ['nullable', 'string', 'max:40', 'unique:product_categories,code'],
+            'code' => ['required', 'string', 'max:40', 'regex:/^[A-Za-z0-9_-]+$/', 'unique:product_categories,code'],
             'name' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'is_active' => ['nullable', 'boolean'],
         ]);
-        if (empty($validated['code'])) {
-            $validated['code'] = $this->generateCode();
-        }
+        $validated['code'] = strtoupper(trim((string) $validated['code']));
         $validated['is_active'] = $validated['is_active'] ?? true;
 
         $category = ProductCategory::create($validated);
@@ -50,11 +47,14 @@ class ProductCategoryController extends Controller
     public function update(Request $request, ProductCategory $productCategory): JsonResponse
     {
         $validated = $request->validate([
-            'code' => ['sometimes', 'string', 'max:40', 'unique:product_categories,code,' . $productCategory->id],
+            'code' => ['sometimes', 'required', 'string', 'max:40', 'regex:/^[A-Za-z0-9_-]+$/', 'unique:product_categories,code,' . $productCategory->id],
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'is_active' => ['nullable', 'boolean'],
         ]);
+        if (array_key_exists('code', $validated)) {
+            $validated['code'] = strtoupper(trim((string) $validated['code']));
+        }
         $productCategory->update($validated);
 
         return response()->json($productCategory);
@@ -65,17 +65,5 @@ class ProductCategoryController extends Controller
         $productCategory->delete();
 
         return response()->json(['message' => 'Đã xóa danh mục sản phẩm.']);
-    }
-
-    private function generateCode(): string
-    {
-        $prefix = 'DM-' . now()->format('Ymd');
-        for ($i = 1; $i <= 9999; $i++) {
-            $code = $prefix . '-' . str_pad((string) $i, 4, '0', STR_PAD_LEFT);
-            if (! ProductCategory::where('code', $code)->exists()) {
-                return $code;
-            }
-        }
-        return $prefix . '-' . strtoupper(Str::random(4));
     }
 }

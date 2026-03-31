@@ -32,6 +32,9 @@ class Kernel extends ConsoleKernel
         $schedule->command('contracts:send-reminders')
             ->everyMinute()
             ->timezone('Asia/Ho_Chi_Minh');
+        $schedule->command('opportunities:send-reminders')
+            ->everyMinute()
+            ->timezone('Asia/Ho_Chi_Minh');
         $schedule->command('attendance:send-reminders')
             ->everyMinute()
             ->timezone('Asia/Ho_Chi_Minh');

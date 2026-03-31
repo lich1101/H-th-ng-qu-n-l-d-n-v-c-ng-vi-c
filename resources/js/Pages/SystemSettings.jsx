@@ -12,6 +12,7 @@ const TABS = [
     { key: 'gsc', label: 'Google Search Console' },
     { key: 'notifications', label: 'Thông báo thiết bị' },
     { key: 'diagnostics', label: 'Kết nối & thiết bị' },
+    { key: 'mobile_app', label: 'Tải app mobile' },
     { key: 'mobile_devices', label: 'Thiết bị di động người dùng' },
 ];
 const TAB_KEYS = new Set(TABS.map((tab) => tab.key));
@@ -75,6 +76,10 @@ const initialSettings = (settings) => ({
     gsc_recipes_path_token: settings?.gsc_recipes_path_token || '/recipes',
     gsc_brand_terms: Array.isArray(settings?.gsc_brand_terms) ? settings.gsc_brand_terms.join('\n') : '',
     gsc_sync_time: settings?.gsc_sync_time || '11:17',
+    app_android_apk_url: settings?.app_android_apk_url || '',
+    app_ios_testflight_url: settings?.app_ios_testflight_url || '',
+    app_release_notes: settings?.app_release_notes || '',
+    app_release_version: settings?.app_release_version || '',
 });
 
 const initialBotForm = (bot = null) => ({
@@ -180,6 +185,7 @@ export default function SystemSettings(props) {
     const [baseSettings, setBaseSettings] = useState(initialSettings(props.settings));
     const [form, setForm] = useState(initialSettings(props.settings));
     const [logoFile, setLogoFile] = useState(null);
+    const [apkFile, setApkFile] = useState(null);
     const [preview, setPreview] = useState(props.settings?.logo_url || '');
     const [showPreview, setShowPreview] = useState(false);
     const [statusLoading, setStatusLoading] = useState(false);
@@ -714,8 +720,15 @@ export default function SystemSettings(props) {
             formData.append('gsc_recipes_path_token', form.gsc_recipes_path_token || '/recipes');
             formData.append('gsc_brand_terms', form.gsc_brand_terms || '');
             formData.append('gsc_sync_time', form.gsc_sync_time || '11:17');
+            formData.append('app_android_apk_url', form.app_android_apk_url || '');
+            formData.append('app_ios_testflight_url', form.app_ios_testflight_url || '');
+            formData.append('app_release_notes', form.app_release_notes || '');
+            formData.append('app_release_version', form.app_release_version || '');
             if (logoFile) {
                 formData.append('logo', logoFile);
+            }
+            if (apkFile) {
+                formData.append('app_android_apk_file', apkFile);
             }
 
             const res = await axios.post('/api/v1/settings', formData, {
@@ -728,6 +741,7 @@ export default function SystemSettings(props) {
             if (data.primary_color) applyPrimary(data.primary_color);
             if (data.logo_url) setPreview(data.logo_url);
             setLogoFile(null);
+            setApkFile(null);
             toast.success('Đã cập nhật cài đặt hệ thống.');
             await reloadSystemStatus();
         } catch (e) {
@@ -2102,6 +2116,84 @@ export default function SystemSettings(props) {
                     </div>
                 )}
 
+                {activeTab === 'mobile_app' && (
+                    <div className="space-y-4">
+                        <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card">
+                            <h3 className="text-sm font-semibold text-slate-900">Phân phối ứng dụng mobile</h3>
+                            <p className="mt-1 text-xs text-text-muted">
+                                Cấu hình một nơi chung để nhân sự tải APK Android hoặc mở TestFlight iOS từ web.
+                            </p>
+
+                            <div className="mt-4 grid gap-4 md:grid-cols-2">
+                                <div>
+                                    <label className="text-xs text-text-muted">Phiên bản phát hành</label>
+                                    <input
+                                        className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                        value={form.app_release_version}
+                                        onChange={(e) => setForm((s) => ({ ...s, app_release_version: e.target.value }))}
+                                        placeholder="Ví dụ: 1.0.8"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs text-text-muted">Link TestFlight iOS</label>
+                                    <input
+                                        className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                        value={form.app_ios_testflight_url}
+                                        onChange={(e) => setForm((s) => ({ ...s, app_ios_testflight_url: e.target.value }))}
+                                        placeholder="https://testflight.apple.com/join/..."
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="mt-4 grid gap-4 md:grid-cols-2">
+                                <div>
+                                    <label className="text-xs text-text-muted">Link APK Android</label>
+                                    <input
+                                        className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                        value={form.app_android_apk_url}
+                                        onChange={(e) => setForm((s) => ({ ...s, app_android_apk_url: e.target.value }))}
+                                        placeholder="https://jobs.clickon.vn/storage/app-builds/..."
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs text-text-muted">Upload file APK</label>
+                                    <div className="mt-2 flex items-center gap-3">
+                                        <label className="flex-1 cursor-pointer rounded-2xl border border-dashed border-slate-200/80 px-3 py-2 text-sm text-text-muted hover:border-primary">
+                                            {apkFile ? apkFile.name : 'Chọn file .apk'}
+                                            <input
+                                                type="file"
+                                                accept=".apk,application/vnd.android.package-archive"
+                                                className="hidden"
+                                                onChange={(e) => setApkFile(e.target.files?.[0] || null)}
+                                            />
+                                        </label>
+                                        {form.app_android_apk_url ? (
+                                            <a
+                                                href={form.app_android_apk_url}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="rounded-2xl border border-slate-200/80 px-4 py-2 text-sm font-semibold text-slate-700"
+                                            >
+                                                Mở link
+                                            </a>
+                                        ) : null}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="mt-4">
+                                <label className="text-xs text-text-muted">Ghi chú phát hành</label>
+                                <textarea
+                                    className="mt-2 min-h-[180px] w-full rounded-2xl border border-slate-200/80 px-3 py-3 text-sm"
+                                    value={form.app_release_notes}
+                                    onChange={(e) => setForm((s) => ({ ...s, app_release_notes: e.target.value }))}
+                                    placeholder={'Ví dụ:\n- Sửa lỗi chấm công Wi-Fi\n- Cập nhật biểu đồ dashboard\n- Tối ưu giao diện hợp đồng'}
+                                />
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {activeTab === 'mobile_devices' && (
                     <div className="space-y-4">
                         <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card">
@@ -2307,6 +2399,7 @@ export default function SystemSettings(props) {
                             onClick={() => {
                                 setForm(baseSettings);
                                 setLogoFile(null);
+                                setApkFile(null);
                                 setPreview(baseSettings?.logo_url || '');
                             }}
                         >

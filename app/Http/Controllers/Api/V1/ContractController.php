@@ -17,7 +17,6 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
-use Illuminate\Validation\Rule;
 
 class ContractController extends Controller
 {
@@ -115,9 +114,7 @@ class ContractController extends Controller
         if ($error = $this->validateAssignableCareStaffIds($request->user(), $careStaffIds)) {
             return response()->json(['message' => $error], 422);
         }
-        if (empty($validated['code'])) {
-            $validated['code'] = $this->generateContractCode();
-        }
+        $validated['code'] = $this->generateContractCode();
         $validated['created_by'] = $request->user()->id;
         unset($validated['project_id']);
 
@@ -355,12 +352,6 @@ class ContractController extends Controller
     private function rules(?int $contractId = null, bool $withOptional = false): array
     {
         $rules = [
-            'code' => [
-                'nullable',
-                'string',
-                'max:40',
-                Rule::unique('contracts', 'code')->ignore($contractId),
-            ],
             'title' => ['required', 'string', 'max:255'],
             'client_id' => ['required', 'integer', 'exists:clients,id'],
             'opportunity_id' => ['nullable', 'integer', 'exists:opportunities,id'],
@@ -748,9 +739,7 @@ class ContractController extends Controller
         }
 
         if ($user->role === 'quan_ly') {
-            $deptIds = $user->managedDepartments()->pluck('id');
-
-            if ($client->assigned_department_id && $deptIds->contains((int) $client->assigned_department_id)) {
+            if (CrmScope::canManagerAccessClient($user, $client)) {
                 return true;
             }
 
@@ -766,36 +755,7 @@ class ContractController extends Controller
 
     private function isManagerOfContractDepartment(User $user, Contract $contract): bool
     {
-        if ($user->role !== 'quan_ly') {
-            return false;
-        }
-
-        if ((int) $contract->collector_user_id === (int) $user->id) {
-            return true;
-        }
-
-        $deptIds = $user->managedDepartments()->pluck('id');
-        if ($deptIds->isEmpty()) {
-            return false;
-        }
-
-        $contract->loadMissing('client');
-        if ($contract->client && $contract->client->assigned_department_id && $deptIds->contains((int) $contract->client->assigned_department_id)) {
-            return true;
-        }
-
-        $contract->loadMissing('collector');
-        $contract->loadMissing('careStaffUsers:id,department_id');
-
-        if ($contract->collector
-            && $contract->collector->department_id
-            && $deptIds->contains((int) $contract->collector->department_id)) {
-            return true;
-        }
-
-        return $contract->careStaffUsers->contains(function ($staff) use ($deptIds) {
-            return $staff->department_id && $deptIds->contains((int) $staff->department_id);
-        });
+        return CrmScope::canManagerAccessContract($user, $contract);
     }
 
     private function canAddCareNote(?User $user, Contract $contract): bool

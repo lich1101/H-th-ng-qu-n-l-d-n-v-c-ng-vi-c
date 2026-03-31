@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\Product;
+use App\Models\ProductCategory;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -34,7 +35,6 @@ class ProductController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'code' => ['nullable', 'string', 'max:40', 'unique:products,code'],
             'name' => ['required', 'string', 'max:255'],
             'category_id' => ['nullable', 'integer', 'exists:product_categories,id'],
             'unit' => ['nullable', 'string', 'max:20'],
@@ -42,9 +42,7 @@ class ProductController extends Controller
             'description' => ['nullable', 'string'],
             'is_active' => ['nullable', 'boolean'],
         ]);
-        if (empty($validated['code'])) {
-            $validated['code'] = $this->generateCode();
-        }
+        $validated['code'] = $this->generateCode(isset($validated['category_id']) ? (int) $validated['category_id'] : null);
         $validated['is_active'] = $validated['is_active'] ?? true;
 
         $product = Product::create($validated);
@@ -59,7 +57,6 @@ class ProductController extends Controller
     public function update(Request $request, Product $product): JsonResponse
     {
         $validated = $request->validate([
-            'code' => ['sometimes', 'string', 'max:40', 'unique:products,code,' . $product->id],
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'category_id' => ['nullable', 'integer', 'exists:product_categories,id'],
             'unit' => ['nullable', 'string', 'max:20'],
@@ -77,9 +74,9 @@ class ProductController extends Controller
         return response()->json(['message' => 'Đã xóa sản phẩm.']);
     }
 
-    private function generateCode(): string
+    private function generateCode(?int $categoryId): string
     {
-        $prefix = 'SP-' . now()->format('Ymd');
+        $prefix = $this->resolveCategoryPrefix($categoryId) . '-' . now()->format('Ymd');
         for ($i = 1; $i <= 9999; $i++) {
             $code = $prefix . '-' . str_pad((string) $i, 4, '0', STR_PAD_LEFT);
             if (! Product::where('code', $code)->exists()) {
@@ -87,5 +84,22 @@ class ProductController extends Controller
             }
         }
         return $prefix . '-' . strtoupper(Str::random(4));
+    }
+
+    private function resolveCategoryPrefix(?int $categoryId): string
+    {
+        if (! $categoryId) {
+            return 'SP';
+        }
+
+        $rawCode = (string) ProductCategory::query()
+            ->where('id', $categoryId)
+            ->value('code');
+
+        $normalized = strtoupper(preg_replace('/[^A-Z0-9]/', '', $rawCode));
+
+        return $normalized !== ''
+            ? Str::limit($normalized, 10, '')
+            : 'SP';
     }
 }

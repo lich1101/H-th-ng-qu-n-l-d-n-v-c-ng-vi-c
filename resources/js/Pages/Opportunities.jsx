@@ -66,7 +66,7 @@ export default function Opportunities(props) {
     const [products, setProducts] = useState([]);
 
     const [loading, setLoading] = useState(true);
-    const [showForm, setShowForm] = useState(true);
+    const [showForm, setShowForm] = useState(false);
     const [editingId, setEditingId] = useState(null);
     const [savingOpportunity, setSavingOpportunity] = useState(false);
     const [form, setForm] = useState(emptyOpportunityForm(''));
@@ -261,7 +261,7 @@ export default function Opportunities(props) {
                 await axios.post('/api/v1/opportunities', payload);
                 toast.success('Đã thêm cơ hội mới.');
             }
-            openCreateForm();
+            setShowForm(false);
             await fetchOpportunities(filters.page, filters);
         } catch (error) {
             const message = error?.response?.data?.message || 'Lưu cơ hội thất bại.';
@@ -375,7 +375,7 @@ export default function Opportunities(props) {
                                     }
                                 }}
                             >
-                                {!showForm ? 'Thêm cơ hội' : (editingId ? 'Tạo cơ hội mới' : 'Ẩn form')}
+                                {showForm && !editingId ? 'Đóng form' : (editingId ? 'Tạo cơ hội mới' : 'Thêm cơ hội')}
                             </button>
                         ) : null}
                         {canManageStatuses ? (
@@ -476,18 +476,17 @@ export default function Opportunities(props) {
                 </div>
             </FilterToolbar>
 
-            {showForm && canCreate ? (
-                <div className="mb-6 rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                            <h3 className="text-base font-semibold text-slate-900">
-                                {editingId ? `Sửa cơ hội #${editingId}` : 'Thêm cơ hội mới'}
-                            </h3>
-                            <p className="mt-1 text-sm text-text-muted">Form cơ hội theo chuẩn CRM: khách hàng, trạng thái, doanh số dự kiến và người phụ trách.</p>
-                        </div>
-                    </div>
-
-                    <div className="mt-4 grid gap-4 xl:grid-cols-2">
+            <Modal
+                open={Boolean(showForm && canCreate)}
+                onClose={() => {
+                    setShowForm(false);
+                    setEditingId(null);
+                }}
+                title={editingId ? `Sửa cơ hội #${editingId}` : 'Thêm cơ hội mới'}
+                description="Form cơ hội theo chuẩn CRM: khách hàng, trạng thái, doanh số dự kiến và người phụ trách."
+                size="md"
+            >
+                <div className="grid gap-4 xl:grid-cols-2">
                         <Field label="Tên cơ hội" required>
                             <input
                                 className={filterControlClass}
@@ -635,7 +634,7 @@ export default function Opportunities(props) {
                         </div>
                     </div>
 
-                    <div className="mt-4 flex flex-wrap items-center gap-3">
+                    <div className="mt-2 flex flex-wrap items-center gap-3 xl:col-span-2">
                         <button
                             type="button"
                             className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white"
@@ -647,13 +646,15 @@ export default function Opportunities(props) {
                         <button
                             type="button"
                             className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700"
-                            onClick={openCreateForm}
+                            onClick={() => {
+                                setShowForm(false);
+                                setEditingId(null);
+                            }}
                         >
-                            Làm mới form
+                            Đóng
                         </button>
                     </div>
-                </div>
-            ) : null}
+            </Modal>
 
             <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card">
                 <div className="overflow-x-auto">

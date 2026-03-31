@@ -82,7 +82,12 @@ class AppSettingController extends Controller
             'gsc_recipes_path_token' => ['nullable', 'string', 'max:120'],
             'gsc_brand_terms' => ['nullable', 'string', 'max:12000'],
             'gsc_sync_time' => ['nullable', 'regex:/^\d{2}:\d{2}$/'],
+            'app_android_apk_url' => ['nullable', 'url', 'max:255'],
+            'app_ios_testflight_url' => ['nullable', 'url', 'max:255'],
+            'app_release_notes' => ['nullable', 'string', 'max:20000'],
+            'app_release_version' => ['nullable', 'string', 'max:40'],
             'logo' => ['nullable', 'file', 'max:5120'],
+            'app_android_apk_file' => ['nullable', 'file', 'mimes:apk', 'max:262144'],
         ]);
 
         $setting = AppSetting::query()->first();
@@ -98,6 +103,12 @@ class AppSettingController extends Controller
         if ($request->hasFile('logo')) {
             $stored = $request->file('logo')->store('brand', 'public');
             $logoUrl = Storage::url($stored);
+        }
+
+        $apkUrl = $validated['app_android_apk_url'] ?? $setting->app_android_apk_url ?? null;
+        if ($request->hasFile('app_android_apk_file')) {
+            $storedApk = $request->file('app_android_apk_file')->store('app-builds', 'public');
+            $apkUrl = Storage::url($storedApk);
         }
 
         $setting->update([
@@ -231,6 +242,16 @@ class AppSettingController extends Controller
             'gsc_sync_time' => array_key_exists('gsc_sync_time', $validated)
                 ? (string) $validated['gsc_sync_time']
                 : (string) ($setting->gsc_sync_time ?: '11:17'),
+            'app_android_apk_url' => $apkUrl,
+            'app_ios_testflight_url' => array_key_exists('app_ios_testflight_url', $validated)
+                ? trim((string) ($validated['app_ios_testflight_url'] ?? ''))
+                : $setting->app_ios_testflight_url,
+            'app_release_notes' => array_key_exists('app_release_notes', $validated)
+                ? trim((string) ($validated['app_release_notes'] ?? ''))
+                : $setting->app_release_notes,
+            'app_release_version' => array_key_exists('app_release_version', $validated)
+                ? trim((string) ($validated['app_release_version'] ?? ''))
+                : $setting->app_release_version,
             'updated_by' => $request->user()->id,
         ]);
 
@@ -271,6 +292,10 @@ class AppSettingController extends Controller
             'attendance_late_grace_minutes' => $setting ? (int) ($setting->attendance_late_grace_minutes ?? 10) : 10,
             'attendance_reminder_enabled' => $setting ? (bool) ($setting->attendance_reminder_enabled ?? true) : true,
             'attendance_reminder_minutes_before' => $setting ? (int) ($setting->attendance_reminder_minutes_before ?? 10) : 10,
+            'app_android_apk_url' => $setting ? $setting->app_android_apk_url : null,
+            'app_ios_testflight_url' => $setting ? $setting->app_ios_testflight_url : null,
+            'app_release_notes' => $setting ? $setting->app_release_notes : null,
+            'app_release_version' => $setting ? $setting->app_release_version : null,
             'chatbot_enabled' => $setting ? (bool) ($setting->chatbot_enabled ?? false) : false,
             'chatbot_provider' => $setting && $setting->chatbot_provider ? (string) $setting->chatbot_provider : 'gemini',
             'chatbot_model' => $setting && $setting->chatbot_model ? (string) $setting->chatbot_model : (string) ($defaults['chatbot_model'] ?? 'gemini-2.0-flash'),

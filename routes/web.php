@@ -138,6 +138,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         return Inertia::render('Opportunities');
     })->name('opportunities.index')->middleware('role:admin,quan_ly,nhan_vien');
 
+    Route::get('/trang-thai-co-hoi', function () {
+        return Inertia::render('OpportunityStatuses');
+    })->name('opportunity-statuses.index')->middleware('role:admin');
+
     Route::get('/hop-dong', function () {
         return Inertia::render('Contracts');
     })->name('contracts.index')->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
@@ -187,6 +191,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/tai-khoan', function () {
         return Inertia::render('UserAccountsDashboard');
     })->name('accounts.dashboard')->middleware('role:admin');
+
+    Route::get('/tai-ung-dung', function () {
+        return Inertia::render('AppDownloads');
+    })->name('app-downloads.index')->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
 
     Route::get('/phan-quyen', function () {
         return Inertia::render('RolesPermissions');

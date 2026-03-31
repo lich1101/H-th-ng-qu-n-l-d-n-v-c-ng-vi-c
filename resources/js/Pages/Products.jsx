@@ -32,7 +32,6 @@ export default function Products(props) {
     const [productMeta, setProductMeta] = useState({ current_page: 1, last_page: 1, total: 0 });
     const [filters, setFilters] = useState({ search: '', is_active: '', category_id: '', per_page: 20, page: 1 });
     const [form, setForm] = useState({
-        code: '',
         name: '',
         category_id: '',
         unit: '',
@@ -200,13 +199,12 @@ export default function Products(props) {
 
     const resetForm = () => {
         setEditingId(null);
-        setForm({ code: '', name: '', category_id: '', unit: '', unit_price: '', description: '', is_active: true });
+        setForm({ name: '', category_id: '', unit: '', unit_price: '', description: '', is_active: true });
     };
 
     const startEdit = (product) => {
         setEditingId(product.id);
         setForm({
-            code: product.code || '',
             name: product.name || '',
             category_id: product.category_id ? String(product.category_id) : '',
             unit: product.unit || '',
@@ -231,7 +229,6 @@ export default function Products(props) {
         if (!canManage) return toast.error('Bạn không có quyền quản lý sản phẩm.');
         if (!form.name.trim()) return toast.error('Vui lòng nhập tên sản phẩm.');
         const payload = {
-            code: form.code || null,
             name: form.name,
             category_id: form.category_id ? Number(form.category_id) : null,
             unit: form.unit || null,
@@ -294,9 +291,10 @@ export default function Products(props) {
 
     const saveCategory = async () => {
         if (!canManage) return toast.error('Bạn không có quyền quản lý danh mục.');
+        if (!categoryForm.code.trim()) return toast.error('Vui lòng nhập mã danh mục.');
         if (!categoryForm.name.trim()) return toast.error('Vui lòng nhập tên danh mục.');
         const payload = {
-            code: categoryForm.code || null,
+            code: categoryForm.code.trim(),
             name: categoryForm.name,
             description: categoryForm.description || null,
             is_active: !!categoryForm.is_active,
@@ -667,18 +665,10 @@ export default function Products(props) {
                 open={showForm}
                 onClose={closeForm}
                 title={editingId ? `Sửa sản phẩm #${editingId}` : 'Tạo sản phẩm'}
-                description="Cập nhật mã, tên, đơn giá và trạng thái sản phẩm."
+                description="Mã sản phẩm sẽ tự sinh theo danh mục. Bạn chỉ cần nhập thông tin bán hàng và trạng thái."
                 size="lg"
             >
                 <div className="space-y-3 text-sm">
-                    <FormField label="Mã sản phẩm">
-                        <input
-                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                            placeholder="Nhập mã nội bộ nếu cần"
-                            value={form.code}
-                            onChange={(e) => setForm((s) => ({ ...s, code: e.target.value }))}
-                        />
-                    </FormField>
                     <FormField label="Tên sản phẩm" required>
                         <input
                             className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
@@ -765,11 +755,11 @@ export default function Products(props) {
                 open={showCategoryForm}
                 onClose={closeCategoryForm}
                 title={editingCategoryId ? `Sửa danh mục #${editingCategoryId}` : 'Tạo danh mục'}
-                description="Quản lý nhóm sản phẩm để lọc và phân loại."
+                description="Mã danh mục là bắt buộc. Mã sản phẩm sẽ tự sinh từ danh mục này khi tạo sản phẩm."
                 size="md"
             >
                 <div className="space-y-3 text-sm">
-                    <FormField label="Mã danh mục">
+                    <FormField label="Mã danh mục" required>
                         <input
                             className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
                             placeholder="Ví dụ: backlink, content"

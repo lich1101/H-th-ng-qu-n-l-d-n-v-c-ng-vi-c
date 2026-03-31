@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 
 const svgWidth = 760;
 const svgHeight = 312;
-const padding = { top: 20, right: 20, bottom: 40, left: 28 };
+const padding = { top: 18, right: 24, bottom: 48, left: 46 };
 
 export default function CustomerGrowthChart({ data = [] }) {
     const chart = useMemo(() => {
@@ -18,6 +18,10 @@ export default function CustomerGrowthChart({ data = [] }) {
         const innerHeight = svgHeight - padding.top - padding.bottom;
         const slotWidth = normalized.length > 0 ? innerWidth / normalized.length : innerWidth;
         const barWidth = Math.min(30, Math.max(14, slotWidth * 0.28));
+        const tickValues = maxValue <= 4
+            ? Array.from({ length: maxValue + 1 }, (_, index) => index)
+            : [0, 0.25, 0.5, 0.75, 1].map((ratio) => Math.round(maxValue * ratio));
+        const uniqueTicks = Array.from(new Set(tickValues)).sort((a, b) => a - b);
         const linePoints = normalized.map((item, index) => {
             const x = padding.left + (slotWidth * index) + (slotWidth / 2);
             const value = Number(item.created_clients || 0);
@@ -32,9 +36,9 @@ export default function CustomerGrowthChart({ data = [] }) {
             slotWidth,
             barWidth,
             linePoints,
-            gridValues: [0, 0.25, 0.5, 0.75, 1].map((ratio) => ({
-                value: Math.round(maxValue * ratio),
-                y: padding.top + innerHeight - (innerHeight * ratio),
+            gridValues: uniqueTicks.map((value) => ({
+                value,
+                y: padding.top + innerHeight - ((value / maxValue) * innerHeight),
             })),
         };
     }, [data]);
@@ -49,10 +53,19 @@ export default function CustomerGrowthChart({ data = [] }) {
 
     return (
         <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-2.5 text-xs font-semibold text-slate-600">
-                <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1"><span className="h-2.5 w-2.5 rounded-sm bg-emerald-500" />Mua lần đầu</span>
-                <span className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1"><span className="h-2.5 w-2.5 rounded-sm bg-cyan-500" />Mua lại</span>
-                <span className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1"><span className="h-2.5 w-2.5 rounded-sm bg-violet-500" />Tạo mới (đường)</span>
+            <div className="grid gap-2 md:grid-cols-3">
+                <div className="inline-flex items-center gap-2.5 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">
+                    <span className="h-3 w-3 rounded-[4px] bg-emerald-500" />
+                    <span>Mua lần đầu</span>
+                </div>
+                <div className="inline-flex items-center gap-2.5 rounded-2xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-sm font-semibold text-cyan-700">
+                    <span className="h-3 w-3 rounded-[4px] bg-cyan-500" />
+                    <span>Mua lại</span>
+                </div>
+                <div className="inline-flex items-center gap-2.5 rounded-2xl border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-700">
+                    <span className="h-3 w-3 rounded-full bg-violet-500" />
+                    <span>Tạo mới (đường)</span>
+                </div>
             </div>
             <div className="overflow-x-auto rounded-[22px] border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/40 p-4">
                 <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} className="min-w-[720px]">
@@ -68,9 +81,10 @@ export default function CustomerGrowthChart({ data = [] }) {
                             />
                             <text
                                 x={padding.left - 8}
-                                y={grid.y + 4}
+                                y={grid.y + 5}
                                 textAnchor="end"
-                                fontSize="11"
+                                fontSize="13"
+                                fontWeight="600"
                                 fill="#94A3B8"
                             >
                                 {grid.value}
@@ -109,7 +123,7 @@ export default function CustomerGrowthChart({ data = [] }) {
                                     x={padding.left + (chart.slotWidth * index) + (chart.slotWidth / 2)}
                                     y={svgHeight - 10}
                                     textAnchor="middle"
-                                    fontSize="12"
+                                    fontSize="14"
                                     fontWeight="600"
                                     fill="#64748B"
                                 >

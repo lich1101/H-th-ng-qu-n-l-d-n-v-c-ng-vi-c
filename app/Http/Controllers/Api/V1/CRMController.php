@@ -234,14 +234,12 @@ class CRMController extends Controller
 
     private function canAccessClient(User $user, Client $client): bool
     {
-        if (in_array($user->role, ['admin', 'ke_toan'], true)) {
+        if (CrmScope::hasGlobalScope($user)) {
             return true;
         }
+
         if ($user->role === 'quan_ly') {
-            $deptIds = $user->managedDepartments()->pluck('id');
-            if ($client->assigned_department_id && $deptIds->contains($client->assigned_department_id)) {
-                return true;
-            }
+            return CrmScope::canManagerAccessClient($user, $client);
         }
 
         if ((int) $client->assigned_staff_id === (int) $user->id) {
@@ -264,8 +262,7 @@ class CRMController extends Controller
         }
 
         if ($user->role === 'quan_ly') {
-            $deptIds = $user->managedDepartments()->pluck('id');
-            return $client->assigned_department_id && $deptIds->contains($client->assigned_department_id);
+            return CrmScope::canManagerAccessClient($user, $client);
         }
 
         return (int) $client->assigned_staff_id === (int) $user->id;

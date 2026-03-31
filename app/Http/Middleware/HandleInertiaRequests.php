@@ -66,6 +66,10 @@ class HandleInertiaRequests extends Middleware
                 'attendance_late_grace_minutes' => (int) ($setting->attendance_late_grace_minutes ?? 10),
                 'attendance_reminder_enabled' => (bool) ($setting->attendance_reminder_enabled ?? true),
                 'attendance_reminder_minutes_before' => (int) ($setting->attendance_reminder_minutes_before ?? 10),
+                'app_android_apk_url' => $setting->app_android_apk_url,
+                'app_ios_testflight_url' => $setting->app_ios_testflight_url,
+                'app_release_notes' => $setting->app_release_notes,
+                'app_release_version' => $setting->app_release_version,
             ]
             : AppSetting::defaults();
 

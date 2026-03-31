@@ -141,25 +141,30 @@ class OpportunityController extends Controller
 
     private function canAccessOpportunity(User $user, Opportunity $opportunity): bool
     {
-        if (in_array($user->role, ['admin', 'ke_toan'], true)) {
+        if (CrmScope::hasGlobalScope($user)) {
             return true;
         }
         if (! $opportunity->client) {
             $opportunity->load('client');
         }
         if ($user->role === 'quan_ly') {
-            $deptIds = $user->managedDepartments()->pluck('id');
-            return $opportunity->client
-                && $opportunity->client->assigned_department_id
-                && $deptIds->contains($opportunity->client->assigned_department_id);
+            return CrmScope::canManagerAccessOpportunity($user, $opportunity);
         }
 
-        return $opportunity->client && (
+        $watchers = collect((array) ($opportunity->watcher_ids ?? []))
+            ->map(function ($id) {
+                return (int) $id;
+            })
+            ->filter(function ($id) {
+                return $id > 0;
+            });
+
+        return ($opportunity->client && (
             (int) $opportunity->client->assigned_staff_id === (int) $user->id
             || (int) $opportunity->client->sales_owner_id === (int) $user->id
             || (int) $opportunity->created_by === (int) $user->id
             || (int) $opportunity->assigned_to === (int) $user->id
-        );
+        )) || $watchers->contains((int) $user->id);
     }
 
     private function defaultStatusCode(): string
