@@ -12,6 +12,7 @@ use App\Models\Product;
 use App\Models\Project;
 use App\Models\RevenueTier;
 use App\Models\User;
+use App\Services\DataTransfers\ClientFinancialSyncService;
 use App\Services\NotificationService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -649,33 +650,7 @@ class ContractController extends Controller
 
     private function syncClientRevenue(Client $client): void
     {
-        $totalRevenue = (float) Contract::query()
-            ->where('client_id', $client->id)
-            ->where('approval_status', 'approved')
-            ->sum('value');
-
-        $tier = null;
-        if ($totalRevenue > 0) {
-            $tier = RevenueTier::query()
-                ->orderByDesc('min_amount')
-                ->get()
-                ->first(function ($item) use ($totalRevenue) {
-                    return $totalRevenue >= (float) $item->min_amount;
-                });
-
-            if (! $tier) {
-                $tier = RevenueTier::query()
-                    ->where('min_amount', '>', 0)
-                    ->orderBy('min_amount')
-                    ->first();
-            }
-        }
-
-        $client->update([
-            'total_revenue' => $totalRevenue,
-            'has_purchased' => $totalRevenue > 0,
-            'revenue_tier_id' => $tier ? $tier->id : null,
-        ]);
+        app(ClientFinancialSyncService::class)->sync($client);
     }
 
     private function generateContractCode(): string

@@ -6,6 +6,7 @@ import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import PaginationControls from '@/Components/PaginationControls';
 import { useToast } from '@/Contexts/ToastContext';
+import { formatVietnamDateTime } from '@/lib/vietnamTime';
 
 const DEFAULT_PRIORITIES = [
     { value: 'low', label: 'Thấp' },
@@ -442,28 +443,11 @@ export default function TasksBoard(props) {
     };
 
     const formatChatTime = (raw) => {
-        if (!raw) return '';
-        const date = new Date(raw);
-        if (Number.isNaN(date.getTime())) return String(raw);
-        return date.toLocaleString('vi-VN', {
-            hour: '2-digit',
-            minute: '2-digit',
-            day: '2-digit',
-            month: '2-digit',
-        });
+        return formatVietnamDateTime(raw, raw ? String(raw) : '');
     };
 
     const formatDateTime = (raw) => {
-        if (!raw) return '—';
-        const date = new Date(raw);
-        if (Number.isNaN(date.getTime())) return String(raw);
-        return date.toLocaleString('vi-VN', {
-            hour: '2-digit',
-            minute: '2-digit',
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-        });
+        return formatVietnamDateTime(raw, raw ? String(raw) : '—');
     };
 
     const normalizeToken = (value) => {

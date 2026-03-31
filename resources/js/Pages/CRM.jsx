@@ -74,6 +74,7 @@ export default function CRM(props) {
     const [clientImportFile, setClientImportFile] = useState(null);
     const [importingClients, setImportingClients] = useState(false);
     const [clientImportReport, setClientImportReport] = useState(null);
+    const [clientImportJob, setClientImportJob] = useState(null);
     const [clientForm, setClientForm] = useState({
         name: '',
         company: '',
@@ -220,15 +221,14 @@ export default function CRM(props) {
             const formData = new FormData();
             formData.append('file', clientImportFile);
             const res = await axios.post('/api/v1/imports/clients', formData);
-            const report = res.data || {};
-            setClientImportReport(report);
-            toast.success(
-                `Import hoàn tất: ${report.created || 0} tạo mới, ${report.updated || 0} cập nhật, ${report.skipped || 0} bỏ qua.`
-            );
-            await fetchClients(1, clientFilters);
+            setClientImportJob(res.data?.job || null);
+            setClientImportReport(null);
+            toast.success('Đã đưa file import khách hàng vào hàng đợi xử lý.');
         } catch (error) {
             const validationMessages = extractValidationMessages(error);
             const fallbackMessage = getErrorMessage(error, 'Import thất bại.');
+            setClientImportJob(null);
+            setImportingClients(false);
             setClientImportReport({
                 created: 0,
                 updated: 0,
@@ -239,10 +239,51 @@ export default function CRM(props) {
                     : [{ row: '-', message: fallbackMessage }],
             });
             toast.error(fallbackMessage);
-        } finally {
-            setImportingClients(false);
         }
     };
+
+    useEffect(() => {
+        if (!showClientImport || !clientImportJob?.id) return undefined;
+
+        const poll = async () => {
+            try {
+                const res = await axios.get(`/api/v1/imports/jobs/${clientImportJob.id}`);
+                const nextJob = res.data || null;
+                setClientImportJob(nextJob);
+
+                if (nextJob?.status === 'completed') {
+                    window.clearInterval(timer);
+                    const report = nextJob.report || {};
+                    setImportingClients(false);
+                    setClientImportReport(report);
+                    toast.success(
+                        `Import hoàn tất: ${report.created || 0} tạo mới, ${report.updated || 0} cập nhật, ${report.skipped || 0} bỏ qua.`
+                    );
+                    await fetchClients(1, clientFilters);
+                } else if (nextJob?.status === 'failed') {
+                    window.clearInterval(timer);
+                    setImportingClients(false);
+                    setClientImportReport(nextJob.report || {
+                        created: 0,
+                        updated: 0,
+                        skipped: 0,
+                        warnings: [],
+                        errors: [{ row: '-', message: nextJob.error_message || 'Import thất bại.' }],
+                    });
+                    toast.error(nextJob?.error_message || 'Import thất bại.');
+                }
+            } catch (error) {
+                setImportingClients(false);
+                toast.error(getErrorMessage(error, 'Không kiểm tra được tiến trình import khách hàng.'));
+            }
+        };
+
+        const timer = window.setInterval(poll, 1500);
+        poll();
+
+        return () => window.clearInterval(timer);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [showClientImport, clientImportJob?.id]);
 
     useEffect(() => {
         fetchLookups();
@@ -1489,6 +1530,7 @@ export default function CRM(props) {
                     setShowClientImport(false);
                     setClientImportFile(null);
                     setClientImportReport(null);
+                    setClientImportJob(null);
                 }}
                 title="Import khách hàng"
                 description="Tải file Excel (.xls/.xlsx/.csv) để nhập khách hàng."
@@ -1565,6 +1607,28 @@ export default function CRM(props) {
                             )}
                         </div>
                     )}
+                    {clientImportJob && (
+                        <div className="rounded-2xl border border-slate-200/80 bg-slate-50 p-3 space-y-2">
+                            <div className="flex items-center justify-between gap-3 text-xs">
+                                <div className="font-semibold uppercase tracking-[0.14em] text-text-subtle">Tiến trình import</div>
+                                <div className="font-semibold text-slate-700">
+                                    {clientImportJob.processed_rows || 0}/{clientImportJob.total_rows || 0} dòng
+                                </div>
+                            </div>
+                            <div className="h-2.5 overflow-hidden rounded-full bg-slate-200">
+                                <div
+                                    className={`h-full rounded-full transition-all ${clientImportJob.status === 'failed' ? 'bg-rose-500' : 'bg-primary'}`}
+                                    style={{ width: `${clientImportJob.progress_percent || 0}%` }}
+                                />
+                            </div>
+                            <div className="flex items-center justify-between text-xs text-text-muted">
+                                <span>
+                                    Trạng thái: {clientImportJob.status === 'queued' ? 'Đang chờ' : clientImportJob.status === 'processing' ? 'Đang xử lý' : clientImportJob.status === 'completed' ? 'Hoàn tất' : 'Thất bại'}
+                                </span>
+                                <span>{clientImportJob.progress_percent || 0}%</span>
+                            </div>
+                        </div>
+                    )}
                     <div className="flex items-center gap-2">
                         <button
                             type="submit"
@@ -1580,6 +1644,7 @@ export default function CRM(props) {
                                 setShowClientImport(false);
                                 setClientImportFile(null);
                                 setClientImportReport(null);
+                                setClientImportJob(null);
                             }}
                         >
                             Hủy

@@ -378,6 +378,8 @@ Route::prefix('v1')->group(function () {
 
         Route::post('/imports/clients', [ImportController::class, 'importClients'])
             ->middleware('role:admin,quan_ly,nhan_vien');
+        Route::get('/imports/jobs/{dataTransferJob}', [ImportController::class, 'showImportJob'])
+            ->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
         Route::get('/imports/clients/template', [ImportController::class, 'downloadClientsTemplate'])
             ->middleware('role:admin,quan_ly,nhan_vien');
         Route::post('/imports/contracts', [ImportController::class, 'importContracts'])

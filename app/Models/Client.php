@@ -22,6 +22,8 @@ class Client extends Model
         'lead_type_id',
         'revenue_tier_id',
         'total_revenue',
+        'total_debt_amount',
+        'total_cash_flow',
         'has_purchased',
         'lead_source',
         'lead_channel',
@@ -37,6 +39,8 @@ class Client extends Model
 
     protected $casts = [
         'total_revenue' => 'float',
+        'total_debt_amount' => 'float',
+        'total_cash_flow' => 'float',
         'legacy_debt_amount' => 'float',
         'has_purchased' => 'boolean',
     ];

@@ -3,6 +3,7 @@ import axios from 'axios';
 import AppIcon from '@/Components/AppIcon';
 import PageContainer from '@/Components/PageContainer';
 import { useToast } from '@/Contexts/ToastContext';
+import { formatVietnamDateTime } from '@/lib/vietnamTime';
 
 const formatSize = (size) => {
   if (!size) return '0 KB';
@@ -14,20 +15,63 @@ const formatSize = (size) => {
 };
 
 const formatDateTime = (raw) => {
-  if (!raw) return '—';
-  try {
-    const date = new Date(raw);
-    if (Number.isNaN(date.getTime())) return raw;
-    return date.toLocaleString('vi-VN', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  } catch {
-    return raw;
-  }
+  return formatVietnamDateTime(raw, raw || '—');
+};
+
+const TEXT_EXTENSIONS = new Set([
+  'txt',
+  'md',
+  'markdown',
+  'json',
+  'csv',
+  'log',
+  'xml',
+  'html',
+  'css',
+  'js',
+  'ts',
+  'jsx',
+  'tsx',
+  'php',
+  'sql',
+  'yml',
+  'yaml',
+  'env',
+  'ini',
+]);
+
+const OFFICE_EXTENSIONS = new Set([
+  'doc',
+  'docx',
+  'xls',
+  'xlsx',
+  'ppt',
+  'pptx',
+]);
+
+const getPreviewKind = (item) => {
+  if (!item || item.is_folder) return 'none';
+
+  const mimeType = String(item.mime_type || '').toLowerCase();
+  const extension = String(item.extension || '').toLowerCase();
+
+  if (mimeType.startsWith('image/')) return 'image';
+  if (mimeType.startsWith('video/')) return 'video';
+  if (mimeType.startsWith('audio/')) return 'audio';
+  if (mimeType.includes('pdf') || extension === 'pdf') return 'pdf';
+  if (mimeType.startsWith('text/') || TEXT_EXTENSIONS.has(extension)) return 'text';
+  if (OFFICE_EXTENSIONS.has(extension)) return 'office';
+
+  return 'unknown';
+};
+
+const canPreviewItem = (item) => {
+  return Boolean(item && !item.is_folder && item.public_url && getPreviewKind(item) !== 'unknown');
+};
+
+const buildOfficePreviewUrl = (url) => {
+  if (!url) return '';
+  return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}`;
 };
 
 const kindLabel = (item) => {
@@ -90,6 +134,11 @@ export default function ProjectFiles(props) {
   const [renameTarget, setRenameTarget] = useState(null);
   const [renameValue, setRenameValue] = useState('');
   const [contextMenu, setContextMenu] = useState(null);
+  const [previewTarget, setPreviewTarget] = useState(null);
+  const [previewContent, setPreviewContent] = useState('');
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState('');
+  const [copiedLink, setCopiedLink] = useState(false);
 
   const currentFolder = breadcrumbs[breadcrumbs.length - 1] || null;
 
@@ -142,6 +191,55 @@ export default function ProjectFiles(props) {
     window.addEventListener('click', closeMenu);
     return () => window.removeEventListener('click', closeMenu);
   }, [contextMenu]);
+
+  useEffect(() => {
+    if (!previewTarget) {
+      setPreviewContent('');
+      setPreviewError('');
+      setPreviewLoading(false);
+      return undefined;
+    }
+
+    const previewKind = getPreviewKind(previewTarget);
+    if (previewKind !== 'text' || !previewTarget.public_url) {
+      setPreviewContent('');
+      setPreviewError('');
+      setPreviewLoading(false);
+      return undefined;
+    }
+
+    let ignore = false;
+    setPreviewLoading(true);
+    setPreviewError('');
+
+    axios
+      .get(previewTarget.public_url, {
+        responseType: 'text',
+        transformResponse: [(data) => data],
+      })
+      .then((response) => {
+        if (ignore) return;
+        setPreviewContent(String(response.data || ''));
+      })
+      .catch(() => {
+        if (ignore) return;
+        setPreviewError('Không thể đọc nội dung trực tiếp của tệp này. Bạn vẫn có thể mở link gốc.');
+      })
+      .finally(() => {
+        if (ignore) return;
+        setPreviewLoading(false);
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [previewTarget]);
+
+  useEffect(() => {
+    if (!copiedLink) return undefined;
+    const timer = window.setTimeout(() => setCopiedLink(false), 1800);
+    return () => window.clearTimeout(timer);
+  }, [copiedLink]);
 
   const breadcrumbLabel = useMemo(() => {
     if (!breadcrumbs.length) return 'Kho dự án';
@@ -238,6 +336,36 @@ export default function ProjectFiles(props) {
     }
     if (item.public_url) {
       window.open(item.public_url, '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  const openPreview = (item) => {
+    if (!canPreviewItem(item)) {
+      if (item?.public_url) {
+        window.open(item.public_url, '_blank', 'noopener,noreferrer');
+      }
+      return;
+    }
+    setContextMenu(null);
+    setPreviewTarget(item);
+  };
+
+  const closePreview = () => {
+    setPreviewTarget(null);
+    setPreviewContent('');
+    setPreviewError('');
+    setPreviewLoading(false);
+    setCopiedLink(false);
+  };
+
+  const copyPreviewLink = async () => {
+    if (!previewTarget?.public_url) return;
+    try {
+      await navigator.clipboard.writeText(previewTarget.public_url);
+      setCopiedLink(true);
+      toast.success('Đã sao chép đường link tệp.');
+    } catch (error) {
+      toast.error('Không sao chép được đường link tệp.');
     }
   };
 
@@ -385,6 +513,15 @@ export default function ProjectFiles(props) {
 
         {!isWorkspaceMenu && !trashMode && (
           <>
+            {!item.is_folder && canPreviewItem(item) && (
+              <button
+                type="button"
+                className="w-full rounded-xl px-3 py-2 text-left text-sm font-medium text-sky-700 hover:bg-sky-50"
+                onClick={() => openPreview(item)}
+              >
+                Xem
+              </button>
+            )}
             <button
               type="button"
               className="w-full rounded-xl px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100"
@@ -751,6 +888,166 @@ export default function ProjectFiles(props) {
               <ToolbarButton active onClick={submitRename}>
                 Lưu
               </ToolbarButton>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {previewTarget && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/45 px-4 py-6 backdrop-blur-sm">
+          <div className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-2xl">
+            <div className="border-b border-slate-200 bg-gradient-to-r from-white to-slate-50 px-6 py-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
+                    Xem tệp trong kho
+                  </div>
+                  <div className="mt-1 truncate text-xl font-semibold text-slate-900">
+                    {previewTarget.name}
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                    <span className="rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-600">
+                      {kindLabel(previewTarget)}
+                    </span>
+                    <span>{formatSize(previewTarget.size)}</span>
+                    <span>{formatDateTime(previewTarget.created_at)}</span>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <ToolbarButton onClick={copyPreviewLink}>
+                    {copiedLink ? 'Đã sao chép link' : 'Sao chép link'}
+                  </ToolbarButton>
+                  <a
+                    href={previewTarget.public_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                  >
+                    Mở file
+                  </a>
+                  <ToolbarButton onClick={closePreview}>Đóng</ToolbarButton>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid min-h-0 flex-1 gap-0 lg:grid-cols-[minmax(0,1fr)_320px]">
+              <div className="min-h-[420px] bg-slate-50/70 p-5">
+                <div className="flex h-full items-center justify-center overflow-hidden rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
+                  {(() => {
+                    const previewKind = getPreviewKind(previewTarget);
+
+                    if (previewLoading) {
+                      return <div className="text-sm text-slate-500">Đang tải nội dung xem trước...</div>;
+                    }
+
+                    if (previewKind === 'image') {
+                      return (
+                        <img
+                          src={previewTarget.public_url}
+                          alt={previewTarget.name}
+                          className="max-h-[68vh] w-full rounded-2xl object-contain"
+                        />
+                      );
+                    }
+
+                    if (previewKind === 'video') {
+                      return (
+                        <video
+                          src={previewTarget.public_url}
+                          controls
+                          className="max-h-[68vh] w-full rounded-2xl bg-black object-contain"
+                        />
+                      );
+                    }
+
+                    if (previewKind === 'audio') {
+                      return <audio src={previewTarget.public_url} controls className="w-full max-w-xl" />;
+                    }
+
+                    if (previewKind === 'pdf') {
+                      return (
+                        <iframe
+                          title={previewTarget.name}
+                          src={previewTarget.public_url}
+                          className="h-[68vh] w-full rounded-2xl border border-slate-200"
+                        />
+                      );
+                    }
+
+                    if (previewKind === 'office') {
+                      return (
+                        <iframe
+                          title={previewTarget.name}
+                          src={buildOfficePreviewUrl(previewTarget.public_url)}
+                          className="h-[68vh] w-full rounded-2xl border border-slate-200"
+                        />
+                      );
+                    }
+
+                    if (previewKind === 'text') {
+                      if (previewError) {
+                        return <div className="max-w-xl text-center text-sm text-slate-500">{previewError}</div>;
+                      }
+
+                      return (
+                        <pre className="h-[68vh] w-full overflow-auto rounded-2xl bg-slate-950 px-5 py-4 text-sm leading-6 text-slate-100">
+                          {previewContent || 'Tệp hiện chưa có nội dung hiển thị.'}
+                        </pre>
+                      );
+                    }
+
+                    return (
+                      <div className="max-w-xl text-center">
+                        <div className="text-base font-semibold text-slate-900">Chưa hỗ trợ xem trực tiếp định dạng này</div>
+                        <div className="mt-2 text-sm text-slate-500">
+                          Bạn vẫn có thể mở file ở tab mới hoặc sao chép đường link để chia sẻ.
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+
+              <aside className="border-l border-slate-200 bg-white p-5">
+                <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
+                  Thông tin tệp
+                </div>
+                <div className="mt-4 space-y-4 text-sm">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <div className="text-xs uppercase tracking-[0.18em] text-slate-400">Tên file</div>
+                    <div className="mt-1 break-words font-semibold text-slate-900">{previewTarget.name}</div>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <div className="text-xs uppercase tracking-[0.18em] text-slate-400">Link file</div>
+                    <a
+                      href={previewTarget.public_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-1 block break-all font-medium text-primary underline underline-offset-2"
+                    >
+                      {previewTarget.public_url}
+                    </a>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+                    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                      <div className="text-xs uppercase tracking-[0.18em] text-slate-400">Loại</div>
+                      <div className="mt-1 font-medium text-slate-800">{kindLabel(previewTarget)}</div>
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                      <div className="text-xs uppercase tracking-[0.18em] text-slate-400">Dung lượng</div>
+                      <div className="mt-1 font-medium text-slate-800">{formatSize(previewTarget.size)}</div>
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                      <div className="text-xs uppercase tracking-[0.18em] text-slate-400">Định dạng</div>
+                      <div className="mt-1 font-medium text-slate-800">{String(previewTarget.extension || previewTarget.mime_type || '—').toUpperCase()}</div>
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                      <div className="text-xs uppercase tracking-[0.18em] text-slate-400">Ngày thêm</div>
+                      <div className="mt-1 font-medium text-slate-800">{formatDateTime(previewTarget.created_at)}</div>
+                    </div>
+                  </div>
+                </div>
+              </aside>
             </div>
           </div>
         </div>

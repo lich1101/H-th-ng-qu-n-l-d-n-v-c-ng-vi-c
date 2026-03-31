@@ -4,6 +4,7 @@ import { Link } from '@inertiajs/inertia-react';
 import AppIcon from '@/Components/AppIcon';
 import PageContainer from '@/Components/PageContainer';
 import { useToast } from '@/Contexts/ToastContext';
+import { formatVietnamDate, formatVietnamDateTime } from '@/lib/vietnamTime';
 
 const STATUS_LABELS = {
     open: 'Đang mở',
@@ -37,19 +38,8 @@ const doneContractStatusSet = new Set(['success', 'active', 'approved', 'hoan_th
 const statusLabel = (value) => STATUS_LABELS[String(value || '').toLowerCase()] || value || '—';
 const opportunityStatusLabel = (row) => row?.status_config?.name || statusLabel(row?.status);
 
-const formatDate = (raw) => {
-    if (!raw) return '—';
-    const date = new Date(raw);
-    if (Number.isNaN(date.getTime())) return String(raw).slice(0, 10);
-    return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
-};
-
-const formatDateTime = (raw) => {
-    if (!raw) return '—';
-    const date = new Date(raw);
-    if (Number.isNaN(date.getTime())) return String(raw);
-    return date.toLocaleString('vi-VN');
-};
+const formatDate = (raw) => formatVietnamDate(raw);
+const formatDateTime = (raw) => formatVietnamDateTime(raw);
 
 const formatCurrency = (value) => Number(value || 0).toLocaleString('vi-VN');
 

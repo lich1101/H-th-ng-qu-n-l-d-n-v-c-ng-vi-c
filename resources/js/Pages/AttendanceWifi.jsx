@@ -5,6 +5,13 @@ import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import PaginationControls from '@/Components/PaginationControls';
 import { useToast } from '@/Contexts/ToastContext';
+import {
+    formatVietnamDate,
+    formatVietnamDateTime,
+    formatVietnamTime,
+    monthStartIsoVietnam,
+    todayIsoVietnam,
+} from '@/lib/vietnamTime';
 
 const attendanceTabs = {
     personal: 'Cá nhân',
@@ -105,18 +112,11 @@ function requestTypeLabel(type) {
 }
 
 function todayIso() {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    return todayIsoVietnam();
 }
 
 function monthStartIso() {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    return `${year}-${month}-01`;
+    return monthStartIsoVietnam();
 }
 
 function displayDateToIso(value) {
@@ -129,12 +129,7 @@ function displayDateToIso(value) {
 }
 
 function formatIsoDate(value) {
-    if (!value || typeof value !== 'string') return '—';
-    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-        const [year, month, day] = value.split('-');
-        return `${day}/${month}/${year}`;
-    }
-    return value;
+    return formatVietnamDate(value);
 }
 
 function formatHolidayRange(item) {
@@ -229,7 +224,7 @@ export default function AttendanceWifi(props) {
             {
                 label: 'Trạng thái hôm nay',
                 value: todayRecord ? (statusLabels[todayRecord.status] || todayRecord.status) : 'Chưa chấm',
-                hint: todayRecord?.check_in_at ? new Date(todayRecord.check_in_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : 'Check-in chỉ hỗ trợ trên app mobile',
+                hint: todayRecord?.check_in_at ? formatVietnamTime(todayRecord.check_in_at) : 'Check-in chỉ hỗ trợ trên app mobile',
             },
             {
                 label: 'Công hôm nay',
@@ -658,8 +653,8 @@ export default function AttendanceWifi(props) {
                                         )}
                                         {records.map((item) => (
                                             <tr key={item.id}>
-                                                <td className="px-4 py-3">{item.work_date ? new Date(item.work_date).toLocaleDateString('vi-VN') : '—'}</td>
-                                                <td className="px-4 py-3">{item.check_in_at ? new Date(item.check_in_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '—'}</td>
+                                                <td className="px-4 py-3">{formatVietnamDate(item.work_date)}</td>
+                                                <td className="px-4 py-3">{formatVietnamTime(item.check_in_at)}</td>
                                                 <td className="px-4 py-3">{item.minutes_late || 0} phút</td>
                                                 <td className="px-4 py-3 font-semibold text-slate-900">{item.work_units || 0}</td>
                                                 <td className="px-4 py-3"><Badge tone={toneForStatus(item.status)}>{statusLabels[item.status] || item.status}</Badge></td>
@@ -761,7 +756,7 @@ export default function AttendanceWifi(props) {
                                                 </div>
                                                 <div className="mt-1 text-sm text-text-muted">
                                                     {item.user?.name ? `${item.user.name} • ` : ''}
-                                                    {item.request_date ? new Date(item.request_date).toLocaleDateString('vi-VN') : '—'}
+                                                    {formatVietnamDate(item.request_date)}
                                                     {item.expected_check_in_time ? ` • Dự kiến vào ${item.expected_check_in_time}` : ''}
                                                 </div>
                                                 <div className="mt-2 text-sm text-slate-700 whitespace-pre-wrap">{item.content || 'Không có ghi chú thêm.'}</div>
@@ -922,7 +917,7 @@ export default function AttendanceWifi(props) {
                                             <div className="mt-1 text-sm text-text-muted">{item.user?.role || '—'} • {item.user?.department || 'Chưa có phòng ban'}</div>
                                             <div className="mt-2 text-sm text-slate-700">UUID: {item.device_uuid}</div>
                                             <div className="mt-1 text-sm text-slate-700">Platform: {item.device_platform || '—'} • Model: {item.device_model || '—'}</div>
-                                            <div className="mt-1 text-sm text-slate-700">Gửi yêu cầu: {item.requested_at ? new Date(item.requested_at).toLocaleString('vi-VN') : '—'}</div>
+                                            <div className="mt-1 text-sm text-slate-700">Gửi yêu cầu: {formatVietnamDateTime(item.requested_at)}</div>
                                             {item.note ? <div className="mt-2 rounded-xl bg-white px-3 py-2 text-sm text-slate-700">{item.note}</div> : null}
                                         </div>
                                         {item.status === 'pending' ? (

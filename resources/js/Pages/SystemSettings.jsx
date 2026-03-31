@@ -4,6 +4,7 @@ import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import PaginationControls from '@/Components/PaginationControls';
 import { useToast } from '@/Contexts/ToastContext';
+import { formatVietnamDateTime } from '@/lib/vietnamTime';
 
 const TABS = [
     { key: 'branding', label: 'Thương hiệu' },
@@ -894,10 +895,7 @@ export default function SystemSettings(props) {
     const pushPlatforms = pushTokens?.by_platform || {};
     const apnsEnvironment = pushTokens?.ios_apns_environment || {};
     const formatDateTime = (value) => {
-        if (!value) return '—';
-        const date = new Date(value);
-        if (Number.isNaN(date.getTime())) return String(value);
-        return date.toLocaleString('vi-VN');
+        return formatVietnamDateTime(value, value ? String(value) : '—');
     };
     const compactToken = (value) => {
         const token = String(value || '');

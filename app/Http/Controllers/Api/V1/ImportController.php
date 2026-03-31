@@ -7,6 +7,7 @@ use App\Models\Client;
 use App\Models\Contract;
 use App\Models\ContractItem;
 use App\Models\ContractPayment;
+use App\Models\DataTransferJob;
 use App\Models\Department;
 use App\Models\LeadType;
 use App\Models\Product;
@@ -14,12 +15,15 @@ use App\Models\Project;
 use App\Models\RevenueTier;
 use App\Models\Task;
 use App\Models\User;
+use App\Jobs\ProcessImportJob;
+use App\Services\DataTransfers\ImportExecutionService;
 use App\Services\ProjectProgressService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -39,337 +43,24 @@ class ImportController extends Controller
     public function importClients(Request $request): JsonResponse
     {
         $this->authorizeRoles($request, ['admin', 'quan_ly', 'nhan_vien']);
-        $this->prepareImportRuntime();
         $file = $this->validateFile($request);
-        $report = $this->initReport();
-        $user = $request->user();
-
-        $this->iterateMappedRows($file->getRealPath(), $this->clientHeaderMap(), function (array $data, int $rowNumber) use (&$report, $user) {
-            if (empty($data['name'])) {
-                $this->skipRow($report, $rowNumber, 'Thiếu tên khách hàng.');
-                return;
-            }
-
-            try {
-                DB::beginTransaction();
-
-                $leadTypeId = $this->resolveLeadTypeId($data['lead_type_name'] ?? null);
-
-                $salesOwnerRaw = $data['manager_name'] ?? null;
-                $salesOwnerId = $this->resolveUserId($salesOwnerRaw);
-                if ($this->hasText($salesOwnerRaw) && ! $salesOwnerId) {
-                    $this->pushWarning($report, $rowNumber, 'Không tìm thấy người quản lý "' . trim((string) $salesOwnerRaw) . '", hệ thống để trống.');
-                }
-
-                $assignedStaffRaw = $data['watcher_name'] ?? null;
-                $assignedStaffId = $this->resolveUserId($assignedStaffRaw);
-                if ($this->hasText($assignedStaffRaw) && ! $assignedStaffId) {
-                    $this->pushWarning($report, $rowNumber, 'Không tìm thấy người theo dõi "' . trim((string) $assignedStaffRaw) . '", hệ thống để trống.');
-                }
-                if (! $assignedStaffId) {
-                    $assignedStaffId = $salesOwnerId;
-                }
-
-                if ($user->role === 'nhan_vien') {
-                    $assignedStaffId = (int) $user->id;
-                    $salesOwnerId = (int) $user->id;
-                }
-
-                $assignedDepartmentId = $assignedStaffId ? $this->getUserDepartmentId($assignedStaffId) : null;
-                $totalRevenueRaw = $data['total_revenue'] ?? null;
-                $totalRevenue = $this->parseNumber($totalRevenueRaw);
-                if ($this->hasText($totalRevenueRaw) && $totalRevenue === null) {
-                    $this->pushWarning($report, $rowNumber, 'Doanh số lũy kế không hợp lệ, hệ thống để trống.');
-                }
-
-                $legacyDebtRaw = $data['legacy_debt_amount'] ?? null;
-                $legacyDebtAmount = $this->parseNumber($legacyDebtRaw);
-                if ($this->hasText($legacyDebtRaw) && $legacyDebtAmount === null) {
-                    $this->pushWarning($report, $rowNumber, 'Công nợ không hợp lệ, hệ thống để mặc định.');
-                }
-
-                $createdAtRaw = $data['created_at'] ?? null;
-                $createdAt = $this->parseDateTime($createdAtRaw);
-                if ($this->hasText($createdAtRaw) && ! $createdAt) {
-                    $this->pushWarning($report, $rowNumber, 'Ngày tạo không hợp lệ, hệ thống để trống.');
-                }
-
-                $normalizedPhone = $this->normalizePhoneForStorage($data['phone'] ?? null);
-                if ($this->hasText($data['phone'] ?? null) && ! $normalizedPhone) {
-                    $this->pushWarning($report, $rowNumber, 'Số điện thoại không hợp lệ, hệ thống để trống.');
-                }
-
-                $payload = [
-                    'name' => $data['name'],
-                    'external_code' => $data['external_code'] ?? null,
-                    'company' => $data['company'] ?? null,
-                    'email' => $this->normalizeEmailForStorage($data['email'] ?? null),
-                    'phone' => $normalizedPhone,
-                    'notes' => $data['notes'] ?? null,
-                    'lead_type_id' => $leadTypeId,
-                    'sales_owner_id' => $salesOwnerId,
-                    'assigned_staff_id' => $assignedStaffId,
-                    'assigned_department_id' => $assignedDepartmentId,
-                    'lead_source' => $data['lead_source'] ?? null,
-                    'lead_channel' => $data['lead_channel'] ?? null,
-                    'lead_message' => $data['lead_message'] ?? null,
-                    'customer_status_label' => $data['customer_status_label'] ?? null,
-                    'customer_level' => $data['customer_level'] ?? null,
-                    'legacy_debt_amount' => $legacyDebtAmount,
-                    'company_size' => $data['company_size'] ?? null,
-                    'product_categories' => $data['product_categories'] ?? null,
-                ];
-
-                if ($totalRevenue !== null) {
-                    $payload['total_revenue'] = $totalRevenue;
-                    $payload['has_purchased'] = $totalRevenue > 0;
-                    $payload['revenue_tier_id'] = $this->resolveRevenueTierId($totalRevenue);
-                }
-
-                $client = $this->findClientByIdentity(
-                    $data['name'],
-                    $normalizedPhone,
-                    $payload['email'] ?? null,
-                    $data['external_code'] ?? null
-                );
-
-                if ($client) {
-                    $client->update($this->filterNullValues($payload));
-                    if ($createdAt && empty($client->created_at)) {
-                        $client->timestamps = false;
-                        $client->created_at = $createdAt;
-                        $client->save();
-                        $client->timestamps = true;
-                    }
-                    $report['updated']++;
-                } else {
-                    if (empty($payload['lead_type_id'])) {
-                        $payload['lead_type_id'] = $this->resolveLeadTypeId('Khách hàng tiềm năng');
-                    }
-                    $client = Client::create($this->filterNullValues($payload));
-                    if ($createdAt) {
-                        $client->timestamps = false;
-                        $client->created_at = $createdAt;
-                        $client->updated_at = $createdAt;
-                        $client->save();
-                        $client->timestamps = true;
-                    }
-                    $report['created']++;
-                }
-
-                $careStaffIds = array_values(array_filter([
-                    $assignedStaffId ? (int) $assignedStaffId : null,
-                    $salesOwnerId ? (int) $salesOwnerId : null,
-                ]));
-                $this->syncClientCareStaffFromImport($client, $careStaffIds, (int) $user->id);
-
-                DB::commit();
-            } catch (\Throwable $e) {
-                DB::rollBack();
-                $this->skipRow($report, $rowNumber, 'Lỗi xử lý: ' . $e->getMessage());
-            }
-        });
-
-        return response()->json($this->finalizeReport($report));
+        return $this->queueImport($request, $file, 'clients');
     }
 
     public function importContracts(Request $request): JsonResponse
     {
         $this->authorizeRoles($request, ['admin', 'quan_ly', 'nhan_vien', 'ke_toan']);
-        $this->prepareImportRuntime();
         $file = $this->validateFile($request);
-        $report = $this->initReport();
-        $user = $request->user();
+        return $this->queueImport($request, $file, 'contracts');
+    }
 
-        $this->iterateMappedRows($file->getRealPath(), $this->contractHeaderMap(), function (array $data, int $rowNumber) use (&$report, $user) {
-            $code = $data['code'] ?? null;
-            $clientName = $data['client_name'] ?? null;
+    public function showImportJob(Request $request, DataTransferJob $dataTransferJob): JsonResponse
+    {
+        if ((int) $dataTransferJob->user_id !== (int) $request->user()->id && ! in_array($request->user()->role, ['admin', 'ke_toan'], true)) {
+            return response()->json(['message' => 'Bạn không có quyền xem tiến trình import này.'], 403);
+        }
 
-            if (! $code) {
-                $this->skipRow($report, $rowNumber, 'Thiếu số hợp đồng.');
-                return;
-            }
-
-            if (! $clientName) {
-                $this->skipRow($report, $rowNumber, 'Thiếu tên khách hàng.');
-                return;
-            }
-
-            try {
-                DB::beginTransaction();
-
-                $collectorNameRaw = $data['collector_name'] ?? null;
-                $collectorId = $this->resolveUserId($collectorNameRaw);
-                if ($this->hasText($collectorNameRaw) && ! $collectorId) {
-                    $this->pushWarning($report, $rowNumber, 'Không tìm thấy người quản lý hợp đồng "' . trim((string) $collectorNameRaw) . '", hệ thống để trống.');
-                }
-
-                $client = $this->resolveOrCreateClientForContract($data, $collectorId);
-                $this->syncClientCareStaffFromImport($client, [$collectorId], (int) $user->id);
-
-                $status = $this->normalizeContractStatus($data['status'] ?? '');
-                $approval = $this->resolveApproval($user);
-                $valueRaw = $data['value'] ?? null;
-                $value = $this->parseNumber($valueRaw);
-                if ($this->hasText($valueRaw) && $value === null) {
-                    $this->pushWarning($report, $rowNumber, 'Giá trị hợp đồng không hợp lệ, hệ thống để trống.');
-                }
-
-                $debtRaw = $data['debt'] ?? null;
-                $debt = $this->parseNumber($debtRaw);
-                if ($this->hasText($debtRaw) && $debt === null) {
-                    $this->pushWarning($report, $rowNumber, 'Số tiền chưa thanh toán không hợp lệ, hệ thống để trống.');
-                }
-
-                $signedAt = $this->parseDate($data['signed_at'] ?? null);
-                if ($this->hasText($data['signed_at'] ?? null) && ! $signedAt) {
-                    $this->pushWarning($report, $rowNumber, 'Ngày ký không hợp lệ, hệ thống để trống.');
-                }
-                $startDate = $this->parseDate($data['start_date'] ?? null);
-                if ($this->hasText($data['start_date'] ?? null) && ! $startDate) {
-                    $this->pushWarning($report, $rowNumber, 'Ngày bắt đầu không hợp lệ, hệ thống để trống.');
-                }
-                $endDate = $this->parseDate($data['end_date'] ?? null);
-                if ($this->hasText($data['end_date'] ?? null) && ! $endDate) {
-                    $this->pushWarning($report, $rowNumber, 'Ngày kết thúc không hợp lệ, hệ thống để trống.');
-                }
-
-                $durationMonths = $this->parseInteger($data['duration_months'] ?? null);
-                if ($this->hasText($data['duration_months'] ?? null) && $durationMonths === null) {
-                    $this->pushWarning($report, $rowNumber, 'Số tháng không hợp lệ, hệ thống để trống.');
-                }
-
-                $importedPaidPeriods = $this->parseInteger($data['collected_periods'] ?? null);
-                if ($this->hasText($data['collected_periods'] ?? null) && $importedPaidPeriods === null) {
-                    $this->pushWarning($report, $rowNumber, 'Kỳ đã thu không hợp lệ, hệ thống để trống.');
-                } elseif ($importedPaidPeriods !== null && $importedPaidPeriods > 480) {
-                    $importedPaidPeriods = null;
-                    $this->pushWarning($report, $rowNumber, 'Kỳ đã thu vượt ngưỡng hợp lệ, hệ thống để trống.');
-                }
-
-                $paidTotal = $value !== null
-                    ? max(0, min($value, $value - max(0, (float) ($debt ?: 0))))
-                    : null;
-
-                $payload = [
-                    'title' => $this->buildImportedContractTitle($data),
-                    'contract_type' => $data['contract_type'] ?? null,
-                    'client_id' => $client->id,
-                    'value' => $value,
-                    'status' => $status,
-                    'approval_status' => $approval['approval_status'],
-                    'approved_by' => $approval['approved_by'],
-                    'approved_at' => $approval['approved_at'],
-                    'signed_at' => $signedAt,
-                    'start_date' => $startDate,
-                    'end_date' => $endDate,
-                    'notes' => $data['notes'] ?? null,
-                    'created_by' => $user->id,
-                    'collector_user_id' => $collectorId,
-                    'care_schedule' => $data['care_schedule'] ?? null,
-                    'duration_months' => $durationMonths,
-                    'payment_cycle' => $data['payment_cycle'] ?? null,
-                    'imported_paid_periods' => $importedPaidPeriods,
-                ];
-
-                $contract = Contract::query()->where('code', $code)->first();
-                if ($contract) {
-                    $contract->update($this->filterNullValues($payload));
-                    $report['updated']++;
-                } else {
-                    $contract = Contract::create(array_merge($payload, [
-                        'code' => $code,
-                    ]));
-                    $report['created']++;
-                }
-
-                $product = $this->resolveOrCreateProduct(
-                    $data['product_code'] ?? null,
-                    $data['product_name'] ?? null,
-                    $data['unit'] ?? null,
-                    $this->parseNumber($data['unit_price'] ?? null)
-                );
-
-                $quantity = $this->parseInteger($data['quantity'] ?? null);
-                if ($this->hasText($data['quantity'] ?? null) && $quantity === null) {
-                    $this->pushWarning($report, $rowNumber, 'Số lượng không hợp lệ, hệ thống mặc định 1.');
-                }
-                $quantity = $quantity ?: 1;
-
-                $unitPrice = $this->parseNumber($data['unit_price'] ?? null);
-                if ($this->hasText($data['unit_price'] ?? null) && $unitPrice === null) {
-                    $this->pushWarning($report, $rowNumber, 'Đơn giá không hợp lệ, hệ thống mặc định 0.');
-                }
-                $unitPrice = $unitPrice ?: 0;
-
-                $discountAmount = $this->parseNumber($data['discount_amount'] ?? null);
-                if ($this->hasText($data['discount_amount'] ?? null) && $discountAmount === null) {
-                    $this->pushWarning($report, $rowNumber, 'Giảm giá không hợp lệ, hệ thống mặc định 0.');
-                }
-                $discountAmount = $discountAmount ?: 0;
-
-                $vatAmount = $this->parseNumber($data['vat_amount'] ?? null);
-                if ($this->hasText($data['vat_amount'] ?? null) && $vatAmount === null) {
-                    $this->pushWarning($report, $rowNumber, 'VAT không hợp lệ, hệ thống mặc định 0.');
-                }
-                $vatAmount = $vatAmount ?: 0;
-                $itemTotal = $this->parseNumber($data['value'] ?? null);
-                if ($itemTotal === null) {
-                    $itemTotal = max(0, ($unitPrice * $quantity) - $discountAmount + $vatAmount);
-                }
-
-                if (! empty($data['product_name']) || ! empty($data['product_code'])) {
-                    $itemIdentity = [
-                        'contract_id' => $contract->id,
-                        'product_code' => $data['product_code'] ?? null,
-                        'product_name' => $data['product_name'] ?: ($product ? $product->name : 'Sản phẩm import'),
-                    ];
-
-                    ContractItem::query()->updateOrCreate(
-                        $itemIdentity,
-                        [
-                            'product_id' => $product ? $product->id : null,
-                            'unit' => $data['unit'] ?? ($product ? $product->unit : null),
-                            'unit_price' => $unitPrice,
-                            'quantity' => $quantity,
-                            'discount_amount' => $discountAmount,
-                            'vat_amount' => $vatAmount,
-                            'total_price' => $itemTotal,
-                            'note' => $this->composeImportedContractItemNote($data),
-                        ]
-                    );
-                }
-
-                $paymentNote = 'Import Excel: tổng đã thu';
-                if ($paidTotal !== null && $paidTotal > 0) {
-                    $paidAt = $this->parseDate($data['signed_at'] ?? $data['start_date'] ?? null);
-                    $payment = ContractPayment::query()
-                        ->firstOrNew([
-                            'contract_id' => $contract->id,
-                            'note' => $paymentNote,
-                        ]);
-                    $payment->fill([
-                        'amount' => $paidTotal,
-                        'paid_at' => $paidAt,
-                        'method' => 'import_excel',
-                        'created_by' => $user->id,
-                    ]);
-                    $payment->save();
-                }
-
-                $contract->refreshFinancials();
-                if ($contract->client) {
-                    $this->syncClientRevenue($contract->client);
-                }
-
-                DB::commit();
-            } catch (\Throwable $e) {
-                DB::rollBack();
-                $this->skipRow($report, $rowNumber, 'Lỗi xử lý: ' . $e->getMessage());
-            }
-        });
-
-        return response()->json($this->finalizeReport($report));
+        return response()->json($dataTransferJob->fresh());
     }
 
     public function importTasks(Request $request): JsonResponse
@@ -1076,6 +767,36 @@ class ImportController extends Controller
         }
 
         @ini_set('memory_limit', '1024M');
+    }
+
+    private function queueImport(Request $request, $file, string $module): JsonResponse
+    {
+        /** @var ImportExecutionService $service */
+        $service = app(ImportExecutionService::class);
+        $storedPath = $file->store('imports/' . $module, 'local');
+        $absolutePath = Storage::disk('local')->path($storedPath);
+        $estimatedRows = $service->estimateRows($absolutePath);
+
+        $job = DataTransferJob::query()->create([
+            'user_id' => $request->user()->id,
+            'type' => 'import',
+            'module' => $module,
+            'status' => 'queued',
+            'disk' => 'local',
+            'file_path' => $storedPath,
+            'original_name' => $file->getClientOriginalName(),
+            'total_rows' => $estimatedRows,
+            'processed_rows' => 0,
+            'successful_rows' => 0,
+            'failed_rows' => 0,
+        ]);
+
+        ProcessImportJob::dispatch($job->id);
+
+        return response()->json([
+            'message' => 'Đã đưa file import vào hàng đợi xử lý.',
+            'job' => $job->fresh(),
+        ], 202);
     }
 
     private function finalizeReport(array $report): array

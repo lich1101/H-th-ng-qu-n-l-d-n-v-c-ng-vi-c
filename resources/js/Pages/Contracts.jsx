@@ -8,6 +8,7 @@ import AppIcon from '@/Components/AppIcon';
 import PaginationControls from '@/Components/PaginationControls';
 import TagMultiSelect from '@/Components/TagMultiSelect';
 import { useToast } from '@/Contexts/ToastContext';
+import { formatVietnamDate } from '@/lib/vietnamTime';
 
 const STATUS_OPTIONS = [
     { value: 'draft', label: 'Nháp' },
@@ -31,7 +32,7 @@ const HANDOVER_RECEIVE_LABELS = {
 
 const approvalLabel = (value) => APPROVAL_LABELS[value] || APPROVAL_LABELS.pending;
 const formatCurrency = (value) => Number(value || 0).toLocaleString('vi-VN');
-const formatDateDisplay = (value) => (value ? new Date(value).toLocaleDateString('vi-VN') : '—');
+const formatDateDisplay = (value) => formatVietnamDate(value);
 const parseNumberInput = (value) => {
     if (value === null || value === undefined || value === '') return 0;
     if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
@@ -188,6 +189,7 @@ export default function Contracts(props) {
     const [importFile, setImportFile] = useState(null);
     const [importing, setImporting] = useState(false);
     const [importReport, setImportReport] = useState(null);
+    const [importJob, setImportJob] = useState(null);
     const [editingCanManage, setEditingCanManage] = useState(true);
     const [selectedContractIds, setSelectedContractIds] = useState([]);
     const [bulkLoading, setBulkLoading] = useState(false);
@@ -785,15 +787,14 @@ export default function Contracts(props) {
             const formData = new FormData();
             formData.append('file', importFile);
             const res = await axios.post('/api/v1/imports/contracts', formData);
-            const report = res.data || {};
-            setImportReport(report);
-            toast.success(
-                `Import hoàn tất: ${report.created || 0} tạo mới, ${report.updated || 0} cập nhật, ${report.skipped || 0} bỏ qua.`
-            );
-            await fetchContracts();
+            setImportJob(res.data?.job || null);
+            setImportReport(null);
+            toast.success('Đã đưa file import hợp đồng vào hàng đợi xử lý.');
         } catch (e) {
             const validationMessages = extractValidationMessages(e);
             const fallbackMessage = getErrorMessage(e, 'Import thất bại.');
+            setImportJob(null);
+            setImporting(false);
             setImportReport({
                 created: 0,
                 updated: 0,
@@ -804,10 +805,51 @@ export default function Contracts(props) {
                     : [{ row: '-', message: fallbackMessage }],
             });
             toast.error(fallbackMessage);
-        } finally {
-            setImporting(false);
         }
     };
+
+    useEffect(() => {
+        if (!showImport || !importJob?.id) return undefined;
+
+        const poll = async () => {
+            try {
+                const res = await axios.get(`/api/v1/imports/jobs/${importJob.id}`);
+                const nextJob = res.data || null;
+                setImportJob(nextJob);
+
+                if (nextJob?.status === 'completed') {
+                    window.clearInterval(timer);
+                    const report = nextJob.report || {};
+                    setImporting(false);
+                    setImportReport(report);
+                    toast.success(
+                        `Import hoàn tất: ${report.created || 0} tạo mới, ${report.updated || 0} cập nhật, ${report.skipped || 0} bỏ qua.`
+                    );
+                    await fetchContracts();
+                } else if (nextJob?.status === 'failed') {
+                    window.clearInterval(timer);
+                    setImporting(false);
+                    setImportReport(nextJob.report || {
+                        created: 0,
+                        updated: 0,
+                        skipped: 0,
+                        warnings: [],
+                        errors: [{ row: '-', message: nextJob.error_message || 'Import thất bại.' }],
+                    });
+                    toast.error(nextJob?.error_message || 'Import thất bại.');
+                }
+            } catch (error) {
+                setImporting(false);
+                toast.error(getErrorMessage(error, 'Không kiểm tra được tiến trình import hợp đồng.'));
+            }
+        };
+
+        const timer = window.setInterval(poll, 1500);
+        poll();
+
+        return () => window.clearInterval(timer);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [showImport, importJob?.id]);
 
     const save = async (createAndApprove = false) => {
         if (!editingId && !canCreate) return toast.error('Bạn không có quyền tạo hợp đồng.');
@@ -2029,6 +2071,7 @@ export default function Contracts(props) {
                     setShowImport(false);
                     setImportFile(null);
                     setImportReport(null);
+                    setImportJob(null);
                 }}
                 title="Import hợp đồng"
                 description="Tải file Excel (.xls/.xlsx/.csv) để nhập hợp đồng và tự nối khách hàng trùng tên."
@@ -2103,6 +2146,28 @@ export default function Contracts(props) {
                             )}
                         </div>
                     )}
+                    {importJob && (
+                        <div className="rounded-2xl border border-slate-200/80 bg-slate-50 p-3 space-y-2">
+                            <div className="flex items-center justify-between gap-3 text-xs">
+                                <div className="font-semibold uppercase tracking-[0.14em] text-text-subtle">Tiến trình import</div>
+                                <div className="font-semibold text-slate-700">
+                                    {importJob.processed_rows || 0}/{importJob.total_rows || 0} dòng
+                                </div>
+                            </div>
+                            <div className="h-2.5 overflow-hidden rounded-full bg-slate-200">
+                                <div
+                                    className={`h-full rounded-full transition-all ${importJob.status === 'failed' ? 'bg-rose-500' : 'bg-primary'}`}
+                                    style={{ width: `${importJob.progress_percent || 0}%` }}
+                                />
+                            </div>
+                            <div className="flex items-center justify-between text-xs text-text-muted">
+                                <span>
+                                    Trạng thái: {importJob.status === 'queued' ? 'Đang chờ' : importJob.status === 'processing' ? 'Đang xử lý' : importJob.status === 'completed' ? 'Hoàn tất' : 'Thất bại'}
+                                </span>
+                                <span>{importJob.progress_percent || 0}%</span>
+                            </div>
+                        </div>
+                    )}
                     <div className="flex items-center gap-2">
                         <button
                             type="submit"
@@ -2118,6 +2183,7 @@ export default function Contracts(props) {
                                 setShowImport(false);
                                 setImportFile(null);
                                 setImportReport(null);
+                                setImportJob(null);
                             }}
                         >
                             Hủy

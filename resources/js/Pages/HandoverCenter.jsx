@@ -4,6 +4,7 @@ import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } fro
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import { useToast } from '@/Contexts/ToastContext';
+import { formatVietnamDateTime } from '@/lib/vietnamTime';
 
 const HANDOVER_STYLES = {
     pending: 'bg-amber-50 text-amber-700 border-amber-200',
@@ -20,10 +21,7 @@ const handoverLabel = (value) => {
 };
 
 const formatDateTime = (value) => {
-    if (!value) return '—';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return String(value);
-    return date.toLocaleString('vi-VN');
+    return formatVietnamDateTime(value, value ? String(value) : '—');
 };
 
 export default function HandoverCenter(props) {

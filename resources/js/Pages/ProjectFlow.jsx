@@ -6,6 +6,7 @@ import 'reactflow/dist/style.css';
 import AppIcon from '@/Components/AppIcon';
 import Authenticated from '@/Layouts/Authenticated';
 import { useToast } from '@/Contexts/ToastContext';
+import { formatVietnamDate, formatVietnamDateTime } from '@/lib/vietnamTime';
 
 const TYPE_LABELS = {
     contract: 'Hợp đồng',
@@ -97,12 +98,7 @@ const clampPercent = (value) => {
 };
 
 const formatDate = (raw, withTime = false) => {
-    if (!raw) return '—';
-    const date = new Date(raw);
-    if (Number.isNaN(date.getTime())) return String(raw);
-    const base = `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
-    if (!withTime) return base;
-    return `${base} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+    return withTime ? formatVietnamDateTime(raw) : formatVietnamDate(raw);
 };
 
 const formatCurrency = (value) => `${Number(value || 0).toLocaleString('vi-VN')} VNĐ`;

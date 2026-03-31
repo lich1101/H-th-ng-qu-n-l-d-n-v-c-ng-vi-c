@@ -4,10 +4,16 @@ import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } fro
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import { useToast } from '@/Contexts/ToastContext';
+import { VIETNAM_TIME_ZONE, formatVietnamDate, formatVietnamDateTime } from '@/lib/vietnamTime';
 
 const WEEK_DAYS = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
 
 const pad = (value) => String(value).padStart(2, '0');
+const vietnamMonthFormatter = new Intl.DateTimeFormat('vi-VN', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: VIETNAM_TIME_ZONE,
+});
 
 const toDateKey = (raw) => {
     if (!raw) return '';
@@ -28,16 +34,7 @@ const toDateTimeLocal = (raw) => {
 };
 
 const formatDateTime = (raw) => {
-    if (!raw) return '—';
-    const date = new Date(raw);
-    if (Number.isNaN(date.getTime())) return raw;
-    return date.toLocaleString('vi-VN', {
-        hour: '2-digit',
-        minute: '2-digit',
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-    });
+    return formatVietnamDateTime(raw, raw || '—');
 };
 
 const getMonthRange = (monthDate) => {
@@ -187,7 +184,7 @@ export default function Meetings(props) {
     const selectedDateKey = toDateKey(selectedDate);
     const selectedMeetings = meetingsByDate[selectedDateKey] || [];
     const calendarCells = useMemo(() => buildCalendarCells(currentMonth), [currentMonth]);
-    const monthLabel = currentMonth.toLocaleDateString('vi-VN', { month: 'long', year: 'numeric' });
+    const monthLabel = vietnamMonthFormatter.format(currentMonth);
 
     const toggleAttendee = (userId) => {
         setForm((prev) => {
@@ -446,7 +443,7 @@ export default function Meetings(props) {
                 <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
                     <div className="flex items-center justify-between mb-3">
                         <h3 className="font-semibold text-slate-900">
-                            Sự kiện ngày {selectedDate.toLocaleDateString('vi-VN')}
+                            Sự kiện ngày {formatVietnamDate(selectedDate, '—')}
                         </h3>
                         <span className="text-xs text-text-muted">{selectedMeetings.length} lịch họp</span>
                     </div>

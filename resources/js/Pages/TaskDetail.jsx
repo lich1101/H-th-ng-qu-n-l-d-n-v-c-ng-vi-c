@@ -3,6 +3,7 @@ import axios from 'axios';
 import Modal from '@/Components/Modal';
 import PageContainer from '@/Components/PageContainer';
 import { useToast } from '@/Contexts/ToastContext';
+import { formatVietnamDate, formatVietnamDateTime } from '@/lib/vietnamTime';
 
 const statusLabel = (value) => {
     switch (value) {
@@ -32,20 +33,11 @@ const reviewLabel = (value) => {
 };
 
 const formatDate = (raw) => {
-    if (!raw) return '—';
-    try {
-        const d = new Date(raw);
-        return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
-    } catch {
-        return String(raw).slice(0, 10);
-    }
+    return formatVietnamDate(raw, raw ? String(raw).slice(0, 10) : '—');
 };
 
 const formatDateTime = (raw) => {
-    if (!raw) return '—';
-    const d = new Date(raw);
-    if (Number.isNaN(d.getTime())) return String(raw);
-    return d.toLocaleString('vi-VN');
+    return formatVietnamDateTime(raw, raw ? String(raw) : '—');
 };
 
 export default function TaskDetail(props) {

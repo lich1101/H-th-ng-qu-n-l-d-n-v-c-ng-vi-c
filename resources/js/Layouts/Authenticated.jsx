@@ -3,6 +3,7 @@ import axios from 'axios';
 import AppIcon from '@/Components/AppIcon';
 import ChatbotAssistantPanel from '@/Components/ChatbotAssistantPanel';
 import Dropdown from '@/Components/Dropdown';
+import { formatVietnamDate } from '@/lib/vietnamTime';
 import { Link, usePage } from '@inertiajs/inertia-react';
 
 export default function Authenticated({ auth, header, children }) {
@@ -73,7 +74,7 @@ export default function Authenticated({ auth, header, children }) {
         if (diffHours < 24) return `${diffHours} giờ`;
         const diffDays = Math.floor(diffHours / 24);
         if (diffDays < 7) return `${diffDays} ngày`;
-        return new Date(timestamp).toLocaleDateString('vi-VN');
+        return formatVietnamDate(timestamp);
     };
 
     const parseCount = (value) => {

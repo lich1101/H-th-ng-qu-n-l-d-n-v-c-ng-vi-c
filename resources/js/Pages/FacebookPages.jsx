@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import PageContainer from '@/Components/PageContainer';
+import { formatVietnamDateTime } from '@/lib/vietnamTime';
 
 export default function FacebookPages(props) {
     const connected = Boolean(props.facebookConnected);
@@ -160,7 +161,7 @@ export default function FacebookPages(props) {
                             </p>
                             {connected && expiresAt && (
                                 <p className="text-xs text-text-muted mt-1">
-                                    Hết hạn: {new Date(expiresAt).toLocaleString()}
+                                    Hết hạn: {formatVietnamDateTime(expiresAt, String(expiresAt))}
                                 </p>
                             )}
                             {syncing && (

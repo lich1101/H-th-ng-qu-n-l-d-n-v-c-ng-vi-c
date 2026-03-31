@@ -4,6 +4,7 @@ import { onChildAdded, onChildChanged, ref, query, orderByChild, limitToLast } f
 import PageContainer from '@/Components/PageContainer';
 import { useToast } from '@/Contexts/ToastContext';
 import { firebaseReady, getFirebaseDb, ensureFirebaseAuth } from '@/lib/firebase';
+import { formatVietnamDateTime } from '@/lib/vietnamTime';
 
 export default function InternalChat(props) {
     const toast = useToast();
@@ -38,15 +39,7 @@ export default function InternalChat(props) {
 
     const formatTime = (raw) => {
         if (!raw) return '';
-        const date = new Date(raw);
-        if (Number.isNaN(date.getTime())) return raw;
-        return date.toLocaleString('vi-VN', {
-            hour: '2-digit',
-            minute: '2-digit',
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-        });
+        return formatVietnamDateTime(raw, raw);
     };
 
     const normalizeToken = (value) => {

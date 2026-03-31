@@ -62,7 +62,7 @@ function RevenueStaffBreakdown({ data = [] }) {
                     <h3 className="text-base font-semibold text-slate-900">Doanh thu theo nhân viên</h3>
                     <p className="mt-1 text-xs text-text-muted">Biểu đồ cột ngang lấy theo nhân viên thu hợp đồng, gồm doanh thu, dòng tiền, công nợ và chi phí.</p>
                 </div>
-                <div className="flex flex-wrap items-center justify-end gap-2">
+                <div className="flex max-w-[360px] flex-wrap items-center justify-end gap-2">
                     {series.map((item) => (
                         <span key={item.key} className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
                             <span className={`h-2.5 w-2.5 rounded-full ${item.color}`} />
@@ -72,8 +72,8 @@ function RevenueStaffBreakdown({ data = [] }) {
                 </div>
             </div>
 
-            <div className="mt-4 flex-1 overflow-x-auto">
-                <table className="min-w-full text-sm">
+            <div className="mt-4 min-h-0 flex-1 overflow-auto rounded-2xl border border-slate-200/70">
+                <table className="min-w-[920px] text-sm">
                     <thead>
                         <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-[0.14em] text-text-subtle">
                             <th className="py-2.5 pr-3">Nhân viên</th>
@@ -348,8 +348,8 @@ export default function CompanyRevenueReport(props) {
                 ))}
             </div>
 
-            <div className="mb-6 grid gap-5 xl:grid-cols-[minmax(420px,0.94fr)_minmax(560px,1.18fr)]">
-                <div className="flex h-full flex-col rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card">
+            <div className="mb-6 grid gap-5 xl:grid-cols-[minmax(380px,0.9fr)_minmax(520px,1.1fr)]">
+                <div className="flex h-full min-h-[640px] flex-col rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card">
                     <div className="flex items-start justify-between gap-4">
                         <div>
                             <h3 className="text-base font-semibold text-slate-900">Doanh thu theo sản phẩm</h3>
@@ -366,7 +366,9 @@ export default function CompanyRevenueReport(props) {
                     </div>
                 </div>
 
-                <RevenueStaffBreakdown data={staffBreakdown} />
+                <div className="min-h-[640px]">
+                    <RevenueStaffBreakdown data={staffBreakdown} />
+                </div>
             </div>
 
             <div className="rounded-2xl border border-slate-200/80 bg-white shadow-card overflow-hidden">

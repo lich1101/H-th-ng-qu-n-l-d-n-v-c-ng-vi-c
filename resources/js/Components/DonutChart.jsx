@@ -107,7 +107,7 @@ export default function DonutChart({
     const isHorizontal = layout === 'horizontal';
 
     return (
-        <div className={isHorizontal ? 'grid h-full gap-6 xl:grid-cols-[minmax(220px,280px)_minmax(0,1fr)] xl:items-center' : 'flex flex-col items-center gap-4'}>
+        <div className={isHorizontal ? 'grid h-full gap-6 xl:grid-cols-[minmax(220px,280px)_minmax(0,1fr)] xl:items-center' : 'flex flex-col items-center gap-5'}>
             <div
                 className={isHorizontal ? 'flex justify-center xl:justify-start' : ''}
             >
@@ -167,7 +167,7 @@ export default function DonutChart({
                 </div>
                 </div>
             </div>
-            <div className={`w-full ${isHorizontal ? 'grid content-start auto-rows-min gap-2.5' : 'space-y-2.5'}`}>
+            <div className={`w-full ${isHorizontal ? 'grid max-h-[320px] content-start auto-rows-min gap-2.5 overflow-y-auto pr-1.5' : 'max-h-[280px] space-y-2.5 overflow-y-auto pr-1.5'}`}>
                 {normalized.map((item) => (
                     <button
                         key={item.label}
@@ -181,9 +181,9 @@ export default function DonutChart({
                     >
                         <div className="flex min-w-0 items-center gap-2.5">
                             <span className="h-3 w-3 flex-none rounded-full ring-4 ring-slate-50" style={{ background: item.color }} />
-                            <span className="truncate text-sm font-medium text-slate-700">{item.label}</span>
+                            <span className="line-clamp-2 text-sm font-medium leading-5 text-slate-700">{item.label}</span>
                         </div>
-                        <span className="flex-none text-sm font-semibold text-slate-900">{item.value.toLocaleString('vi-VN')}</span>
+                        <span className="flex-none text-xs font-semibold text-slate-900 sm:text-sm">{item.value.toLocaleString('vi-VN')}</span>
                     </button>
                 ))}
                 {normalized.length === 0 && (
