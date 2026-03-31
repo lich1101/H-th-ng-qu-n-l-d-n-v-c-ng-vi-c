@@ -29,6 +29,23 @@ const formatDate = (value) => {
     return `${day}-${month}-${year}`;
 };
 
+const formatDateInput = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+const getCurrentMonthRange = () => {
+    const now = new Date();
+    const from = new Date(now.getFullYear(), now.getMonth(), 1);
+    const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    return {
+        from: formatDateInput(from),
+        to: formatDateInput(to),
+    };
+};
+
 const initials = (name) => {
     const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
     if (!parts.length) return 'NV';
@@ -177,16 +194,14 @@ function RevenueStaffBreakdown({ data = [] }) {
 
 export default function CompanyRevenueReport(props) {
     const toast = useToast();
-    const [filters, setFilters] = useState({
-        from: '',
-        to: '',
+    const [filters, setFilters] = useState(() => ({
+        ...getCurrentMonthRange(),
         target_revenue: '',
-    });
-    const [draftFilters, setDraftFilters] = useState({
-        from: '',
-        to: '',
+    }));
+    const [draftFilters, setDraftFilters] = useState(() => ({
+        ...getCurrentMonthRange(),
         target_revenue: '',
-    });
+    }));
     const [report, setReport] = useState({});
     const [loading, setLoading] = useState(true);
     const [availableRange, setAvailableRange] = useState({ from: '', to: '' });
@@ -288,7 +303,7 @@ export default function CompanyRevenueReport(props) {
         >
             <FilterToolbar
                 title="Bộ lọc thời gian"
-                description="Khi vừa vào trang, hệ thống tự lấy toàn bộ dữ liệu từ đầu đến cuối để bạn không bị lệch kỳ."
+                description="Khi vừa vào trang, hệ thống mặc định lọc đúng tháng hiện tại. Bấm “Toàn thời gian” nếu bạn muốn xem toàn bộ dữ liệu."
                 actions={(
                     <FilterActionGroup>
                         <button

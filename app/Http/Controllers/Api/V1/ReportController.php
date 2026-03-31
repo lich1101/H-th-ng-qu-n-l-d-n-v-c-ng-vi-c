@@ -32,19 +32,123 @@ class ReportController extends Controller
     {
         try {
         $viewer = request()->user();
+        if (! $viewer) {
+            return response()->json([
+                'projects' => ['total' => 0, 'in_progress' => 0, 'pending_review' => 0],
+                'tasks' => ['total' => 0, 'completed' => 0, 'overdue' => 0, 'on_time_rate' => 0],
+                'service_breakdown' => [],
+                'projects_total' => 0,
+                'projects_in_progress' => 0,
+                'projects_pending_review' => 0,
+                'tasks_total' => 0,
+                'tasks_overdue' => 0,
+                'on_time_rate' => 0,
+                'links_total' => 0,
+                'links_live' => 0,
+                'links_pending' => 0,
+                'content_words' => 0,
+                'seo_score' => 0,
+                'audit_total' => 0,
+                'audit_done' => 0,
+                'audit_open' => 0,
+                'website_total' => 0,
+                'website_indexed' => 0,
+                'website_traffic_avg' => 0,
+                'website_ranking_avg' => 0,
+                'da_buckets' => [],
+                'recent_links' => [],
+                'staff_sales_breakdown' => [],
+                'customer_growth' => [],
+                'employee_stats' => [],
+                'employee_role_breakdown' => [],
+                'employee_summary' => ['total' => 0, 'active' => 0, 'managers' => 0, 'staff' => 0],
+                'period' => [
+                    'current_label' => 'Tháng này',
+                    'current_from' => now()->startOfMonth()->toDateString(),
+                    'current_to' => now()->endOfMonth()->toDateString(),
+                ],
+            ]);
+        }
         $projectBaseQuery = ProjectScope::applyProjectScope(Project::query(), $viewer);
         $taskBaseQuery = ProjectScope::applyTaskScope(Task::query(), $viewer);
         $clientBaseQuery = CrmScope::applyClientScope(Client::query(), $viewer);
         $opportunityBaseQuery = CrmScope::applyOpportunityScope(Opportunity::query(), $viewer);
         $contractBaseQuery = CrmScope::applyContractScope(Contract::query(), $viewer);
 
+        $hasContractApprovalStatus = Schema::hasColumn('contracts', 'approval_status');
+        $hasContractSignedAt = Schema::hasColumn('contracts', 'signed_at');
+        $hasContractApprovedAt = Schema::hasColumn('contracts', 'approved_at');
+        $hasClientAssignedStaffId = Schema::hasColumn('clients', 'assigned_staff_id');
+        $hasUserDepartmentId = Schema::hasColumn('users', 'department_id');
+        $hasUserDepartment = Schema::hasColumn('users', 'department');
+        $hasUserAvatar = Schema::hasColumn('users', 'avatar_url');
+        $hasUserActive = Schema::hasColumn('users', 'is_active');
+
+        $contractTimelineColumns = ['client_id', 'created_at'];
+        if ($hasContractSignedAt) {
+            $contractTimelineColumns[] = 'signed_at';
+        }
+        if ($hasContractApprovedAt) {
+            $contractTimelineColumns[] = 'approved_at';
+        }
+
+        $employeeUserColumns = ['id', 'name', 'role'];
+        if ($hasUserDepartmentId) {
+            $employeeUserColumns[] = 'department_id';
+        }
+        if ($hasUserDepartment) {
+            $employeeUserColumns[] = 'department';
+        }
+        if ($hasUserAvatar) {
+            $employeeUserColumns[] = 'avatar_url';
+        }
+        if ($hasUserActive) {
+            $employeeUserColumns[] = 'is_active';
+        }
+
+        $contractWithClientSelect = $hasClientAssignedStaffId ? 'client:id,assigned_staff_id' : 'client:id';
+        $contractDateParts = [];
+        if ($hasContractSignedAt) {
+            $contractDateParts[] = 'contracts.signed_at';
+        }
+        if ($hasContractApprovedAt) {
+            $contractDateParts[] = 'contracts.approved_at';
+        }
+        $contractDateParts[] = 'contracts.created_at';
+        $contractDateExpr = 'DATE(COALESCE(' . implode(', ', $contractDateParts) . '))';
+
         $now = now();
         $currentPeriodStart = $now->copy()->startOfMonth();
         $currentPeriodEnd = $now->copy()->endOfMonth();
+
+        $approvedContractsBaseQuery = (clone $contractBaseQuery)
+            ->when($hasContractApprovalStatus, function ($query) {
+                $query->where('approval_status', 'approved');
+            });
+        $contractsInCurrentMonth = (clone $approvedContractsBaseQuery)
+            ->whereBetween(DB::raw($contractDateExpr), [
+                $currentPeriodStart->toDateString(),
+                $currentPeriodEnd->toDateString(),
+            ])
+            ->count();
+        if ($contractsInCurrentMonth === 0) {
+            $latestContractDate = (clone $approvedContractsBaseQuery)
+                ->selectRaw("MAX($contractDateExpr) as latest_date")
+                ->value('latest_date');
+            if ($latestContractDate) {
+                $latestDate = Carbon::parse((string) $latestContractDate);
+                $currentPeriodStart = $latestDate->copy()->startOfMonth();
+                $currentPeriodEnd = $latestDate->copy()->endOfMonth();
+            }
+        }
+
         $previousPeriodStart = $currentPeriodStart->copy()->subMonthNoOverflow()->startOfMonth();
         $previousPeriodEnd = $previousPeriodStart->copy()->endOfMonth();
         $samePeriodLastYearStart = $currentPeriodStart->copy()->subYear();
         $samePeriodLastYearEnd = $currentPeriodEnd->copy()->subYear();
+        $currentPeriodLabel = ($currentPeriodStart->isSameMonth($now) && $currentPeriodStart->isSameYear($now))
+            ? 'Tháng này'
+            : ('Tháng ' . $currentPeriodStart->format('m/Y'));
 
         $totalProjects = (clone $projectBaseQuery)->count();
         $inProgressProjects = (clone $projectBaseQuery)
@@ -81,23 +185,49 @@ class ReportController extends Controller
             ? round((($totalTasks - $overdueTasks) / $totalTasks) * 100, 1)
             : 0;
 
-        $backlinkTotal = ServiceBacklinkItem::count();
-        $backlinkLive = ServiceBacklinkItem::whereIn('status', ['live', 'published', 'da_live'])->count();
+        $backlinkTotal = 0;
+        $backlinkLive = 0;
+        try {
+            $backlinkTotal = ServiceBacklinkItem::count();
+            $backlinkLive = ServiceBacklinkItem::whereIn('status', ['live', 'published', 'da_live'])->count();
+        } catch (\Throwable $e) {
+            // Keep dashboard stable when optional workflow tables are unavailable.
+        }
         $backlinkPending = max(0, $backlinkTotal - $backlinkLive);
 
-        $contentWords = (int) ServiceContentItem::sum('actual_words');
-        $seoScore = (float) ServiceContentItem::avg('seo_score');
+        $contentWords = 0;
+        $seoScore = 0.0;
+        try {
+            $contentWords = (int) ServiceContentItem::sum('actual_words');
+            $seoScore = (float) ServiceContentItem::avg('seo_score');
+        } catch (\Throwable $e) {
+            // Optional workflow table/column might be absent.
+        }
         $seoScore = $seoScore > 0 ? round($seoScore, 1) : 0;
 
-        $auditTotal = ServiceAuditItem::count();
-        $auditDone = ServiceAuditItem::where('status', 'done')->count();
+        $auditTotal = 0;
+        $auditDone = 0;
+        try {
+            $auditTotal = ServiceAuditItem::count();
+            $auditDone = ServiceAuditItem::where('status', 'done')->count();
+        } catch (\Throwable $e) {
+            // Optional workflow table/column might be absent.
+        }
         $auditOpen = max(0, $auditTotal - $auditDone);
 
-        $websiteTotal = ServiceWebsiteCareItem::count();
-        $websiteIndexed = ServiceWebsiteCareItem::whereIn('index_status', ['indexed', 'ok', 'da_index'])
-            ->count();
-        $websiteTraffic = (int) ServiceWebsiteCareItem::avg('traffic');
-        $websiteRanking = (float) ServiceWebsiteCareItem::avg('ranking_delta');
+        $websiteTotal = 0;
+        $websiteIndexed = 0;
+        $websiteTraffic = 0;
+        $websiteRanking = 0.0;
+        try {
+            $websiteTotal = ServiceWebsiteCareItem::count();
+            $websiteIndexed = ServiceWebsiteCareItem::whereIn('index_status', ['indexed', 'ok', 'da_index'])
+                ->count();
+            $websiteTraffic = (int) ServiceWebsiteCareItem::avg('traffic');
+            $websiteRanking = (float) ServiceWebsiteCareItem::avg('ranking_delta');
+        } catch (\Throwable $e) {
+            // Optional workflow table/column might be absent.
+        }
         $websiteRanking = $websiteRanking ? round($websiteRanking, 1) : 0;
 
         $daBuckets = [];
@@ -115,17 +245,22 @@ class ReportController extends Controller
             }, $bucketCounts);
         }
 
-        $recentLinks = ServiceBacklinkItem::orderByDesc('id')
-            ->limit(6)
-            ->get()
-            ->map(function ($item) {
-                return [
-                    'domain' => $item->domain ?: 'domain.com',
-                    'da' => 'DA --',
-                    'status' => $item->status ?: 'Đang duyệt',
-                ];
-            })
-            ->values();
+        $recentLinks = collect();
+        try {
+            $recentLinks = ServiceBacklinkItem::orderByDesc('id')
+                ->limit(6)
+                ->get()
+                ->map(function ($item) {
+                    return [
+                        'domain' => $item->domain ?: 'domain.com',
+                        'da' => 'DA --',
+                        'status' => $item->status ?: 'Đang duyệt',
+                    ];
+                })
+                ->values();
+        } catch (\Throwable $e) {
+            $recentLinks = collect();
+        }
 
         $employeeUsersQuery = User::query()
             ->whereIn('role', ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan']);
@@ -137,27 +272,45 @@ class ReportController extends Controller
             }
         }
 
+        if ($hasUserDepartmentId) {
+            $employeeUsersQuery->with('departmentRelation:id,name');
+        }
+
         $employeeUsers = $employeeUsersQuery
-            ->with('departmentRelation:id,name')
             ->orderBy('name')
-            ->get(['id', 'name', 'role', 'department_id', 'avatar_url', 'is_active']);
+            ->get($employeeUserColumns);
 
         $contractsForCurrentPeriod = (clone $contractBaseQuery)
-            ->with('client:id,assigned_staff_id')
-            ->where('approval_status', 'approved')
-            ->whereBetween('created_at', [$currentPeriodStart, $currentPeriodEnd])
+            ->with($contractWithClientSelect)
+            ->when($hasContractApprovalStatus, function ($query) {
+                $query->where('approval_status', 'approved');
+            })
+            ->whereBetween(DB::raw($contractDateExpr), [
+                $currentPeriodStart->toDateString(),
+                $currentPeriodEnd->toDateString(),
+            ])
             ->get();
 
         $contractsForPreviousPeriod = (clone $contractBaseQuery)
-            ->with('client:id,assigned_staff_id')
-            ->where('approval_status', 'approved')
-            ->whereBetween('created_at', [$previousPeriodStart, $previousPeriodEnd])
+            ->with($contractWithClientSelect)
+            ->when($hasContractApprovalStatus, function ($query) {
+                $query->where('approval_status', 'approved');
+            })
+            ->whereBetween(DB::raw($contractDateExpr), [
+                $previousPeriodStart->toDateString(),
+                $previousPeriodEnd->toDateString(),
+            ])
             ->get();
 
         $contractsForSamePeriodLastYear = (clone $contractBaseQuery)
-            ->with('client:id,assigned_staff_id')
-            ->where('approval_status', 'approved')
-            ->whereBetween('created_at', [$samePeriodLastYearStart, $samePeriodLastYearEnd])
+            ->with($contractWithClientSelect)
+            ->when($hasContractApprovalStatus, function ($query) {
+                $query->where('approval_status', 'approved');
+            })
+            ->whereBetween(DB::raw($contractDateExpr), [
+                $samePeriodLastYearStart->toDateString(),
+                $samePeriodLastYearEnd->toDateString(),
+            ])
             ->get();
 
         $resolveStaffId = function (Contract $contract): int {
@@ -194,12 +347,15 @@ class ReportController extends Controller
         $samePeriodLastYearMetrics = $aggregateRevenueByStaff($contractsForSamePeriodLastYear);
         $totalCurrentRevenue = collect($currentStaffMetrics)->sum('revenue');
 
-        $newClientsByStaff = (clone $clientBaseQuery)
-            ->selectRaw('assigned_staff_id as staff_id, COUNT(*) as total')
-            ->whereNotNull('assigned_staff_id')
-            ->whereBetween('created_at', [$currentPeriodStart, $currentPeriodEnd])
-            ->groupBy('assigned_staff_id')
-            ->pluck('total', 'staff_id');
+        $newClientsByStaff = collect();
+        if ($hasClientAssignedStaffId) {
+            $newClientsByStaff = (clone $clientBaseQuery)
+                ->selectRaw('assigned_staff_id as staff_id, COUNT(*) as total')
+                ->whereNotNull('assigned_staff_id')
+                ->whereBetween('created_at', [$currentPeriodStart, $currentPeriodEnd])
+                ->groupBy('assigned_staff_id')
+                ->pluck('total', 'staff_id');
+        }
 
         $newOpportunitiesByStaff = (clone $opportunityBaseQuery)
             ->selectRaw('COALESCE(assigned_to, created_by) as staff_id, COUNT(*) as total')
@@ -256,7 +412,11 @@ class ReportController extends Controller
                 $newOpportunitiesByStaff,
                 $activeTasksByStaff,
                 $totalCurrentRevenue,
-                $percentageChange
+                $percentageChange,
+                $hasUserDepartment,
+                $hasUserDepartmentId,
+                $hasUserAvatar,
+                $hasUserActive
             ) {
                 $currentRevenue = (float) ($currentStaffMetrics[$user->id]['revenue'] ?? 0);
                 $previousRevenue = (float) ($previousStaffMetrics[$user->id]['revenue'] ?? 0);
@@ -268,8 +428,9 @@ class ReportController extends Controller
                     'staff_name' => (string) ($user->name ?: 'Nhân sự'),
                     'role' => (string) ($user->role ?: 'user'),
                     'role_label' => $this->roleLabel((string) $user->role),
-                    'department' => optional($user->departmentRelation)->name ?: ($user->department ?: '—'),
-                    'avatar_url' => $user->avatar_url,
+                    'department' => ($hasUserDepartmentId ? optional($user->departmentRelation)->name : null)
+                        ?: ($hasUserDepartment ? ($user->department ?: '—') : '—'),
+                    'avatar_url' => $hasUserAvatar ? $user->avatar_url : null,
                     'revenue' => round($currentRevenue, 2),
                     'share_percent' => $totalCurrentRevenue > 0
                         ? round(($currentRevenue / $totalCurrentRevenue) * 100, 1)
@@ -280,7 +441,7 @@ class ReportController extends Controller
                     'new_opportunities' => (int) ($newOpportunitiesByStaff[$user->id] ?? 0),
                     'new_contracts' => $contractsCount,
                     'active_tasks' => (int) ($activeTasksByStaff[$user->id] ?? 0),
-                    'is_active' => (bool) $user->is_active,
+                    'is_active' => $hasUserActive ? (bool) $user->is_active : true,
                 ];
             })
             ->sortByDesc('revenue')
@@ -324,18 +485,23 @@ class ReportController extends Controller
         }
 
         $approvedContractsTimeline = (clone $contractBaseQuery)
-            ->where('approval_status', 'approved')
-            ->whereBetween('created_at', [
+            ->when($hasContractApprovalStatus, function ($query) {
+                $query->where('approval_status', 'approved');
+            })
+            ->whereBetween(DB::raw($contractDateExpr), [
                 $customerGrowthPeriods->first()['start'],
                 $customerGrowthPeriods->last()['end'],
             ])
             ->orderBy('client_id')
-            ->orderBy('created_at')
-            ->get(['client_id', 'created_at']);
+            ->orderBy(DB::raw($contractDateExpr))
+            ->get($contractTimelineColumns);
 
         $seenClientFirstContract = [];
         foreach ($approvedContractsTimeline as $contract) {
-            $key = optional($contract->created_at)->format('Y-m');
+            $contractAt = $contract->signed_at
+                ?: $contract->approved_at
+                ?: $contract->created_at;
+            $key = optional($contractAt)->format('Y-m');
             if (! $key || ! isset($customerGrowthSeed[$key])) {
                 continue;
             }
@@ -384,6 +550,10 @@ class ReportController extends Controller
             })
             ->values();
 
+        $activeEmployeeCount = $hasUserActive
+            ? (int) $employeeUsers->where('is_active', true)->count()
+            : (int) $employeeUsers->count();
+
         return response()->json([
             'projects' => [
                 'total' => $totalProjects,
@@ -423,12 +593,12 @@ class ReportController extends Controller
             'employee_role_breakdown' => $employeeRoleBreakdown,
             'employee_summary' => [
                 'total' => (int) $employeeUsers->count(),
-                'active' => (int) $employeeUsers->where('is_active', true)->count(),
+                'active' => $activeEmployeeCount,
                 'managers' => (int) $employeeUsers->where('role', 'quan_ly')->count(),
                 'staff' => (int) $employeeUsers->where('role', 'nhan_vien')->count(),
             ],
             'period' => [
-                'current_label' => 'Tháng này',
+                'current_label' => $currentPeriodLabel,
                 'current_from' => $currentPeriodStart->toDateString(),
                 'current_to' => $currentPeriodEnd->toDateString(),
             ],
