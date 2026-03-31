@@ -522,8 +522,8 @@ export default function Authenticated({ auth, header, children }) {
     };
 
     return (
-            <div className="min-h-screen bg-app-bg text-slate-900">
-            <div className="flex min-h-screen">
+            <div className="min-h-screen overflow-x-hidden bg-app-bg text-slate-900">
+            <div className="flex min-h-screen min-w-0">
                 <aside
                     className={`fixed inset-y-0 left-0 z-40 w-72 bg-white border-r border-slate-200/80 transform transition-transform duration-200 group ${
                         showSidebar ? 'translate-x-0' : '-translate-x-full'
@@ -628,7 +628,7 @@ export default function Authenticated({ auth, header, children }) {
                     </div>
                 </aside>
 
-                <div className="flex-1 lg:ml-72">
+                <div className="min-w-0 flex-1 lg:ml-72">
                     <header className="bg-white/80 backdrop-blur border-b border-slate-200 sticky top-0 z-30">
                         <div className="px-4 md:px-8 py-3 flex items-center justify-between">
                             <div className="flex items-center gap-3">
@@ -1088,7 +1088,7 @@ export default function Authenticated({ auth, header, children }) {
 
                     {header && <div className="px-4 md:px-8 py-6">{header}</div>}
 
-                    <main className="px-4 md:px-8 pb-10">{children}</main>
+                    <main className="min-w-0 overflow-x-hidden px-4 pb-10 md:px-8">{children}</main>
                 </div>
             </div>
 

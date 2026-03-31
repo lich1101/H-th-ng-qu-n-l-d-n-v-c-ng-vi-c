@@ -5,6 +5,13 @@
 @tailwind utilities;
 
 @layer base {
+    html,
+    body,
+    #app {
+        max-width: 100%;
+        overflow-x: hidden;
+    }
+
     :root {
         --color-primary: 15 118 110;
     }
@@ -42,6 +49,7 @@
         -webkit-overflow-scrolling: touch;
         max-width: 100%;
         min-width: 0;
+        overscroll-behavior-x: contain;
     }
 
     .overflow-x-auto > table {
@@ -58,5 +66,11 @@
     .overflow-x-auto > table .allow-wrap,
     .overflow-x-auto > table .allow-wrap * {
         white-space: normal !important;
+    }
+
+    .overflow-x-auto > table.table-spacious th,
+    .overflow-x-auto > table.table-spacious td {
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
     }
 }

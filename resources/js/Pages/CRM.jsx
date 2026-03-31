@@ -939,7 +939,7 @@ export default function CRM(props) {
                             </div>
                         )}
                         <div className="overflow-x-auto">
-                            <table className="min-w-full text-sm">
+                            <table className="table-spacious min-w-full text-sm">
                                 <thead>
                                     <tr className="text-left text-xs uppercase tracking-wider text-text-subtle border-b border-slate-200">
                                         {canBulkClientActions && (
@@ -1371,7 +1371,7 @@ export default function CRM(props) {
                             </div>
                         </FilterToolbar>
                         <div className="overflow-x-auto">
-                            <table className="min-w-full text-sm">
+                            <table className="table-spacious min-w-full text-sm">
                                 <thead>
                                     <tr className="text-left text-xs uppercase tracking-wider text-text-subtle border-b border-slate-200">
                                         <th className="py-2">Khách hàng</th>
