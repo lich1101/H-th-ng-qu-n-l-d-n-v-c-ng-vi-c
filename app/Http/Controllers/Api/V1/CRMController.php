@@ -52,6 +52,9 @@ class CRMController extends Controller
         if ($request->filled('lead_type_id')) {
             $query->where('lead_type_id', (int) $request->input('lead_type_id'));
         }
+        if ($request->filled('revenue_tier_id')) {
+            $query->where('revenue_tier_id', (int) $request->input('revenue_tier_id'));
+        }
         if ($request->filled('assigned_department_id')) {
             $departmentId = (int) $request->input('assigned_department_id');
             $query->where(function ($builder) use ($departmentId) {
@@ -80,7 +83,7 @@ class CRMController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'company' => ['nullable', 'string', 'max:255'],
             'email' => ['nullable', 'email', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:30'],
+            'phone' => ['nullable', 'string', 'max:255'],
             'notes' => ['nullable', 'string'],
             'sales_owner_id' => ['nullable', 'integer', 'exists:users,id'],
             'assigned_department_id' => ['nullable', 'integer', 'exists:departments,id'],
@@ -142,7 +145,7 @@ class CRMController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'company' => ['nullable', 'string', 'max:255'],
             'email' => ['nullable', 'email', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:30'],
+            'phone' => ['nullable', 'string', 'max:255'],
             'notes' => ['nullable', 'string'],
             'sales_owner_id' => ['nullable', 'integer', 'exists:users,id'],
             'assigned_department_id' => ['nullable', 'integer', 'exists:departments,id'],

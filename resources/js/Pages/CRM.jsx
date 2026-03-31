@@ -62,6 +62,7 @@ export default function CRM(props) {
         per_page: 10,
         lead_type_id: '',
         type: '',
+        revenue_tier_id: '',
         assigned_department_id: '',
         assigned_staff_id: '',
     });
@@ -756,7 +757,7 @@ export default function CRM(props) {
                             title="Danh sách khách hàng"
                             description="Lọc theo tên, loại lead và nhóm khách trước khi thao tác CRM hoặc phân công phụ trách."
                         >
-                            <div className={`grid gap-3 ${isAdminRole ? 'md:grid-cols-2 xl:grid-cols-6' : 'md:grid-cols-2 xl:grid-cols-4'}`}>
+                            <div className={`grid gap-3 ${isAdminRole ? 'md:grid-cols-2 xl:grid-cols-7' : 'md:grid-cols-2 xl:grid-cols-4'}`}>
                                 <FilterField label="Tìm kiếm">
                                     <input
                                         className={filterControlClass}
@@ -788,6 +789,20 @@ export default function CRM(props) {
                                         <option value="">Tất cả nhóm</option>
                                         <option value="potential">Tiềm năng</option>
                                         <option value="active">Đã mua</option>
+                                    </select>
+                                </FilterField>
+                                <FilterField label="Hạng khách hàng">
+                                    <select
+                                        className={filterControlClass}
+                                        value={clientFilters.revenue_tier_id}
+                                        onChange={(e) => setClientFilters((s) => ({ ...s, revenue_tier_id: e.target.value }))}
+                                    >
+                                        <option value="">Tất cả hạng</option>
+                                        {revenueTiers.map((tier) => (
+                                            <option key={tier.id} value={tier.id}>
+                                                {tier.label}
+                                            </option>
+                                        ))}
                                     </select>
                                 </FilterField>
                                 {isAdminRole && (
@@ -946,6 +961,7 @@ export default function CRM(props) {
                                         <th className="py-2">Phụ trách</th>
                                         <th className="py-2">Chăm sóc</th>
                                         <th className="py-2">Doanh thu</th>
+                                        <th className="py-2">Công nợ</th>
                                         <th className="py-2">Số cơ hội</th>
                                         <th className="py-2">Số hợp đồng</th>
                                         <th className="py-2">Nguồn</th>
@@ -1013,6 +1029,9 @@ export default function CRM(props) {
                                             <td className="py-2 text-slate-700">
                                                 {Number(client.total_revenue || 0).toLocaleString('vi-VN')}
                                             </td>
+                                            <td className="py-2 text-slate-700">
+                                                {Number(client.total_debt_amount || 0).toLocaleString('vi-VN')}
+                                            </td>
                                             <td className="py-2 text-xs font-semibold text-slate-700">
                                                 {Number(client.opportunities_count || 0)}
                                             </td>
@@ -1062,7 +1081,7 @@ export default function CRM(props) {
                                     ))}
                                     {clients.length === 0 && (
                                         <tr>
-                                            <td className="py-6 text-center text-sm text-text-muted" colSpan={canBulkClientActions ? 13 : 12}>
+                                            <td className="py-6 text-center text-sm text-text-muted" colSpan={canBulkClientActions ? 14 : 13}>
                                                 Chưa có khách hàng nào.
                                             </td>
                                         </tr>

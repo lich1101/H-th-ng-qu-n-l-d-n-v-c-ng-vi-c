@@ -36,3 +36,25 @@
 .chat-fade {
     animation: chatFadeIn 180ms ease;
 }
+
+@layer components {
+    .overflow-x-auto {
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .overflow-x-auto table {
+        width: max-content;
+        min-width: 100%;
+        table-layout: auto;
+    }
+
+    .overflow-x-auto table th,
+    .overflow-x-auto table td {
+        white-space: nowrap;
+    }
+
+    .overflow-x-auto .allow-wrap,
+    .overflow-x-auto .allow-wrap * {
+        white-space: normal !important;
+    }
+}

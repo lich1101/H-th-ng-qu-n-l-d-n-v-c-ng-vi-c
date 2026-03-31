@@ -41,6 +41,8 @@ export default function UserAccountsDashboard(props) {
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
     const [importingUsers, setImportingUsers] = useState(false);
+    const [importReport, setImportReport] = useState(null);
+    const [importJob, setImportJob] = useState(null);
     const [editingId, setEditingId] = useState(null);
     const [showForm, setShowForm] = useState(false);
     const [showImport, setShowImport] = useState(false);
@@ -57,6 +59,23 @@ export default function UserAccountsDashboard(props) {
     });
     const [message, setMessage] = useState('');
     const [errorMessage, setErrorMessage] = useState('');
+
+    const extractValidationMessages = (error) => {
+        const errors = error?.response?.data?.errors;
+        if (!errors || typeof errors !== 'object') return [];
+        return Object.values(errors)
+            .flatMap((entry) => (Array.isArray(entry) ? entry : [entry]))
+            .map((messageText) => String(messageText || '').trim())
+            .filter(Boolean);
+    };
+
+    const getErrorMessage = (error, fallback) => {
+        const validationMessages = extractValidationMessages(error);
+        if (validationMessages.length > 0) return validationMessages[0];
+        const messageText = error?.response?.data?.message;
+        if (messageText && messageText !== 'The given data was invalid.') return messageText;
+        return fallback;
+    };
 
     const fetchAccounts = async (activeFilters) => {
         setLoading(true);
@@ -134,6 +153,9 @@ export default function UserAccountsDashboard(props) {
     const closeImport = () => {
         setShowImport(false);
         setImportFile(null);
+        setImportReport(null);
+        setImportJob(null);
+        setImportingUsers(false);
     };
 
     const submitAccount = async (e) => {
@@ -223,18 +245,70 @@ export default function UserAccountsDashboard(props) {
             const formData = new FormData();
             formData.append('file', importFile);
             const res = await axios.post('/api/v1/imports/users', formData);
-            const report = res.data || {};
-            setMessage(
-                `Import hoàn tất: ${report.created || 0} tạo mới, ${report.updated || 0} cập nhật, ${report.skipped || 0} bỏ qua.`
-            );
-            closeImport();
-            fetchAccounts(filters);
+            setImportJob(res.data?.job || null);
+            setImportReport(null);
+            setMessage('Đã đưa file import nhân viên vào hàng đợi xử lý.');
         } catch (error) {
-            setErrorMessage(error?.response?.data?.message || 'Không thể import nhân viên.');
-        } finally {
+            const validationMessages = extractValidationMessages(error);
+            const fallbackMessage = getErrorMessage(error, 'Không thể import nhân viên.');
+            setImportJob(null);
             setImportingUsers(false);
+            setImportReport({
+                created: 0,
+                updated: 0,
+                skipped: 0,
+                warnings: [],
+                errors: validationMessages.length > 0
+                    ? validationMessages.map((messageText) => ({ row: '-', message: messageText }))
+                    : [{ row: '-', message: fallbackMessage }],
+            });
+            setErrorMessage(fallbackMessage);
         }
     };
+
+    useEffect(() => {
+        if (!showImport || !importJob?.id) return undefined;
+
+        const poll = async () => {
+            try {
+                const res = await axios.get(`/api/v1/imports/jobs/${importJob.id}`);
+                const nextJob = res.data || null;
+                setImportJob(nextJob);
+
+                if (nextJob?.status === 'completed') {
+                    window.clearInterval(timer);
+                    const report = nextJob.report || {};
+                    setImportingUsers(false);
+                    setImportReport(report);
+                    setMessage(
+                        `Import hoàn tất: ${report.created || 0} tạo mới, ${report.updated || 0} cập nhật, ${report.skipped || 0} bỏ qua.`
+                    );
+                    await fetchAccounts(filters);
+                } else if (nextJob?.status === 'failed') {
+                    window.clearInterval(timer);
+                    setImportingUsers(false);
+                    setImportReport(nextJob.report || {
+                        created: 0,
+                        updated: 0,
+                        skipped: 0,
+                        warnings: [],
+                        errors: [{ row: '-', message: nextJob.error_message || 'Import thất bại.' }],
+                    });
+                    setErrorMessage(nextJob?.error_message || 'Import thất bại.');
+                }
+            } catch (error) {
+                window.clearInterval(timer);
+                setImportingUsers(false);
+                setErrorMessage(getErrorMessage(error, 'Không kiểm tra được tiến trình import nhân viên.'));
+            }
+        };
+
+        const timer = window.setInterval(poll, 1500);
+        poll();
+
+        return () => window.clearInterval(timer);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [showImport, importJob?.id]);
 
     const statusPercent = useMemo(() => {
         const total = stats.total_users || 1;
@@ -265,7 +339,13 @@ export default function UserAccountsDashboard(props) {
                     <button
                         type="button"
                         className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
-                        onClick={() => setShowImport(true)}
+                        onClick={() => {
+                            setImportFile(null);
+                            setImportReport(null);
+                            setImportJob(null);
+                            setImportingUsers(false);
+                            setShowImport(true);
+                        }}
                     >
                         Import Excel
                     </button>
@@ -466,7 +546,11 @@ export default function UserAccountsDashboard(props) {
                                 id="import-user-file"
                                 type="file"
                                 accept=".xls,.xlsx,.csv"
-                                onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                                onChange={(e) => {
+                                    setImportFile(e.target.files?.[0] || null);
+                                    setImportReport(null);
+                                    setImportJob(null);
+                                }}
                                 className="hidden"
                             />
                             <label
@@ -480,6 +564,62 @@ export default function UserAccountsDashboard(props) {
                             </p>
                         </div>
                     </FormField>
+                    {importReport && (
+                        <div className="rounded-2xl border border-slate-200/80 bg-slate-50 p-3 space-y-2">
+                            <div className="text-xs font-semibold uppercase tracking-[0.14em] text-text-subtle">
+                                Kết quả import
+                            </div>
+                            <p className="text-xs text-slate-700">
+                                Tạo mới: {importReport.created || 0} • Cập nhật: {importReport.updated || 0} • Bỏ qua: {importReport.skipped || 0}
+                            </p>
+                            {Array.isArray(importReport.errors) && importReport.errors.length > 0 && (
+                                <div className="rounded-xl border border-rose-200 bg-rose-50 p-2.5">
+                                    <div className="text-xs font-semibold text-rose-700">Dòng lỗi không import được</div>
+                                    <div className="mt-1 max-h-32 space-y-1 overflow-y-auto text-xs text-rose-700">
+                                        {importReport.errors.map((item, idx) => (
+                                            <div key={`err-${idx}`}>
+                                                Dòng {item.row ?? '-'}: {item.message || 'Lỗi không xác định'}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                            {Array.isArray(importReport.warnings) && importReport.warnings.length > 0 && (
+                                <div className="rounded-xl border border-amber-200 bg-amber-50 p-2.5">
+                                    <div className="text-xs font-semibold text-amber-700">Cảnh báo dữ liệu (đã import nhưng có trường để trống)</div>
+                                    <div className="mt-1 max-h-28 space-y-1 overflow-y-auto text-xs text-amber-700">
+                                        {importReport.warnings.map((item, idx) => (
+                                            <div key={`warn-${idx}`}>
+                                                Dòng {item.row ?? '-'}: {item.message || 'Cảnh báo dữ liệu'}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                    {importJob && (
+                        <div className="rounded-2xl border border-slate-200/80 bg-slate-50 p-3 space-y-2">
+                            <div className="flex items-center justify-between gap-3 text-xs">
+                                <div className="font-semibold uppercase tracking-[0.14em] text-text-subtle">Tiến trình import</div>
+                                <div className="font-semibold text-slate-700">
+                                    {importJob.processed_rows || 0}/{importJob.total_rows || 0} dòng
+                                </div>
+                            </div>
+                            <div className="h-2.5 overflow-hidden rounded-full bg-slate-200">
+                                <div
+                                    className={`h-full rounded-full transition-all ${importJob.status === 'failed' ? 'bg-rose-500' : 'bg-primary'}`}
+                                    style={{ width: `${importJob.progress_percent || 0}%` }}
+                                />
+                            </div>
+                            <div className="flex items-center justify-between text-xs text-text-muted">
+                                <span>
+                                    Trạng thái: {importJob.status === 'queued' ? 'Đang chờ' : importJob.status === 'processing' ? 'Đang xử lý' : importJob.status === 'completed' ? 'Hoàn tất' : 'Thất bại'}
+                                </span>
+                                <span>{importJob.progress_percent || 0}%</span>
+                            </div>
+                        </div>
+                    )}
                     <div className="flex items-center gap-2">
                         <button
                             type="submit"

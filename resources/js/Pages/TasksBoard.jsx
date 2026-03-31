@@ -226,6 +226,7 @@ export default function TasksBoard(props) {
     const [importFile, setImportFile] = useState(null);
     const [importing, setImporting] = useState(false);
     const [importReport, setImportReport] = useState(null);
+    const [importJob, setImportJob] = useState(null);
     const [savingTask, setSavingTask] = useState(false);
     const [projectWeightReference, setProjectWeightReference] = useState([]);
     const [projectWeightLoading, setProjectWeightLoading] = useState(false);
@@ -325,6 +326,23 @@ export default function TasksBoard(props) {
         }
         return values;
     }, [meta]);
+
+    const extractValidationMessages = (error) => {
+        const errors = error?.response?.data?.errors;
+        if (!errors || typeof errors !== 'object') return [];
+        return Object.values(errors)
+            .flatMap((entry) => (Array.isArray(entry) ? entry : [entry]))
+            .map((message) => String(message || '').trim())
+            .filter(Boolean);
+    };
+
+    const getErrorMessage = (error, fallback) => {
+        const validationMessages = extractValidationMessages(error);
+        if (validationMessages.length > 0) return validationMessages[0];
+        const message = error?.response?.data?.message;
+        if (message && message !== 'The given data was invalid.') return message;
+        return fallback;
+    };
 
     const canApproveItemReports = (taskRecord = itemsTask) => {
         if (!taskRecord) return false;
@@ -1146,25 +1164,70 @@ export default function TasksBoard(props) {
             const formData = new FormData();
             formData.append('file', importFile);
             const res = await axios.post('/api/v1/imports/tasks', formData);
-            const report = res.data || {};
-            setImportReport(report);
-            toast.success(
-                `Import hoàn tất: ${report.created || 0} tạo mới, ${report.updated || 0} cập nhật, ${report.skipped || 0} bỏ qua.`
-            );
-            await fetchTasks(1, { ...filters, page: 1 });
+            setImportJob(res.data?.job || null);
+            setImportReport(null);
+            toast.success('Đã đưa file import công việc vào hàng đợi xử lý.');
         } catch (e) {
+            const validationMessages = extractValidationMessages(e);
+            const fallbackMessage = getErrorMessage(e, 'Import thất bại.');
+            setImportJob(null);
+            setImporting(false);
             setImportReport({
                 created: 0,
                 updated: 0,
                 skipped: 0,
                 warnings: [],
-                errors: [{ row: '-', message: e?.response?.data?.message || 'Import thất bại.' }],
+                errors: validationMessages.length > 0
+                    ? validationMessages.map((message) => ({ row: '-', message }))
+                    : [{ row: '-', message: fallbackMessage }],
             });
-            toast.error(e?.response?.data?.message || 'Import thất bại.');
-        } finally {
-            setImporting(false);
+            toast.error(fallbackMessage);
         }
     };
+
+    useEffect(() => {
+        if (!showImport || !importJob?.id) return undefined;
+
+        const poll = async () => {
+            try {
+                const res = await axios.get(`/api/v1/imports/jobs/${importJob.id}`);
+                const nextJob = res.data || null;
+                setImportJob(nextJob);
+
+                if (nextJob?.status === 'completed') {
+                    window.clearInterval(timer);
+                    const report = nextJob.report || {};
+                    setImporting(false);
+                    setImportReport(report);
+                    toast.success(
+                        `Import hoàn tất: ${report.created || 0} tạo mới, ${report.updated || 0} cập nhật, ${report.skipped || 0} bỏ qua.`
+                    );
+                    await fetchTasks(1, { ...filters, page: 1 });
+                } else if (nextJob?.status === 'failed') {
+                    window.clearInterval(timer);
+                    setImporting(false);
+                    setImportReport(nextJob.report || {
+                        created: 0,
+                        updated: 0,
+                        skipped: 0,
+                        warnings: [],
+                        errors: [{ row: '-', message: nextJob.error_message || 'Import thất bại.' }],
+                    });
+                    toast.error(nextJob?.error_message || 'Import thất bại.');
+                }
+            } catch (error) {
+                window.clearInterval(timer);
+                setImporting(false);
+                toast.error(getErrorMessage(error, 'Không kiểm tra được tiến trình import công việc.'));
+            }
+        };
+
+        const timer = window.setInterval(poll, 1500);
+        poll();
+
+        return () => window.clearInterval(timer);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [showImport, importJob?.id]);
 
     useEffect(() => {
         fetchMeta();
@@ -1651,6 +1714,8 @@ export default function TasksBoard(props) {
                             onClick={() => {
                                 setImportFile(null);
                                 setImportReport(null);
+                                setImportJob(null);
+                                setImporting(false);
                                 setShowImport(true);
                             }}
                         >
@@ -2324,6 +2389,8 @@ export default function TasksBoard(props) {
                     setShowImport(false);
                     setImportFile(null);
                     setImportReport(null);
+                    setImportJob(null);
+                    setImporting(false);
                 }}
                 title="Import công việc"
                 description="Tải file Excel (.xls/.xlsx/.csv) để nhập công việc."
@@ -2348,6 +2415,7 @@ export default function TasksBoard(props) {
                             onChange={(e) => {
                                 setImportFile(e.target.files?.[0] || null);
                                 setImportReport(null);
+                                setImportJob(null);
                             }}
                             className="hidden"
                         />
@@ -2395,6 +2463,28 @@ export default function TasksBoard(props) {
                             )}
                         </div>
                     )}
+                    {importJob && (
+                        <div className="rounded-2xl border border-slate-200/80 bg-slate-50 p-3 space-y-2">
+                            <div className="flex items-center justify-between gap-3 text-xs">
+                                <div className="font-semibold uppercase tracking-[0.14em] text-text-subtle">Tiến trình import</div>
+                                <div className="font-semibold text-slate-700">
+                                    {importJob.processed_rows || 0}/{importJob.total_rows || 0} dòng
+                                </div>
+                            </div>
+                            <div className="h-2.5 overflow-hidden rounded-full bg-slate-200">
+                                <div
+                                    className={`h-full rounded-full transition-all ${importJob.status === 'failed' ? 'bg-rose-500' : 'bg-primary'}`}
+                                    style={{ width: `${importJob.progress_percent || 0}%` }}
+                                />
+                            </div>
+                            <div className="flex items-center justify-between text-xs text-text-muted">
+                                <span>
+                                    Trạng thái: {importJob.status === 'queued' ? 'Đang chờ' : importJob.status === 'processing' ? 'Đang xử lý' : importJob.status === 'completed' ? 'Hoàn tất' : 'Thất bại'}
+                                </span>
+                                <span>{importJob.progress_percent || 0}%</span>
+                            </div>
+                        </div>
+                    )}
                     <div className="flex items-center gap-2">
                         <button
                             type="submit"
@@ -2410,6 +2500,8 @@ export default function TasksBoard(props) {
                                 setShowImport(false);
                                 setImportFile(null);
                                 setImportReport(null);
+                                setImportJob(null);
+                                setImporting(false);
                             }}
                         >
                             Hủy

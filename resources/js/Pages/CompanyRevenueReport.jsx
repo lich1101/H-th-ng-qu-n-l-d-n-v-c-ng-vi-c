@@ -366,7 +366,7 @@ export default function CompanyRevenueReport(props) {
                     </div>
                 </div>
 
-                <div className="min-h-[640px]">
+                <div className="h-[640px] overflow-hidden">
                     <RevenueStaffBreakdown data={staffBreakdown} />
                 </div>
             </div>

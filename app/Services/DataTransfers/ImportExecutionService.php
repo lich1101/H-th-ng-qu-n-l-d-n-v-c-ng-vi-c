@@ -10,10 +10,14 @@ use App\Models\DataTransferJob;
 use App\Models\Department;
 use App\Models\LeadType;
 use App\Models\Product;
+use App\Models\Project;
 use App\Models\RevenueTier;
+use App\Models\Task;
 use App\Models\User;
+use App\Services\ProjectProgressService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
@@ -55,6 +59,8 @@ class ImportExecutionService
         return match ($job->module) {
             'clients' => $this->importClientsFromPath($path, $user, $job),
             'contracts' => $this->importContractsFromPath($path, $user, $job),
+            'tasks' => $this->importTasksFromPath($path, $user, $job),
+            'users' => $this->importUsersFromPath($path, $user, $job),
             default => throw new \RuntimeException('Module import chưa được hỗ trợ: ' . $job->module),
         };
     }
@@ -100,17 +106,6 @@ class ImportExecutionService
                 }
 
                 $assignedDepartmentId = $assignedStaffId ? $this->getUserDepartmentId($assignedStaffId) : null;
-                $totalRevenueRaw = $data['total_revenue'] ?? null;
-                $totalRevenue = $this->parseNumber($totalRevenueRaw);
-                if ($this->hasText($totalRevenueRaw) && $totalRevenue === null) {
-                    $this->pushWarning($report, $rowNumber, 'Doanh số lũy kế không hợp lệ, hệ thống để trống.');
-                }
-
-                $legacyDebtRaw = $data['legacy_debt_amount'] ?? null;
-                $legacyDebtAmount = $this->parseNumber($legacyDebtRaw);
-                if ($this->hasText($legacyDebtRaw) && $legacyDebtAmount === null) {
-                    $this->pushWarning($report, $rowNumber, 'Công nợ không hợp lệ, hệ thống để mặc định.');
-                }
 
                 $createdAtRaw = $data['created_at'] ?? null;
                 $createdAt = $this->parseDateTime($createdAtRaw);
@@ -139,16 +134,9 @@ class ImportExecutionService
                     'lead_message' => $data['lead_message'] ?? null,
                     'customer_status_label' => $statusLabel,
                     'customer_level' => $data['customer_level'] ?? null,
-                    'legacy_debt_amount' => $legacyDebtAmount,
                     'company_size' => $data['company_size'] ?? null,
                     'product_categories' => $data['product_categories'] ?? null,
                 ];
-
-                if ($totalRevenue !== null) {
-                    $payload['total_revenue'] = $totalRevenue;
-                    $payload['has_purchased'] = $totalRevenue > 0;
-                    $payload['revenue_tier_id'] = $this->resolveRevenueTierId($totalRevenue);
-                }
 
                 $client = $this->findClientByIdentity(
                     $data['name'],
@@ -186,6 +174,190 @@ class ImportExecutionService
                     $salesOwnerId ? (int) $salesOwnerId : null,
                 ]));
                 $this->syncClientCareStaffFromImport($client, $careStaffIds, (int) $user->id);
+                $this->clientFinancialSyncService->sync($client->fresh());
+
+                DB::commit();
+            } catch (\Throwable $e) {
+                DB::rollBack();
+                $this->skipRow($report, $rowNumber, 'Lỗi xử lý: ' . $e->getMessage());
+            }
+
+            $this->syncJobProgress($job, $processed, $report);
+        });
+
+        $this->syncJobProgress($job, $processed, $report, true);
+
+        return $this->finalizeReport($report);
+    }
+
+    public function importTasksFromPath(string $path, User $user, ?DataTransferJob $job = null): array
+    {
+        $report = $this->initReport();
+        $processed = 0;
+        $touchedProjectIds = [];
+
+        $this->iterateMappedRows($path, $this->taskHeaderMap(), function (array $data, int $rowNumber) use (&$report, &$processed, &$touchedProjectIds, $user, $job) {
+            $processed++;
+
+            if (empty($data['title'])) {
+                $this->skipRow($report, $rowNumber, 'Thiếu tên công việc.');
+                $this->syncJobProgress($job, $processed, $report);
+                return;
+            }
+
+            try {
+                DB::beginTransaction();
+
+                $client = $this->resolveOrCreateClientForTask($data, $user);
+                $project = $this->resolveProjectForTaskImport($data, $client, $user);
+                if (! $project) {
+                    $this->skipRow($report, $rowNumber, 'Không xác định được dự án cho công việc.');
+                    DB::rollBack();
+                    $this->syncJobProgress($job, $processed, $report);
+                    return;
+                }
+
+                $description = $data['description'] ?? null;
+                if (! empty($data['comments'])) {
+                    $description = trim((string) $description);
+                    $description = trim($description . ($description !== '' ? "\n\n" : '') . 'Ghi chú import: ' . $data['comments']);
+                }
+
+                $assigneeRaw = $data['assignee'] ?? null;
+                $assigneeId = $this->resolveUserId($assigneeRaw);
+                if ($this->hasText($assigneeRaw) && ! $assigneeId) {
+                    $this->pushWarning($report, $rowNumber, 'Không tìm thấy người thực hiện "' . trim((string) $assigneeRaw) . '", hệ thống để trống.');
+                }
+
+                $identity = Task::query()
+                    ->where('project_id', $project->id)
+                    ->where('title', $data['title']);
+
+                if (! empty($data['start_at'])) {
+                    $parsedStart = $this->parseDateTime($data['start_at']);
+                    if ($parsedStart) {
+                        $identity->whereDate('start_at', Carbon::parse($parsedStart)->format('Y-m-d'));
+                    }
+                }
+
+                $task = $identity->first();
+                $startAt = $this->parseDateTime($data['start_at'] ?? null);
+                if ($this->hasText($data['start_at'] ?? null) && ! $startAt) {
+                    $this->pushWarning($report, $rowNumber, 'Ngày bắt đầu công việc không hợp lệ, hệ thống để trống.');
+                }
+
+                $deadline = $this->parseDateTime($data['deadline'] ?? null);
+                if ($this->hasText($data['deadline'] ?? null) && ! $deadline) {
+                    $this->pushWarning($report, $rowNumber, 'Deadline công việc không hợp lệ, hệ thống để trống.');
+                }
+
+                $payload = [
+                    'project_id' => $project->id,
+                    'department_id' => $assigneeId ? $this->getUserDepartmentId($assigneeId) : null,
+                    'title' => $data['title'],
+                    'description' => $description,
+                    'priority' => $this->normalizeTaskPriority($data['priority'] ?? 'medium'),
+                    'status' => $this->normalizeTaskStatus($data['status'] ?? 'todo'),
+                    'start_at' => $startAt,
+                    'deadline' => $deadline,
+                    'created_by' => $user->id,
+                    'assigned_by' => $user->id,
+                    'assignee_id' => $assigneeId,
+                    'require_acknowledgement' => true,
+                    'weight_percent' => 100,
+                ];
+
+                if ($task) {
+                    $task->update($this->filterNullValues($payload));
+                    $report['updated']++;
+                } else {
+                    Task::create($payload);
+                    $report['created']++;
+                }
+
+                $touchedProjectIds[$project->id] = $project->id;
+
+                DB::commit();
+            } catch (\Throwable $e) {
+                DB::rollBack();
+                $this->skipRow($report, $rowNumber, 'Lỗi xử lý: ' . $e->getMessage());
+            }
+
+            $this->syncJobProgress($job, $processed, $report);
+        });
+
+        if (! empty($touchedProjectIds)) {
+            Project::query()
+                ->whereIn('id', array_values($touchedProjectIds))
+                ->get()
+                ->each(function (Project $project) {
+                    try {
+                        ProjectProgressService::recalc($project);
+                    } catch (\Throwable $e) {
+                        report($e);
+                    }
+                });
+        }
+
+        $this->syncJobProgress($job, $processed, $report, true);
+
+        return $this->finalizeReport($report);
+    }
+
+    public function importUsersFromPath(string $path, User $user, ?DataTransferJob $job = null): array
+    {
+        $report = $this->initReport();
+        $processed = 0;
+
+        $this->iterateMappedRows($path, $this->userHeaderMap(), function (array $data, int $rowNumber) use (&$report, &$processed, $job) {
+            $processed++;
+
+            if (empty($data['name'])) {
+                $this->skipRow($report, $rowNumber, 'Thiếu họ tên nhân viên.');
+                $this->syncJobProgress($job, $processed, $report);
+                return;
+            }
+
+            if (empty($data['email'])) {
+                $this->skipRow($report, $rowNumber, 'Thiếu email nhân viên.');
+                $this->syncJobProgress($job, $processed, $report);
+                return;
+            }
+
+            try {
+                DB::beginTransaction();
+
+                $departmentName = $data['department_name'] ?? null;
+                $departmentId = $departmentName ? $this->resolveOrCreateDepartmentId($departmentName) : null;
+                $password = $data['password'] ?? null;
+                if (! $password) {
+                    $password = ! empty($data['phone']) ? preg_replace('/\s+/', '', (string) $data['phone']) : 'clickon123';
+                    $this->pushWarning($report, $rowNumber, 'Thiếu mật khẩu, hệ thống dùng mật khẩu mặc định cho dòng import này.');
+                }
+
+                $payload = [
+                    'name' => $data['name'],
+                    'email' => Str::lower((string) $data['email']),
+                    'password' => Hash::make((string) $password),
+                    'role' => $this->normalizeUserRole($data['role'] ?? null),
+                    'department' => $departmentName,
+                    'department_id' => $departmentId,
+                    'phone' => $this->normalizePhoneForStorage($data['phone'] ?? null),
+                    'workload_capacity' => $this->parseInteger($data['workload_capacity'] ?? null) ?: 100,
+                    'is_active' => $this->normalizeUserActive($data['status'] ?? null),
+                ];
+
+                $user = User::query()->where('email', Str::lower((string) $data['email']))->first();
+                if ($user) {
+                    if (empty($data['password'])) {
+                        unset($payload['password']);
+                    }
+                    $user->update($payload);
+                    $report['updated']++;
+                } else {
+                    User::create($payload);
+                    $report['created']++;
+                }
 
                 DB::commit();
             } catch (\Throwable $e) {
@@ -667,6 +839,41 @@ class ImportExecutionService
         ];
     }
 
+    private function taskHeaderMap(): array
+    {
+        return [
+            'tencongviec' => 'title',
+            'khachhang' => 'client_name',
+            'duan' => 'project_name',
+            'loaidichvu' => 'service_type',
+            'dichvu' => 'service_type',
+            'ngaybatdau' => 'start_at',
+            'deadline' => 'deadline',
+            'noidung' => 'description',
+            'comments' => 'comments',
+            'trangthai' => 'status',
+            'nguoithuchien' => 'assignee',
+            'nguoiphutrach' => 'assignee',
+        ];
+    }
+
+    private function userHeaderMap(): array
+    {
+        return [
+            'hoten' => 'name',
+            'tennhanvien' => 'name',
+            'email' => 'email',
+            'matkhau' => 'password',
+            'vaitro' => 'role',
+            'phongban' => 'department_name',
+            'sodienthoai' => 'phone',
+            'dienthoai' => 'phone',
+            'tailuongcongviec' => 'workload_capacity',
+            'taitrongcongviec' => 'workload_capacity',
+            'trangthai' => 'status',
+        ];
+    }
+
     private function initReport(): array
     {
         return [
@@ -741,13 +948,7 @@ class ImportExecutionService
         }
 
         if ($normalizedPhone) {
-            $phoneExpression = $this->normalizedPhoneSqlExpression('phone');
-            $client = (clone $query)
-                ->where(function ($builder) use ($normalizedPhone, $phoneExpression) {
-                    $builder->where('phone', $normalizedPhone)
-                        ->orWhereRaw($phoneExpression . ' = ?', [$normalizedPhone]);
-                })
-                ->first();
+            $client = (clone $query)->where('phone', $normalizedPhone)->first();
             if ($client) {
                 return $client;
             }
@@ -935,6 +1136,31 @@ class ImportExecutionService
         return null;
     }
 
+    private function resolveOrCreateDepartmentId(string $departmentName): int
+    {
+        $departmentName = trim($departmentName);
+        $key = $this->normalizeHeader($departmentName);
+
+        if (isset($this->departmentCacheByName[$key])) {
+            return $this->departmentCacheByName[$key];
+        }
+
+        $department = Department::query()->get()->first(function ($item) use ($key) {
+            return $this->normalizeHeader($item->name) === $key;
+        });
+
+        if (! $department) {
+            $department = Department::create([
+                'name' => $departmentName,
+                'manager_id' => null,
+            ]);
+        }
+
+        $this->departmentCacheByName[$key] = (int) $department->id;
+
+        return (int) $department->id;
+    }
+
     private function resolveOrCreateClientForContract(array $data, ?int $collectorId): Client
     {
         $phone = $this->normalizePhoneForStorage($data['phone'] ?? null);
@@ -1018,6 +1244,63 @@ class ImportExecutionService
         return $product;
     }
 
+    private function resolveOrCreateClientForTask(array $data, User $user): ?Client
+    {
+        if (empty($data['client_name'])) {
+            return null;
+        }
+
+        $client = $this->findClientByIdentity($data['client_name'], null, null, null);
+        if ($client) {
+            return $client;
+        }
+
+        return Client::create([
+            'name' => $data['client_name'],
+            'lead_type_id' => $this->resolveLeadTypeId('Khách hàng tiềm năng'),
+            'assigned_staff_id' => $user->role === 'nhan_vien' ? $user->id : null,
+            'sales_owner_id' => $user->role === 'nhan_vien' ? $user->id : null,
+            'assigned_department_id' => $user->department_id ?: null,
+            'lead_source' => 'import_excel',
+            'lead_channel' => 'task_import',
+        ]);
+    }
+
+    private function resolveProjectForTaskImport(array $data, ?Client $client, User $user): ?Project
+    {
+        if (! empty($data['project_name'])) {
+            $project = Project::query()->where('name', $data['project_name'])->first();
+            if ($project) {
+                return $project;
+            }
+        }
+
+        if ($client) {
+            $existing = Project::query()
+                ->where('client_id', $client->id)
+                ->orderByDesc('id')
+                ->first();
+            if ($existing) {
+                return $existing;
+            }
+        }
+
+        $name = ! empty($data['project_name'])
+            ? $data['project_name']
+            : ($client ? 'CRM Import - ' . $client->name : 'CRM Import');
+
+        return Project::create([
+            'code' => $this->generateProjectCode(),
+            'name' => $name,
+            'client_id' => $client ? $client->id : null,
+            'service_type' => 'khac',
+            'service_type_other' => ! empty($data['service_type']) ? $data['service_type'] : 'CRM Import',
+            'status' => 'moi_tao',
+            'handover_status' => 'chua_ban_giao',
+            'created_by' => $user->id,
+        ]);
+    }
+
     private function normalizeContractStatus(string $value): string
     {
         $key = preg_replace('/[^a-z0-9]/', '', Str::lower(Str::ascii($value))) ?: '';
@@ -1044,6 +1327,71 @@ class ImportExecutionService
         return 'draft';
     }
 
+    private function normalizeTaskStatus(string $value): string
+    {
+        $key = preg_replace('/[^a-z0-9]/', '', Str::lower(Str::ascii($value))) ?: '';
+
+        if (strpos($key, 'doing') !== false || strpos($key, 'danglam') !== false || strpos($key, 'dangthuchien') !== false) {
+            return 'doing';
+        }
+        if (strpos($key, 'done') !== false || strpos($key, 'hoanthanh') !== false) {
+            return 'done';
+        }
+        if (strpos($key, 'blocked') !== false || strpos($key, 'bichan') !== false || strpos($key, 'tamdung') !== false) {
+            return 'blocked';
+        }
+
+        return 'todo';
+    }
+
+    private function normalizeTaskPriority(string $value): string
+    {
+        $key = preg_replace('/[^a-z0-9]/', '', Str::lower(Str::ascii($value))) ?: '';
+
+        if (strpos($key, 'urgent') !== false || strpos($key, 'khancap') !== false) {
+            return 'urgent';
+        }
+        if (strpos($key, 'high') !== false || strpos($key, 'cao') !== false) {
+            return 'high';
+        }
+        if (strpos($key, 'low') !== false || strpos($key, 'thap') !== false) {
+            return 'low';
+        }
+
+        return 'medium';
+    }
+
+    private function normalizeUserRole(?string $value): string
+    {
+        $key = preg_replace('/[^a-z0-9]/', '', Str::lower(Str::ascii((string) $value))) ?: '';
+
+        if (in_array($key, ['administrator', 'adminsystem'], true)) {
+            return 'administrator';
+        }
+        if (in_array($key, ['admin', 'quantricongty'], true)) {
+            return 'admin';
+        }
+        if (strpos($key, 'quanly') !== false || strpos($key, 'manager') !== false || strpos($key, 'truongphong') !== false) {
+            return 'quan_ly';
+        }
+        if (strpos($key, 'ketoan') !== false || strpos($key, 'accountant') !== false) {
+            return 'ke_toan';
+        }
+
+        return 'nhan_vien';
+    }
+
+    private function normalizeUserActive(?string $value): bool
+    {
+        $key = preg_replace('/[^a-z0-9]/', '', Str::lower(Str::ascii((string) $value))) ?: '';
+
+        if (in_array($key, ['0', 'inactive', 'tamkhoa', 'locked', 'disable', 'disabled'], true)) {
+            return false;
+        }
+
+        return true;
+    }
+
     private function normalizeEmailForStorage(?string $email): ?string
     {
         if (! $email) {
@@ -1060,17 +1408,12 @@ class ImportExecutionService
             return null;
         }
 
-        $digits = preg_replace('/\D+/', '', (string) $phone);
-        if (! $digits) {
+        $normalized = trim((string) $phone);
+        if ($normalized === '') {
             return null;
         }
 
-        return trim((string) $digits) !== '' ? trim((string) $digits) : null;
-    }
-
-    private function normalizedPhoneSqlExpression(string $column): string
-    {
-        return "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE({$column}, ' ', ''), '.', ''), '-', ''), '(', ''), ')', ''), '+', '')";
+        return $normalized;
     }
 
     private function hasText($value): bool
@@ -1095,5 +1438,12 @@ class ImportExecutionService
         })->all();
 
         $client->careStaffUsers()->syncWithoutDetaching($syncPayload);
+    }
+
+    private function generateProjectCode(): string
+    {
+        $date = now()->format('Ymd');
+
+        return 'PRJ-' . $date . '-' . strtoupper(Str::random(4));
     }
 }
