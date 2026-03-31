@@ -78,11 +78,23 @@ class ReportController extends Controller
         $hasContractApprovalStatus = Schema::hasColumn('contracts', 'approval_status');
         $hasContractSignedAt = Schema::hasColumn('contracts', 'signed_at');
         $hasContractApprovedAt = Schema::hasColumn('contracts', 'approved_at');
+        $hasContractValue = Schema::hasColumn('contracts', 'value');
+        $hasContractRevenue = Schema::hasColumn('contracts', 'revenue');
+        $hasContractCashFlow = Schema::hasColumn('contracts', 'cash_flow');
         $hasClientAssignedStaffId = Schema::hasColumn('clients', 'assigned_staff_id');
+        $hasClientCreatedAt = Schema::hasColumn('clients', 'created_at');
+        $hasOpportunityAssignedTo = Schema::hasColumn('opportunities', 'assigned_to');
+        $hasOpportunityCreatedBy = Schema::hasColumn('opportunities', 'created_by');
+        $hasOpportunityCreatedAt = Schema::hasColumn('opportunities', 'created_at');
         $hasUserDepartmentId = Schema::hasColumn('users', 'department_id');
         $hasUserDepartment = Schema::hasColumn('users', 'department');
         $hasUserAvatar = Schema::hasColumn('users', 'avatar_url');
         $hasUserActive = Schema::hasColumn('users', 'is_active');
+        $hasProjectStatus = Schema::hasColumn('projects', 'status');
+        $hasProjectServiceType = Schema::hasColumn('projects', 'service_type');
+        $hasTaskStatus = Schema::hasColumn('tasks', 'status');
+        $hasTaskDeadline = Schema::hasColumn('tasks', 'deadline');
+        $hasTaskAssignee = Schema::hasColumn('tasks', 'assignee_id');
 
         $contractTimelineColumns = ['client_id', 'created_at'];
         if ($hasContractSignedAt) {
@@ -151,35 +163,40 @@ class ReportController extends Controller
             : ('Tháng ' . $currentPeriodStart->format('m/Y'));
 
         $totalProjects = (clone $projectBaseQuery)->count();
-        $inProgressProjects = (clone $projectBaseQuery)
-            ->where('status', 'dang_trien_khai')
-            ->count();
-        $pendingReviewProjects = (clone $projectBaseQuery)
-            ->where('status', 'cho_duyet')
-            ->count();
+        $inProgressProjects = $hasProjectStatus
+            ? (clone $projectBaseQuery)->where('status', 'dang_trien_khai')->count()
+            : 0;
+        $pendingReviewProjects = $hasProjectStatus
+            ? (clone $projectBaseQuery)->where('status', 'cho_duyet')->count()
+            : 0;
 
         $totalTasks = (clone $taskBaseQuery)->count();
-        $completedTasks = (clone $taskBaseQuery)
-            ->whereIn('status', ['done'])
-            ->count();
-        $overdueTasks = (clone $taskBaseQuery)
-            ->whereNotNull('deadline')
-            ->where('deadline', '<', now())
-            ->whereNotIn('status', ['done'])
-            ->count();
+        $completedTasks = $hasTaskStatus
+            ? (clone $taskBaseQuery)->whereIn('status', ['done'])->count()
+            : 0;
+        $overdueTasks = ($hasTaskDeadline && $hasTaskStatus)
+            ? (clone $taskBaseQuery)
+                ->whereNotNull('deadline')
+                ->where('deadline', '<', now())
+                ->whereNotIn('status', ['done'])
+                ->count()
+            : 0;
 
-        $serviceBreakdown = (clone $projectBaseQuery)
-            ->selectRaw('service_type, COUNT(*) as total')
-            ->groupBy('service_type')
-            ->orderByDesc('total')
-            ->get()
-            ->map(function ($item) {
-                return [
-                    'label' => $item->service_type,
-                    'value' => (int) $item->total,
-                ];
-            })
-            ->values();
+        $serviceBreakdown = collect();
+        if ($hasProjectServiceType) {
+            $serviceBreakdown = (clone $projectBaseQuery)
+                ->selectRaw('service_type, COUNT(*) as total')
+                ->groupBy('service_type')
+                ->orderByDesc('total')
+                ->get()
+                ->map(function ($item) {
+                    return [
+                        'label' => $item->service_type,
+                        'value' => (int) $item->total,
+                    ];
+                })
+                ->values();
+        }
 
         $onTimeRate = $totalTasks > 0
             ? round((($totalTasks - $overdueTasks) / $totalTasks) * 100, 1)
@@ -322,7 +339,12 @@ class ReportController extends Controller
             );
         };
 
-        $aggregateRevenueByStaff = function ($contracts) use ($resolveStaffId): array {
+        $aggregateRevenueByStaff = function ($contracts) use (
+            $resolveStaffId,
+            $hasContractValue,
+            $hasContractRevenue,
+            $hasContractCashFlow
+        ): array {
             $totals = [];
             foreach ($contracts as $contract) {
                 $staffId = $resolveStaffId($contract);
@@ -334,8 +356,13 @@ class ReportController extends Controller
                     ];
                 }
 
-                $totals[$staffId]['revenue'] += (float) $contract->effective_value;
-                $totals[$staffId]['cashflow'] += (float) $contract->payments_total;
+                $contractRevenue = $hasContractValue ? (float) ($contract->getRawOriginal('value') ?? 0) : 0.0;
+                $contractCashflow = $hasContractRevenue
+                    ? (float) ($contract->getRawOriginal('revenue') ?? 0)
+                    : ($hasContractCashFlow ? (float) ($contract->getRawOriginal('cash_flow') ?? 0) : 0.0);
+
+                $totals[$staffId]['revenue'] += $contractRevenue;
+                $totals[$staffId]['cashflow'] += $contractCashflow;
                 $totals[$staffId]['contracts_count'] += 1;
             }
 
@@ -348,7 +375,7 @@ class ReportController extends Controller
         $totalCurrentRevenue = collect($currentStaffMetrics)->sum('revenue');
 
         $newClientsByStaff = collect();
-        if ($hasClientAssignedStaffId) {
+        if ($hasClientAssignedStaffId && $hasClientCreatedAt) {
             $newClientsByStaff = (clone $clientBaseQuery)
                 ->selectRaw('assigned_staff_id as staff_id, COUNT(*) as total')
                 ->whereNotNull('assigned_staff_id')
@@ -357,19 +384,39 @@ class ReportController extends Controller
                 ->pluck('total', 'staff_id');
         }
 
-        $newOpportunitiesByStaff = (clone $opportunityBaseQuery)
-            ->selectRaw('COALESCE(assigned_to, created_by) as staff_id, COUNT(*) as total')
-            ->whereRaw('COALESCE(assigned_to, created_by) IS NOT NULL')
-            ->whereBetween('created_at', [$currentPeriodStart, $currentPeriodEnd])
-            ->groupBy(DB::raw('COALESCE(assigned_to, created_by)'))
-            ->pluck('total', 'staff_id');
+        $newOpportunitiesByStaff = collect();
+        if ($hasOpportunityCreatedAt && $hasOpportunityAssignedTo && $hasOpportunityCreatedBy) {
+            $newOpportunitiesByStaff = (clone $opportunityBaseQuery)
+                ->selectRaw('COALESCE(assigned_to, created_by) as staff_id, COUNT(*) as total')
+                ->whereRaw('COALESCE(assigned_to, created_by) IS NOT NULL')
+                ->whereBetween('created_at', [$currentPeriodStart, $currentPeriodEnd])
+                ->groupBy(DB::raw('COALESCE(assigned_to, created_by)'))
+                ->pluck('total', 'staff_id');
+        } elseif ($hasOpportunityCreatedAt && $hasOpportunityAssignedTo) {
+            $newOpportunitiesByStaff = (clone $opportunityBaseQuery)
+                ->selectRaw('assigned_to as staff_id, COUNT(*) as total')
+                ->whereNotNull('assigned_to')
+                ->whereBetween('created_at', [$currentPeriodStart, $currentPeriodEnd])
+                ->groupBy('assigned_to')
+                ->pluck('total', 'staff_id');
+        } elseif ($hasOpportunityCreatedAt && $hasOpportunityCreatedBy) {
+            $newOpportunitiesByStaff = (clone $opportunityBaseQuery)
+                ->selectRaw('created_by as staff_id, COUNT(*) as total')
+                ->whereNotNull('created_by')
+                ->whereBetween('created_at', [$currentPeriodStart, $currentPeriodEnd])
+                ->groupBy('created_by')
+                ->pluck('total', 'staff_id');
+        }
 
-        $activeTasksByStaff = (clone $taskBaseQuery)
-            ->selectRaw('assignee_id as staff_id, COUNT(*) as total')
-            ->whereNotNull('assignee_id')
-            ->whereNotIn('status', ['done'])
-            ->groupBy('assignee_id')
-            ->pluck('total', 'staff_id');
+        $activeTasksByStaff = collect();
+        if ($hasTaskAssignee && $hasTaskStatus) {
+            $activeTasksByStaff = (clone $taskBaseQuery)
+                ->selectRaw('assignee_id as staff_id, COUNT(*) as total')
+                ->whereNotNull('assignee_id')
+                ->whereNotIn('status', ['done'])
+                ->groupBy('assignee_id')
+                ->pluck('total', 'staff_id');
+        }
 
         $percentageChange = function (float $current, float $previous): float {
             if ($previous <= 0.0) {
@@ -470,12 +517,15 @@ class ReportController extends Controller
             ];
         });
 
-        $createdClientsTimeline = (clone $clientBaseQuery)
-            ->whereBetween('created_at', [
-                $customerGrowthPeriods->first()['start'],
-                $customerGrowthPeriods->last()['end'],
-            ])
-            ->get(['created_at']);
+        $createdClientsTimeline = collect();
+        if ($hasClientCreatedAt) {
+            $createdClientsTimeline = (clone $clientBaseQuery)
+                ->whereBetween('created_at', [
+                    $customerGrowthPeriods->first()['start'],
+                    $customerGrowthPeriods->last()['end'],
+                ])
+                ->get(['created_at']);
+        }
 
         foreach ($createdClientsTimeline as $client) {
             $key = optional($client->created_at)->format('Y-m');
