@@ -105,22 +105,40 @@
         border-radius: 9999px;
         border: 1px solid rgba(148, 163, 184, 0.45);
         background: rgba(241, 245, 249, 0.9);
-        color: rgb(51, 65, 85);
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        height: 1.45rem;
-        width: 1.45rem;
+        flex-shrink: 0;
+        height: 1.38rem;
+        width: 1.38rem;
         line-height: 0;
         padding: 0;
         pointer-events: none;
         transition: all 120ms ease;
     }
 
-    .table-az-control svg {
-        height: 1rem;
-        width: 1rem;
-        overflow: visible;
+    .table-az-control .table-az-icon {
+        display: block;
+        height: 0.92rem !important;
+        width: 0.92rem !important;
+        min-height: 0.92rem;
+        min-width: 0.92rem;
+        max-height: 0.92rem;
+        max-width: 0.92rem;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+    }
+
+    .table-az-control .table-az-icon path {
+        vector-effect: non-scaling-stroke;
+    }
+
+    .table-az-control .table-az-icon path:nth-child(-n + 2) {
+        stroke: #3fae56;
+    }
+
+    .table-az-control .table-az-icon path:nth-child(n + 3) {
+        stroke: #5e7d8e;
     }
 
     .table-sortable-header:hover .table-az-control {

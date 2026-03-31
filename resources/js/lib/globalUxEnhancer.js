@@ -1,18 +1,9 @@
 import TomSelect from 'tom-select';
 import Tablesort from 'tablesort';
+import { ArrowDownAZ, createElement as createLucideElement } from 'lucide';
 
 const TABLE_SELECTOR = 'table';
 const SELECT_SEARCH_MIN_OPTIONS = 2;
-const SORT_ICON_SVG = `
-    <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
-        <path d="M4 2.8V14" stroke="#3FAE56" stroke-width="1.9" stroke-linecap="round" />
-        <path d="M1.8 11.8L4 14.2L6.2 11.8" fill="none" stroke="#3FAE56" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" />
-        <path d="M11.5 7.5L13 3.3L14.5 7.5" fill="none" stroke="#5E7D8E" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round" />
-        <path d="M12.1 6.2H13.9" fill="none" stroke="#5E7D8E" stroke-width="1.45" stroke-linecap="round" />
-        <path d="M11.5 12.1H14.6L11.5 16.1H14.6" fill="none" stroke="#5E7D8E" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round" />
-    </svg>
-`;
-
 const tableSortInstances = new WeakMap();
 let hasRegisteredSortExtensions = false;
 
@@ -113,7 +104,14 @@ const decorateSortHeader = (headerCell) => {
     const icon = document.createElement('span');
     icon.className = 'table-az-control';
     icon.setAttribute('aria-hidden', 'true');
-    icon.innerHTML = SORT_ICON_SVG;
+    icon.appendChild(createLucideElement(ArrowDownAZ, {
+        class: 'table-az-icon',
+        width: 16,
+        height: 16,
+        'stroke-width': 2,
+        'aria-hidden': 'true',
+        focusable: 'false',
+    }));
     headerCell.appendChild(icon);
 };
 
