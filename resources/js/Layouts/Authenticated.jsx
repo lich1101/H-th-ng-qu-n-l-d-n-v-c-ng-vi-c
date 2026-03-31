@@ -312,6 +312,7 @@ export default function Authenticated({ auth, header, children }) {
                 label: 'Sales',
                 items: [
                     { label: 'Hợp đồng', icon: 'file', routeName: 'contracts.index', href: route('contracts.index'), roles: ['admin', 'quan_ly', 'nhan_vien', 'ke_toan'] },
+                    { label: 'Danh mục sản phẩm', icon: 'tag', routeName: 'product-categories.index', href: route('product-categories.index'), roles: ['admin'] },
                     { label: 'Sản phẩm', icon: 'box', routeName: 'products.index', href: route('products.index'), roles: ['admin', 'quan_ly', 'nhan_vien', 'ke_toan'] },
                 ],
             },

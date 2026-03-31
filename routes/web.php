@@ -150,6 +150,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         return Inertia::render('Products');
     })->name('products.index')->middleware('role:admin,ke_toan,quan_ly,nhan_vien');
 
+    Route::get('/danh-muc-san-pham', function () {
+        return Inertia::render('ProductCategories');
+    })->name('product-categories.index')->middleware('role:admin');
+
     Route::get('/form-tu-van', function () {
         return Inertia::render('LeadForms');
     })->name('lead-forms.index')->middleware('role:admin');

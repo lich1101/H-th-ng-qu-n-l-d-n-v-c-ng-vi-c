@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ProductCategory;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 
 class ProductCategoryController extends Controller
 {
@@ -31,12 +32,11 @@ class ProductCategoryController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'code' => ['required', 'string', 'max:40', 'regex:/^[A-Za-z0-9_-]+$/', 'unique:product_categories,code'],
             'name' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'is_active' => ['nullable', 'boolean'],
         ]);
-        $validated['code'] = strtoupper(trim((string) $validated['code']));
+        $validated['code'] = $this->generateCode((string) $validated['name']);
         $validated['is_active'] = $validated['is_active'] ?? true;
 
         $category = ProductCategory::create($validated);
@@ -47,13 +47,12 @@ class ProductCategoryController extends Controller
     public function update(Request $request, ProductCategory $productCategory): JsonResponse
     {
         $validated = $request->validate([
-            'code' => ['sometimes', 'required', 'string', 'max:40', 'regex:/^[A-Za-z0-9_-]+$/', 'unique:product_categories,code,' . $productCategory->id],
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'is_active' => ['nullable', 'boolean'],
         ]);
-        if (array_key_exists('code', $validated)) {
-            $validated['code'] = strtoupper(trim((string) $validated['code']));
+        if (empty($productCategory->code)) {
+            $validated['code'] = $this->generateCode((string) ($validated['name'] ?? $productCategory->name), $productCategory->id);
         }
         $productCategory->update($validated);
 
@@ -65,5 +64,27 @@ class ProductCategoryController extends Controller
         $productCategory->delete();
 
         return response()->json(['message' => 'Đã xóa danh mục sản phẩm.']);
+    }
+
+    private function generateCode(string $name, ?int $ignoreId = null): string
+    {
+        $base = Str::upper(Str::slug($name, '-'));
+        $base = $base !== '' ? $base : 'DANH-MUC';
+        $base = Str::limit($base, 30, '');
+        $candidate = $base;
+        $index = 2;
+
+        while (
+            ProductCategory::query()
+                ->when($ignoreId, fn ($query) => $query->whereKeyNot($ignoreId))
+                ->where('code', $candidate)
+                ->exists()
+        ) {
+            $suffix = '-' . $index;
+            $candidate = Str::limit($base, 40 - strlen($suffix), '') . $suffix;
+            $index++;
+        }
+
+        return $candidate;
     }
 }

@@ -57,7 +57,14 @@ export default function CRM(props) {
         lead_type_id: '',
         assigned_staff_id: '',
     });
-    const [clientFilters, setClientFilters] = useState({ search: '', per_page: 10, lead_type_id: '', type: '' });
+    const [clientFilters, setClientFilters] = useState({
+        search: '',
+        per_page: 10,
+        lead_type_id: '',
+        type: '',
+        assigned_department_id: '',
+        assigned_staff_id: '',
+    });
     const [paymentFilters, setPaymentFilters] = useState({ status: '', per_page: 10 });
     const [editingClientId, setEditingClientId] = useState(null);
     const [editingPaymentId, setEditingPaymentId] = useState(null);
@@ -632,6 +639,24 @@ export default function CRM(props) {
         })).filter((user) => user.id > 0);
     }, [staffUsers, visibleDepartmentOptions]);
 
+    const clientResponsibleStaffOptions = useMemo(() => {
+        const departmentId = Number(clientFilters.assigned_department_id || 0);
+
+        return staffUsers
+            .filter((user) => {
+                if (!departmentId) return true;
+                return Number(user.department_id || 0) === departmentId;
+            })
+            .map((user) => ({
+                id: Number(user.id || 0),
+                name: user.name || 'Nhân sự',
+                departmentName: user.department_id
+                    ? (visibleDepartmentOptions.find((dept) => Number(dept.id) === Number(user.department_id))?.name || '')
+                    : '',
+            }))
+            .filter((user) => user.id > 0);
+    }, [clientFilters.assigned_department_id, staffUsers, visibleDepartmentOptions]);
+
     return (
         <PageContainer
             auth={props.auth}
@@ -668,7 +693,7 @@ export default function CRM(props) {
                             title="Danh sách khách hàng"
                             description="Lọc theo tên, loại lead và nhóm khách trước khi thao tác CRM hoặc phân công phụ trách."
                         >
-                            <div className="grid gap-3 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.8fr)_minmax(0,0.75fr)_auto]">
+                            <div className={`grid gap-3 ${isAdminRole ? 'md:grid-cols-2 xl:grid-cols-6' : 'md:grid-cols-2 xl:grid-cols-4'}`}>
                                 <FilterField label="Tìm kiếm">
                                     <input
                                         className={filterControlClass}
@@ -702,7 +727,43 @@ export default function CRM(props) {
                                         <option value="active">Đã mua</option>
                                     </select>
                                 </FilterField>
-                                <FilterActionGroup className="xl:self-end xl:justify-end">
+                                {isAdminRole && (
+                                    <FilterField label="Phòng ban phụ trách">
+                                        <select
+                                            className={filterControlClass}
+                                            value={clientFilters.assigned_department_id}
+                                            onChange={(e) => setClientFilters((s) => ({
+                                                ...s,
+                                                assigned_department_id: e.target.value,
+                                                assigned_staff_id: '',
+                                            }))}
+                                        >
+                                            <option value="">Tất cả phòng ban</option>
+                                            {visibleDepartmentOptions.map((dept) => (
+                                                <option key={dept.id} value={dept.id}>
+                                                    {dept.name}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </FilterField>
+                                )}
+                                {isAdminRole && (
+                                    <FilterField label="Nhân sự phụ trách">
+                                        <select
+                                            className={filterControlClass}
+                                            value={clientFilters.assigned_staff_id}
+                                            onChange={(e) => setClientFilters((s) => ({ ...s, assigned_staff_id: e.target.value }))}
+                                        >
+                                            <option value="">Tất cả nhân sự phụ trách</option>
+                                            {clientResponsibleStaffOptions.map((user) => (
+                                                <option key={user.id} value={user.id}>
+                                                    {user.name}{user.departmentName ? ` • ${user.departmentName}` : ''}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </FilterField>
+                                )}
+                                <FilterActionGroup className="md:col-span-2 xl:col-span-1 xl:self-end xl:justify-end">
                                     {canManageClients && (
                                         <button
                                             type="button"

@@ -346,12 +346,12 @@ Route::prefix('v1')->group(function () {
         Route::post('/products', [ProductController::class, 'store'])
             ->middleware('role:admin,ke_toan');
         Route::post('/product-categories', [ProductCategoryController::class, 'store'])
-            ->middleware('role:admin,ke_toan');
+            ->middleware('role:admin');
         Route::get('/products/{product}', [ProductController::class, 'show']);
         Route::put('/products/{product}', [ProductController::class, 'update'])
             ->middleware('role:admin,ke_toan');
         Route::put('/product-categories/{productCategory}', [ProductCategoryController::class, 'update'])
-            ->middleware('role:admin,ke_toan');
+            ->middleware('role:admin');
         Route::delete('/products/{product}', [ProductController::class, 'destroy'])
             ->middleware('role:admin');
         Route::delete('/product-categories/{productCategory}', [ProductCategoryController::class, 'destroy'])

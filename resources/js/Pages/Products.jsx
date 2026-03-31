@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
+import AutoCodeBadge from '@/Components/AutoCodeBadge';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import PaginationControls from '@/Components/PaginationControls';
 import { useToast } from '@/Contexts/ToastContext';
+import { Link } from '@inertiajs/inertia-react';
 
 function FormField({ label, required = false, children, className = '' }) {
     return (
@@ -22,6 +24,7 @@ export default function Products(props) {
     const userRole = props?.auth?.user?.role || '';
     const canManage = ['admin', 'ke_toan'].includes(userRole);
     const canDelete = userRole === 'admin';
+    const canManageCategories = userRole === 'admin';
     const canBulkActions = canManage || canDelete;
 
     const [categories, setCategories] = useState([]);
@@ -36,16 +39,6 @@ export default function Products(props) {
         category_id: '',
         unit: '',
         unit_price: '',
-        description: '',
-        is_active: true,
-    });
-    const [categoryMeta, setCategoryMeta] = useState({ current_page: 1, last_page: 1, total: 0 });
-    const [categoryFilters, setCategoryFilters] = useState({ search: '', is_active: '', per_page: 10, page: 1 });
-    const [showCategoryForm, setShowCategoryForm] = useState(false);
-    const [editingCategoryId, setEditingCategoryId] = useState(null);
-    const [categoryForm, setCategoryForm] = useState({
-        code: '',
-        name: '',
         description: '',
         is_active: true,
     });
@@ -84,28 +77,14 @@ export default function Products(props) {
         }
     };
 
-    const fetchCategories = async (pageOrFilters = categoryFilters.page, maybeFilters = categoryFilters) => {
-        const nextFilters = typeof pageOrFilters === 'object' && pageOrFilters !== null
-            ? pageOrFilters
-            : maybeFilters;
-        const nextPage = typeof pageOrFilters === 'object' && pageOrFilters !== null
-            ? Number(pageOrFilters.page || 1)
-            : Number(pageOrFilters || 1);
+    const fetchCategories = async () => {
         try {
             const res = await axios.get('/api/v1/product-categories', {
                 params: {
-                    ...nextFilters,
-                    page: nextPage,
-                    per_page: nextFilters.per_page || 10,
+                    per_page: 200,
                 },
             });
             setCategories(res.data?.data || []);
-            setCategoryMeta({
-                current_page: res.data?.current_page || 1,
-                last_page: res.data?.last_page || 1,
-                total: res.data?.total || 0,
-            });
-            setCategoryFilters((prev) => ({ ...prev, page: res.data?.current_page || nextPage }));
         } catch (error) {
             toast.error(error?.response?.data?.message || 'Không tải được danh mục sản phẩm.');
         }
@@ -127,6 +106,16 @@ export default function Products(props) {
             { label: 'Vai trò', value: userRole || '—' },
         ];
     }, [productMeta.total, products, userRole]);
+
+    const categorySummary = useMemo(() => {
+        const total = categories.length;
+        const active = categories.filter((item) => item.is_active).length;
+        return {
+            total,
+            active,
+            inactive: Math.max(total - active, 0),
+        };
+    }, [categories]);
 
     const visibleProductIds = useMemo(
         () => products.map((product) => Number(product.id)).filter((id) => id > 0),
@@ -263,194 +252,82 @@ export default function Products(props) {
         }
     };
 
-    const resetCategoryForm = () => {
-        setEditingCategoryId(null);
-        setCategoryForm({ code: '', name: '', description: '', is_active: true });
-    };
-
-    const openCategoryCreate = () => {
-        resetCategoryForm();
-        setShowCategoryForm(true);
-    };
-
-    const startEditCategory = (category) => {
-        setEditingCategoryId(category.id);
-        setCategoryForm({
-            code: category.code || '',
-            name: category.name || '',
-            description: category.description || '',
-            is_active: !!category.is_active,
-        });
-        setShowCategoryForm(true);
-    };
-
-    const closeCategoryForm = () => {
-        setShowCategoryForm(false);
-        resetCategoryForm();
-    };
-
-    const saveCategory = async () => {
-        if (!canManage) return toast.error('Bạn không có quyền quản lý danh mục.');
-        if (!categoryForm.code.trim()) return toast.error('Vui lòng nhập mã danh mục.');
-        if (!categoryForm.name.trim()) return toast.error('Vui lòng nhập tên danh mục.');
-        const payload = {
-            code: categoryForm.code.trim(),
-            name: categoryForm.name,
-            description: categoryForm.description || null,
-            is_active: !!categoryForm.is_active,
-        };
-        try {
-            if (editingCategoryId) {
-                await axios.put(`/api/v1/product-categories/${editingCategoryId}`, payload);
-                toast.success('Đã cập nhật danh mục.');
-            } else {
-                await axios.post('/api/v1/product-categories', payload);
-                toast.success('Đã tạo danh mục.');
-            }
-            closeCategoryForm();
-            await fetchCategories(categoryFilters.page, categoryFilters);
-        } catch (error) {
-            toast.error(error?.response?.data?.message || 'Lưu danh mục thất bại.');
-        }
-    };
-
-    const removeCategory = async (category) => {
-        if (!canDelete) return toast.error('Bạn không có quyền xóa danh mục.');
-        if (!confirm('Xóa danh mục này?')) return;
-        try {
-            await axios.delete(`/api/v1/product-categories/${category.id}`);
-            toast.success('Đã xóa danh mục.');
-            await fetchCategories(categoryFilters.page, categoryFilters);
-        } catch (error) {
-            toast.error(error?.response?.data?.message || 'Xóa danh mục thất bại.');
-        }
-    };
-
     return (
         <PageContainer
             auth={props.auth}
-            title="Danh mục sản phẩm"
-            description="Quản lý sản phẩm và đơn giá để gắn vào hợp đồng."
+            title="Quản lý sản phẩm"
+            description="Quản lý sản phẩm, đơn giá bán và điều hướng nhanh sang trang danh mục sản phẩm."
             stats={stats}
         >
-            <div className="grid gap-5 lg:grid-cols-3">
-                <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card p-5">
-                    <FilterToolbar
-                        title="Danh mục sản phẩm"
-                        description="Quản lý nhóm sản phẩm để lọc nhanh."
-                        actions={(
-                            <FilterActionGroup>
-                                {canManage && (
-                                    <button
-                                        type="button"
-                                        className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white"
-                                        onClick={openCategoryCreate}
-                                    >
-                                        Thêm danh mục
-                                    </button>
-                                )}
-                                <button
-                                    type="button"
-                                    className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700"
-                                    onClick={() => {
-                                        const next = { ...categoryFilters, page: 1 };
-                                        setCategoryFilters(next);
-                                        fetchCategories(1, next);
-                                    }}
-                                >
-                                    Lọc
-                                </button>
-                            </FilterActionGroup>
-                        )}
-                    >
-                        <div className="grid gap-3 md:grid-cols-2">
-                            <FilterField label="Tìm danh mục">
-                                <input
-                                    className={filterControlClass}
-                                    placeholder="Tên hoặc mã danh mục"
-                                    value={categoryFilters.search}
-                                    onChange={(e) => setCategoryFilters((s) => ({ ...s, search: e.target.value }))}
-                                />
-                            </FilterField>
-                            <FilterField label="Trạng thái">
-                                <select
-                                    className={filterControlClass}
-                                    value={categoryFilters.is_active}
-                                    onChange={(e) => setCategoryFilters((s) => ({ ...s, is_active: e.target.value }))}
-                                >
-                                    <option value="">Tất cả trạng thái</option>
-                                    <option value="1">Đang hoạt động</option>
-                                    <option value="0">Ngưng</option>
-                                </select>
-                            </FilterField>
+            <div className="space-y-5">
+                <div className="grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
+                    <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card">
+                        <div className="flex items-start justify-between gap-3">
+                            <div>
+                                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-subtle">
+                                    Danh mục sản phẩm
+                                </p>
+                                <h3 className="mt-2 text-xl font-semibold text-slate-900">
+                                    Quản lý riêng theo module
+                                </h3>
+                                <p className="mt-2 text-sm text-text-muted">
+                                    Mã danh mục được hệ thống tự sinh. Admin quản lý ở trang riêng để không lẫn với màn hình sản phẩm.
+                                </p>
+                            </div>
+                            <AutoCodeBadge code={`${categorySummary.total} nhóm`} className="border-emerald-200 bg-emerald-50 text-emerald-700 normal-case tracking-normal" />
                         </div>
-                    </FilterToolbar>
-                    <div className="mb-4" />
-                    <div className="space-y-3">
-                        {categories.map((c) => (
-                            <div key={c.id} className="rounded-2xl border border-slate-200/80 p-3">
-                                <div className="flex items-start justify-between gap-3">
-                                    <div>
-                                        <p className="font-semibold text-slate-900">{c.name}</p>
-                                        <p className="text-xs text-text-muted">Mã: {c.code || '—'}</p>
+                        <div className="mt-4 grid grid-cols-3 gap-3 text-center">
+                            <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-3 py-4">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text-subtle">Tổng</div>
+                                <div className="mt-2 text-2xl font-semibold text-slate-900">{categorySummary.total}</div>
+                            </div>
+                            <div className="rounded-2xl border border-emerald-200/80 bg-emerald-50 px-3 py-4">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700">Hoạt động</div>
+                                <div className="mt-2 text-2xl font-semibold text-emerald-700">{categorySummary.active}</div>
+                            </div>
+                            <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-3 py-4">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Ngưng</div>
+                                <div className="mt-2 text-2xl font-semibold text-slate-600">{categorySummary.inactive}</div>
+                            </div>
+                        </div>
+                        <div className="mt-4 space-y-2">
+                            {categories.slice(0, 4).map((category) => (
+                                <div key={category.id} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200/80 px-3 py-2.5">
+                                    <div className="min-w-0">
+                                        <div className="truncate text-sm font-semibold text-slate-900">{category.name}</div>
+                                        <AutoCodeBadge code={category.code} className="mt-1" />
                                     </div>
-                                    <span
-                                        className={`rounded-full px-2 py-1 text-[10px] font-semibold ${
-                                            c.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'
-                                        }`}
-                                    >
-                                        {c.is_active ? 'Hoạt động' : 'Ngưng'}
+                                    <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${category.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                                        {category.is_active ? 'Hoạt động' : 'Ngưng'}
                                     </span>
                                 </div>
-                                {c.description && (
-                                    <p className="text-xs text-text-muted mt-2">{c.description}</p>
-                                )}
-                                <div className="mt-3 flex items-center gap-2 text-xs">
-                                    {canManage && (
-                                        <button
-                                            type="button"
-                                            className="font-semibold text-primary"
-                                            onClick={() => startEditCategory(c)}
-                                        >
-                                            Sửa
-                                        </button>
-                                    )}
-                                    {canDelete && (
-                                        <button
-                                            type="button"
-                                            className="font-semibold text-rose-500"
-                                            onClick={() => removeCategory(c)}
-                                        >
-                                            Xóa
-                                        </button>
-                                    )}
+                            ))}
+                            {categories.length === 0 && (
+                                <div className="rounded-2xl border border-dashed border-slate-200 px-3 py-5 text-center text-sm text-text-muted">
+                                    Chưa có danh mục sản phẩm.
                                 </div>
-                            </div>
-                        ))}
-                        {categories.length === 0 && (
-                            <p className="text-sm text-text-muted">Chưa có danh mục nào.</p>
-                        )}
+                            )}
+                        </div>
+                        <div className="mt-4">
+                            {canManageCategories ? (
+                                <Link
+                                    href={route('product-categories.index')}
+                                    className="inline-flex items-center rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-sm"
+                                >
+                                    Mở trang quản lý danh mục
+                                </Link>
+                            ) : (
+                                <p className="text-xs text-text-muted">
+                                    Chỉ admin mới có quyền thêm, sửa và xóa danh mục sản phẩm.
+                                </p>
+                            )}
+                        </div>
                     </div>
-                    <PaginationControls
-                        page={categoryMeta.current_page}
-                        lastPage={categoryMeta.last_page}
-                        total={categoryMeta.total}
-                        perPage={categoryFilters.per_page}
-                        label="danh mục"
-                        className="border-0 bg-transparent px-0"
-                        onPageChange={(page) => fetchCategories(page, categoryFilters)}
-                        onPerPageChange={(perPage) => {
-                            const next = { ...categoryFilters, per_page: perPage, page: 1 };
-                            setCategoryFilters(next);
-                            fetchCategories(1, next);
-                        }}
-                    />
-                </div>
 
-                <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card p-5 lg:col-span-2">
-                    <FilterToolbar
-                        title="Danh sách sản phẩm"
-                        description="Quản lý sản phẩm và đơn giá gắn hợp đồng."
+                    <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card p-5">
+                        <FilterToolbar
+                            title="Danh sách sản phẩm"
+                            description="Quản lý sản phẩm và đơn giá gắn hợp đồng."
                         actions={(
                             <FilterActionGroup>
                                 <button
@@ -478,7 +355,7 @@ export default function Products(props) {
                             <FilterField label="Tìm kiếm">
                                 <input
                                     className={filterControlClass}
-                                    placeholder="Tên hoặc mã sản phẩm"
+                                    placeholder="Tên hoặc mã tự sinh"
                                     value={filters.search}
                                     onChange={(e) => setFilters((s) => ({ ...s, search: e.target.value }))}
                                 />
@@ -596,7 +473,9 @@ export default function Products(props) {
                                                 />
                                             </td>
                                         )}
-                                        <td className="py-2 text-text-muted">{p.code || '—'}</td>
+                                        <td className="py-2">
+                                            <AutoCodeBadge code={p.code} />
+                                        </td>
                                         <td className="py-2 font-medium text-slate-900">{p.name}</td>
                                         <td className="py-2 text-text-muted">{p.category?.name || '—'}</td>
                                         <td className="py-2 text-text-muted">{p.unit || '—'}</td>
@@ -659,6 +538,7 @@ export default function Products(props) {
                         }}
                     />
                 </div>
+            </div>
             </div>
 
             <Modal
@@ -751,70 +631,6 @@ export default function Products(props) {
                 </div>
             </Modal>
 
-            <Modal
-                open={showCategoryForm}
-                onClose={closeCategoryForm}
-                title={editingCategoryId ? `Sửa danh mục #${editingCategoryId}` : 'Tạo danh mục'}
-                description="Mã danh mục là bắt buộc. Mã sản phẩm sẽ tự sinh từ danh mục này khi tạo sản phẩm."
-                size="md"
-            >
-                <div className="space-y-3 text-sm">
-                    <FormField label="Mã danh mục" required>
-                        <input
-                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                            placeholder="Ví dụ: backlink, content"
-                            value={categoryForm.code}
-                            onChange={(e) => setCategoryForm((s) => ({ ...s, code: e.target.value }))}
-                        />
-                    </FormField>
-                    <FormField label="Tên danh mục" required>
-                        <input
-                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                            placeholder="Tên hiển thị cho người dùng"
-                            value={categoryForm.name}
-                            onChange={(e) => setCategoryForm((s) => ({ ...s, name: e.target.value }))}
-                        />
-                    </FormField>
-                    <FormField label="Mô tả">
-                        <textarea
-                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                            rows={3}
-                            placeholder="Mô tả ngắn về nhóm sản phẩm"
-                            value={categoryForm.description}
-                            onChange={(e) => setCategoryForm((s) => ({ ...s, description: e.target.value }))}
-                        />
-                    </FormField>
-                    <label className="flex items-center gap-2 text-xs text-text-muted">
-                        <input
-                            type="checkbox"
-                            checked={categoryForm.is_active}
-                            onChange={(e) => setCategoryForm((s) => ({ ...s, is_active: e.target.checked }))}
-                        />
-                        Đang hoạt động
-                    </label>
-                    {!canManage && (
-                        <p className="text-xs text-text-muted">
-                            Chỉ Admin/Kế toán có thể chỉnh sửa danh mục.
-                        </p>
-                    )}
-                    <div className="flex items-center gap-3">
-                        <button
-                            type="button"
-                            className="flex-1 rounded-2xl px-3 py-2.5 bg-primary text-white text-sm font-semibold"
-                            onClick={saveCategory}
-                        >
-                            {editingCategoryId ? 'Cập nhật danh mục' : 'Tạo danh mục'}
-                        </button>
-                        <button
-                            type="button"
-                            className="flex-1 rounded-2xl px-3 py-2.5 border border-slate-200 text-sm font-semibold"
-                            onClick={closeCategoryForm}
-                        >
-                            Hủy
-                        </button>
-                    </div>
-                </div>
-            </Modal>
         </PageContainer>
     );
 }

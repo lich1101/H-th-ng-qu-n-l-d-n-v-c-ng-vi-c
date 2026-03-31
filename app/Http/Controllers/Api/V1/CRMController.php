@@ -52,6 +52,22 @@ class CRMController extends Controller
         if ($request->filled('lead_type_id')) {
             $query->where('lead_type_id', (int) $request->input('lead_type_id'));
         }
+        if ($request->filled('assigned_department_id')) {
+            $departmentId = (int) $request->input('assigned_department_id');
+            $query->where(function ($builder) use ($departmentId) {
+                $builder->where('assigned_department_id', $departmentId)
+                    ->orWhereHas('assignedStaff', function ($staffQuery) use ($departmentId) {
+                        $staffQuery->where('department_id', $departmentId);
+                    });
+            });
+        }
+        if ($request->filled('assigned_staff_id')) {
+            $staffId = (int) $request->input('assigned_staff_id');
+            $query->where(function ($builder) use ($staffId) {
+                $builder->where('assigned_staff_id', $staffId)
+                    ->orWhere('sales_owner_id', $staffId);
+            });
+        }
         if ($request->boolean('lead_only')) {
             $query->whereNotNull('lead_type_id');
         }

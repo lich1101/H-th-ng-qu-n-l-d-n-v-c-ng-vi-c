@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
+import AutoCodeBadge from '@/Components/AutoCodeBadge';
 import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
@@ -930,7 +931,7 @@ export default function Contracts(props) {
                 >
                     <div className="grid gap-3 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.7fr)_minmax(0,0.7fr)_minmax(0,0.8fr)_auto]">
                         <FilterField label="Tìm kiếm">
-                            <input className={filterControlClass} placeholder="Tìm theo mã hợp đồng hoặc tiêu đề" value={filters.search} onChange={(e) => setFilters((s) => ({ ...s, search: e.target.value }))} />
+                            <input className={filterControlClass} placeholder="Tìm theo mã tự sinh hoặc tiêu đề" value={filters.search} onChange={(e) => setFilters((s) => ({ ...s, search: e.target.value }))} />
                         </FilterField>
                         <FilterField label="Trạng thái">
                             <select className={filterControlClass} value={filters.status} onChange={(e) => setFilters((s) => ({ ...s, status: e.target.value }))}>
@@ -1077,9 +1078,7 @@ export default function Contracts(props) {
                                                 className="group text-left"
                                                 onClick={() => openDetail(c.id)}
                                             >
-                                                <div className="font-medium text-slate-900 group-hover:text-primary">
-                                                    {c.code || `CTR-${c.id}`}
-                                                </div>
+                                                <AutoCodeBadge code={c.code || `CTR-${c.id}`} className="group-hover:border-primary/30 group-hover:bg-primary/5 group-hover:text-primary" />
                                                 <div className="text-xs text-text-muted">{c.title}</div>
                                                 <div className="mt-1 text-[11px] font-medium text-primary/80">
                                                     Xem chi tiết hợp đồng
@@ -1659,7 +1658,7 @@ export default function Contracts(props) {
                                 <div className="mt-3 space-y-2">
                                     <div className="flex items-center justify-between gap-3">
                                         <span className="text-text-muted">Mã hợp đồng</span>
-                                        <span className="font-semibold text-slate-900">{detailContract.code || `CTR-${detailContract.id}`}</span>
+                                        <AutoCodeBadge code={detailContract.code || `CTR-${detailContract.id}`} />
                                     </div>
                                     <div className="flex items-center justify-between gap-3">
                                         <span className="text-text-muted">Dự án liên kết</span>
