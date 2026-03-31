@@ -1,5 +1,6 @@
 import './bootstrap';
 import '../css/app.css';
+import 'tom-select/dist/css/tom-select.css';
 
 import React, { useEffect } from 'react';
 import { render } from 'react-dom';
