@@ -40,21 +40,23 @@
 @layer components {
     .overflow-x-auto {
         -webkit-overflow-scrolling: touch;
+        max-width: 100%;
+        min-width: 0;
     }
 
-    .overflow-x-auto table {
+    .overflow-x-auto > table {
         width: max-content;
         min-width: 100%;
         table-layout: auto;
     }
 
-    .overflow-x-auto table th,
-    .overflow-x-auto table td {
+    .overflow-x-auto > table th,
+    .overflow-x-auto > table td {
         white-space: nowrap;
     }
 
-    .overflow-x-auto .allow-wrap,
-    .overflow-x-auto .allow-wrap * {
+    .overflow-x-auto > table .allow-wrap,
+    .overflow-x-auto > table .allow-wrap * {
         white-space: normal !important;
     }
 }
