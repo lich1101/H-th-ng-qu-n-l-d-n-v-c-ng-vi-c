@@ -26,10 +26,7 @@ class CRMController extends Controller
                 'facebookPage',
                 'careStaffUsers:id,name,email',
             ])
-            ->withCount(['opportunities', 'contracts'])
-            ->withMax('careNotes as last_care_note_at', 'created_at')
-            ->withMax('opportunities as last_opportunity_activity_at', 'updated_at')
-            ->withMax('contracts as last_contract_activity_at', 'updated_at');
+            ->withCount(['opportunities', 'contracts']);
         CrmScope::applyClientScope($query, $request->user());
         if ($request->filled('search')) {
             $search = (string) $request->input('search');
@@ -77,18 +74,19 @@ class CRMController extends Controller
         if ($request->boolean('lead_only')) {
             $query->whereNotNull('lead_type_id');
         }
-        $query->select('clients.*')->selectRaw(
-            'GREATEST(
-                COALESCE(last_care_note_at, clients.updated_at),
-                COALESCE(last_opportunity_activity_at, clients.updated_at),
-                COALESCE(last_contract_activity_at, clients.updated_at),
-                clients.updated_at
-            ) as last_activity_at'
-        );
+        $lastActivityExpression = 'GREATEST(
+            COALESCE((SELECT MAX(client_care_notes.created_at) FROM client_care_notes WHERE client_care_notes.client_id = clients.id), clients.updated_at),
+            COALESCE((SELECT MAX(opportunities.updated_at) FROM opportunities WHERE opportunities.client_id = clients.id), clients.updated_at),
+            COALESCE((SELECT MAX(contracts.updated_at) FROM contracts WHERE contracts.client_id = clients.id), clients.updated_at),
+            clients.updated_at
+        )';
+
+        $query->select('clients.*')
+            ->selectRaw("{$lastActivityExpression} as last_activity_at");
 
         return response()->json(
             $query
-                ->orderByDesc('last_activity_at')
+                ->orderByRaw("{$lastActivityExpression} DESC")
                 ->orderByDesc('clients.id')
                 ->paginate((int) $request->input('per_page', 10))
         );

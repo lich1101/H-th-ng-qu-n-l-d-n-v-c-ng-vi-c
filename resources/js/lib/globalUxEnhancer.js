@@ -1,5 +1,13 @@
 const TABLE_SELECTOR = '.overflow-x-auto > table';
 const SELECT_QUERY_RESET_MS = 900;
+const SORT_ICON_SVG = `
+    <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+        <path d="M3 5h7M3 9h5M3 13h3" class="table-az-lines" />
+        <path d="M13 4v10" class="table-az-stem" />
+        <path d="M11 6l2-2 2 2" class="table-az-up" />
+        <path d="M11 12l2 2 2-2" class="table-az-down" />
+    </svg>
+`;
 
 const selectQueryState = new WeakMap();
 
@@ -124,7 +132,6 @@ const sortTableByColumn = (table, columnIndex, direction) => {
 const updateHeaderButtonState = (button, state) => {
     if (!button) return;
     button.dataset.state = state;
-    button.textContent = state === 'desc' ? 'Z-A' : 'A-Z';
     button.setAttribute('aria-label', state === 'desc' ? 'Sắp xếp Z đến A' : 'Sắp xếp A đến Z');
 };
 
@@ -153,6 +160,7 @@ const decorateHeaderCell = (table, headerCell, columnIndex) => {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'table-az-control';
+    button.innerHTML = SORT_ICON_SVG;
     updateHeaderButtonState(button, 'asc');
 
     button.addEventListener('click', (event) => {
@@ -298,4 +306,3 @@ export const setupGlobalUxEnhancer = () => {
         observer.disconnect();
     };
 };
-

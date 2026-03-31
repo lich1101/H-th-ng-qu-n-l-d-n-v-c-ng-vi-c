@@ -17,7 +17,7 @@ class PublicMobileController extends Controller
 {
     public function summary(Request $request): JsonResponse
     {
-        $viewer = $request->user('sanctum');
+        $viewer = $request->user('sanctum') ?? $request->user();
         $projectQuery = Project::query();
         $taskQuery = Task::query();
 
@@ -148,7 +148,7 @@ class PublicMobileController extends Controller
 
     public function accountsSummary(Request $request): JsonResponse
     {
-        $viewer = $request->user('sanctum');
+        $viewer = $request->user('sanctum') ?? $request->user();
         $query = User::query();
 
         if ($viewer) {

@@ -69,22 +69,31 @@ export default function Dashboard(props) {
         const fetchData = async () => {
             setLoading(true);
             try {
-                const [summaryRes, reportRes] = await Promise.allSettled([
-                    axios.get('/api/v1/public/summary'),
-                    axios.get('/api/v1/reports/dashboard-summary'),
+                const fetchWithFallback = async (primaryUrl, fallbackUrl = null) => {
+                    try {
+                        const primaryRes = await axios.get(primaryUrl);
+                        return primaryRes.data || {};
+                    } catch {
+                        if (!fallbackUrl) {
+                            return {};
+                        }
+
+                        try {
+                            const fallbackRes = await axios.get(fallbackUrl);
+                            return fallbackRes.data || {};
+                        } catch {
+                            return {};
+                        }
+                    }
+                };
+
+                const [summaryData, reportData] = await Promise.all([
+                    fetchWithFallback('/dashboard/summary-data', '/api/v1/public/summary'),
+                    fetchWithFallback('/dashboard/report-data', '/api/v1/reports/dashboard-summary'),
                 ]);
 
-                if (summaryRes.status === 'fulfilled') {
-                    setSummary(summaryRes.value.data || {});
-                } else {
-                    setSummary({});
-                }
-
-                if (reportRes.status === 'fulfilled') {
-                    setReport(reportRes.value.data || {});
-                } else {
-                    setReport({});
-                }
+                setSummary(summaryData);
+                setReport(reportData);
             } catch {
                 // ignore dashboard bootstrap errors
             } finally {
@@ -167,7 +176,7 @@ export default function Dashboard(props) {
                 {loading ? <SectionChip tone="amber">Đang đồng bộ dữ liệu</SectionChip> : null}
             </div>
 
-            <div className="grid gap-5 xl:grid-cols-[1.02fr_0.98fr]">
+            <div className="grid items-start gap-5 xl:grid-cols-[1.02fr_0.98fr]">
                 <section className={cardClass}>
                     <SectionHeader
                         title="Biểu đồ tròn cơ cấu dịch vụ"
@@ -223,7 +232,7 @@ export default function Dashboard(props) {
                 </div>
             </section>
 
-            <div className="mt-5 grid gap-5 xl:grid-cols-[0.92fr_1.08fr]">
+            <div className="mt-5 grid items-start gap-5 xl:grid-cols-[minmax(320px,0.8fr)_minmax(0,1.2fr)]">
                 <section className={cardClass}>
                     <SectionHeader
                         title="Thống kê nhân sự"
@@ -313,7 +322,7 @@ export default function Dashboard(props) {
                 </section>
             </div>
 
-            <div className="mt-5 grid gap-5 xl:grid-cols-2">
+            <div className="mt-5 grid items-start gap-5 xl:grid-cols-2">
                 <section className={cardClass}>
                     <div className="flex items-center justify-between gap-3">
                         <h3 className="text-lg font-semibold text-slate-900">Hoạt động gần đây</h3>

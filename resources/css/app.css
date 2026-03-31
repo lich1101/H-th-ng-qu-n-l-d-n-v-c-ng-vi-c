@@ -93,13 +93,39 @@
         border: 1px solid rgba(148, 163, 184, 0.45);
         background: rgba(241, 245, 249, 0.9);
         color: rgb(51, 65, 85);
-        font-size: 0.625rem;
-        font-weight: 700;
-        letter-spacing: 0.08em;
-        line-height: 1;
-        padding: 0.2rem 0.5rem;
-        text-transform: uppercase;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        height: 1.45rem;
+        width: 1.45rem;
+        line-height: 0;
+        padding: 0;
         transition: all 120ms ease;
+    }
+
+    .table-az-control svg {
+        height: 0.92rem;
+        width: 0.92rem;
+        overflow: visible;
+    }
+
+    .table-az-control path {
+        fill: none;
+        stroke: currentColor;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-width: 1.7;
+    }
+
+    .table-az-control .table-az-up,
+    .table-az-control .table-az-down {
+        opacity: 0.48;
+        transition: opacity 120ms ease;
+    }
+
+    .table-az-control[data-state='asc'] .table-az-up,
+    .table-az-control[data-state='desc'] .table-az-down {
+        opacity: 1;
     }
 
     .table-az-control:hover {
