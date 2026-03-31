@@ -52,26 +52,34 @@
         overscroll-behavior-x: contain;
     }
 
-    .overflow-x-auto > table {
+    .overflow-x-auto table {
         width: max-content;
         min-width: 100%;
         table-layout: auto;
     }
 
-    .overflow-x-auto > table th,
-    .overflow-x-auto > table td {
+    .overflow-x-auto table th,
+    .overflow-x-auto table td {
         white-space: nowrap;
         padding-left: 0.75rem;
         padding-right: 0.75rem;
     }
 
-    .overflow-x-auto > table .allow-wrap,
-    .overflow-x-auto > table .allow-wrap * {
-        white-space: normal !important;
+    .overflow-x-auto table td {
+        max-width: 300px;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
 
-    .overflow-x-auto > table.table-spacious th,
-    .overflow-x-auto > table.table-spacious td {
+    .overflow-x-auto table .allow-wrap {
+        white-space: nowrap !important;
+        max-width: 300px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .overflow-x-auto table.table-spacious th,
+    .overflow-x-auto table.table-spacious td {
         padding-left: 0.875rem;
         padding-right: 0.875rem;
     }
@@ -104,28 +112,9 @@
     }
 
     .table-az-control svg {
-        height: 0.92rem;
-        width: 0.92rem;
+        height: 1rem;
+        width: 1rem;
         overflow: visible;
-    }
-
-    .table-az-control path {
-        fill: none;
-        stroke: currentColor;
-        stroke-linecap: round;
-        stroke-linejoin: round;
-        stroke-width: 1.7;
-    }
-
-    .table-az-control .table-az-up,
-    .table-az-control .table-az-down {
-        opacity: 0.48;
-        transition: opacity 120ms ease;
-    }
-
-    .table-az-control[data-state='asc'] .table-az-up,
-    .table-az-control[data-state='desc'] .table-az-down {
-        opacity: 1;
     }
 
     .table-az-control:hover {
@@ -146,5 +135,39 @@
         background-position: calc(100% - 1rem) calc(50% - 2px), calc(100% - 0.7rem) calc(50% - 2px);
         background-repeat: no-repeat;
         background-size: 6px 6px, 6px 6px;
+    }
+
+    .searchable-native-select-wrap {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+        width: 100%;
+    }
+
+    .searchable-native-select-input {
+        width: 100%;
+        border: 1px solid rgba(203, 213, 225, 0.95);
+        border-radius: 0.75rem;
+        background: #fff;
+        color: rgb(51, 65, 85);
+        font-size: 0.775rem;
+        line-height: 1.35;
+        padding: 0.45rem 0.75rem;
+        transition: border-color 120ms ease, box-shadow 120ms ease;
+    }
+
+    .searchable-native-select-input::placeholder {
+        color: rgb(148, 163, 184);
+    }
+
+    .searchable-native-select-input:focus {
+        border-color: rgba(20, 184, 166, 0.55);
+        box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.14);
+        outline: none;
+    }
+
+    .searchable-native-select-input:disabled {
+        cursor: not-allowed;
+        opacity: 0.6;
     }
 }

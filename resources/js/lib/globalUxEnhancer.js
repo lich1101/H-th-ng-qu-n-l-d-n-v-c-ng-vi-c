@@ -1,11 +1,13 @@
-const TABLE_SELECTOR = '.overflow-x-auto > table';
+const TABLE_SELECTOR = '.overflow-x-auto table';
 const SELECT_QUERY_RESET_MS = 900;
+const SELECT_SEARCH_INPUT_MIN_OPTIONS = 2;
 const SORT_ICON_SVG = `
     <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
-        <path d="M3 5h7M3 9h5M3 13h3" class="table-az-lines" />
-        <path d="M13 4v10" class="table-az-stem" />
-        <path d="M11 6l2-2 2 2" class="table-az-up" />
-        <path d="M11 12l2 2 2-2" class="table-az-down" />
+        <path d="M4 2.8V14" stroke="#3FAE56" stroke-width="1.9" stroke-linecap="round" />
+        <path d="M1.8 11.8L4 14.2L6.2 11.8" fill="none" stroke="#3FAE56" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" />
+        <path d="M11.5 7.5L13 3.3L14.5 7.5" fill="none" stroke="#5E7D8E" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round" />
+        <path d="M12.1 6.2H13.9" fill="none" stroke="#5E7D8E" stroke-width="1.45" stroke-linecap="round" />
+        <path d="M11.5 12.1H14.6L11.5 16.1H14.6" fill="none" stroke="#5E7D8E" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round" />
     </svg>
 `;
 
@@ -136,18 +138,13 @@ const updateHeaderButtonState = (button, state) => {
 };
 
 const decorateHeaderCell = (table, headerCell, columnIndex) => {
-    if (!headerCell || headerCell.dataset.azReady === '1') return;
+    if (!headerCell) return;
     if (table.dataset.azFilter === 'off') return;
+    if (headerCell.querySelector(':scope > .table-az-header > .table-az-control')) return;
 
     const label = normalizeText(headerCell.textContent);
-    if (!label) {
-        headerCell.dataset.azReady = '1';
-        return;
-    }
-    if (headerCell.hasAttribute('data-az-ignore')) {
-        headerCell.dataset.azReady = '1';
-        return;
-    }
+    if (!label) return;
+    if (headerCell.hasAttribute('data-az-ignore')) return;
 
     const childNodes = Array.from(headerCell.childNodes);
     const wrapper = document.createElement('span');
@@ -179,7 +176,6 @@ const decorateHeaderCell = (table, headerCell, columnIndex) => {
     wrapper.appendChild(labelNode);
     wrapper.appendChild(button);
     headerCell.appendChild(wrapper);
-    headerCell.dataset.azReady = '1';
 };
 
 const enhanceTables = (root = document) => {
@@ -259,12 +255,76 @@ const handleSelectSearch = (event) => {
 };
 
 const enhanceSelect = (select) => {
-    if (select.dataset.searchableReady === '1') return;
+    if (select.dataset.searchableReady === '1') {
+        const existingInput = select.parentElement?.querySelector(':scope > .searchable-native-select-input');
+        if (existingInput) {
+            existingInput.disabled = Boolean(select.disabled);
+        }
+        return;
+    }
+
     select.dataset.searchableReady = '1';
     select.classList.add('searchable-native-select');
     if (!select.title) {
-        select.title = 'Gõ để tìm nhanh';
+        select.title = 'Có thể gõ để tìm nhanh';
     }
+
+    const eligibleOptionCount = Array.from(select.options || []).filter((option) => option && !option.disabled).length;
+    const shouldAttachSearchInput = !select.multiple
+        && Number(select.size || 1) <= 1
+        && eligibleOptionCount >= SELECT_SEARCH_INPUT_MIN_OPTIONS
+        && select.dataset.searchInput !== 'off';
+
+    if (!shouldAttachSearchInput) {
+        return;
+    }
+
+    let wrapper = select.parentElement;
+    if (!wrapper || !wrapper.classList.contains('searchable-native-select-wrap')) {
+        wrapper = document.createElement('div');
+        wrapper.className = 'searchable-native-select-wrap';
+        select.parentNode?.insertBefore(wrapper, select);
+        wrapper.appendChild(select);
+    }
+
+    const existingInput = wrapper.querySelector(':scope > .searchable-native-select-input');
+    if (existingInput) {
+        existingInput.disabled = Boolean(select.disabled);
+        return;
+    }
+
+    const searchInput = document.createElement('input');
+    searchInput.type = 'search';
+    searchInput.className = 'searchable-native-select-input';
+    searchInput.placeholder = 'Tìm nhanh trong danh sách...';
+    searchInput.autocomplete = 'off';
+    searchInput.disabled = Boolean(select.disabled);
+    searchInput.setAttribute('aria-label', 'Tìm nhanh option');
+
+    searchInput.addEventListener('input', (event) => {
+        const query = normalizeText(event.target.value || '');
+        if (!query) return;
+
+        const options = Array.from(select.options || []);
+        const match = options.find((option) => {
+            if (!option || option.disabled) return false;
+            return normalizeText(option.text).toLocaleLowerCase('vi').includes(query.toLocaleLowerCase('vi'));
+        });
+
+        if (!match) return;
+        if (String(select.value) === String(match.value)) return;
+
+        select.value = String(match.value);
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+
+    searchInput.addEventListener('keydown', (event) => {
+        if (event.key !== 'ArrowDown' && event.key !== 'Enter') return;
+        event.preventDefault();
+        select.focus();
+    });
+
+    wrapper.insertBefore(searchInput, select);
 };
 
 const enhanceSelects = (root = document) => {
