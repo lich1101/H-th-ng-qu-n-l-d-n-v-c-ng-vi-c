@@ -688,6 +688,28 @@ export default function CRM(props) {
             {activeTab === 'clients' && (
                 <>
                     <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card p-5">
+                        {(canManageClients) && (
+                            <div className="mb-4 flex flex-wrap items-center justify-end gap-3">
+                                <button
+                                    type="button"
+                                    className="rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-sm"
+                                    onClick={openClientCreate}
+                                >
+                                    Thêm mới
+                                </button>
+                                <button
+                                    type="button"
+                                    className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+                                    onClick={() => {
+                                        setClientImportReport(null);
+                                        setClientImportFile(null);
+                                        setShowClientImport(true);
+                                    }}
+                                >
+                                    Import Excel
+                                </button>
+                            </div>
+                        )}
                         <FilterToolbar
                             className="mb-4 border-0 p-0 shadow-none"
                             title="Danh sách khách hàng"
@@ -764,28 +786,6 @@ export default function CRM(props) {
                                     </FilterField>
                                 )}
                                 <FilterActionGroup className="md:col-span-2 xl:col-span-1 xl:self-end xl:justify-end">
-                                    {canManageClients && (
-                                        <button
-                                            type="button"
-                                            className="rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-sm"
-                                            onClick={openClientCreate}
-                                        >
-                                            Thêm mới
-                                        </button>
-                                    )}
-                                    {canManageClients && (
-                                        <button
-                                            type="button"
-                                            className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
-                                            onClick={() => {
-                                                setClientImportReport(null);
-                                                setClientImportFile(null);
-                                                setShowClientImport(true);
-                                            }}
-                                        >
-                                            Import Excel
-                                        </button>
-                                    )}
                                     <button
                                         type="button"
                                         className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
@@ -1270,6 +1270,17 @@ export default function CRM(props) {
             {activeTab === 'payments' && (
                 <>
                     <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card p-5">
+                        {canManagePayments && (
+                            <div className="mb-4 flex flex-wrap items-center justify-end gap-3">
+                                <button
+                                    type="button"
+                                    className="rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-sm"
+                                    onClick={openPaymentCreate}
+                                >
+                                    Thêm mới
+                                </button>
+                            </div>
+                        )}
                         <FilterToolbar
                             className="mb-4 border-0 p-0 shadow-none"
                             title="Danh sách thanh toán"
@@ -1289,15 +1300,6 @@ export default function CRM(props) {
                                     </select>
                                 </FilterField>
                                 <FilterActionGroup className="xl:self-end xl:justify-end">
-                                    {canManagePayments && (
-                                        <button
-                                            type="button"
-                                            className="rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-sm"
-                                            onClick={openPaymentCreate}
-                                        >
-                                            Thêm mới
-                                        </button>
-                                    )}
                                     <button
                                         type="button"
                                         className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-semibold text-slate-700"

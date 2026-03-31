@@ -543,6 +543,17 @@ export default function ProjectsKanban(props) {
             stats={stats}
         >
             <div className="lg:col-span-2">
+                {canCreate && (
+                    <div className="mb-4 flex flex-wrap items-center justify-end gap-3">
+                        <button
+                            type="button"
+                            className="rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-sm"
+                            onClick={openCreate}
+                        >
+                            Thêm mới
+                        </button>
+                    </div>
+                )}
                 <FilterToolbar
                     title="Bộ lọc dự án"
                     description="Tìm nhanh theo mã dự án, trạng thái triển khai và nhóm dịch vụ trước khi chuyển chế độ xem."
@@ -600,15 +611,6 @@ export default function ProjectsKanban(props) {
                             </select>
                         </FilterField>
                         <FilterActionGroup className="xl:self-end xl:justify-end">
-                            {canCreate && (
-                                <button
-                                    type="button"
-                                    className="rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-sm"
-                                    onClick={openCreate}
-                                >
-                                    Thêm mới
-                                </button>
-                            )}
                             <button
                                 type="button"
                                 className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-semibold text-slate-700"

@@ -168,21 +168,23 @@ export default function ProductCategories(props) {
             stats={stats}
         >
             <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card">
+                {canManage && (
+                    <div className="mb-4 flex flex-wrap items-center justify-end gap-3">
+                        <button
+                            type="button"
+                            className="rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-sm"
+                            onClick={openCreate}
+                        >
+                            Thêm danh mục
+                        </button>
+                    </div>
+                )}
                 <FilterToolbar
                     className="mb-4 border-0 p-0 shadow-none"
                     title="Danh sách danh mục"
                     description="Theo dõi mã tự sinh, trạng thái hoạt động và mở modal thêm/sửa ngay tại màn hình này."
                     actions={(
                         <FilterActionGroup>
-                            {canManage && (
-                                <button
-                                    type="button"
-                                    className="rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-sm"
-                                    onClick={openCreate}
-                                >
-                                    Thêm danh mục
-                                </button>
-                            )}
                             <button
                                 type="button"
                                 className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-semibold text-slate-700"

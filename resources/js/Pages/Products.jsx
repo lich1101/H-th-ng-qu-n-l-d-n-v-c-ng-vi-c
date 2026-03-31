@@ -107,16 +107,6 @@ export default function Products(props) {
         ];
     }, [productMeta.total, products, userRole]);
 
-    const categorySummary = useMemo(() => {
-        const total = categories.length;
-        const active = categories.filter((item) => item.is_active).length;
-        return {
-            total,
-            active,
-            inactive: Math.max(total - active, 0),
-        };
-    }, [categories]);
-
     const visibleProductIds = useMemo(
         () => products.map((product) => Number(product.id)).filter((id) => id > 0),
         [products]
@@ -256,87 +246,35 @@ export default function Products(props) {
         <PageContainer
             auth={props.auth}
             title="Quản lý sản phẩm"
-            description="Quản lý sản phẩm, đơn giá bán và điều hướng nhanh sang trang danh mục sản phẩm."
+            description="Quản lý sản phẩm, đơn giá bán và nhóm danh mục dùng trong hợp đồng."
             stats={stats}
         >
             <div className="space-y-5">
-                <div className="grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
-                    <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card">
-                        <div className="flex items-start justify-between gap-3">
-                            <div>
-                                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-subtle">
-                                    Danh mục sản phẩm
-                                </p>
-                                <h3 className="mt-2 text-xl font-semibold text-slate-900">
-                                    Quản lý riêng theo module
-                                </h3>
-                                <p className="mt-2 text-sm text-text-muted">
-                                    Mã danh mục được hệ thống tự sinh. Admin quản lý ở trang riêng để không lẫn với màn hình sản phẩm.
-                                </p>
-                            </div>
-                            <AutoCodeBadge code={`${categorySummary.total} nhóm`} className="border-emerald-200 bg-emerald-50 text-emerald-700 normal-case tracking-normal" />
-                        </div>
-                        <div className="mt-4 grid grid-cols-3 gap-3 text-center">
-                            <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-3 py-4">
-                                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text-subtle">Tổng</div>
-                                <div className="mt-2 text-2xl font-semibold text-slate-900">{categorySummary.total}</div>
-                            </div>
-                            <div className="rounded-2xl border border-emerald-200/80 bg-emerald-50 px-3 py-4">
-                                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700">Hoạt động</div>
-                                <div className="mt-2 text-2xl font-semibold text-emerald-700">{categorySummary.active}</div>
-                            </div>
-                            <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-3 py-4">
-                                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Ngưng</div>
-                                <div className="mt-2 text-2xl font-semibold text-slate-600">{categorySummary.inactive}</div>
-                            </div>
-                        </div>
-                        <div className="mt-4 space-y-2">
-                            {categories.slice(0, 4).map((category) => (
-                                <div key={category.id} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200/80 px-3 py-2.5">
-                                    <div className="min-w-0">
-                                        <div className="truncate text-sm font-semibold text-slate-900">{category.name}</div>
-                                        <AutoCodeBadge code={category.code} className="mt-1" />
-                                    </div>
-                                    <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${category.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-                                        {category.is_active ? 'Hoạt động' : 'Ngưng'}
-                                    </span>
-                                </div>
-                            ))}
-                            {categories.length === 0 && (
-                                <div className="rounded-2xl border border-dashed border-slate-200 px-3 py-5 text-center text-sm text-text-muted">
-                                    Chưa có danh mục sản phẩm.
-                                </div>
-                            )}
-                        </div>
-                        <div className="mt-4">
-                            {canManageCategories ? (
-                                <Link
-                                    href={route('product-categories.index')}
-                                    className="inline-flex items-center rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-sm"
-                                >
-                                    Mở trang quản lý danh mục
-                                </Link>
-                            ) : (
-                                <p className="text-xs text-text-muted">
-                                    Chỉ admin mới có quyền thêm, sửa và xóa danh mục sản phẩm.
-                                </p>
-                            )}
-                        </div>
+                <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card p-5">
+                    <div className="mb-4 flex flex-wrap items-center justify-end gap-3">
+                        {canManageCategories && (
+                            <Link
+                                href={route('product-categories.index')}
+                                className="inline-flex items-center rounded-xl border border-slate-200/80 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700"
+                            >
+                                Quản lý danh mục
+                            </Link>
+                        )}
+                        {canManage && (
+                            <button
+                                type="button"
+                                className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white"
+                                onClick={openCreate}
+                            >
+                                Thêm mới
+                            </button>
+                        )}
                     </div>
-
-                    <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card p-5">
                         <FilterToolbar
                             title="Danh sách sản phẩm"
                             description="Quản lý sản phẩm và đơn giá gắn hợp đồng."
                         actions={(
                             <FilterActionGroup>
-                                <button
-                                    type="button"
-                                    className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white"
-                                    onClick={openCreate}
-                                >
-                                    Thêm mới
-                                </button>
                                 <button
                                     type="button"
                                     className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700"
@@ -385,8 +323,8 @@ export default function Products(props) {
                                     <option value="0">Ngưng</option>
                                 </select>
                             </FilterField>
-                        </div>
-                    </FilterToolbar>
+                            </div>
+                        </FilterToolbar>
                     <div className="mb-4" />
                     {canBulkActions && selectedProductIds.length > 0 && (
                         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3">
@@ -523,11 +461,11 @@ export default function Products(props) {
                             </tbody>
                         </table>
                     </div>
-                    <PaginationControls
-                        page={productMeta.current_page}
-                        lastPage={productMeta.last_page}
-                        total={productMeta.total}
-                        perPage={filters.per_page}
+                        <PaginationControls
+                            page={productMeta.current_page}
+                            lastPage={productMeta.last_page}
+                            total={productMeta.total}
+                            perPage={filters.per_page}
                         label="sản phẩm"
                         loading={loading}
                         onPageChange={(page) => fetchProducts(page, filters)}
@@ -535,10 +473,9 @@ export default function Products(props) {
                             const next = { ...filters, per_page: perPage, page: 1 };
                             setFilters(next);
                             fetchProducts(1, next);
-                        }}
-                    />
+                            }}
+                        />
                 </div>
-            </div>
             </div>
 
             <Modal

@@ -924,6 +924,30 @@ export default function Contracts(props) {
             stats={stats}
         >
             <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card p-5">
+                <div className="mb-4 flex flex-wrap items-center justify-end gap-3">
+                    {canCreate && (
+                        <button
+                            type="button"
+                            className="rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-sm"
+                            onClick={openCreate}
+                        >
+                            Thêm mới
+                        </button>
+                    )}
+                    {canManage && (
+                        <button
+                            type="button"
+                            className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+                            onClick={() => {
+                                setImportFile(null);
+                                setImportReport(null);
+                                setShowImport(true);
+                            }}
+                        >
+                            Import Excel
+                        </button>
+                    )}
+                </div>
                 <FilterToolbar
                     className="mb-4 border-0 p-0 shadow-none"
                     title="Danh sách hợp đồng"
@@ -957,28 +981,6 @@ export default function Contracts(props) {
                             </select>
                         </FilterField>
                         <FilterActionGroup className="xl:self-end xl:justify-end">
-                            {canCreate && (
-                                <button
-                                    type="button"
-                                    className="rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-sm"
-                                    onClick={openCreate}
-                                >
-                                    Thêm mới
-                                </button>
-                            )}
-                            {canManage && (
-                                <button
-                                    type="button"
-                                    className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
-                                    onClick={() => {
-                                        setImportFile(null);
-                                        setImportReport(null);
-                                        setShowImport(true);
-                                    }}
-                                >
-                                    Import Excel
-                                </button>
-                            )}
                             <button type="button" className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-semibold text-slate-700" onClick={applyFilters}>Lọc</button>
                         </FilterActionGroup>
                     </div>

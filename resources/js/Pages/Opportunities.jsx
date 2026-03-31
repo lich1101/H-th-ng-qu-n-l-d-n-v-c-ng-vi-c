@@ -356,40 +356,42 @@ export default function Opportunities(props) {
             description="Quản lý cơ hội bán hàng theo từng khách hàng, có form thêm nhanh và trạng thái màu cấu hình riêng."
             stats={stats}
         >
+            <div className="mb-4 flex flex-wrap items-center justify-end gap-3">
+                {canManageStatuses ? (
+                    <button
+                        type="button"
+                        className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700"
+                        onClick={() => {
+                            setShowStatusModal(true);
+                            openCreateStatus();
+                        }}
+                    >
+                        Trạng thái cơ hội
+                    </button>
+                ) : null}
+                {canCreate ? (
+                    <button
+                        type="button"
+                        className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white"
+                        onClick={() => {
+                            if (!showForm) {
+                                openCreateForm();
+                            } else if (editingId) {
+                                openCreateForm();
+                            } else {
+                                setShowForm(false);
+                            }
+                        }}
+                    >
+                        {showForm && !editingId ? 'Đóng form' : (editingId ? 'Tạo cơ hội mới' : 'Thêm cơ hội')}
+                    </button>
+                ) : null}
+            </div>
             <FilterToolbar
                 title="Danh sách cơ hội"
                 description="Lọc theo trạng thái, khách hàng và tìm kiếm nhanh theo tên cơ hội."
                 actions={(
                     <FilterActionGroup>
-                        {canCreate ? (
-                            <button
-                                type="button"
-                                className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white"
-                                onClick={() => {
-                                    if (!showForm) {
-                                        openCreateForm();
-                                    } else if (editingId) {
-                                        openCreateForm();
-                                    } else {
-                                        setShowForm(false);
-                                    }
-                                }}
-                            >
-                                {showForm && !editingId ? 'Đóng form' : (editingId ? 'Tạo cơ hội mới' : 'Thêm cơ hội')}
-                            </button>
-                        ) : null}
-                        {canManageStatuses ? (
-                            <button
-                                type="button"
-                                className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700"
-                                onClick={() => {
-                                    setShowStatusModal(true);
-                                    openCreateStatus();
-                                }}
-                            >
-                                Trạng thái cơ hội
-                            </button>
-                        ) : null}
                         <button
                             type="button"
                             className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700"

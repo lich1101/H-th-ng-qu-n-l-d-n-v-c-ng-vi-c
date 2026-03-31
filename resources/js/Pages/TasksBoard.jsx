@@ -1652,6 +1652,28 @@ export default function TasksBoard(props) {
             stats={stats}
         >
             <div className="lg:col-span-2">
+                {(canCreate) && (
+                    <div className="mb-4 flex flex-wrap items-center justify-end gap-3">
+                        <button
+                            type="button"
+                            className="rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-sm"
+                            onClick={openCreate}
+                        >
+                            Thêm mới
+                        </button>
+                        <button
+                            type="button"
+                            className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+                            onClick={() => {
+                                setImportFile(null);
+                                setImportReport(null);
+                                setShowImport(true);
+                            }}
+                        >
+                            Import Excel
+                        </button>
+                    </div>
+                )}
                 <FilterToolbar
                     title="Bộ lọc công việc"
                     description="Lọc theo dự án, trạng thái, nhân sự và thời hạn rồi chuyển giữa các chế độ xem mà không bị rối thao tác."
@@ -1735,28 +1757,17 @@ export default function TasksBoard(props) {
                             />
                         </FilterField>
                         <FilterActionGroup className="xl:self-end xl:justify-end">
-                            {canCreate && (
-                                <button
-                                    type="button"
-                                    className="rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-sm"
-                                    onClick={openCreate}
-                                >
-                                    Thêm mới
-                                </button>
-                            )}
-                            {canCreate && (
-                                <button
-                                    type="button"
-                                    className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
-                                    onClick={() => {
-                                        setImportFile(null);
-                                        setImportReport(null);
-                                        setShowImport(true);
-                                    }}
-                                >
-                                    Import Excel
-                                </button>
-                            )}
+                            <button
+                                type="button"
+                                className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+                                onClick={() => {
+                                    const next = { ...filters, page: 1 };
+                                    setFilters(next);
+                                    fetchTasks(1, next);
+                                }}
+                            >
+                                Lọc
+                            </button>
                         </FilterActionGroup>
                     </div>
                 </FilterToolbar>
