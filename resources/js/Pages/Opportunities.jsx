@@ -287,7 +287,7 @@ export default function Opportunities(props) {
 
     const deleteOpportunity = async (item) => {
         if (!canDelete) return;
-        if (!window.confirm(`Xóa cơ hội "${item?.title || '#'+item?.id}"?`)) return;
+        if (!window.confirm(`Xóa cơ hội "${item?.title || '#' + item?.id}"?`)) return;
         try {
             await axios.delete(`/api/v1/opportunities/${item.id}`);
             toast.success('Đã xóa cơ hội.');
@@ -452,9 +452,8 @@ export default function Opportunities(props) {
                 <div className="mt-4 flex flex-wrap gap-2">
                     <button
                         type="button"
-                        className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
-                            !filters.status ? 'border-primary bg-primary/10 text-primary' : 'border-slate-200 text-slate-600 bg-white'
-                        }`}
+                        className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${!filters.status ? 'border-primary bg-primary/10 text-primary' : 'border-slate-200 text-slate-600 bg-white'
+                            }`}
                         onClick={() => {
                             const next = { ...filters, status: '', page: 1 };
                             setFilters(next);
@@ -467,9 +466,8 @@ export default function Opportunities(props) {
                         <button
                             key={status.id}
                             type="button"
-                            className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
-                                filters.status === status.code ? 'ring-2 ring-primary/30' : ''
-                            }`}
+                            className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${filters.status === status.code ? 'ring-2 ring-primary/30' : ''
+                                }`}
                             style={toColorStyle(status.color_hex)}
                             onClick={() => {
                                 const next = { ...filters, status: status.code, page: 1 };
@@ -494,173 +492,173 @@ export default function Opportunities(props) {
                 size="md"
             >
                 <div className="grid gap-4 xl:grid-cols-2">
-                        <Field label="Tên cơ hội" required>
-                            <input
-                                className={filterControlClass}
-                                value={form.title}
-                                onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))}
-                                placeholder="Nhập tên cơ hội"
+                    <Field label="Tên cơ hội" required>
+                        <input
+                            className={filterControlClass}
+                            value={form.title}
+                            onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))}
+                            placeholder="Nhập tên cơ hội"
+                        />
+                    </Field>
+
+                    <Field label="Nguồn cơ hội">
+                        <input
+                            className={filterControlClass}
+                            value={form.source}
+                            onChange={(event) => setForm((prev) => ({ ...prev, source: event.target.value }))}
+                            placeholder="Ví dụ: Facebook, Form, Telesale"
+                        />
+                    </Field>
+
+                    <Field label="Loại cơ hội">
+                        <input
+                            className={filterControlClass}
+                            value={form.opportunity_type}
+                            onChange={(event) => setForm((prev) => ({ ...prev, opportunity_type: event.target.value }))}
+                            placeholder="Ví dụ: Dịch vụ SEO, Backlink"
+                        />
+                    </Field>
+
+                    <Field label="Doanh số dự tính (VNĐ)">
+                        <input
+                            type="number"
+                            className={filterControlClass}
+                            value={form.amount}
+                            onChange={(event) => setForm((prev) => ({ ...prev, amount: event.target.value }))}
+                            min="0"
+                            placeholder="0"
+                        />
+                    </Field>
+
+                    <Field label="Khách hàng" required>
+                        <select
+                            className={filterControlClass}
+                            value={form.client_id}
+                            onChange={(event) => setForm((prev) => ({ ...prev, client_id: event.target.value }))}
+                        >
+                            <option value="">Chọn khách hàng</option>
+                            {clients.map((client) => (
+                                <option key={client.id} value={client.id}>
+                                    {client.name || `KH #${client.id}`} {client.company ? `• ${client.company}` : ''}
+                                </option>
+                            ))}
+                        </select>
+                    </Field>
+
+                    <Field label="Khả năng thành công (%)">
+                        <select
+                            className={filterControlClass}
+                            value={form.success_probability}
+                            onChange={(event) => setForm((prev) => ({ ...prev, success_probability: event.target.value }))}
+                        >
+                            <option value="">Chọn tỷ lệ</option>
+                            {[10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((value) => (
+                                <option key={value} value={value}>{value}%</option>
+                            ))}
+                        </select>
+                    </Field>
+
+                    <Field label="Ngày kết thúc dự kiến">
+                        <input
+                            type="date"
+                            className={filterControlClass}
+                            value={form.expected_close_date}
+                            onChange={(event) => setForm((prev) => ({ ...prev, expected_close_date: event.target.value }))}
+                        />
+                    </Field>
+
+                    <Field label="Sản phẩm">
+                        <select
+                            className={filterControlClass}
+                            value={form.product_id}
+                            onChange={(event) => setForm((prev) => ({ ...prev, product_id: event.target.value }))}
+                        >
+                            <option value="">Chọn sản phẩm</option>
+                            {products.map((product) => (
+                                <option key={product.id} value={product.id}>
+                                    {product.name} {product.code ? `• ${product.code}` : ''}
+                                </option>
+                            ))}
+                        </select>
+                    </Field>
+
+                    <Field label="Trạng thái cơ hội">
+                        <select
+                            className={filterControlClass}
+                            value={form.status}
+                            onChange={(event) => setForm((prev) => ({ ...prev, status: event.target.value }))}
+                        >
+                            {statuses.map((status) => (
+                                <option key={status.id} value={status.code}>
+                                    {status.name}
+                                </option>
+                            ))}
+                        </select>
+                    </Field>
+
+                    <Field label="Người quản lý/phụ trách" hint="Mặc định hệ thống gán tài khoản đang tạo cơ hội.">
+                        <select
+                            className={filterControlClass}
+                            value={form.assigned_to}
+                            onChange={(event) => setForm((prev) => ({ ...prev, assigned_to: event.target.value }))}
+                        >
+                            <option value="">Chọn nhân sự</option>
+                            {users.map((user) => (
+                                <option key={user.id} value={user.id}>
+                                    {user.name} • {user.role}
+                                </option>
+                            ))}
+                        </select>
+                    </Field>
+
+                    <div className="xl:col-span-2">
+                        <Field label="Người theo dõi">
+                            <TagMultiSelect
+                                options={users.map((user) => ({
+                                    id: user.id,
+                                    label: user.name || `Nhân sự #${user.id}`,
+                                    meta: [user.role, user.email].filter(Boolean).join(' • '),
+                                }))}
+                                selectedIds={form.watcher_ids}
+                                onChange={(next) => setForm((prev) => ({ ...prev, watcher_ids: next }))}
+                                addPlaceholder="Tìm và thêm người theo dõi"
+                                emptyLabel="Chưa chọn người theo dõi."
                             />
                         </Field>
-
-                        <Field label="Nguồn cơ hội">
-                            <input
-                                className={filterControlClass}
-                                value={form.source}
-                                onChange={(event) => setForm((prev) => ({ ...prev, source: event.target.value }))}
-                                placeholder="Ví dụ: Facebook, Form, Telesale"
-                            />
-                        </Field>
-
-                        <Field label="Loại cơ hội">
-                            <input
-                                className={filterControlClass}
-                                value={form.opportunity_type}
-                                onChange={(event) => setForm((prev) => ({ ...prev, opportunity_type: event.target.value }))}
-                                placeholder="Ví dụ: Dịch vụ SEO, Backlink"
-                            />
-                        </Field>
-
-                        <Field label="Doanh số dự tính (VNĐ)">
-                            <input
-                                type="number"
-                                className={filterControlClass}
-                                value={form.amount}
-                                onChange={(event) => setForm((prev) => ({ ...prev, amount: event.target.value }))}
-                                min="0"
-                                placeholder="0"
-                            />
-                        </Field>
-
-                        <Field label="Khách hàng" required>
-                            <select
-                                className={filterControlClass}
-                                value={form.client_id}
-                                onChange={(event) => setForm((prev) => ({ ...prev, client_id: event.target.value }))}
-                            >
-                                <option value="">Chọn khách hàng</option>
-                                {clients.map((client) => (
-                                    <option key={client.id} value={client.id}>
-                                        {client.name || `KH #${client.id}`} {client.company ? `• ${client.company}` : ''}
-                                    </option>
-                                ))}
-                            </select>
-                        </Field>
-
-                        <Field label="Khả năng thành công (%)">
-                            <select
-                                className={filterControlClass}
-                                value={form.success_probability}
-                                onChange={(event) => setForm((prev) => ({ ...prev, success_probability: event.target.value }))}
-                            >
-                                <option value="">Chọn tỷ lệ</option>
-                                {[10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((value) => (
-                                    <option key={value} value={value}>{value}%</option>
-                                ))}
-                            </select>
-                        </Field>
-
-                        <Field label="Ngày kết thúc dự kiến">
-                            <input
-                                type="date"
-                                className={filterControlClass}
-                                value={form.expected_close_date}
-                                onChange={(event) => setForm((prev) => ({ ...prev, expected_close_date: event.target.value }))}
-                            />
-                        </Field>
-
-                        <Field label="Sản phẩm">
-                            <select
-                                className={filterControlClass}
-                                value={form.product_id}
-                                onChange={(event) => setForm((prev) => ({ ...prev, product_id: event.target.value }))}
-                            >
-                                <option value="">Chọn sản phẩm</option>
-                                {products.map((product) => (
-                                    <option key={product.id} value={product.id}>
-                                        {product.name} {product.code ? `• ${product.code}` : ''}
-                                    </option>
-                                ))}
-                            </select>
-                        </Field>
-
-                        <Field label="Trạng thái cơ hội">
-                            <select
-                                className={filterControlClass}
-                                value={form.status}
-                                onChange={(event) => setForm((prev) => ({ ...prev, status: event.target.value }))}
-                            >
-                                {statuses.map((status) => (
-                                    <option key={status.id} value={status.code}>
-                                        {status.name}
-                                    </option>
-                                ))}
-                            </select>
-                        </Field>
-
-                        <Field label="Người quản lý/phụ trách" hint="Mặc định hệ thống gán tài khoản đang tạo cơ hội.">
-                            <select
-                                className={filterControlClass}
-                                value={form.assigned_to}
-                                onChange={(event) => setForm((prev) => ({ ...prev, assigned_to: event.target.value }))}
-                            >
-                                <option value="">Chọn nhân sự</option>
-                                {users.map((user) => (
-                                    <option key={user.id} value={user.id}>
-                                        {user.name} • {user.role}
-                                    </option>
-                                ))}
-                            </select>
-                        </Field>
-
-                        <div className="xl:col-span-2">
-                            <Field label="Người theo dõi">
-                                <TagMultiSelect
-                                    options={users.map((user) => ({
-                                        id: user.id,
-                                        label: user.name || `Nhân sự #${user.id}`,
-                                        meta: [user.role, user.email].filter(Boolean).join(' • '),
-                                    }))}
-                                    selectedIds={form.watcher_ids}
-                                    onChange={(next) => setForm((prev) => ({ ...prev, watcher_ids: next }))}
-                                    addPlaceholder="Tìm và thêm người theo dõi"
-                                    emptyLabel="Chưa chọn người theo dõi."
-                                />
-                            </Field>
-                        </div>
-
-                        <div className="xl:col-span-2">
-                            <Field label="Ghi chú">
-                                <textarea
-                                    className={`${filterControlClass} min-h-[108px] resize-y`}
-                                    value={form.notes}
-                                    onChange={(event) => setForm((prev) => ({ ...prev, notes: event.target.value }))}
-                                    placeholder="Nhập ghi chú cơ hội"
-                                />
-                            </Field>
-                        </div>
                     </div>
 
-                    <div className="mt-2 flex flex-wrap items-center gap-3 xl:col-span-2">
-                        <button
-                            type="button"
-                            className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white"
-                            onClick={submitOpportunity}
-                            disabled={savingOpportunity}
-                        >
-                            {savingOpportunity ? 'Đang lưu...' : (editingId ? 'Cập nhật cơ hội' : 'Lưu cơ hội')}
-                        </button>
-                        <button
-                            type="button"
-                            className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700"
-                            onClick={() => {
-                                setShowForm(false);
-                                setEditingId(null);
-                            }}
-                        >
-                            Đóng
-                        </button>
+                    <div className="xl:col-span-2">
+                        <Field label="Ghi chú">
+                            <textarea
+                                className={`${filterControlClass} min-h-[108px] resize-y`}
+                                value={form.notes}
+                                onChange={(event) => setForm((prev) => ({ ...prev, notes: event.target.value }))}
+                                placeholder="Nhập ghi chú cơ hội"
+                            />
+                        </Field>
                     </div>
+                </div>
+
+                <div className="mt-2 flex flex-wrap items-center gap-3 xl:col-span-2">
+                    <button
+                        type="button"
+                        className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white"
+                        onClick={submitOpportunity}
+                        disabled={savingOpportunity}
+                    >
+                        {savingOpportunity ? 'Đang lưu...' : (editingId ? 'Cập nhật cơ hội' : 'Lưu cơ hội')}
+                    </button>
+                    <button
+                        type="button"
+                        className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700"
+                        onClick={() => {
+                            setShowForm(false);
+                            setEditingId(null);
+                        }}
+                    >
+                        Đóng
+                    </button>
+                </div>
             </Modal>
 
             <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card">

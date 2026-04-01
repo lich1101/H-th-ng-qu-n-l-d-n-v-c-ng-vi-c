@@ -91,8 +91,12 @@ class ProjectController extends Controller
             return response()->json(['message' => $error], 422);
         }
 
-        // Enforce contract ownership: only admin or contract collector/creator
-        if (! empty($validated['contract_id'])) {
+        // Enforce contract ownership and approval
+        if (empty($validated['contract_id'])) {
+            if (($validated['service_type'] ?? '') !== 'noi_bo') {
+                return response()->json(['message' => 'Bắt buộc chọn hợp đồng để tạo dự án (ngoại trừ dự án nội bộ).'], 422);
+            }
+        } else {
             $authError = $this->assertCanCreateFromContract($request->user(), (int) $validated['contract_id']);
             if ($authError) {
                 return $authError;
@@ -504,23 +508,40 @@ class ProjectController extends Controller
      */
     private function assertCanCreateFromContract(User $user, int $contractId, ?Contract $contract = null): ?JsonResponse
     {
-        if ($user->role === 'admin') {
-            return null;
-        }
-
-        $contract = $contract ?: Contract::find($contractId);
+        $contract = $contract ?: Contract::with(['creator', 'collector'])->find($contractId);
         if (! $contract) {
             return response()->json(['message' => 'Hợp đồng không tồn tại.'], 404);
+        }
+
+        if ($contract->approval_status !== 'approved') {
+            return response()->json(['message' => 'Bạn chỉ có thể tạo dự án cho hợp đồng đã được duyệt.'], 422);
+        }
+
+        if ($user->role === 'admin') {
+            return null;
         }
 
         $isCollector = (int) ($contract->collector_user_id ?? 0) === (int) $user->id;
         $isCreator = (int) ($contract->created_by ?? 0) === (int) $user->id;
 
-        if (! $isCollector && ! $isCreator) {
-            return response()->json(['message' => 'Chỉ admin hoặc nhân viên phụ trách hợp đồng mới được tạo dự án từ hợp đồng.'], 403);
+        if ($isCollector || $isCreator) {
+            return null;
         }
 
-        return null;
+        $creatorDepartmentId = $contract->creator ? $contract->creator->department_id : null;
+        $collectorDepartmentId = $contract->collector ? $contract->collector->department_id : null;
+        
+        $managedDepartments = $user->managedDepartments()->pluck('id')->all();
+
+        if ($creatorDepartmentId && in_array($creatorDepartmentId, $managedDepartments, true)) {
+            return null;
+        }
+
+        if ($collectorDepartmentId && in_array($collectorDepartmentId, $managedDepartments, true)) {
+            return null;
+        }
+
+        return response()->json(['message' => 'Chỉ admin, nhân sự phụ trách hợp đồng, hoặc quản lý của nhân sự đó mới được tạo dự án từ hợp đồng.'], 403);
     }
 
     private function baseRelations(): array

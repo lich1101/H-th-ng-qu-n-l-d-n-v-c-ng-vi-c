@@ -19,6 +19,7 @@ const DEFAULT_SERVICES = [
     { value: 'viet_content', label: 'Content' },
     { value: 'audit_content', label: 'Audit Content' },
     { value: 'cham_soc_website_tong_the', label: 'Website Care' },
+    { value: 'noi_bo', label: 'Dự án Nội bộ' },
     { value: 'khac', label: 'Khác' },
 ];
 
@@ -32,6 +33,7 @@ const LABELS = {
     viet_content: 'Content',
     audit_content: 'Audit Content',
     cham_soc_website_tong_the: 'Website Care',
+    noi_bo: 'Dự án Nội bộ',
     khac: 'Khác',
 };
 
@@ -48,6 +50,7 @@ const SERVICE_STYLES = {
     viet_content: 'bg-sky-50 text-sky-700 border-sky-200',
     audit_content: 'bg-amber-50 text-amber-700 border-amber-200',
     cham_soc_website_tong_the: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    noi_bo: 'bg-slate-100 text-slate-700 border-slate-200',
 };
 
 const HANDOVER_LABELS = {
@@ -175,6 +178,7 @@ export default function ProjectsKanban(props) {
                 params: {
                     per_page: 200,
                     available_only: true,
+                    approval_status: 'approved',
                     ...(projectId ? { project_id: projectId } : {}),
                 },
             });

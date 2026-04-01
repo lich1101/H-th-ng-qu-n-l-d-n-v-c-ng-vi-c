@@ -157,6 +157,7 @@ export default function Contracts(props) {
         client_id: '',
         approval_status: '',
         handover_receive_status: '',
+        has_project: '',
         per_page: 20,
         page: 1,
         sort_by: 'signed_at',
@@ -165,7 +166,6 @@ export default function Contracts(props) {
     const [form, setForm] = useState({
         title: '',
         client_id: '',
-        project_id: '',
         collector_user_id: defaultCollectorUserId,
         care_staff_ids: [],
         value: '',
@@ -390,6 +390,7 @@ export default function Contracts(props) {
                     ...(nextFilters.client_id ? { client_id: nextFilters.client_id } : {}),
                     ...(nextFilters.approval_status ? { approval_status: nextFilters.approval_status } : {}),
                     ...(nextFilters.handover_receive_status ? { handover_receive_status: nextFilters.handover_receive_status } : {}),
+                    ...(nextFilters.has_project ? { has_project: nextFilters.has_project } : {}),
                     sort_by: nextFilters.sort_by || 'signed_at',
                     sort_dir: nextFilters.sort_dir || 'desc',
                 },
@@ -546,7 +547,6 @@ export default function Contracts(props) {
         setForm({
             title: '',
             client_id: '',
-            project_id: '',
             collector_user_id: defaultCollectorUserId,
             care_staff_ids: [],
             value: '',
@@ -583,7 +583,6 @@ export default function Contracts(props) {
             setForm({
                 title: detail.title || '',
                 client_id: detail.client_id || '',
-                project_id: detail.project_id || '',
                 collector_user_id: detail.collector_user_id ? String(detail.collector_user_id) : (currentUserId ? String(currentUserId) : ''),
                 care_staff_ids: normalizeCareStaffIds(detail.care_staff_users || []),
                 value: String(resolveContractValue(detail)),
@@ -907,7 +906,6 @@ export default function Contracts(props) {
         const payload = {
             title: form.title,
             client_id: Number(form.client_id),
-            project_id: form.project_id ? Number(form.project_id) : null,
             collector_user_id: form.collector_user_id ? Number(form.collector_user_id) : null,
             care_staff_ids: normalizeCareStaffIds(form.care_staff_ids),
             value: items.length ? itemsTotal : form.value === '' ? null : parseNumberInput(form.value),
@@ -1041,7 +1039,7 @@ export default function Contracts(props) {
                     searchValue={filters.search}
                     onSearch={handleContractSearch}
                 >
-                    <div className="grid gap-3 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,1fr)_auto]">
+                    <div className="grid gap-3 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,1fr)_minmax(0,0.8fr)_auto]">
                         <FilterField label="Trạng thái">
                             <select className={filterControlClass} value={filters.status} onChange={(e) => setFilters((s) => ({ ...s, status: e.target.value }))}>
                                 <option value="">Tất cả trạng thái</option>
@@ -1063,6 +1061,13 @@ export default function Contracts(props) {
                                 <option value="">Tất cả</option>
                                 <option value="chua_nhan_ban_giao">Chưa nhận bàn giao</option>
                                 <option value="da_nhan_ban_giao">Đã nhận bàn giao</option>
+                            </select>
+                        </FilterField>
+                        <FilterField label="Dự án liên kết">
+                            <select className={filterControlClass} value={filters.has_project} onChange={(e) => setFilters((s) => ({ ...s, has_project: e.target.value }))}>
+                                <option value="">Tất cả</option>
+                                <option value="yes">Đã liên kết</option>
+                                <option value="no">Chưa liên kết</option>
                             </select>
                         </FilterField>
                         <FilterActionGroup className="xl:self-end xl:justify-end">
@@ -1310,16 +1315,6 @@ export default function Contracts(props) {
                                 >
                                     <option value="">Chọn khách hàng do bạn đang quản lý</option>
                                     {clients.map((c) => <option key={c.id} value={c.id}>{c.name} {c.company ? `(${c.company})` : ''}</option>)}
-                                </select>
-                            </LabeledField>
-                            <LabeledField label="Liên kết dự án" className="md:col-span-2">
-                                <select
-                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
-                                    value={form.project_id}
-                                    onChange={(e) => setForm((s) => ({ ...s, project_id: e.target.value }))}
-                                >
-                                    <option value="">Chưa liên kết dự án</option>
-                                    {projects.map((p) => <option key={p.id} value={p.id}>{p.code} - {p.name}</option>)}
                                 </select>
                             </LabeledField>
                         </div>

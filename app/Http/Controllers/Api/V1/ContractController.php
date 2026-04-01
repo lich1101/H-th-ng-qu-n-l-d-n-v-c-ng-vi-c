@@ -58,6 +58,14 @@ class ContractController extends Controller
         if ($request->filled('handover_receive_status')) {
             $query->where('handover_receive_status', (string) $request->input('handover_receive_status'));
         }
+        if ($request->filled('has_project')) {
+            $hasProject = $request->input('has_project');
+            if ($hasProject === 'yes') {
+                $query->whereNotNull('project_id');
+            } elseif ($hasProject === 'no') {
+                $query->whereNull('project_id');
+            }
+        }
         if ($request->boolean('available_only')) {
             $projectId = (int) $request->input('project_id', 0);
             $query->where(function ($builder) use ($projectId) {
@@ -223,28 +231,11 @@ class ContractController extends Controller
             $validated['value'] = $this->sumItems($items);
         }
 
-        if (! empty($request->input('project_id'))) {
-            $validated['project_id'] = (int) $request->input('project_id');
-            $project = Project::find($validated['project_id']);
-            if (! $project) {
-                return response()->json(['message' => 'Project không tồn tại.'], 422);
-            }
-            if ((int) $project->client_id !== (int) $client->id) {
-                return response()->json(['message' => 'Project không thuộc khách hàng này.'], 422);
-            }
-        }
-
         $validated['collector_user_id'] = $this->resolveCollectorUserId($request, $validated);
         $validated = array_merge($validated, $this->resolveApproval($request));
 
         $contract = Contract::create($validated);
         $this->syncCareStaff($contract, $careStaffIds, $request->user());
-
-        if (! empty($validated['project_id'])) {
-            Project::where('id', $validated['project_id'])->update([
-                'contract_id' => $contract->id,
-            ]);
-        }
 
         if (! empty($items)) {
             $this->syncItems($contract, $items);
@@ -303,24 +294,12 @@ class ContractController extends Controller
         if ($error = $this->validateAssignableCareStaffIds($request->user(), $careStaffIds)) {
             return response()->json(['message' => $error], 422);
         }
-        $oldProjectId = $contract->project_id;
-
         $items = $this->normalizeItems($request->input('items', []));
         if (! empty($items)) {
             $validated['value'] = $this->sumItems($items);
         }
 
         $validated['collector_user_id'] = $this->resolveCollectorUserId($request, $validated, $contract);
-
-        if (! empty($validated['project_id'])) {
-            $project = Project::find($validated['project_id']);
-            if (! $project) {
-                return response()->json(['message' => 'Project không tồn tại.'], 422);
-            }
-            if ((int) $project->client_id !== (int) $client->id) {
-                return response()->json(['message' => 'Project không thuộc khách hàng này.'], 422);
-            }
-        }
 
         if (! $this->canApprove($request->user())) {
             unset($validated['approval_status'], $validated['approved_by'], $validated['approved_at'], $validated['approval_note']);
@@ -336,18 +315,6 @@ class ContractController extends Controller
 
         $contract->update($validated);
         $this->syncCareStaff($contract, $careStaffIds, $request->user());
-
-        if (! empty($contract->project_id)) {
-            Project::where('id', $contract->project_id)->update([
-                'contract_id' => $contract->id,
-            ]);
-        }
-
-        if ($oldProjectId && $oldProjectId !== $contract->project_id) {
-            Project::where('id', $oldProjectId)
-                ->where('contract_id', $contract->id)
-                ->update(['contract_id' => null]);
-        }
 
         if (! empty($items)) {
             $this->syncItems($contract, $items);
@@ -455,7 +422,6 @@ class ContractController extends Controller
             'title' => ['required', 'string', 'max:255'],
             'client_id' => ['required', 'integer', 'exists:clients,id'],
             'opportunity_id' => ['nullable', 'integer', 'exists:opportunities,id'],
-            'project_id' => ['nullable', 'integer', 'exists:projects,id'],
             'value' => ['nullable', 'numeric', 'min:0'],
             'payment_times' => ['nullable', 'integer', 'min:1', 'max:120'],
             'revenue' => ['nullable', 'numeric', 'min:0'],

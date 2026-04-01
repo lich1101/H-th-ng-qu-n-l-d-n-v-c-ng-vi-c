@@ -79,13 +79,65 @@ class OpportunityController extends Controller
         $validated['watcher_ids'] = $this->normalizeWatcherIds($validated['watcher_ids'] ?? []);
 
         $opportunity = Opportunity::create($validated);
-        return response()->json($opportunity->load([
+        $opportunity->load([
             'client:id,name,company,email,phone',
             'assignee:id,name,email,role',
             'creator:id,name,email,role',
             'product:id,name,code',
             'statusConfig:id,code,name,color_hex,sort_order',
-        ]), 201);
+        ]);
+
+        if ($request->user()->role === 'nhan_vien') {
+            $this->notifyNewOpportunityFromStaff($opportunity, $request->user());
+        }
+
+        return response()->json($opportunity, 201);
+    }
+
+    private function notifyNewOpportunityFromStaff(Opportunity $opportunity, User $creator): void
+    {
+        try {
+            $adminIds = User::query()->where('role', 'admin')->pluck('id')->all();
+            
+            $managerId = null;
+            if ($creator->department_id) {
+                // Fetch the manager of the department
+                $managerId = \App\Models\Department::query()
+                    ->where('id', $creator->department_id)
+                    ->value('manager_id');
+            }
+
+            $targetIds = array_merge($adminIds, array_filter([$managerId]));
+            $targetIds = array_values(array_filter(array_unique(array_map('intval', $targetIds)), function($id) use ($creator) {
+                return $id > 0 && $id !== (int) $creator->id;
+            }));
+
+            if (empty($targetIds)) {
+                return;
+            }
+
+            $clientName = $opportunity->client ? ($opportunity->client->name ?: 'Không tên') : 'Không rõ';
+            $startDate = $opportunity->created_at ? $opportunity->created_at->format('d/m/Y') : now()->format('d/m/Y');
+            $endDate = $opportunity->expected_close_date 
+                ? \Carbon\Carbon::parse($opportunity->expected_close_date)->format('d/m/Y') 
+                : 'không xác định';
+
+            $title = 'Cơ hội mới từ nhân viên';
+            $body = "Khách hàng {$clientName} có thêm cơ hội {$opportunity->title} có thời hạn từ {$startDate} đến {$endDate}";
+
+            app(\App\Services\NotificationService::class)->notifyUsersAfterResponse(
+                $targetIds,
+                $title,
+                $body,
+                [
+                    'type' => 'crm_notification',
+                    'opportunity_id' => $opportunity->id,
+                    'creator_id' => $creator->id,
+                ]
+            );
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('Notify new opportunity from staff failed: ' . $e->getMessage());
+        }
     }
 
     public function show(Opportunity $opportunity): JsonResponse
