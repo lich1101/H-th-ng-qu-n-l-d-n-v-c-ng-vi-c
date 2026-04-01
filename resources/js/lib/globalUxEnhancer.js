@@ -23,6 +23,7 @@ const buildSelectOptionsSignature = (select) =>
             const disabled = option?.disabled ? '1' : '0';
             return `${value}\u0001${label}\u0001${disabled}`;
         })
+        .sort()
         .join('\u0002');
 
 const syncTomSelectValueFromDom = (select, instance, isMultiple) => {
@@ -431,6 +432,11 @@ const enhanceSelect = (select) => {
                 ensureTomSelectDropdownZIndex(instance);
             });
         }
+
+        instance.on('change', () => {
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+            select.dispatchEvent(new Event('input', { bubbles: true }));
+        });
 
         select.dataset.searchableReady = '1';
         select.dataset.searchOptionsSignature = buildSelectOptionsSignature(select);
