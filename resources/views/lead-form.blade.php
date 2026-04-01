@@ -380,7 +380,7 @@
                                 <div class="error" id="error-{{ $key }}" style="display:none;"></div>
                             </div>
                         @endforeach
-
+                        <div class="space-y-4"></div>
                         <div class="actions">
                             <button type="submit" id="submit-btn">{{ $style['submit_label'] ?: 'Gửi thông tin' }}</button>
                             @if ($showFooterNote)
