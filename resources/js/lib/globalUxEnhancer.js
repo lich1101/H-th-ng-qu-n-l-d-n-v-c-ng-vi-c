@@ -5,9 +5,13 @@ import { ArrowDownAZ, createElement as createLucideElement } from 'lucide';
 const TABLE_SELECTOR = 'table';
 const SELECT_SEARCH_MIN_OPTIONS = 2;
 const tableSortInstances = new WeakMap();
+const remoteSortListeners = new Map();
 let hasRegisteredSortExtensions = false;
 
 const normalizeText = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+const hasMeaningfulTextNode = (node) => (
+    node?.nodeType === Node.TEXT_NODE && normalizeText(node.textContent).length > 0
+);
 
 const parseDateValue = (raw) => {
     const value = normalizeText(raw);
@@ -95,27 +99,64 @@ const shouldEnableSortHeader = (headerCell) => {
     return Boolean(label);
 };
 
+const ensureSortHeaderLayout = (headerCell) => {
+    const existing = headerCell.querySelector(':scope > .table-az-header');
+    if (existing) return existing;
+
+    const wrapper = document.createElement('span');
+    wrapper.className = 'table-az-header';
+
+    const label = document.createElement('span');
+    label.className = 'table-az-label';
+
+    Array.from(headerCell.childNodes).forEach((node) => {
+        if (
+            node.nodeType === Node.ELEMENT_NODE
+            && node.classList
+            && (node.classList.contains('table-az-control') || node.classList.contains('table-az-header'))
+        ) {
+            return;
+        }
+        if (node.nodeType === Node.TEXT_NODE && !hasMeaningfulTextNode(node)) {
+            return;
+        }
+        if (hasMeaningfulTextNode(node)) {
+            label.appendChild(document.createTextNode(normalizeText(node.textContent)));
+            return;
+        }
+        label.appendChild(node);
+    });
+
+    wrapper.appendChild(label);
+    headerCell.appendChild(wrapper);
+
+    return wrapper;
+};
+
 const decorateSortHeader = (headerCell) => {
     if (!headerCell) return;
     headerCell.classList.add('table-sortable-header');
 
-    if (headerCell.querySelector(':scope > .table-az-control')) return;
+    const wrapper = ensureSortHeaderLayout(headerCell);
+    if (!wrapper) return;
+
+    if (wrapper.querySelector(':scope > .table-az-control')) return;
 
     const icon = document.createElement('span');
     icon.className = 'table-az-control';
     icon.setAttribute('aria-hidden', 'true');
     icon.appendChild(createLucideElement(ArrowDownAZ, {
         class: 'table-az-icon',
-        width: 16,
-        height: 16,
+        width: 14,
+        height: 14,
         'stroke-width': 2,
         'aria-hidden': 'true',
         focusable: 'false',
     }));
-    headerCell.appendChild(icon);
+    wrapper.appendChild(icon);
 };
 
-const prepareHeaderCell = (headerCell) => {
+const prepareHeaderCell = (headerCell, table) => {
     if (!headerCell) return;
 
     if (!shouldEnableSortHeader(headerCell)) {
@@ -125,7 +166,9 @@ const prepareHeaderCell = (headerCell) => {
         return;
     }
 
-    if (headerCell.getAttribute('data-sort-method') === null) {
+    const isRemoteSortTable = table?.dataset?.sortScope === 'remote';
+
+    if (!isRemoteSortTable && headerCell.getAttribute('data-sort-method') === null) {
         headerCell.setAttribute('data-sort-method', 'number-vi');
         const sampleRows = headerCell.closest('table')?.tBodies?.[0]?.rows || [];
         let matchedNumber = false;
@@ -150,17 +193,76 @@ const prepareHeaderCell = (headerCell) => {
     decorateSortHeader(headerCell);
 };
 
+const updateRemoteSortState = (table, selectedKey, selectedDir) => {
+    const headerRow = table?.tHead?.rows?.[table.tHead.rows.length - 1];
+    if (!headerRow) return;
+
+    Array.from(headerRow.cells || []).forEach((cell) => {
+        if (!(cell instanceof HTMLTableCellElement)) return;
+        if (cell.getAttribute('data-sort-key') === selectedKey) {
+            cell.setAttribute('aria-sort', selectedDir === 'asc' ? 'ascending' : 'descending');
+            return;
+        }
+        cell.removeAttribute('aria-sort');
+    });
+};
+
+const bindRemoteSort = (table) => {
+    if (!(table instanceof HTMLTableElement)) return;
+    if (remoteSortListeners.has(table)) return;
+
+    const handler = (event) => {
+        const headerCell = event.target instanceof Element
+            ? event.target.closest('th')
+            : null;
+        if (!(headerCell instanceof HTMLTableCellElement)) return;
+        if (!table.contains(headerCell)) return;
+        if (!shouldEnableSortHeader(headerCell)) return;
+
+        const sortBy = String(headerCell.getAttribute('data-sort-key') || '').trim();
+        if (!sortBy) return;
+
+        event.preventDefault();
+
+        const current = headerCell.getAttribute('aria-sort');
+        const nextSortDir = current === 'ascending' ? 'desc' : 'asc';
+
+        updateRemoteSortState(table, sortBy, nextSortDir);
+
+        table.dispatchEvent(new CustomEvent('table:remote-sort', {
+            bubbles: true,
+            detail: {
+                sortBy,
+                sortDir: nextSortDir,
+            },
+        }));
+    };
+
+    table.addEventListener('click', handler);
+    remoteSortListeners.set(table, handler);
+};
+
 const enhanceTableSort = (table) => {
     if (!(table instanceof HTMLTableElement)) return;
     if (table.dataset.azFilter === 'off') return;
     if (!table.tHead || !table.tHead.rows?.length) return;
 
-    registerTablesortExtensions();
-
     const headerRow = table.tHead.rows[table.tHead.rows.length - 1];
     Array.from(headerRow.cells || []).forEach((cell) => {
-        prepareHeaderCell(cell);
+        prepareHeaderCell(cell, table);
     });
+
+    if (table.dataset.sortScope === 'remote') {
+        bindRemoteSort(table);
+        updateRemoteSortState(
+            table,
+            String(table.dataset.sortBy || '').trim(),
+            String(table.dataset.sortDir || '').toLowerCase() === 'asc' ? 'asc' : 'desc'
+        );
+        return;
+    }
+
+    registerTablesortExtensions();
 
     if (tableSortInstances.has(table)) return;
 
@@ -197,10 +299,15 @@ const enhanceSelect = (select) => {
     }
 
     const isMultiple = Boolean(select.multiple);
+    const emptyOptionLabel = normalizeText(
+        Array.from(select.options || [])
+            .find((option) => option && option.value === '')
+            ?.text,
+    );
     const placeholder = normalizeText(
         select.getAttribute('placeholder')
         || select.dataset.placeholder
-        || select.options?.[0]?.text
+        || emptyOptionLabel
         || 'Chọn giá trị',
     );
 
@@ -209,19 +316,27 @@ const enhanceSelect = (select) => {
             create: false,
             persist: false,
             allowEmptyOption: true,
-            hidePlaceholder: false,
+            hidePlaceholder: !isMultiple,
             copyClassesToDropdown: false,
             dropdownParent: 'body',
             searchField: ['text'],
             sortField: [{ field: '$score' }, { field: '$order' }],
             placeholder,
-            plugins: isMultiple ? ['remove_button'] : [],
+            plugins: isMultiple ? ['remove_button'] : ['dropdown_input'],
             render: {
                 no_results(data, escape) {
                     return `<div class="no-results">Không tìm thấy: ${escape(data.input)}</div>`;
                 },
             },
         });
+
+        if (!isMultiple && select.value === '') {
+            instance.clear(true);
+        }
+        if (!isMultiple && instance.control_input) {
+            instance.control_input.setAttribute('placeholder', select.dataset.searchPlaceholder || 'Tìm nhanh...');
+            instance.control_input.classList.add('ts-dropdown-search-input');
+        }
 
         select.dataset.searchableReady = '1';
         if (select.disabled) instance.disable();
@@ -274,6 +389,10 @@ export const setupGlobalUxEnhancer = () => {
         if (rafId !== null) {
             window.cancelAnimationFrame(rafId);
         }
+        remoteSortListeners.forEach((handler, table) => {
+            table.removeEventListener('click', handler);
+        });
+        remoteSortListeners.clear();
         destroyEnhancedSelects();
         observer.disconnect();
     };

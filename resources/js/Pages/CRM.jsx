@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { Link } from '@inertiajs/inertia-react';
 import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
@@ -78,6 +78,7 @@ export default function CRM(props) {
     const [paymentPage, setPaymentPage] = useState(1);
     const [selectedClientIds, setSelectedClientIds] = useState([]);
     const [bulkLoading, setBulkLoading] = useState(false);
+    const clientTableRef = useRef(null);
     const [bulkForm, setBulkForm] = useState({
         lead_type_id: '',
         assigned_staff_id: '',
@@ -90,6 +91,8 @@ export default function CRM(props) {
         revenue_tier_id: '',
         assigned_department_id: '',
         assigned_staff_id: '',
+        sort_by: 'last_activity_at',
+        sort_dir: 'desc',
     });
     const [paymentFilters, setPaymentFilters] = useState({ status: '', per_page: 10 });
     const [editingClientId, setEditingClientId] = useState(null);
@@ -195,6 +198,8 @@ export default function CRM(props) {
                 params: {
                     ...filtersArg,
                     page,
+                    sort_by: filtersArg.sort_by || 'last_activity_at',
+                    sort_dir: filtersArg.sort_dir || 'desc',
                 },
             });
             const resolvedPage = clientsRes.data.current_page || 1;
@@ -325,6 +330,30 @@ export default function CRM(props) {
             setClientForm((prev) => ({ ...prev, lead_type_id: leadTypes[0]?.id || '' }));
         }
     }, [leadTypes]);
+
+    useEffect(() => {
+        const table = clientTableRef.current;
+        if (!table) return undefined;
+
+        const handleRemoteSort = (event) => {
+            const sortBy = String(event?.detail?.sortBy || '').trim();
+            const sortDir = String(event?.detail?.sortDir || '').toLowerCase() === 'asc' ? 'asc' : 'desc';
+            if (!sortBy) return;
+
+            const nextFilters = {
+                ...clientFilters,
+                sort_by: sortBy,
+                sort_dir: sortDir,
+            };
+            setClientFilters(nextFilters);
+            fetchClients(1, nextFilters);
+        };
+
+        table.addEventListener('table:remote-sort', handleRemoteSort);
+        return () => {
+            table.removeEventListener('table:remote-sort', handleRemoteSort);
+        };
+    }, [clientFilters]);
 
     const submitClient = async (e) => {
         e.preventDefault();
@@ -964,11 +993,17 @@ export default function CRM(props) {
                             </div>
                         )}
                         <div className="overflow-x-auto">
-                            <table className="table-spacious min-w-full text-sm">
+                            <table
+                                ref={clientTableRef}
+                                data-sort-scope="remote"
+                                data-sort-by={clientFilters.sort_by || 'last_activity_at'}
+                                data-sort-dir={clientFilters.sort_dir || 'desc'}
+                                className="table-spacious min-w-full text-sm"
+                            >
                                 <thead>
                                     <tr className="text-left text-xs uppercase tracking-wider text-text-subtle border-b border-slate-200">
                                         {canBulkClientActions && (
-                                            <th className="py-2 pr-2 w-10">
+                                            <th className="py-2 pr-2 w-10" data-az-ignore>
                                                 <input
                                                     type="checkbox"
                                                     className="rounded border-slate-300 text-primary focus:ring-primary/20"
@@ -978,22 +1013,22 @@ export default function CRM(props) {
                                                 />
                                             </th>
                                         )}
-                                        <th className="py-2">Khách hàng</th>
-                                        <th className="py-2">SĐT</th>
-                                        <th className="py-2">Trạng thái</th>
-                                        <th className="py-2">Hạng</th>
-                                        <th className="py-2">Phòng ban</th>
-                                        <th className="py-2">Phụ trách</th>
-                                        <th className="py-2">Chăm sóc</th>
-                                        <th className="py-2">Ngày tạo</th>
-                                        <th className="py-2">Danh mục sản phẩm</th>
-                                        <th className="py-2">Ghi chú</th>
-                                        <th className="py-2">Doanh số lũy kế</th>
-                                        <th className="py-2">Công nợ</th>
-                                        <th className="py-2">Số cơ hội</th>
-                                        <th className="py-2">Số hợp đồng</th>
-                                        <th className="py-2">Nguồn</th>
-                                        <th className="py-2"></th>
+                                        <th className="py-2" data-sort-key="name">Khách hàng</th>
+                                        <th className="py-2" data-sort-key="phone">SĐT</th>
+                                        <th className="py-2" data-sort-key="lead_type">Trạng thái</th>
+                                        <th className="py-2" data-sort-key="revenue_tier">Hạng</th>
+                                        <th className="py-2" data-sort-key="department">Phòng ban</th>
+                                        <th className="py-2" data-sort-key="assigned_staff">Phụ trách</th>
+                                        <th className="py-2" data-sort-key="care_staff">Chăm sóc</th>
+                                        <th className="py-2" data-sort-key="created_at">Ngày tạo</th>
+                                        <th className="py-2" data-sort-key="product_categories">Danh mục sản phẩm</th>
+                                        <th className="py-2" data-sort-key="notes">Ghi chú</th>
+                                        <th className="py-2" data-sort-key="total_revenue">Doanh số lũy kế</th>
+                                        <th className="py-2" data-sort-key="total_debt_amount">Công nợ</th>
+                                        <th className="py-2" data-sort-key="opportunities_count">Số cơ hội</th>
+                                        <th className="py-2" data-sort-key="contracts_count">Số hợp đồng</th>
+                                        <th className="py-2" data-sort-key="lead_source">Nguồn</th>
+                                        <th className="py-2" data-az-ignore></th>
                                     </tr>
                                 </thead>
                                 <tbody>

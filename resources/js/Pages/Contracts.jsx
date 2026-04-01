@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import AutoCodeBadge from '@/Components/AutoCodeBadge';
 import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
@@ -151,7 +151,17 @@ export default function Contracts(props) {
     const [careNoteForm, setCareNoteForm] = useState({ title: '', detail: '' });
     const [savingCareNote, setSavingCareNote] = useState(false);
     const [contractMeta, setContractMeta] = useState({ current_page: 1, last_page: 1, total: 0 });
-    const [filters, setFilters] = useState({ search: '', status: '', client_id: '', approval_status: '', handover_receive_status: '', per_page: 20, page: 1 });
+    const [filters, setFilters] = useState({
+        search: '',
+        status: '',
+        client_id: '',
+        approval_status: '',
+        handover_receive_status: '',
+        per_page: 20,
+        page: 1,
+        sort_by: 'signed_at',
+        sort_dir: 'desc',
+    });
     const [form, setForm] = useState({
         title: '',
         client_id: '',
@@ -193,6 +203,7 @@ export default function Contracts(props) {
     const [editingCanManage, setEditingCanManage] = useState(true);
     const [selectedContractIds, setSelectedContractIds] = useState([]);
     const [bulkLoading, setBulkLoading] = useState(false);
+    const contractTableRef = useRef(null);
 
     const extractValidationMessages = (error) => {
         const errors = error?.response?.data?.errors;
@@ -373,6 +384,8 @@ export default function Contracts(props) {
                     ...(nextFilters.client_id ? { client_id: nextFilters.client_id } : {}),
                     ...(nextFilters.approval_status ? { approval_status: nextFilters.approval_status } : {}),
                     ...(nextFilters.handover_receive_status ? { handover_receive_status: nextFilters.handover_receive_status } : {}),
+                    sort_by: nextFilters.sort_by || 'signed_at',
+                    sort_dir: nextFilters.sort_dir || 'desc',
                 },
             });
             const rows = res.data?.data || [];
@@ -401,6 +414,31 @@ export default function Contracts(props) {
         fetchContracts();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    useEffect(() => {
+        const table = contractTableRef.current;
+        if (!table) return undefined;
+
+        const handleRemoteSort = (event) => {
+            const sortBy = String(event?.detail?.sortBy || '').trim();
+            const sortDir = String(event?.detail?.sortDir || '').toLowerCase() === 'asc' ? 'asc' : 'desc';
+            if (!sortBy) return;
+
+            const nextFilters = {
+                ...filters,
+                sort_by: sortBy,
+                sort_dir: sortDir,
+                page: 1,
+            };
+            setFilters(nextFilters);
+            fetchContracts(1, nextFilters);
+        };
+
+        table.addEventListener('table:remote-sort', handleRemoteSort);
+        return () => {
+            table.removeEventListener('table:remote-sort', handleRemoteSort);
+        };
+    }, [filters]);
 
     const stats = useMemo(() => {
         const total = contractMeta.total || contracts.length;
@@ -1074,11 +1112,17 @@ export default function Contracts(props) {
                     </div>
                 )}
                 <div className="overflow-x-auto">
-                    <table className="table-spacious min-w-full text-sm">
+                    <table
+                        ref={contractTableRef}
+                        data-sort-scope="remote"
+                        data-sort-by={filters.sort_by || 'signed_at'}
+                        data-sort-dir={filters.sort_dir || 'desc'}
+                        className="table-spacious min-w-full text-sm"
+                    >
                             <thead>
                                 <tr className="text-left text-xs uppercase tracking-wider text-text-subtle border-b border-slate-200">
                                     {canBulkActions && (
-                                        <th className="py-2 pr-3">
+                                        <th className="py-2 pr-3" data-az-ignore>
                                             <input
                                                 type="checkbox"
                                                 className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary/40"
@@ -1088,22 +1132,22 @@ export default function Contracts(props) {
                                             />
                                         </th>
                                     )}
-                                    <th className="py-2">Hợp đồng</th>
-                                    <th className="py-2">Khách hàng</th>
-                                    <th className="py-2">SĐT khách hàng</th>
-                                    <th className="py-2">Ngày ký</th>
-                                    <th className="py-2">Ngày kết thúc</th>
-                                    <th className="py-2">Ghi chú</th>
-                                    <th className="py-2">Nhân viên thu</th>
-                                    <th className="py-2">Giá trị</th>
-                                    <th className="py-2">Đã thu</th>
-                                    <th className="py-2">Công nợ</th>
-                                    <th className="py-2">Chi phí</th>
-                                    <th className="py-2">TT</th>
-                                    <th className="py-2">Trạng thái</th>
-                                    <th className="py-2">Duyệt</th>
-                                    <th className="py-2">Bàn giao</th>
-                                    <th className="py-2"></th>
+                                    <th className="py-2" data-sort-key="code">Hợp đồng</th>
+                                    <th className="py-2" data-sort-key="client_name">Khách hàng</th>
+                                    <th className="py-2" data-sort-key="client_phone">SĐT khách hàng</th>
+                                    <th className="py-2" data-sort-key="signed_at">Ngày ký</th>
+                                    <th className="py-2" data-sort-key="end_date">Ngày kết thúc</th>
+                                    <th className="py-2" data-sort-key="notes">Ghi chú</th>
+                                    <th className="py-2" data-sort-key="collector_name">Nhân viên thu</th>
+                                    <th className="py-2" data-sort-key="value">Giá trị</th>
+                                    <th className="py-2" data-sort-key="payments_total">Đã thu</th>
+                                    <th className="py-2" data-sort-key="debt_outstanding">Công nợ</th>
+                                    <th className="py-2" data-sort-key="costs_total">Chi phí</th>
+                                    <th className="py-2" data-sort-key="payments_count">TT</th>
+                                    <th className="py-2" data-sort-key="status">Trạng thái</th>
+                                    <th className="py-2" data-sort-key="approval_status">Duyệt</th>
+                                    <th className="py-2" data-sort-key="handover_receive_status">Bàn giao</th>
+                                    <th className="py-2" data-az-ignore></th>
                                 </tr>
                             </thead>
                             <tbody>

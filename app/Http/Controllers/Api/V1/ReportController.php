@@ -28,10 +28,10 @@ use Illuminate\Support\Facades\Schema;
 
 class ReportController extends Controller
 {
-    public function dashboardSummary(): JsonResponse
+    public function dashboardSummary(Request $request): JsonResponse
     {
         try {
-        $viewer = request()->user();
+        $viewer = $request->user();
         if (! $viewer) {
             return response()->json([
                 'projects' => ['total' => 0, 'in_progress' => 0, 'pending_review' => 0],
@@ -58,14 +58,19 @@ class ReportController extends Controller
                 'da_buckets' => [],
                 'recent_links' => [],
                 'staff_sales_breakdown' => [],
+                'period_revenue_total' => 0,
+                'period_cashflow_total' => 0,
+                'period_contracts_total' => 0,
                 'customer_growth' => [],
                 'employee_stats' => [],
                 'employee_role_breakdown' => [],
                 'employee_summary' => ['total' => 0, 'active' => 0, 'managers' => 0, 'staff' => 0],
                 'period' => [
-                    'current_label' => 'Tháng này',
-                    'current_from' => now()->startOfMonth()->toDateString(),
-                    'current_to' => now()->endOfMonth()->toDateString(),
+                    'current_label' => 'Toàn thời gian',
+                    'current_from' => now()->toDateString(),
+                    'current_to' => now()->toDateString(),
+                    'available_from' => now()->toDateString(),
+                    'available_to' => now()->toDateString(),
                 ],
             ]);
         }
@@ -129,38 +134,74 @@ class ReportController extends Controller
         $contractDateParts[] = 'contracts.created_at';
         $contractDateExpr = 'DATE(COALESCE(' . implode(', ', $contractDateParts) . '))';
 
-        $now = now();
-        $currentPeriodStart = $now->copy()->startOfMonth();
-        $currentPeriodEnd = $now->copy()->endOfMonth();
-
         $approvedContractsBaseQuery = (clone $contractBaseQuery)
             ->when($hasContractApprovalStatus, function ($query) {
                 $query->where('approval_status', 'approved');
             });
-        $contractsInCurrentMonth = (clone $approvedContractsBaseQuery)
-            ->whereBetween(DB::raw($contractDateExpr), [
-                $currentPeriodStart->toDateString(),
-                $currentPeriodEnd->toDateString(),
-            ])
-            ->count();
-        if ($contractsInCurrentMonth === 0) {
-            $latestContractDate = (clone $approvedContractsBaseQuery)
-                ->selectRaw("MAX($contractDateExpr) as latest_date")
-                ->value('latest_date');
-            if ($latestContractDate) {
-                $latestDate = Carbon::parse((string) $latestContractDate);
-                $currentPeriodStart = $latestDate->copy()->startOfMonth();
-                $currentPeriodEnd = $latestDate->copy()->endOfMonth();
+        $now = now();
+        $availableFromRaw = (clone $approvedContractsBaseQuery)
+            ->selectRaw("MIN($contractDateExpr) as aggregate_date")
+            ->value('aggregate_date');
+        $availableToRaw = (clone $approvedContractsBaseQuery)
+            ->selectRaw("MAX($contractDateExpr) as aggregate_date")
+            ->value('aggregate_date');
+
+        $availableFrom = $availableFromRaw
+            ? Carbon::parse((string) $availableFromRaw)->startOfDay()
+            : $now->copy()->startOfDay();
+        $availableTo = $availableToRaw
+            ? Carbon::parse((string) $availableToRaw)->endOfDay()
+            : $now->copy()->endOfDay();
+
+        $parseFilterDate = function ($value, bool $endOfDay = false): ?Carbon {
+            if (! $value) {
+                return null;
             }
+
+            try {
+                $date = Carbon::parse((string) $value);
+            } catch (\Throwable $e) {
+                return null;
+            }
+
+            return $endOfDay ? $date->endOfDay() : $date->startOfDay();
+        };
+
+        $requestedFrom = $parseFilterDate($request->input('from'));
+        $requestedTo = $parseFilterDate($request->input('to'), true);
+
+        $currentPeriodStart = ($requestedFrom ?: $availableFrom)->copy();
+        $currentPeriodEnd = ($requestedTo ?: $availableTo)->copy();
+
+        if ($currentPeriodEnd->lt($currentPeriodStart)) {
+            [$currentPeriodStart, $currentPeriodEnd] = [
+                $currentPeriodEnd->copy()->startOfDay(),
+                $currentPeriodStart->copy()->endOfDay(),
+            ];
         }
 
-        $previousPeriodStart = $currentPeriodStart->copy()->subMonthNoOverflow()->startOfMonth();
-        $previousPeriodEnd = $previousPeriodStart->copy()->endOfMonth();
-        $samePeriodLastYearStart = $currentPeriodStart->copy()->subYear();
-        $samePeriodLastYearEnd = $currentPeriodEnd->copy()->subYear();
-        $currentPeriodLabel = ($currentPeriodStart->isSameMonth($now) && $currentPeriodStart->isSameYear($now))
-            ? 'Tháng này'
-            : ('Tháng ' . $currentPeriodStart->format('m/Y'));
+        if ($currentPeriodStart->lt($availableFrom)) {
+            $currentPeriodStart = $availableFrom->copy();
+        }
+        if ($currentPeriodEnd->gt($availableTo)) {
+            $currentPeriodEnd = $availableTo->copy();
+        }
+        if ($currentPeriodEnd->lt($currentPeriodStart)) {
+            $currentPeriodStart = $availableFrom->copy();
+            $currentPeriodEnd = $availableTo->copy();
+        }
+
+        $periodDays = max(1, $currentPeriodStart->diffInDays($currentPeriodEnd) + 1);
+        $previousPeriodEnd = $currentPeriodStart->copy()->subDay()->endOfDay();
+        $previousPeriodStart = $previousPeriodEnd->copy()->subDays($periodDays - 1)->startOfDay();
+        $samePeriodLastYearStart = $currentPeriodStart->copy()->subYear()->startOfDay();
+        $samePeriodLastYearEnd = $currentPeriodEnd->copy()->subYear()->endOfDay();
+
+        $isAllTime = $currentPeriodStart->toDateString() === $availableFrom->toDateString()
+            && $currentPeriodEnd->toDateString() === $availableTo->toDateString();
+        $currentPeriodLabel = $isAllTime
+            ? 'Toàn thời gian'
+            : ('Từ ' . $currentPeriodStart->format('d/m/Y') . ' đến ' . $currentPeriodEnd->format('d/m/Y'));
 
         $totalProjects = (clone $projectBaseQuery)->count();
         $inProgressProjects = $hasProjectStatus
@@ -445,7 +486,31 @@ class ReportController extends Controller
                         ? round((((float) $metrics['revenue']) / $totalCurrentRevenue) * 100, 1)
                         : 0.0,
                 ];
-            })
+            });
+
+        $unassignedMetrics = $currentStaffMetrics[0] ?? null;
+        if (
+            is_array($unassignedMetrics)
+            && (
+                (float) ($unassignedMetrics['revenue'] ?? 0) > 0
+                || (float) ($unassignedMetrics['cashflow'] ?? 0) > 0
+                || (int) ($unassignedMetrics['contracts_count'] ?? 0) > 0
+            )
+        ) {
+            $staffSalesBreakdown->push([
+                'staff_id' => null,
+                'staff_name' => 'Chưa gán nhân sự',
+                'avatar_url' => null,
+                'revenue' => round((float) ($unassignedMetrics['revenue'] ?? 0), 2),
+                'cashflow' => round((float) ($unassignedMetrics['cashflow'] ?? 0), 2),
+                'contracts_count' => (int) ($unassignedMetrics['contracts_count'] ?? 0),
+                'share_percent' => $totalCurrentRevenue > 0
+                    ? round((((float) ($unassignedMetrics['revenue'] ?? 0)) / $totalCurrentRevenue) * 100, 1)
+                    : 0.0,
+            ]);
+        }
+
+        $staffSalesBreakdown = $staffSalesBreakdown
             ->sortByDesc('revenue')
             ->take(8)
             ->values();
@@ -494,9 +559,10 @@ class ReportController extends Controller
             ->sortByDesc('revenue')
             ->values();
 
+        $customerGrowthAnchor = $currentPeriodEnd->copy()->startOfMonth();
         $customerGrowthPeriods = collect(range(11, 0))
-            ->map(function ($monthsAgo) use ($now) {
-                $point = $now->copy()->startOfMonth()->subMonths($monthsAgo);
+            ->map(function ($monthsAgo) use ($customerGrowthAnchor) {
+                $point = $customerGrowthAnchor->copy()->subMonths($monthsAgo);
                 return [
                     'key' => $point->format('Y-m'),
                     'label' => 'T' . $point->format('m'),
@@ -638,6 +704,9 @@ class ReportController extends Controller
             'da_buckets' => $daBuckets,
             'recent_links' => $recentLinks,
             'staff_sales_breakdown' => $staffSalesBreakdown,
+            'period_revenue_total' => round((float) $totalCurrentRevenue, 2),
+            'period_cashflow_total' => round((float) collect($currentStaffMetrics)->sum('cashflow'), 2),
+            'period_contracts_total' => (int) collect($currentStaffMetrics)->sum('contracts_count'),
             'customer_growth' => $customerGrowth,
             'employee_stats' => $employeeStats,
             'employee_role_breakdown' => $employeeRoleBreakdown,
@@ -651,6 +720,8 @@ class ReportController extends Controller
                 'current_label' => $currentPeriodLabel,
                 'current_from' => $currentPeriodStart->toDateString(),
                 'current_to' => $currentPeriodEnd->toDateString(),
+                'available_from' => $availableFrom->toDateString(),
+                'available_to' => $availableTo->toDateString(),
             ],
         ]);
         } catch (\Throwable $e) {
@@ -690,6 +761,9 @@ class ReportController extends Controller
                 'da_buckets' => [],
                 'recent_links' => [],
                 'staff_sales_breakdown' => [],
+                'period_revenue_total' => 0,
+                'period_cashflow_total' => 0,
+                'period_contracts_total' => 0,
                 'customer_growth' => [],
                 'employee_stats' => [],
                 'employee_role_breakdown' => [],
@@ -700,9 +774,11 @@ class ReportController extends Controller
                     'staff' => 0,
                 ],
                 'period' => [
-                    'current_label' => 'Tháng này',
-                    'current_from' => now()->startOfMonth()->toDateString(),
-                    'current_to' => now()->endOfMonth()->toDateString(),
+                    'current_label' => 'Toàn thời gian',
+                    'current_from' => now()->toDateString(),
+                    'current_to' => now()->toDateString(),
+                    'available_from' => now()->toDateString(),
+                    'available_to' => now()->toDateString(),
                 ],
             ]);
         }

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
+import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
 import PageContainer from '@/Components/PageContainer';
 import DonutChart from '@/Components/DonutChart';
 import CustomerGrowthChart from '@/Components/CustomerGrowthChart';
@@ -63,15 +64,18 @@ function SectionHeader({ title, description, chip, tone = 'slate' }) {
 export default function Dashboard(props) {
     const [summary, setSummary] = useState({});
     const [report, setReport] = useState({});
+    const [reportFilters, setReportFilters] = useState({ from: '', to: '' });
+    const [draftReportFilters, setDraftReportFilters] = useState({ from: '', to: '' });
+    const [availablePeriod, setAvailablePeriod] = useState({ from: '', to: '' });
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
         const fetchData = async () => {
             setLoading(true);
             try {
-                const fetchWithFallback = async (primaryUrl, fallbackUrl = null) => {
+                const fetchWithFallback = async (primaryUrl, fallbackUrl = null, params = {}) => {
                     try {
-                        const primaryRes = await axios.get(primaryUrl);
+                        const primaryRes = await axios.get(primaryUrl, { params });
                         return primaryRes.data || {};
                     } catch {
                         if (!fallbackUrl) {
@@ -79,7 +83,7 @@ export default function Dashboard(props) {
                         }
 
                         try {
-                            const fallbackRes = await axios.get(fallbackUrl);
+                            const fallbackRes = await axios.get(fallbackUrl, { params });
                             return fallbackRes.data || {};
                         } catch {
                             return {};
@@ -87,13 +91,27 @@ export default function Dashboard(props) {
                     }
                 };
 
+                const reportParams = {
+                    ...(reportFilters.from ? { from: reportFilters.from } : {}),
+                    ...(reportFilters.to ? { to: reportFilters.to } : {}),
+                };
+
                 const [summaryData, reportData] = await Promise.all([
                     fetchWithFallback('/dashboard/summary-data', '/api/v1/public/summary'),
-                    fetchWithFallback('/dashboard/report-data', '/api/v1/reports/dashboard-summary'),
+                    fetchWithFallback('/dashboard/report-data', '/api/v1/reports/dashboard-summary', reportParams),
                 ]);
 
                 setSummary(summaryData);
                 setReport(reportData);
+                const nextAvailablePeriod = {
+                    from: reportData?.period?.available_from || '',
+                    to: reportData?.period?.available_to || '',
+                };
+                setAvailablePeriod(nextAvailablePeriod);
+                setDraftReportFilters((prev) => ({
+                    from: prev.from || reportData?.period?.current_from || '',
+                    to: prev.to || reportData?.period?.current_to || '',
+                }));
             } catch {
                 // ignore dashboard bootstrap errors
             } finally {
@@ -101,7 +119,7 @@ export default function Dashboard(props) {
             }
         };
         fetchData();
-    }, []);
+    }, [reportFilters.from, reportFilters.to]);
 
     const serviceBreakdown = useMemo(() => {
         const palette = ['#3B82F6', '#34D399', '#F2C94C', '#F43F5E', '#8B5CF6', '#F97316', '#14B8A6'];
@@ -125,11 +143,12 @@ export default function Dashboard(props) {
     }, [report.employee_role_breakdown]);
     const activities = summary.recent_activities || [];
     const overloadList = summary.workload_overload || [];
+    const periodRevenueTotal = Number(report.period_revenue_total || 0);
 
-    const currentRevenue = useMemo(
-        () => staffSales.reduce((sum, item) => sum + Number(item.revenue || 0), 0),
-        [staffSales],
-    );
+    const currentRevenue = useMemo(() => {
+        const fromStaff = staffSales.reduce((sum, item) => sum + Number(item.revenue || 0), 0);
+        return fromStaff > 0 ? fromStaff : periodRevenueTotal;
+    }, [periodRevenueTotal, staffSales]);
 
     const customerTotals = useMemo(() => ({
         created: customerGrowth.reduce((sum, item) => sum + Number(item.created_clients || 0), 0),
@@ -155,12 +174,27 @@ export default function Dashboard(props) {
                 note: `${employeeSummary.total ?? 0} tài khoản thuộc khối vận hành`,
             },
             {
-                label: 'Doanh thu tháng này',
+                label: 'Doanh thu lũy kế',
                 value: formatCurrency(currentRevenue),
-                note: report.period?.current_label || 'Kỳ hiện tại',
+                note: report.period?.current_label || 'Toàn thời gian',
             },
         ]
     ), [currentRevenue, employeeSummary.active, employeeSummary.total, report.period?.current_label, summary.projects_in_progress, summary.tasks_overdue]);
+
+    const applyReportFilters = () => {
+        setReportFilters({
+            from: draftReportFilters.from || '',
+            to: draftReportFilters.to || '',
+        });
+    };
+
+    const resetReportFilters = () => {
+        setReportFilters({ from: '', to: '' });
+        setDraftReportFilters({
+            from: availablePeriod.from || '',
+            to: availablePeriod.to || '',
+        });
+    };
 
     return (
         <PageContainer
@@ -175,6 +209,48 @@ export default function Dashboard(props) {
                 <SectionChip tone="emerald">{staffSales.length} nhân sự có doanh số</SectionChip>
                 {loading ? <SectionChip tone="amber">Đang đồng bộ dữ liệu</SectionChip> : null}
             </div>
+
+            <FilterToolbar
+                title="Bộ lọc thời gian"
+                description="Mặc định trang chủ hiển thị toàn bộ dữ liệu từ trước đến nay. Bạn có thể giới hạn khoảng thời gian để quan sát chi tiết hơn."
+                actions={(
+                    <FilterActionGroup>
+                        <button
+                            type="button"
+                            onClick={applyReportFilters}
+                            className="rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-card"
+                        >
+                            Áp dụng
+                        </button>
+                        <button
+                            type="button"
+                            onClick={resetReportFilters}
+                            className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700"
+                        >
+                            Toàn thời gian
+                        </button>
+                    </FilterActionGroup>
+                )}
+            >
+                <div className="grid gap-3 md:grid-cols-2">
+                    <FilterField label="Từ ngày" hint={availablePeriod.from ? `Dữ liệu từ ${availablePeriod.from}` : ''}>
+                        <input
+                            type="date"
+                            className={filterControlClass}
+                            value={draftReportFilters.from}
+                            onChange={(event) => setDraftReportFilters((prev) => ({ ...prev, from: event.target.value }))}
+                        />
+                    </FilterField>
+                    <FilterField label="Đến ngày" hint={availablePeriod.to ? `Dữ liệu đến ${availablePeriod.to}` : ''}>
+                        <input
+                            type="date"
+                            className={filterControlClass}
+                            value={draftReportFilters.to}
+                            onChange={(event) => setDraftReportFilters((prev) => ({ ...prev, to: event.target.value }))}
+                        />
+                    </FilterField>
+                </div>
+            </FilterToolbar>
 
             <div className="grid items-start gap-5 xl:grid-cols-[1.02fr_0.98fr]">
                 <section className={cardClass}>

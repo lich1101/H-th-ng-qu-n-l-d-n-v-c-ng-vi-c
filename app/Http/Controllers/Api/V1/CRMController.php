@@ -6,11 +6,15 @@ use App\Http\Controllers\Controller;
 use App\Http\Helpers\CrmScope;
 use App\Models\Client;
 use App\Models\CustomerPayment;
+use App\Models\Department;
 use App\Models\LeadType;
+use App\Models\RevenueTier;
 use App\Models\User;
 use App\Services\LeadNotificationService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 
 class CRMController extends Controller
 {
@@ -74,20 +78,44 @@ class CRMController extends Controller
         if ($request->boolean('lead_only')) {
             $query->whereNotNull('lead_type_id');
         }
-        $lastActivityExpression = 'GREATEST(
-            COALESCE((SELECT MAX(client_care_notes.created_at) FROM client_care_notes WHERE client_care_notes.client_id = clients.id), clients.updated_at),
-            COALESCE((SELECT MAX(opportunities.updated_at) FROM opportunities WHERE opportunities.client_id = clients.id), clients.updated_at),
-            COALESCE((SELECT MAX(contracts.updated_at) FROM contracts WHERE contracts.client_id = clients.id), clients.updated_at),
-            clients.updated_at
-        )';
+        $lastActivitySources = ['clients.updated_at'];
+        if (
+            Schema::hasTable('client_care_notes')
+            && Schema::hasColumn('client_care_notes', 'client_id')
+            && Schema::hasColumn('client_care_notes', 'created_at')
+        ) {
+            $lastActivitySources[] = '(SELECT MAX(client_care_notes.created_at) FROM client_care_notes WHERE client_care_notes.client_id = clients.id)';
+        }
+        if (
+            Schema::hasTable('opportunities')
+            && Schema::hasColumn('opportunities', 'client_id')
+            && Schema::hasColumn('opportunities', 'updated_at')
+        ) {
+            $lastActivitySources[] = '(SELECT MAX(opportunities.updated_at) FROM opportunities WHERE opportunities.client_id = clients.id)';
+        }
+        if (
+            Schema::hasTable('contracts')
+            && Schema::hasColumn('contracts', 'client_id')
+            && Schema::hasColumn('contracts', 'updated_at')
+        ) {
+            $lastActivitySources[] = '(SELECT MAX(contracts.updated_at) FROM contracts WHERE contracts.client_id = clients.id)';
+        }
+
+        $lastActivityExpression = 'GREATEST('
+            . implode(', ', array_map(function ($part) {
+                return "COALESCE({$part}, clients.updated_at)";
+            }, $lastActivitySources))
+            . ')';
 
         $query->select('clients.*')
             ->selectRaw("{$lastActivityExpression} as last_activity_at");
 
+        $sortBy = (string) $request->input('sort_by', 'last_activity_at');
+        $sortDir = $this->normalizeSortDirection((string) $request->input('sort_dir', 'desc'));
+        $this->applyClientSorting($query, $sortBy, $sortDir, $lastActivityExpression);
+
         return response()->json(
             $query
-                ->orderByRaw("{$lastActivityExpression} DESC")
-                ->orderByDesc('clients.id')
                 ->paginate((int) $request->input('per_page', 10))
         );
     }
@@ -264,6 +292,110 @@ class CRMController extends Controller
         }
         $payment->delete();
         return response()->json(['message' => 'Xóa thanh toán thành công.']);
+    }
+
+    private function normalizeSortDirection(string $direction): string
+    {
+        return strtolower($direction) === 'asc' ? 'asc' : 'desc';
+    }
+
+    private function applyClientSorting(
+        Builder $query,
+        string $sortBy,
+        string $sortDir,
+        string $lastActivityExpression
+    ): void {
+        $direction = $this->normalizeSortDirection($sortDir);
+        $rawDirection = strtoupper($direction);
+
+        switch ($sortBy) {
+            case 'name':
+                $query->orderBy('clients.name', $direction);
+                break;
+            case 'phone':
+                $query->orderBy('clients.phone', $direction);
+                break;
+            case 'lead_type':
+                $query->orderBy(
+                    LeadType::query()
+                        ->select('name')
+                        ->whereColumn('lead_types.id', 'clients.lead_type_id')
+                        ->limit(1),
+                    $direction
+                );
+                break;
+            case 'revenue_tier':
+                $query->orderBy(
+                    RevenueTier::query()
+                        ->select('label')
+                        ->whereColumn('revenue_tiers.id', 'clients.revenue_tier_id')
+                        ->limit(1),
+                    $direction
+                );
+                break;
+            case 'department':
+                $query->orderBy(
+                    Department::query()
+                        ->select('name')
+                        ->whereColumn('departments.id', 'clients.assigned_department_id')
+                        ->limit(1),
+                    $direction
+                );
+                break;
+            case 'assigned_staff':
+                $query->orderByRaw(
+                    'COALESCE(
+                        (SELECT users.name FROM users WHERE users.id = clients.assigned_staff_id LIMIT 1),
+                        (SELECT users.name FROM users WHERE users.id = clients.sales_owner_id LIMIT 1),
+                        ""
+                    ) ' . $rawDirection
+                );
+                break;
+            case 'care_staff':
+                $query->orderByRaw(
+                    'COALESCE(
+                        (
+                            SELECT MIN(users.name)
+                            FROM client_care_staff
+                            INNER JOIN users ON users.id = client_care_staff.user_id
+                            WHERE client_care_staff.client_id = clients.id
+                        ),
+                        ""
+                    ) ' . $rawDirection
+                );
+                break;
+            case 'created_at':
+                $query->orderBy('clients.created_at', $direction);
+                break;
+            case 'product_categories':
+                $query->orderBy('clients.product_categories', $direction);
+                break;
+            case 'notes':
+                $query->orderBy('clients.notes', $direction);
+                break;
+            case 'total_revenue':
+                $query->orderBy('clients.total_revenue', $direction);
+                break;
+            case 'total_debt_amount':
+                $query->orderBy('clients.total_debt_amount', $direction);
+                break;
+            case 'opportunities_count':
+                $query->orderBy('opportunities_count', $direction);
+                break;
+            case 'contracts_count':
+                $query->orderBy('contracts_count', $direction);
+                break;
+            case 'lead_source':
+                $query->orderBy('clients.lead_source', $direction)
+                    ->orderBy('clients.lead_channel', $direction);
+                break;
+            case 'last_activity_at':
+            default:
+                $query->orderByRaw("{$lastActivityExpression} {$rawDirection}");
+                break;
+        }
+
+        $query->orderBy('clients.id', $direction);
     }
 
     private function canAccessClient(User $user, Client $client): bool

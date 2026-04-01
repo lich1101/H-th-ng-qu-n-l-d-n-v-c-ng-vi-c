@@ -80,10 +80,11 @@ class ContractController extends Controller
             });
         }
 
+        $sortBy = (string) $request->input('sort_by', 'signed_at');
+        $sortDir = $this->normalizeSortDirection((string) $request->input('sort_dir', 'desc'));
+        $this->applyContractSorting($query, $sortBy, $sortDir);
+
         $contracts = $query
-            ->orderByRaw('CASE WHEN signed_at IS NULL THEN 1 ELSE 0 END')
-            ->orderByDesc('signed_at')
-            ->orderByDesc('id')
             ->paginate((int) $request->input('per_page', 15));
         $contracts->getCollection()->transform(function (Contract $contract) use ($request) {
             return $this->appendContractPermissions($contract, $request->user());
@@ -103,6 +104,95 @@ class ContractController extends Controller
         return response()->json(
             $this->appendContractPermissions($contract, $request->user())
         );
+    }
+
+    private function normalizeSortDirection(string $direction): string
+    {
+        return strtolower($direction) === 'asc' ? 'asc' : 'desc';
+    }
+
+    private function applyContractSorting(Builder $query, string $sortBy, string $sortDir): void
+    {
+        $direction = $this->normalizeSortDirection($sortDir);
+        $rawDirection = strtoupper($direction);
+
+        switch ($sortBy) {
+            case 'code':
+                $query->orderBy('contracts.code', $direction);
+                break;
+            case 'title':
+                $query->orderBy('contracts.title', $direction);
+                break;
+            case 'client_name':
+                $query->orderBy(
+                    Client::query()
+                        ->select('name')
+                        ->whereColumn('clients.id', 'contracts.client_id')
+                        ->limit(1),
+                    $direction
+                );
+                break;
+            case 'client_phone':
+                $query->orderBy(
+                    Client::query()
+                        ->select('phone')
+                        ->whereColumn('clients.id', 'contracts.client_id')
+                        ->limit(1),
+                    $direction
+                );
+                break;
+            case 'signed_at':
+                $query->orderByRaw('CASE WHEN contracts.signed_at IS NULL THEN 1 ELSE 0 END')
+                    ->orderBy('contracts.signed_at', $direction);
+                break;
+            case 'end_date':
+                $query->orderByRaw('CASE WHEN contracts.end_date IS NULL THEN 1 ELSE 0 END')
+                    ->orderBy('contracts.end_date', $direction);
+                break;
+            case 'notes':
+                $query->orderBy('contracts.notes', $direction);
+                break;
+            case 'collector_name':
+                $query->orderBy(
+                    User::query()
+                        ->select('name')
+                        ->whereColumn('users.id', 'contracts.collector_user_id')
+                        ->limit(1),
+                    $direction
+                );
+                break;
+            case 'value':
+                $query->orderBy('contracts.value', $direction);
+                break;
+            case 'payments_total':
+                $query->orderBy('payments_total', $direction);
+                break;
+            case 'debt_outstanding':
+                $query->orderByRaw('(COALESCE(contracts.value, 0) - COALESCE(payments_total, 0)) ' . $rawDirection);
+                break;
+            case 'costs_total':
+                $query->orderBy('costs_total', $direction);
+                break;
+            case 'payments_count':
+                $query->orderBy('payments_count', $direction);
+                break;
+            case 'status':
+                $query->orderBy('contracts.status', $direction);
+                break;
+            case 'approval_status':
+                $query->orderBy('contracts.approval_status', $direction);
+                break;
+            case 'handover_receive_status':
+                $query->orderBy('contracts.handover_receive_status', $direction);
+                break;
+            default:
+                $query->orderByRaw('CASE WHEN contracts.signed_at IS NULL THEN 1 ELSE 0 END')
+                    ->orderByDesc('contracts.signed_at');
+                $direction = 'desc';
+                break;
+        }
+
+        $query->orderBy('contracts.id', $direction);
     }
 
     public function store(Request $request): JsonResponse
