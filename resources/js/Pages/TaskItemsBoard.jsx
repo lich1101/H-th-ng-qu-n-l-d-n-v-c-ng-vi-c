@@ -76,6 +76,12 @@ export default function TaskItemsBoard(props) {
         }
     };
 
+    const handleSearch = (val) => {
+        const next = { ...filters, search: val, page: 1 };
+        setFilters(next);
+        fetchItems(1, next);
+    };
+
     const fetchItems = async (page = filters.page, nextFilters = filters) => {
         setLoading(true);
         try {
@@ -137,7 +143,9 @@ export default function TaskItemsBoard(props) {
             <div className="lg:col-span-2 space-y-4">
                 <FilterToolbar enableSearch
                     title="Bộ lọc đầu việc"
-                    description="Lọc đầu việc theo dự án, công việc, nhân sự và mốc thời gian để rà tiến độ chính xác hơn."
+                    description="Tìm nhanh đầu việc qua tiêu đề, dự án, công việc hoặc nhân sự phụ trách."
+                    searchValue={filters.search}
+                    onSearch={handleSearch}
                     actions={(
                         <FilterActionGroup>
                             <button
@@ -150,7 +158,7 @@ export default function TaskItemsBoard(props) {
                         </FilterActionGroup>
                     )}
                 >
-                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                         <FilterField label="Dự án">
                             <select
                                 className={filterControlClass}
@@ -191,14 +199,7 @@ export default function TaskItemsBoard(props) {
                                 {Object.keys(LABELS).map((key) => <option key={key} value={key}>{LABELS[key]}</option>)}
                             </select>
                         </FilterField>
-                        <FilterField label="Tìm kiếm">
-                            <input
-                                className={filterControlClass}
-                                placeholder="Tiêu đề đầu việc hoặc công việc"
-                                value={filters.search}
-                                onChange={(e) => setFilters((s) => ({ ...s, search: e.target.value }))}
-                            />
-                        </FilterField>
+
                         <FilterField label="Từ ngày bắt đầu">
                             <input
                                 type="date"

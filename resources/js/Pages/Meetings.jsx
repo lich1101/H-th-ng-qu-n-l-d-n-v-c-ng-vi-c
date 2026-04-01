@@ -133,6 +133,12 @@ export default function Meetings(props) {
         }
     };
 
+    const handleSearch = (val) => {
+        const next = { ...filters, search: val, page: 1 };
+        setFilters(next);
+        fetchMeetings(1, next);
+    };
+
     const fetchMeetings = async (nextPage = 1, nextFilters = filters) => {
         setLoading(true);
         try {
@@ -314,8 +320,10 @@ export default function Meetings(props) {
             description="Lịch họp theo dạng lịch tháng, có chọn nhiều thành viên và xem nhanh thông tin cuộc họp."
         >
             <FilterToolbar enableSearch
-                title="Bộ lọc lịch họp"
-                description="Lọc theo tiêu đề, thời gian và thành viên tham gia để xem lịch tháng gọn và đúng phạm vi."
+                title="Bảng điều khiển lịch họp"
+                description="Tìm nhanh lịch họp qua tiêu đề, mô tả hoặc thành viên."
+                searchValue={filters.search}
+                onSearch={handleSearch}
                 actions={(
                     <FilterActionGroup className="justify-end">
                         <button type="submit" form="meeting-filter-form" className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-semibold text-slate-700">
@@ -327,7 +335,7 @@ export default function Meetings(props) {
                     </FilterActionGroup>
                 )}
             >
-                <form id="meeting-filter-form" onSubmit={applyFilters} className="grid gap-3 xl:grid-cols-[auto_minmax(0,1fr)_minmax(0,0.7fr)_minmax(0,0.7fr)_minmax(0,0.9fr)]">
+                <form id="meeting-filter-form" onSubmit={applyFilters} className="grid gap-3 xl:grid-cols-[auto_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,1fr)_auto]">
                     <FilterActionGroup className="xl:self-end">
                         <button
                             type="button"
@@ -338,15 +346,6 @@ export default function Meetings(props) {
                             Thêm lịch họp
                         </button>
                     </FilterActionGroup>
-                    <FilterField label="Tìm kiếm">
-                        <input
-                            type="text"
-                            className={filterControlClass}
-                            placeholder="Tìm theo tiêu đề hoặc ghi chú cuộc họp"
-                            value={filters.search}
-                            onChange={(e) => setFilters((prev) => ({ ...prev, search: e.target.value }))}
-                        />
-                    </FilterField>
                     <FilterField label="Từ ngày">
                         <input
                             type="date"

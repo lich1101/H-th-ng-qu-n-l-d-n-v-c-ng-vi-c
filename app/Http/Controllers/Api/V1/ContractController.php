@@ -73,9 +73,13 @@ class ContractController extends Controller
             $query->where(function ($builder) use ($search) {
                 $builder->where('code', 'like', "%{$search}%")
                     ->orWhere('title', 'like', "%{$search}%")
+                    ->orWhere('notes', 'like', "%{$search}%")
+                    ->orWhere('approval_note', 'like', "%{$search}%")
                     ->orWhereHas('client', function ($clientQuery) use ($search) {
                         $clientQuery->where('name', 'like', "%{$search}%")
-                            ->orWhere('company', 'like', "%{$search}%");
+                            ->orWhere('company', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%")
+                            ->orWhere('phone', 'like', "%{$search}%");
                     });
             });
         }
@@ -84,11 +88,12 @@ class ContractController extends Controller
         $sortDir = $this->normalizeSortDirection((string) $request->input('sort_dir', 'desc'));
         $this->applyContractSorting($query, $sortBy, $sortDir);
 
+        /** @var \Illuminate\Pagination\LengthAwarePaginator $contracts */
         $contracts = $query
             ->paginate((int) $request->input('per_page', 15));
-        $contracts->getCollection()->transform(function (Contract $contract) use ($request) {
+        $contracts->setCollection($contracts->getCollection()->transform(function (Contract $contract) use ($request) {
             return $this->appendContractPermissions($contract, $request->user());
-        });
+        }));
 
         return response()->json($contracts);
     }

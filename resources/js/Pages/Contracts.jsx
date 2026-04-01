@@ -365,6 +365,12 @@ export default function Contracts(props) {
         }
     };
 
+    const handleContractSearch = (val) => {
+        const next = { ...filters, search: val, page: 1 };
+        setFilters(next);
+        fetchContracts(1, next);
+    };
+
     const fetchContracts = async (pageOrFilters = filters.page, maybeFilters = filters) => {
         const nextFilters = typeof pageOrFilters === 'object' && pageOrFilters !== null
             ? pageOrFilters
@@ -1032,11 +1038,10 @@ export default function Contracts(props) {
                     className="mb-4 border-0 p-0 shadow-none"
                     title="Danh sách hợp đồng"
                     description="Lọc theo mã, trạng thái thực hiện và trạng thái duyệt trước khi thao tác chi tiết từng hợp đồng."
+                    searchValue={filters.search}
+                    onSearch={handleContractSearch}
                 >
-                    <div className="grid gap-3 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.7fr)_minmax(0,0.7fr)_minmax(0,0.8fr)_auto]">
-                        <FilterField label="Tìm kiếm">
-                            <input className={filterControlClass} placeholder="Tìm theo mã tự sinh hoặc tiêu đề" value={filters.search} onChange={(e) => setFilters((s) => ({ ...s, search: e.target.value }))} />
-                        </FilterField>
+                    <div className="grid gap-3 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,1fr)_auto]">
                         <FilterField label="Trạng thái">
                             <select className={filterControlClass} value={filters.status} onChange={(e) => setFilters((s) => ({ ...s, status: e.target.value }))}>
                                 <option value="">Tất cả trạng thái</option>

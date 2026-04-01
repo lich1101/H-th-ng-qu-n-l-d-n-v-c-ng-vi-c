@@ -311,6 +311,12 @@ export default function AttendanceWifi(props) {
         setRecords(res.data?.data || []);
     };
 
+    const handleRequestSearch = (val) => {
+        const next = { ...requestFilters, search: val, page: 1 };
+        setRequestFilters(next);
+        loadRequests(next);
+    };
+
     const loadRequests = async (filters = requestFilters) => {
         const res = await axios.get('/api/v1/attendance/requests', { params: filters });
         setRequests(res.data?.data || []);
@@ -326,6 +332,12 @@ export default function AttendanceWifi(props) {
         if (!canManage) return;
         const res = await axios.get('/api/v1/attendance/wifi');
         setWifiRows(res.data?.data || []);
+    };
+
+    const handleDeviceSearch = (val) => {
+        const next = { ...deviceFilters, search: val, page: 1 };
+        setDeviceFilters(next);
+        loadDevices(next);
     };
 
     const loadDevices = async (filters = deviceFilters) => {
@@ -346,6 +358,12 @@ export default function AttendanceWifi(props) {
         setHolidays(res.data?.data || []);
     };
 
+    const handleStaffSearch = (val) => {
+        const next = { ...staffFilters, search: val, page: 1 };
+        setStaffFilters(next);
+        loadStaff(next);
+    };
+
     const loadStaff = async (filters = staffFilters) => {
         if (!canManage) return;
         const res = await axios.get('/api/v1/attendance/staff', { params: filters });
@@ -356,6 +374,12 @@ export default function AttendanceWifi(props) {
             total: res.data?.total || 0,
             per_page: Number(filters.per_page || 20),
         });
+    };
+
+    const handleReportSearch = (val) => {
+        const next = { ...reportFilters, search: val };
+        setReportFilters(next);
+        loadReport(next);
     };
 
     const loadReport = async (filters = reportFilters) => {
@@ -726,13 +750,16 @@ export default function AttendanceWifi(props) {
                                 className="mb-4"
                                 title="Danh sách đơn"
                                 description={canManage ? 'Xem và duyệt toàn bộ đơn đi muộn hoặc nghỉ phép của nhân sự.' : 'Theo dõi trạng thái đơn của bạn.'}
+                                searchValue={requestFilters.search}
+                                onSearch={handleRequestSearch}
                             >
-                                <div className="grid gap-4 md:grid-cols-2">
-                                    <FilterField label="Tìm kiếm" className="min-w-[220px]">
-                                        <input className={filterControlClass} value={requestFilters.search} onChange={(e) => setRequestFilters((s) => ({ ...s, search: e.target.value }))} placeholder="Tên nhân viên, tiêu đề..." />
-                                    </FilterField>
+                                <div className="grid gap-4 md:grid-cols-1">
                                     <FilterField label="Trạng thái">
-                                        <select className={filterControlClass} value={requestFilters.status} onChange={(e) => setRequestFilters((s) => ({ ...s, status: e.target.value, page: 1 }))}>
+                                        <select className={filterControlClass} value={requestFilters.status} onChange={(e) => {
+                                            const next = { ...requestFilters, status: e.target.value, page: 1 };
+                                            setRequestFilters(next);
+                                            loadRequests(next);
+                                        }}>
                                             <option value="">Tất cả trạng thái</option>
                                             <option value="pending">Chờ duyệt</option>
                                             <option value="approved">Đã duyệt</option>
@@ -889,13 +916,16 @@ export default function AttendanceWifi(props) {
                             className="mb-4"
                             title="Thiết bị nhân viên"
                             description="Mỗi nhân viên chỉ dùng một thiết bị đã được duyệt để chấm công trên đúng Wi-Fi/BSSID công ty."
+                            searchValue={deviceFilters.search}
+                            onSearch={handleDeviceSearch}
                         >
-                            <div className="grid gap-4 md:grid-cols-2">
-                                <FilterField label="Tìm kiếm" className="min-w-[220px]">
-                                    <input className={filterControlClass} value={deviceFilters.search} onChange={(e) => setDeviceFilters((s) => ({ ...s, search: e.target.value }))} placeholder="Nhân viên, model, UUID..." />
-                                </FilterField>
+                            <div className="grid gap-4 md:grid-cols-1">
                                 <FilterField label="Trạng thái">
-                                    <select className={filterControlClass} value={deviceFilters.status} onChange={(e) => setDeviceFilters((s) => ({ ...s, status: e.target.value, page: 1 }))}>
+                                    <select className={filterControlClass} value={deviceFilters.status} onChange={(e) => {
+                                        const next = { ...deviceFilters, status: e.target.value, page: 1 };
+                                        setDeviceFilters(next);
+                                        loadDevices(next);
+                                    }}>
                                         <option value="">Tất cả trạng thái</option>
                                         <option value="pending">Chờ duyệt</option>
                                         <option value="approved">Đã duyệt</option>
@@ -987,13 +1017,16 @@ export default function AttendanceWifi(props) {
                             className="mb-4"
                             title="Cấu hình từng nhân viên"
                             description="Toàn thời gian phải chấm trong khung đầu giờ để được 1 công. Mỗi chiều lấy mốc từ giờ bắt đầu buổi chiều."
+                            searchValue={staffFilters.search}
+                            onSearch={handleStaffSearch}
                         >
-                            <div className="grid gap-4 md:grid-cols-2">
-                                <FilterField label="Tìm kiếm" className="min-w-[220px]">
-                                    <input className={filterControlClass} value={staffFilters.search} onChange={(e) => setStaffFilters((s) => ({ ...s, search: e.target.value }))} placeholder="Tên hoặc email..." />
-                                </FilterField>
+                            <div className="grid gap-4 md:grid-cols-1">
                                 <FilterField label="Vai trò">
-                                    <select className={filterControlClass} value={staffFilters.role} onChange={(e) => setStaffFilters((s) => ({ ...s, role: e.target.value, page: 1 }))}>
+                                    <select className={filterControlClass} value={staffFilters.role} onChange={(e) => {
+                                        const next = { ...staffFilters, role: e.target.value, page: 1 };
+                                        setStaffFilters(next);
+                                        loadStaff(next);
+                                    }}>
                                         <option value="">Tất cả vai trò</option>
                                         <option value="admin">Admin</option>
                                         <option value="quan_ly">Quản lý</option>
@@ -1067,6 +1100,8 @@ export default function AttendanceWifi(props) {
                             className="mb-4"
                             title="Báo cáo công"
                             description="Lọc theo ngày bắt đầu/kết thúc để tổng hợp công, sửa công tay theo bước 0.1 và xuất file Excel. 1.0 là đủ ngày công."
+                            searchValue={reportFilters.search}
+                            onSearch={handleReportSearch}
                             actions={(
                                 <FilterActionGroup className="xl:justify-end">
                                     <button type="button" className={buttonSecondaryClass} onClick={() => openManualRecord()}>Sửa công tay</button>
@@ -1075,15 +1110,12 @@ export default function AttendanceWifi(props) {
                                 </FilterActionGroup>
                             )}
                         >
-                            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                            <div className="grid gap-4 md:grid-cols-2">
                                 <FilterField label="Từ ngày">
                                     <input type="date" className={filterControlClass} value={reportFilters.start_date} onChange={(e) => setReportFilters((s) => ({ ...s, start_date: e.target.value }))} />
                                 </FilterField>
                                 <FilterField label="Đến ngày">
                                     <input type="date" className={filterControlClass} value={reportFilters.end_date} onChange={(e) => setReportFilters((s) => ({ ...s, end_date: e.target.value }))} />
-                                </FilterField>
-                                <FilterField label="Tìm nhân sự">
-                                    <input className={filterControlClass} value={reportFilters.search} onChange={(e) => setReportFilters((s) => ({ ...s, search: e.target.value }))} placeholder="Tên hoặc email" />
                                 </FilterField>
                             </div>
                         </FilterToolbar>

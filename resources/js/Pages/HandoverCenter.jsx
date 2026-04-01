@@ -3,6 +3,7 @@ import axios from 'axios';
 import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
+import PaginationControls from '@/Components/PaginationControls';
 import { useToast } from '@/Contexts/ToastContext';
 import { formatVietnamDateTime } from '@/lib/vietnamTime';
 
@@ -29,24 +30,48 @@ export default function HandoverCenter(props) {
     const userRole = props?.auth?.user?.role || '';
     const [loading, setLoading] = useState(false);
     const [projects, setProjects] = useState([]);
+    const [meta, setMeta] = useState({ current_page: 1, last_page: 1, total: 0 });
     const [filters, setFilters] = useState({
         search: '',
         owner_only: userRole === 'nhan_vien' ? '1' : '',
+        page: 1,
+        per_page: 20,
     });
     const [reviewingProject, setReviewingProject] = useState(null);
     const [decision, setDecision] = useState('approved');
     const [reason, setReason] = useState('');
     const [savingReview, setSavingReview] = useState(false);
 
-    const fetchQueue = async () => {
+    const handleSearch = (val) => {
+        const next = { ...filters, search: val, page: 1 };
+        setFilters(next);
+        fetchQueue(1, next);
+    };
+
+    const fetchQueue = async (pageOrFilters = filters.page, maybeFilters = filters) => {
+        const nextFilters = typeof pageOrFilters === 'object' && pageOrFilters !== null
+            ? pageOrFilters
+            : maybeFilters;
+        const nextPage = typeof pageOrFilters === 'object' && pageOrFilters !== null
+            ? Number(pageOrFilters.page || 1)
+            : Number(pageOrFilters || 1);
+
         setLoading(true);
         try {
             const response = await axios.get('/api/v1/project-handovers', {
                 params: {
-                    per_page: 100,
+                    per_page: nextFilters.per_page,
+                    page: nextPage,
+                    search: nextFilters.search,
                 },
             });
             setProjects(response.data?.data || []);
+            setMeta({
+                current_page: response.data?.current_page || 1,
+                last_page: response.data?.last_page || 1,
+                total: response.data?.total || 0,
+            });
+            setFilters(prev => ({ ...prev, page: response.data?.current_page || nextPage }));
         } catch (error) {
             toast.error(error?.response?.data?.message || 'Không tải được hàng đợi bàn giao dự án.');
         } finally {
@@ -60,31 +85,17 @@ export default function HandoverCenter(props) {
     }, []);
 
     const filteredProjects = useMemo(() => {
-        const keyword = filters.search.trim().toLowerCase();
         return projects.filter((project) => {
             const ownerOnly = filters.owner_only === '1';
             if (ownerOnly && Number(project?.owner_id || 0) !== Number(props?.auth?.user?.id || 0)) {
                 return false;
             }
-            if (!keyword) return true;
-            return [
-                project?.name,
-                project?.code,
-                project?.owner?.name,
-                project?.contract?.code,
-                project?.contract?.title,
-                project?.handoverRequester?.name,
-                project?.handover_review_note,
-            ]
-                .filter(Boolean)
-                .join(' ')
-                .toLowerCase()
-                .includes(keyword);
+            return true;
         });
-    }, [filters.owner_only, filters.search, projects, props?.auth?.user?.id]);
+    }, [filters.owner_only, projects, props?.auth?.user?.id]);
 
     const stats = useMemo(() => {
-        const total = projects.length;
+        const total = meta.total || projects.length;
         const canReview = projects.filter((project) => project?.permissions?.can_review_handover).length;
         const ownerQueue = projects.filter((project) => Number(project?.owner_id || 0) === Number(props?.auth?.user?.id || 0)).length;
         return [
@@ -92,7 +103,7 @@ export default function HandoverCenter(props) {
             { label: 'Bạn có thể duyệt', value: String(canReview) },
             { label: 'Dự án bạn phụ trách', value: String(ownerQueue) },
         ];
-    }, [projects, props?.auth?.user?.id]);
+    }, [projects, props?.auth?.user?.id, meta.total]);
 
     const openReviewModal = (project, nextDecision) => {
         setReviewingProject(project);
@@ -138,7 +149,9 @@ export default function HandoverCenter(props) {
             <div className="space-y-4">
                 <FilterToolbar enableSearch
                     title="Hàng đợi duyệt bàn giao"
-                    description="Chỉ dự án đã được phụ trách gửi duyệt và đủ điều kiện mới xuất hiện tại đây."
+                    description="Tìm nhanh theo mã dự án, hợp đồng, khách hàng hoặc người gửi."
+                    searchValue={filters.search}
+                    onSearch={handleSearch}
                     actions={(
                         <FilterActionGroup>
                             {userRole === 'nhan_vien' && (
@@ -159,18 +172,7 @@ export default function HandoverCenter(props) {
                             )}
                         </FilterActionGroup>
                     )}
-                >
-                    <div className="grid gap-3 md:grid-cols-2">
-                        <FilterField label="Tìm kiếm">
-                            <input
-                                className={filterControlClass}
-                                placeholder="Dự án, hợp đồng hoặc người gửi"
-                                value={filters.search}
-                                onChange={(e) => setFilters((prev) => ({ ...prev, search: e.target.value }))}
-                            />
-                        </FilterField>
-                    </div>
-                </FilterToolbar>
+                />
 
                 <div className="space-y-3">
                     {loading && (
@@ -270,6 +272,21 @@ export default function HandoverCenter(props) {
                         );
                     })}
                 </div>
+
+                <PaginationControls
+                    page={meta.current_page}
+                    lastPage={meta.last_page}
+                    total={meta.total}
+                    perPage={filters.per_page}
+                    loading={loading}
+                    onPageChange={(p) => fetchQueue(p, filters)}
+                    onPerPageChange={(pp) => {
+                        const next = { ...filters, per_page: pp, page: 1 };
+                        setFilters(next);
+                        fetchQueue(1, next);
+                    }}
+                    label="phiếu bàn giao"
+                />
             </div>
 
             <Modal

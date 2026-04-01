@@ -405,6 +405,12 @@ export default function TasksBoard(props) {
         }
     };
 
+    const handleTaskSearch = (val) => {
+        const next = { ...filters, search: val, page: 1 };
+        setFilters(next);
+        fetchTasks(1, next);
+    };
+
     const fetchTasks = async (page = filters.page, nextFilters = filters) => {
         setLoading(true);
         try {
@@ -1738,7 +1744,9 @@ export default function TasksBoard(props) {
                 )}
                 <FilterToolbar enableSearch
                     title="Bộ lọc công việc"
-                    description="Lọc theo dự án, trạng thái, nhân sự và thời hạn rồi chuyển giữa các chế độ xem mà không bị rối thao tác."
+                    description="Tìm nhanh công việc dựa trên tiêu đề, dự án, hoặc nhân sự phụ trách."
+                    searchValue={filters.search}
+                    onSearch={handleTaskSearch}
                     actions={(
                         <FilterActionGroup className="justify-end">
                             {[
@@ -1763,7 +1771,7 @@ export default function TasksBoard(props) {
                         </FilterActionGroup>
                     )}
                 >
-                    <div className="grid gap-3 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,0.7fr)_minmax(0,0.7fr)_minmax(0,1.05fr)_minmax(0,0.6fr)_minmax(0,0.6fr)_auto]">
+                    <div className="grid gap-3 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,0.7fr)_minmax(0,0.7fr)_minmax(0,0.6fr)_minmax(0,0.6fr)_auto]">
                         <FilterField label="Dự án">
                             <select
                                 className={filterControlClass}
@@ -1793,14 +1801,6 @@ export default function TasksBoard(props) {
                                 <option value="">Tất cả nhân sự</option>
                                 {assignableUserOptions.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                             </select>
-                        </FilterField>
-                        <FilterField label="Tìm kiếm">
-                            <input
-                                className={filterControlClass}
-                                placeholder="Tìm theo tiêu đề hoặc mô tả công việc"
-                                value={filters.search}
-                                onChange={(e) => setFilters((s) => ({ ...s, search: e.target.value }))}
-                            />
                         </FilterField>
                         <FilterField label="Từ hạn">
                             <input

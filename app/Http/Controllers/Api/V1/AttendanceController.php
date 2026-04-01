@@ -207,7 +207,9 @@ class AttendanceController extends Controller
             $search = trim((string) $request->input('search'));
             $query->where(function ($builder) use ($search) {
                 $builder->where('name', 'like', "%{$search}%")
-                    ->orWhere('email', 'like', "%{$search}%");
+                    ->orWhere('email', 'like', "%{$search}%")
+                    ->orWhere('role', 'like', "%{$search}%")
+                    ->orWhere('department', 'like', "%{$search}%");
             });
         }
 
@@ -268,7 +270,9 @@ class AttendanceController extends Controller
                     ->orWhere('device_uuid', 'like', "%{$search}%")
                     ->orWhereHas('user', function ($userQuery) use ($search) {
                         $userQuery->where('name', 'like', "%{$search}%")
-                            ->orWhere('email', 'like', "%{$search}%");
+                            ->orWhere('email', 'like', "%{$search}%")
+                            ->orWhere('role', 'like', "%{$search}%")
+                            ->orWhere('department', 'like', "%{$search}%");
                     });
             });
         }
@@ -578,7 +582,9 @@ class AttendanceController extends Controller
                     ->orWhere('content', 'like', "%{$search}%")
                     ->orWhereHas('user', function ($userQuery) use ($search) {
                         $userQuery->where('name', 'like', "%{$search}%")
-                            ->orWhere('email', 'like', "%{$search}%");
+                            ->orWhere('email', 'like', "%{$search}%")
+                            ->orWhere('role', 'like', "%{$search}%")
+                            ->orWhere('department', 'like', "%{$search}%");
                     });
             });
         }
@@ -723,6 +729,9 @@ class AttendanceController extends Controller
         }
 
         $targetUser = User::query()->findOrFail((int) $validated['user_id']);
+        if (! ($targetUser instanceof User)) {
+             throw new \RuntimeException('Failed to resolve user model');
+        }
         if (! $this->canTrackAttendance($targetUser)) {
             return response()->json([
                 'message' => 'Nhân sự này hiện không thuộc diện chấm công WiFi.',
@@ -1024,7 +1033,9 @@ class AttendanceController extends Controller
             $search = trim((string) $request->input('search'));
             $query->whereHas('user', function ($userQuery) use ($search) {
                 $userQuery->where('name', 'like', "%{$search}%")
-                    ->orWhere('email', 'like', "%{$search}%");
+                    ->orWhere('email', 'like', "%{$search}%")
+                    ->orWhere('role', 'like', "%{$search}%")
+                    ->orWhere('department', 'like', "%{$search}%");
             });
         }
 
@@ -1064,7 +1075,9 @@ class AttendanceController extends Controller
             $search = trim((string) $request->input('search'));
             $userQuery->where(function ($query) use ($search) {
                 $query->where('name', 'like', "%{$search}%")
-                    ->orWhere('email', 'like', "%{$search}%");
+                    ->orWhere('email', 'like', "%{$search}%")
+                    ->orWhere('role', 'like', "%{$search}%")
+                    ->orWhere('department', 'like', "%{$search}%");
             });
         }
 

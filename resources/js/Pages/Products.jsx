@@ -44,6 +44,11 @@ export default function Products(props) {
     });
     const [selectedProductIds, setSelectedProductIds] = useState([]);
     const [bulkLoading, setBulkLoading] = useState(false);
+    const handleSearch = (val) => {
+        const next = { ...filters, search: val, page: 1 };
+        setFilters(next);
+        fetchProducts(1, next);
+    };
 
     const fetchProducts = async (pageOrFilters = filters.page, maybeFilters = filters) => {
         const nextFilters = typeof pageOrFilters === 'object' && pageOrFilters !== null
@@ -270,34 +275,28 @@ export default function Products(props) {
                             </button>
                         )}
                     </div>
-                        <FilterToolbar enableSearch
-                            title="Danh sách sản phẩm"
-                            description="Quản lý sản phẩm và đơn giá gắn hợp đồng."
-                        actions={(
-                            <FilterActionGroup>
-                                <button
-                                    type="button"
-                                    className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700"
-                                    onClick={() => {
-                                        const next = { ...filters, page: 1 };
-                                        setFilters(next);
-                                        fetchProducts(1, next);
-                                    }}
-                                >
-                                    Lọc
-                                </button>
-                            </FilterActionGroup>
-                        )}
-                    >
-                        <div className="grid gap-3 md:grid-cols-3">
-                            <FilterField label="Tìm kiếm">
-                                <input
-                                    className={filterControlClass}
-                                    placeholder="Tên hoặc mã tự sinh"
-                                    value={filters.search}
-                                    onChange={(e) => setFilters((s) => ({ ...s, search: e.target.value }))}
-                                />
-                            </FilterField>
+                <FilterToolbar enableSearch
+                    title="Danh sách sản phẩm"
+                    description="Tìm nhanh sản phẩm qua tên, mã hoặc danh mục."
+                    searchValue={filters.search}
+                    onSearch={handleSearch}
+                    actions={(
+                        <FilterActionGroup>
+                            <button
+                                type="button"
+                                className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700"
+                                onClick={() => {
+                                    const next = { ...filters, page: 1 };
+                                    setFilters(next);
+                                    fetchProducts(1, next);
+                                }}
+                            >
+                                Lọc
+                            </button>
+                        </FilterActionGroup>
+                    )}
+                >
+                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                             <FilterField label="Danh mục">
                                 <select
                                     className={filterControlClass}

@@ -156,6 +156,12 @@ export default function Opportunities(props) {
         }
     };
 
+    const handleOpportunitySearch = (val) => {
+        const next = { ...filters, search: val, page: 1 };
+        setFilters(next);
+        fetchOpportunities(1, next);
+    };
+
     const fetchOpportunities = async (pageOrFilters = filters.page, maybeFilters = filters) => {
         const nextFilters = typeof pageOrFilters === 'object' && pageOrFilters !== null
             ? pageOrFilters
@@ -394,7 +400,9 @@ export default function Opportunities(props) {
             </div>
             <FilterToolbar enableSearch
                 title="Danh sách cơ hội"
-                description="Lọc theo trạng thái, khách hàng và tìm kiếm nhanh theo tên cơ hội."
+                description="Lọc theo trạng thái, khách hàng và tìm kiếm nhanh theo tên cơ hội, ghi chú hoặc khách hàng."
+                searchValue={filters.search}
+                onSearch={handleOpportunitySearch}
                 actions={(
                     <FilterActionGroup>
                         <button
@@ -411,15 +419,7 @@ export default function Opportunities(props) {
                     </FilterActionGroup>
                 )}
             >
-                <div className="grid gap-3 lg:grid-cols-3">
-                    <FilterField label="Tìm kiếm">
-                        <input
-                            className={filterControlClass}
-                            placeholder="Tên cơ hội, ghi chú, tên khách hàng..."
-                            value={filters.search}
-                            onChange={(event) => setFilters((prev) => ({ ...prev, search: event.target.value }))}
-                        />
-                    </FilterField>
+                <div className="grid gap-3 lg:grid-cols-2">
                     <FilterField label="Trạng thái cơ hội">
                         <select
                             className={filterControlClass}

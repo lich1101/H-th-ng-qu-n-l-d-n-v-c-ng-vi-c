@@ -118,6 +118,12 @@ export default function UserAccountsDashboard(props) {
         return () => window.clearInterval(timer);
     }, [filters]);
 
+    const handleSearch = (val) => {
+        const next = { ...filters, search: val, page: 1 };
+        setFilters(next);
+        fetchAccounts(next);
+    };
+
     const submitSearch = (e) => {
         e.preventDefault();
         setFilters((prev) => ({ ...prev, page: 1, search: prev.search }));
@@ -359,57 +365,53 @@ export default function UserAccountsDashboard(props) {
                 </div>
             </div>
 
-            <form onSubmit={submitSearch} className="mb-4">
+            <div className="mb-4">
                 <FilterToolbar enableSearch
                     title="Bộ lọc tài khoản"
-                    description="Lọc theo tên, email, vai trò và trạng thái hoạt động để kiểm tra nhanh danh sách người dùng."
+                    description="Tìm nhanh nhân sự qua tên, email, số điện thoại hoặc phòng ban."
+                    searchValue={filters.search}
+                    onSearch={handleSearch}
                     actions={(
                         <FilterActionGroup>
                             <button
-                                type="submit"
+                                type="button"
                                 className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90"
+                                onClick={() => fetchAccounts(filters)}
                             >
                                 Tìm kiếm
                             </button>
                         </FilterActionGroup>
                     )}
                 >
-                    <FilterField label="Tìm kiếm">
-                        <input
-                            type="text"
-                            value={filters.search}
-                            onChange={(e) => setFilters((prev) => ({ ...prev, search: e.target.value }))}
-                            placeholder="Tìm theo tên hoặc email"
-                            className={filterControlClass}
-                        />
-                    </FilterField>
-                    <FilterField label="Vai trò">
-                        <select
-                            value={filters.role}
-                            onChange={(e) => setFilters((prev) => ({ ...prev, page: 1, role: e.target.value }))}
-                            className={filterControlClass}
-                        >
-                            <option value="">Tất cả vai trò</option>
-                            <option value="admin">Admin</option>
-                            <option value="administrator">Administrator</option>
-                            <option value="quan_ly">Quản lý</option>
-                            <option value="nhan_vien">Nhân sự</option>
-                            <option value="ke_toan">Kế toán</option>
-                        </select>
-                    </FilterField>
-                    <FilterField label="Trạng thái">
-                        <select
-                            value={filters.status}
-                            onChange={(e) => setFilters((prev) => ({ ...prev, page: 1, status: e.target.value }))}
-                            className={filterControlClass}
-                        >
-                            <option value="">Tất cả trạng thái</option>
-                            <option value="active">Đang hoạt động</option>
-                            <option value="inactive">Tạm khóa</option>
-                        </select>
-                    </FilterField>
+                    <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                        <FilterField label="Vai trò">
+                            <select
+                                value={filters.role}
+                                onChange={(e) => setFilters((prev) => ({ ...prev, page: 1, role: e.target.value }))}
+                                className={filterControlClass}
+                            >
+                                <option value="">Tất cả vai trò</option>
+                                <option value="admin">Admin</option>
+                                <option value="administrator">Administrator</option>
+                                <option value="quan_ly">Quản lý</option>
+                                <option value="nhan_vien">Nhân sự</option>
+                                <option value="ke_toan">Kế toán</option>
+                            </select>
+                        </FilterField>
+                        <FilterField label="Trạng thái">
+                            <select
+                                value={filters.status}
+                                onChange={(e) => setFilters((prev) => ({ ...prev, page: 1, status: e.target.value }))}
+                                className={filterControlClass}
+                            >
+                                <option value="">Tất cả trạng thái</option>
+                                <option value="active">Đang hoạt động</option>
+                                <option value="inactive">Tạm khóa</option>
+                            </select>
+                        </FilterField>
+                    </div>
                 </FilterToolbar>
-            </form>
+            </div>
 
             <Modal
                 open={showForm}

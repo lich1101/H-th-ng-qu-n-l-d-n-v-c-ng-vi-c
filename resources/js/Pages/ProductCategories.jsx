@@ -35,6 +35,12 @@ export default function ProductCategories(props) {
         is_active: true,
     });
 
+    const handleSearch = (val) => {
+        const next = { ...filters, search: val, page: 1 };
+        setFilters(next);
+        fetchCategories(1, next);
+    };
+
     const fetchCategories = async (pageOrFilters = filters.page, maybeFilters = filters) => {
         const nextFilters = typeof pageOrFilters === 'object' && pageOrFilters !== null
             ? pageOrFilters
@@ -182,7 +188,9 @@ export default function ProductCategories(props) {
                 <FilterToolbar enableSearch
                     className="mb-4 border-0 p-0 shadow-none"
                     title="Danh sách danh mục"
-                    description="Theo dõi mã tự sinh, trạng thái hoạt động và mở modal thêm/sửa ngay tại màn hình này."
+                    description="Tìm nhanh danh mục qua tên hoặc mã tự sinh."
+                    searchValue={filters.search}
+                    onSearch={handleSearch}
                     actions={(
                         <FilterActionGroup>
                             <button
@@ -195,15 +203,7 @@ export default function ProductCategories(props) {
                         </FilterActionGroup>
                     )}
                 >
-                    <div className="grid gap-3 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.7fr)_auto]">
-                        <FilterField label="Tìm danh mục">
-                            <input
-                                className={filterControlClass}
-                                placeholder="Tên hoặc mã tự sinh"
-                                value={filters.search}
-                                onChange={(e) => setFilters((prev) => ({ ...prev, search: e.target.value }))}
-                            />
-                        </FilterField>
+                    <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto]">
                         <FilterField label="Trạng thái">
                             <select
                                 className={filterControlClass}

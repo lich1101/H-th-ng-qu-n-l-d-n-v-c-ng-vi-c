@@ -24,7 +24,17 @@ class MeetingController extends Controller
             $query->where(function ($builder) use ($search) {
                 $builder->where('title', 'like', "%{$search}%")
                     ->orWhere('description', 'like', "%{$search}%")
-                    ->orWhere('meeting_link', 'like', "%{$search}%");
+                    ->orWhere('meeting_link', 'like', "%{$search}%")
+                    ->orWhereHas('project', function ($q) use ($search) {
+                        $q->where('name', 'like', "%{$search}%")
+                            ->orWhere('external_code', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('task', function ($q) use ($search) {
+                        $q->where('name', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('attendees.user', function ($q) use ($search) {
+                        $q->where('name', 'like', "%{$search}%");
+                    });
             });
         }
         if ($request->filled('project_id')) {

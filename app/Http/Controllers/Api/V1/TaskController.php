@@ -52,6 +52,15 @@ class TaskController extends Controller
                     ->orWhereHas('project', function ($projectQuery) use ($search) {
                         $projectQuery->where('name', 'like', "%{$search}%")
                             ->orWhere('code', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('assignee', function ($q) use ($search) {
+                        $q->where('name', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('reviewer', function ($q) use ($search) {
+                        $q->where('name', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('department', function ($q) use ($search) {
+                        $q->where('name', 'like', "%{$search}%");
                     });
             });
         }

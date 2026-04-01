@@ -41,7 +41,14 @@ class ProjectController extends Controller
             $search = trim((string) $request->input('search'));
             $query->where(function ($builder) use ($search) {
                 $builder->where('name', 'like', "%{$search}%")
-                    ->orWhere('code', 'like', "%{$search}%");
+                    ->orWhere('code', 'like', "%{$search}%")
+                    ->orWhere('service_type_other', 'like', "%{$search}%")
+                    ->orWhereHas('client', function ($clientQuery) use ($search) {
+                        $clientQuery->where('name', 'like', "%{$search}%")
+                            ->orWhere('company', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%")
+                            ->orWhere('phone', 'like', "%{$search}%");
+                    });
             });
         }
 
@@ -61,13 +68,14 @@ class ProjectController extends Controller
             $query->whereDate('deadline', '<=', $request->input('deadline_to'));
         }
 
+        /** @var \Illuminate\Pagination\LengthAwarePaginator $paginator */
         $paginator = $query
             ->orderByDesc('id')
             ->paginate((int) $request->input('per_page', 15));
 
-        $paginator->getCollection()->transform(function (Project $project) use ($user) {
+        $paginator->setCollection($paginator->getCollection()->transform(function (Project $project) use ($user) {
             return $this->transformProject($project, $user);
-        });
+        }));
 
         return response()->json($paginator);
     }
@@ -312,14 +320,33 @@ class ProjectController extends Controller
             });
         }
 
+        if ($request->filled('search')) {
+            $search = trim((string) $request->input('search'));
+            $query->where(function ($builder) use ($search) {
+                $builder->where('name', 'like', "%{$search}%")
+                    ->orWhere('code', 'like', "%{$search}%")
+                    ->orWhereHas('client', function ($clientQuery) use ($search) {
+                        $clientQuery->where('name', 'like', "%{$search}%")
+                            ->orWhere('company', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%")
+                            ->orWhere('phone', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('contract', function ($contractQuery) use ($search) {
+                        $contractQuery->where('code', 'like', "%{$search}%")
+                            ->orWhere('title', 'like', "%{$search}%");
+                    });
+            });
+        }
+
+        /** @var \Illuminate\Pagination\LengthAwarePaginator $paginator */
         $paginator = $query
             ->orderByDesc('handover_requested_at')
             ->orderByDesc('id')
             ->paginate((int) $request->input('per_page', 50));
 
-        $paginator->getCollection()->transform(function (Project $project) use ($user) {
+        $paginator->setCollection($paginator->getCollection()->transform(function (Project $project) use ($user) {
             return $this->transformProject($project, $user);
-        });
+        }));
 
         return response()->json($paginator);
     }

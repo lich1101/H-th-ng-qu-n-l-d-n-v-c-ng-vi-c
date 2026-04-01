@@ -126,6 +126,12 @@ export default function ProjectsKanban(props) {
         }
     };
 
+    const handleProjectSearch = (val) => {
+        const next = { ...filters, search: val, page: 1 };
+        setFilters(next);
+        fetchProjects(1, next);
+    };
+
     const fetchProjects = async (pageOrFilters = filters.page, maybeFilters = filters) => {
         const nextFilters = typeof pageOrFilters === 'object' && pageOrFilters !== null
             ? pageOrFilters
@@ -133,28 +139,31 @@ export default function ProjectsKanban(props) {
         const nextPage = typeof pageOrFilters === 'object' && pageOrFilters !== null
             ? Number(pageOrFilters.page || 1)
             : Number(pageOrFilters || 1);
+
         setLoading(true);
         try {
             const res = await axios.get('/api/v1/projects', {
                 params: {
-                    per_page: nextFilters.per_page || 20,
+                    per_page: Number(nextFilters.per_page || 15),
                     page: nextPage,
                     ...(nextFilters.search ? { search: nextFilters.search } : {}),
                     ...(nextFilters.status ? { status: nextFilters.status } : {}),
                     ...(nextFilters.service_type ? { service_type: nextFilters.service_type } : {}),
+                    ...(nextFilters.owner_id ? { owner_id: nextFilters.owner_id } : {}),
                 },
             });
-            const rows = res.data?.data || [];
-            setProjects(rows);
-            setSelectedProjectIds((prev) => prev.filter((id) => rows.some((project) => Number(project.id) === Number(id))));
+            setProjects(res.data?.data || []);
             setPaging({
                 current_page: res.data?.current_page || 1,
                 last_page: res.data?.last_page || 1,
                 total: res.data?.total || 0,
             });
-            setFilters((prev) => ({ ...prev, page: res.data?.current_page || nextPage }));
-        } catch (e) {
-            toast.error(e?.response?.data?.message || 'Không tải được danh sách dự án.');
+            setFilters((prev) => ({
+                ...prev,
+                page: res.data?.current_page || nextPage,
+            }));
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Không tải được danh sách dự án.');
         } finally {
             setLoading(false);
         }
@@ -556,7 +565,9 @@ export default function ProjectsKanban(props) {
                 )}
                 <FilterToolbar enableSearch
                     title="Bộ lọc dự án"
-                    description="Tìm nhanh theo mã dự án, trạng thái triển khai và nhóm dịch vụ trước khi chuyển chế độ xem."
+                    description="Tìm nhanh theo mã dự án, khách hàng, ghi chú hoặc tên trước khi chuyển chế độ xem."
+                    searchValue={filters.search}
+                    onSearch={handleProjectSearch}
                     actions={(
                         <FilterActionGroup className="justify-end">
                             {[
@@ -581,15 +592,7 @@ export default function ProjectsKanban(props) {
                         </FilterActionGroup>
                     )}
                 >
-                    <div className="grid gap-3 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.7fr)_minmax(0,0.7fr)_auto]">
-                        <FilterField label="Tìm kiếm">
-                            <input
-                                className={filterControlClass}
-                                placeholder="Tìm theo mã dự án hoặc tên dự án"
-                                value={filters.search}
-                                onChange={(e) => setFilters((s) => ({ ...s, search: e.target.value }))}
-                            />
-                        </FilterField>
+                    <div className="grid gap-3 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,0.7fr)_minmax(0,1fr)_auto]">
                         <FilterField label="Trạng thái">
                             <select
                                 className={filterControlClass}

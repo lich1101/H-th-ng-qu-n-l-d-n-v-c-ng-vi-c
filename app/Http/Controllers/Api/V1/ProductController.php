@@ -15,10 +15,13 @@ class ProductController extends Controller
     {
         $query = Product::query()->with('category');
         if ($request->filled('search')) {
-            $search = $request->input('search');
+            $search = (string) $request->input('search');
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
-                    ->orWhere('code', 'like', "%{$search}%");
+                    ->orWhere('code', 'like', "%{$search}%")
+                    ->orWhereHas('category', function ($catQuery) use ($search) {
+                        $catQuery->where('name', 'like', "%{$search}%");
+                    });
             });
         }
         if ($request->filled('category_id')) {
