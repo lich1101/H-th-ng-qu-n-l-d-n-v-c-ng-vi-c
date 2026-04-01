@@ -123,7 +123,7 @@
     padding: 0 !important;
 }
 
-.ts-wrapper.single .ts-control > input:not(.items-placeholder) {
+.ts-wrapper.plugin-dropdown_input.single .ts-control > input:not(.items-placeholder) {
     min-width: 1rem !important;
     line-height: 1.2;
     padding: 0;
@@ -441,7 +441,7 @@
         color: rgb(148, 163, 184);
     }
 
-    .ts-wrapper.single .ts-control > input:not(.items-placeholder) {
+    .ts-wrapper.plugin-dropdown_input.single .ts-control > input:not(.items-placeholder) {
         min-width: 1rem !important;
         line-height: 1.2;
         padding: 0;

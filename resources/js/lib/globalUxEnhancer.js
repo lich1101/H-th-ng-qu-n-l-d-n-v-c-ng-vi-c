@@ -4,6 +4,7 @@ import { ArrowDownAZ, createElement as createLucideElement } from 'lucide';
 
 const TABLE_SELECTOR = 'table';
 const SELECT_SEARCH_MIN_OPTIONS = 11;
+const SELECT_MAX_VISIBLE_OPTIONS = 50;
 const tableSortInstances = new WeakMap();
 const remoteSortListeners = new Map();
 let hasRegisteredSortExtensions = false;
@@ -317,13 +318,15 @@ const enhanceSelect = (select) => {
             create: false,
             persist: false,
             allowEmptyOption: true,
-            hidePlaceholder: !isMultiple,
+            hidePlaceholder: false,
             copyClassesToDropdown: false,
             dropdownParent: 'body',
             searchField: ['text'],
             sortField: [{ field: '$score' }, { field: '$order' }],
+            maxOptions: SELECT_MAX_VISIBLE_OPTIONS,
+            openOnFocus: true,
             placeholder,
-            plugins: isMultiple ? ['remove_button'] : ['dropdown_input'],
+            plugins: isMultiple ? ['remove_button'] : [],
             render: {
                 no_results(data, escape) {
                     return `<div class="no-results">Không tìm thấy: ${escape(data.input)}</div>`;
@@ -339,8 +342,12 @@ const enhanceSelect = (select) => {
             instance.wrapper.classList.remove(...inheritedInputClasses);
         }
         if (!isMultiple && instance.control_input) {
-            instance.control_input.setAttribute('placeholder', select.dataset.searchPlaceholder || 'Tìm nhanh...');
+            instance.control_input.setAttribute('placeholder', select.dataset.searchPlaceholder || placeholder || 'Tìm nhanh...');
             instance.control_input.classList.add('ts-dropdown-search-input');
+            instance.on('dropdown_open', () => {
+                instance.setTextboxValue('');
+                instance.refreshOptions(false);
+            });
         }
 
         select.dataset.searchableReady = '1';

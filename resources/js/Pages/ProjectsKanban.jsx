@@ -397,8 +397,8 @@ export default function ProjectsKanban(props) {
             toast.error('Bạn không có quyền cập nhật dự án.');
             return;
         }
-        if (!form.code?.trim() || !form.name?.trim()) {
-            toast.error('Vui lòng nhập Mã dự án và Tên dự án.');
+        if (!form.name?.trim()) {
+            toast.error('Vui lòng nhập Tên dự án.');
             return;
         }
         try {
@@ -1017,10 +1017,20 @@ export default function ProjectsKanban(props) {
                 size="lg"
             >
                 <div className="space-y-5 text-sm">
-                    <div>
-                        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Mã dự án</label>
-                        <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" placeholder="Ví dụ: PRJ-20260318-ABCD" value={form.code} onChange={(e) => setForm((s) => ({ ...s, code: e.target.value }))} />
-                    </div>
+                    {editingId ? (
+                        <div>
+                            <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Mã dự án</label>
+                            <input
+                                className="w-full rounded-2xl border border-slate-200/80 bg-slate-50 px-3 py-2 text-slate-600"
+                                value={form.code || ''}
+                                readOnly
+                            />
+                        </div>
+                    ) : (
+                        <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3 text-xs text-text-muted">
+                            Mã dự án sẽ được hệ thống tự sinh sau khi bạn tạo dự án.
+                        </div>
+                    )}
                     <div>
                         <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Tên dự án</label>
                         <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" placeholder="Tên dự án hiển thị với đội triển khai" value={form.name} onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))} />
