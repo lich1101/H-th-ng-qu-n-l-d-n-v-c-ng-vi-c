@@ -116,6 +116,9 @@
             padding: 22px;
             backdrop-filter: blur(16px);
         }
+        .space-y-4 > * + * {
+            margin-top: 16px;
+        }   
         .brand {
             display: inline-flex;
             align-items: center;
