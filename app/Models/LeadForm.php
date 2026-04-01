@@ -133,6 +133,9 @@ class LeadForm extends Model
             'show_description' => true,
             'show_footer_note' => true,
             'show_background_effects' => true,
+            'enable_captcha' => false,
+            'captcha_site_key' => '',
+            'captcha_secret_key' => '',
             'custom_css' => '',
             'custom_js' => '',
         ];

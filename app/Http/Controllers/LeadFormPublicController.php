@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\LeadNotificationService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 
@@ -44,8 +45,45 @@ class LeadFormPublicController extends Controller
             ->where('is_active', true)
             ->firstOrFail();
 
-        $fields = $form->resolvedFieldSchema();
+        $style   = $form->resolvedStyleConfig();
+        $fields  = $form->resolvedFieldSchema();
         $mapping = $form->resolvedSubmissionMapping();
+
+        // ── reCAPTCHA verification ──────────────────────────────────────
+        $enableCaptcha   = !empty($style['enable_captcha']);
+        $captchaSecret   = trim($style['captcha_secret_key'] ?? '');
+        $captchaSiteKey  = trim($style['captcha_site_key'] ?? '');
+
+        if ($enableCaptcha && $captchaSecret !== '' && $captchaSiteKey !== '') {
+            $token = $request->input('g-recaptcha-response', '');
+            if (empty($token)) {
+                $errorMsg = 'Vui lòng xác minh bạn không phải robot trước khi gửi.';
+                if ($request->expectsJson()) {
+                    return response()->json(['message' => $errorMsg, 'errors' => ['captcha' => [$errorMsg]]], 422);
+                }
+                return redirect()->back()->withErrors(['captcha' => $errorMsg])->withInput();
+            }
+
+            try {
+                $verify = Http::asForm()->post('https://www.google.com/recaptcha/api/siteverify', [
+                    'secret'   => $captchaSecret,
+                    'response' => $token,
+                    'remoteip' => $request->ip(),
+                ]);
+                $captchaOk = (bool) ($verify->json('success') ?? false);
+            } catch (\Throwable $e) {
+                $captchaOk = false;
+            }
+
+            if (! $captchaOk) {
+                $errorMsg = 'Xác minh reCAPTCHA không hợp lệ. Vui lòng thử lại.';
+                if ($request->expectsJson()) {
+                    return response()->json(['message' => $errorMsg, 'errors' => ['captcha' => [$errorMsg]]], 422);
+                }
+                return redirect()->back()->withErrors(['captcha' => $errorMsg])->withInput();
+            }
+        }
+        // ───────────────────────────────────────────────────────────────
 
         $validator = Validator::make(
             $request->all(),

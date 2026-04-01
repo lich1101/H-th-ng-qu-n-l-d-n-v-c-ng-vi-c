@@ -37,6 +37,7 @@ class ReportController extends Controller
                 'projects' => ['total' => 0, 'in_progress' => 0, 'pending_review' => 0],
                 'tasks' => ['total' => 0, 'completed' => 0, 'overdue' => 0, 'on_time_rate' => 0],
                 'service_breakdown' => [],
+                'product_breakdown' => [],
                 'projects_total' => 0,
                 'projects_in_progress' => 0,
                 'projects_pending_review' => 0,
@@ -100,6 +101,11 @@ class ReportController extends Controller
         $hasTaskStatus = Schema::hasColumn('tasks', 'status');
         $hasTaskDeadline = Schema::hasColumn('tasks', 'deadline');
         $hasTaskAssignee = Schema::hasColumn('tasks', 'assignee_id');
+        $hasItemsTable = Schema::hasTable('contract_items');
+        $hasItemTotalPrice = $hasItemsTable && Schema::hasColumn('contract_items', 'total_price');
+        $hasItemProductName = $hasItemsTable && Schema::hasColumn('contract_items', 'product_name');
+        $hasProductsTable = Schema::hasTable('products');
+        $hasProductName = $hasProductsTable && Schema::hasColumn('products', 'name');
 
         $contractTimelineColumns = ['client_id', 'created_at'];
         if ($hasContractSignedAt) {
@@ -348,6 +354,43 @@ class ReportController extends Controller
                 $currentPeriodEnd->toDateString(),
             ])
             ->get();
+
+        // Product breakdown from contract_items (revenue by product)
+        $productBreakdown = collect();
+        if ($hasItemsTable && $hasItemTotalPrice) {
+            $periodContractIds = $contractsForCurrentPeriod->pluck('id')->all();
+            if (! empty($periodContractIds)) {
+                $productLabelExpr = "'Chưa gắn sản phẩm'";
+                if ($hasProductsTable && $hasProductName && $hasItemProductName) {
+                    $productLabelExpr = "COALESCE(products.name, contract_items.product_name, 'Chưa gắn sản phẩm')";
+                } elseif ($hasItemProductName) {
+                    $productLabelExpr = "COALESCE(contract_items.product_name, 'Chưa gắn sản phẩm')";
+                }
+
+                $productQuery = ContractItem::query()
+                    ->whereIn('contract_items.contract_id', $periodContractIds);
+                if ($hasProductsTable && $hasProductName) {
+                    $productQuery->leftJoin('products', 'contract_items.product_id', '=', 'products.id');
+                }
+
+                $productBreakdown = $productQuery
+                    ->selectRaw("$productLabelExpr as product_name")
+                    ->selectRaw('SUM(contract_items.total_price) as revenue')
+                    ->groupBy(DB::raw($productLabelExpr))
+                    ->orderByDesc('revenue')
+                    ->get()
+                    ->map(function ($item) {
+                        return [
+                            'label' => (string) $item->product_name,
+                            'value' => round((float) $item->revenue, 2),
+                        ];
+                    })
+                    ->filter(function ($item) {
+                        return $item['value'] > 0;
+                    })
+                    ->values();
+            }
+        }
 
         $contractsForPreviousPeriod = (clone $contractBaseQuery)
             ->with($contractWithClientSelect)
@@ -683,6 +726,7 @@ class ReportController extends Controller
                 'on_time_rate' => $onTimeRate,
             ],
             'service_breakdown' => $serviceBreakdown,
+            'product_breakdown' => $productBreakdown,
             'projects_total' => $totalProjects,
             'projects_in_progress' => $inProgressProjects,
             'projects_pending_review' => $pendingReviewProjects,
@@ -740,6 +784,7 @@ class ReportController extends Controller
                     'on_time_rate' => 0,
                 ],
                 'service_breakdown' => [],
+                'product_breakdown' => [],
                 'projects_total' => 0,
                 'projects_in_progress' => 0,
                 'projects_pending_review' => 0,

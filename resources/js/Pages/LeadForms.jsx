@@ -124,6 +124,9 @@ const defaultStyleConfig = (settings = null) => ({
     show_description: true,
     show_footer_note: true,
     show_background_effects: true,
+    enable_captcha: false,
+    captcha_site_key: '',
+    captcha_secret_key: '',
     custom_css: '',
     custom_js: '',
 });
@@ -1444,6 +1447,63 @@ export default function LeadForms(props) {
                                                     </label>
                                                 );
                                             })}
+                                        </div>
+                                    </SectionCard>
+
+                                    <SectionCard
+                                        title="Bảo mật – reCAPTCHA"
+                                        description="Bật Google reCAPTCHA v2 để chống spam. Người dùng phải xác minh trước khi gửi form."
+                                    >
+                                        <div className="space-y-4">
+                                            <label className="flex cursor-pointer items-center justify-between gap-4 rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3 transition-colors hover:bg-slate-100/80">
+                                                <div>
+                                                    <div className="text-sm font-semibold text-slate-900">Bật xác minh reCAPTCHA</div>
+                                                    <div className="text-xs text-text-muted">
+                                                        {form.style_config.enable_captcha
+                                                            ? 'Người dùng phải hoàn thành captcha trước khi gửi.'
+                                                            : 'Form không yêu cầu xác minh, bật để chống spam.'}
+                                                    </div>
+                                                </div>
+                                                <input
+                                                    type="checkbox"
+                                                    className="h-5 w-5 shrink-0 rounded border-slate-300 text-primary focus:ring-primary"
+                                                    checked={form.style_config.enable_captcha ?? false}
+                                                    onChange={(e) => updateStyleConfig({ enable_captcha: e.target.checked })}
+                                                />
+                                            </label>
+
+                                            {form.style_config.enable_captcha && (
+                                                <div className="space-y-3 rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
+                                                    <a
+                                                        href="https://www.google.com/recaptcha/admin"
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:underline"
+                                                    >
+                                                        ↗ Tạo hoặc xem keys tại Google reCAPTCHA Admin
+                                                    </a>
+                                                    <div>
+                                                        <label className="mb-1.5 block text-sm font-semibold text-slate-700">Site Key (v2)</label>
+                                                        <input
+                                                            type="text"
+                                                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-mono focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                                                            placeholder="6Lf..."
+                                                            value={form.style_config.captcha_site_key || ''}
+                                                            onChange={(e) => updateStyleConfig({ captcha_site_key: e.target.value })}
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="mb-1.5 block text-sm font-semibold text-slate-700">Secret Key (v2)</label>
+                                                        <input
+                                                            type="text"
+                                                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-mono focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                                                            placeholder="6Lf..."
+                                                            value={form.style_config.captcha_secret_key || ''}
+                                                            onChange={(e) => updateStyleConfig({ captcha_secret_key: e.target.value })}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                     </SectionCard>
 

@@ -14,6 +14,9 @@
     $showBackgroundEffects = $style['show_background_effects'] ?? true;
     $customCss = trim($style['custom_css'] ?? '');
     $customJs = trim($style['custom_js'] ?? '');
+    $enableCaptcha = !empty($style['enable_captcha']);
+    $captchaSiteKey = trim($style['captcha_site_key'] ?? '');
+    $showCaptcha = $enableCaptcha && $captchaSiteKey !== '';
 
     $pageBackground = '#f8fafc';
     $heroGlow = 'rgba(15, 23, 42, 0.06)';
@@ -232,6 +235,14 @@
             margin-top: auto;
             padding-top: 45px;
         }
+        #captcha-wrapper {
+            width: 100%;
+            overflow: hidden;
+            border-radius: 8px;
+        }
+        #captcha-wrapper .g-recaptcha {
+            transform-origin: left top;
+        }
         button {
             border: none;
             border-radius: calc(var(--radius) - 4px);
@@ -316,6 +327,9 @@
             }
         }
     </style>
+    @if ($showCaptcha ?? false)
+    <script src="https://www.google.com/recaptcha/api.js" async defer></script>
+    @endif
 </head>
 <body>
     <div class="shell">
@@ -388,6 +402,17 @@
                         @endforeach
 
                         <div class="actions">
+                            @if ($showCaptcha ?? false)
+                            <div id="captcha-wrapper" style="width:100%;margin-bottom:12px;">
+                                <div class="g-recaptcha"
+                                     data-sitekey="{{ $captchaSiteKey }}"
+                                     data-callback="onCaptchaSuccess"
+                                     data-expired-callback="onCaptchaExpired"
+                                     style="transform-origin:left top;"
+                                ></div>
+                                <div id="captcha-error" style="display:none;color:#ef4444;font-size:12px;margin-top:4px;">Vui lòng xác minh bạn không phải robot.</div>
+                            </div>
+                            @endif
                             <button type="submit" id="submit-btn">{{ $style['submit_label'] ?: 'Gửi thông tin' }}</button>
                             @if ($showFooterNote)
                             <div class="footer-note">
@@ -457,8 +482,50 @@
             successState.style.display = 'block';
         }
 
+        var enableCaptcha = @json($showCaptcha ?? false);
+        var captchaVerified = false;
+
+        if (enableCaptcha) {
+            window.onCaptchaSuccess = function() { captchaVerified = true; };
+            window.onCaptchaExpired = function() { captchaVerified = false; };
+
+            // Scale reCAPTCHA to fit full wrapper width (widget is fixed 304px)
+            function scaleCaptcha() {
+                var wrapper = document.getElementById('captcha-wrapper');
+                var widget = wrapper ? wrapper.querySelector('.g-recaptcha') : null;
+                if (!wrapper || !widget) return;
+                var wrapperW = wrapper.offsetWidth;
+                var widgetW = 304; // Google reCAPTCHA v2 fixed width
+                if (wrapperW > 0 && wrapperW < widgetW) {
+                    var scale = wrapperW / widgetW;
+                    widget.style.transform = 'scale(' + scale + ')';
+                    wrapper.style.height = Math.ceil(78 * scale) + 'px'; // widget height ~78px
+                } else {
+                    widget.style.transform = 'none';
+                    wrapper.style.height = 'auto';
+                }
+            }
+            window.addEventListener('resize', scaleCaptcha);
+            // Run after reCAPTCHA renders (it fires no events, so poll briefly)
+            var _scaleTimer = setInterval(function() {
+                var iframe = document.querySelector('#captcha-wrapper iframe');
+                if (iframe) { scaleCaptcha(); clearInterval(_scaleTimer); }
+            }, 200);
+        }
+
         form.addEventListener('submit', function(e) {
             e.preventDefault();
+
+            if (enableCaptcha && !captchaVerified) {
+                var captchaErr = document.getElementById('captcha-error');
+                if (captchaErr) captchaErr.style.display = 'block';
+                return;
+            }
+            if (enableCaptcha) {
+                var captchaErr = document.getElementById('captcha-error');
+                if (captchaErr) captchaErr.style.display = 'none';
+            }
+
             clearErrors();
             submitBtn.classList.add('btn-loading');
             submitBtn.textContent = @json($style['loading_text'] ?? 'Đang gửi...');
@@ -483,6 +550,10 @@
                 submitBtn.textContent = btnLabel;
 
                 if (!result.ok) {
+                    if (enableCaptcha && window.grecaptcha) {
+                        grecaptcha.reset();
+                        captchaVerified = false;
+                    }
                     if (result.status === 422 && result.data.errors) {
                         showFieldErrors(result.data.errors);
                     } else {
@@ -500,6 +571,10 @@
             .catch(function() {
                 submitBtn.classList.remove('btn-loading');
                 submitBtn.textContent = btnLabel;
+                if (enableCaptcha && window.grecaptcha) {
+                    grecaptcha.reset();
+                    captchaVerified = false;
+                }
                 bannerArea.innerHTML = '<div class="banner banner--error">Không thể kết nối. Vui lòng kiểm tra mạng và thử lại.</div>';
             });
         });

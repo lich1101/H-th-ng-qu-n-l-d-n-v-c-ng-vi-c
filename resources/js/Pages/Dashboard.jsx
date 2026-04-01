@@ -123,12 +123,13 @@ export default function Dashboard(props) {
 
     const serviceBreakdown = useMemo(() => {
         const palette = ['#3B82F6', '#34D399', '#F2C94C', '#F43F5E', '#8B5CF6', '#F97316', '#14B8A6'];
-        return (report.service_breakdown || []).map((item, index) => ({
+        const source = report.product_breakdown || report.service_breakdown || [];
+        return source.map((item, index) => ({
             label: serviceLabels[item.label] || item.label || 'Khác',
             value: Number(item.value || 0),
             color: palette[index % palette.length],
         }));
-    }, [report.service_breakdown]);
+    }, [report.product_breakdown, report.service_breakdown]);
 
     const employeeSummary = report.employee_summary || {};
     const staffSales = report.staff_sales_breakdown || [];
