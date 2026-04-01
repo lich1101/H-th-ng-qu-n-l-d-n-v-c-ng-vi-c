@@ -42,6 +42,9 @@
     <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
     <title>{{ $form->name }} - {{ config('app.name', 'Jobs ClickOn') }}</title>
     <style>
+        html{ 
+            height: 100%;
+        }
         :root {
             color-scheme: light;
             --primary: {{ $primaryColor ?: '#04BC5C' }};
@@ -55,12 +58,14 @@
         }
         * { box-sizing: border-box; }
         body {
+            height: 100%;
             margin: 0;
             font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
             background: var(--bg);
             color: var(--text);
         }
         .shell {
+            height: 100%;
             min-height: 100vh;
             position: relative;
             overflow: hidden;
@@ -98,6 +103,7 @@
             z-index: 1;
         }
         .card {
+            height: 100%;
             background: var(--card);
             @if ($showCardBorder)
             border: 1px solid rgba(219, 228, 240, 0.88);
