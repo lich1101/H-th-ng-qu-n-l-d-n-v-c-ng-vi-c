@@ -581,7 +581,7 @@ class ReportController extends Controller
                     'created_clients' => 0,
                 ],
             ];
-        });
+        })->all();
 
         $createdClientsTimeline = collect();
         if ($hasClientCreatedAt) {

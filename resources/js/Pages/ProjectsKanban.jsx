@@ -1107,7 +1107,7 @@ export default function ProjectsKanban(props) {
                         <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Website dự án (Google Search Console)</label>
                         <input
                             className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                            placeholder="VD: https://anphatglass.com/"
+                            placeholder="VD: https://clickon.vn/"
                             value={form.website_url}
                             onChange={(e) => setForm((s) => ({ ...s, website_url: e.target.value }))}
                         />
