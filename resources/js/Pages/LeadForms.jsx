@@ -314,9 +314,6 @@ function FormPreview({ form, settings, logoPreview }) {
                 >
                     {style.submit_label || 'Gửi thông tin'}
                 </button>
-                <p className="mt-3 text-xs leading-5 text-text-muted">
-                    Dữ liệu sẽ tự đổ về bảng khách hàng CRM theo mapping bạn đã chọn.
-                </p>
             </div>
         </div>
     );
