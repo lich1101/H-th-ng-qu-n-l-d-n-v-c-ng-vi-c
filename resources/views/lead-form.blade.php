@@ -104,6 +104,8 @@
         }
         .card {
             height: 100%;
+            display: flex;
+            flex-direction: column;
             background: var(--card);
             @if ($showCardBorder)
             border: 1px solid rgba(219, 228, 240, 0.88);
@@ -116,9 +118,6 @@
             padding: 22px;
             backdrop-filter: blur(16px);
         }
-        .space-y-4 > * + * {
-            margin-top: 16px;
-        }   
         .brand {
             display: inline-flex;
             align-items: center;
@@ -167,9 +166,11 @@
             border: 1px solid rgba(239, 68, 68, 0.18);
         }
         .form-grid {
+            flex: 1;
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 14px;
+            align-content: start;
         }
         .field {
             display: flex;
@@ -227,7 +228,8 @@
             display: flex;
             flex-direction: column;
             gap: 10px;
-            margin-top: 4px;
+            margin-top: auto;
+            padding-top: 24px;
         }
         button {
             border: none;
@@ -383,7 +385,7 @@
                                 <div class="error" id="error-{{ $key }}" style="display:none;"></div>
                             </div>
                         @endforeach
-                        <div class="space-y-4"></div>
+
                         <div class="actions">
                             <button type="submit" id="submit-btn">{{ $style['submit_label'] ?: 'Gửi thông tin' }}</button>
                             @if ($showFooterNote)
