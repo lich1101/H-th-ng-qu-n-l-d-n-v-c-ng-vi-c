@@ -36,8 +36,10 @@ export function FilterActionGroup({ className = '', children }) {
  * Finds the nearest sibling <table> elements and hides <tbody> rows
  * whose textContent does not match the search term.
  */
-function TableSearchInput({ containerRef }) {
-    const [term, setTerm] = useState('');
+function TableSearchInput({ containerRef, searchValue, onSearchChange }) {
+    const isControlled = onSearchChange !== undefined;
+    const [localTerm, setLocalTerm] = useState('');
+    const term = isControlled ? (searchValue ?? '') : localTerm;
     const [matchCount, setMatchCount] = useState(null);
     const debounceRef = useRef(null);
     const inputRef = useRef(null);
@@ -78,16 +80,28 @@ function TableSearchInput({ containerRef }) {
 
     const handleChange = useCallback((e) => {
         const value = e.target.value;
-        setTerm(value);
+        if (!isControlled) {
+            setLocalTerm(value);
+        }
         if (debounceRef.current) clearTimeout(debounceRef.current);
-        debounceRef.current = setTimeout(() => applyFilter(value), 150);
-    }, [applyFilter]);
+        debounceRef.current = setTimeout(() => {
+            if (isControlled) {
+                onSearchChange(value);
+            } else {
+                applyFilter(value);
+            }
+        }, 300);
+    }, [isControlled, applyFilter, onSearchChange]);
 
     const clearSearch = useCallback(() => {
-        setTerm('');
-        applyFilter('');
+        if (isControlled) {
+            onSearchChange('');
+        } else {
+            setLocalTerm('');
+            applyFilter('');
+        }
         inputRef.current?.focus();
-    }, [applyFilter]);
+    }, [isControlled, applyFilter, onSearchChange]);
 
     // Re-apply filter when table data changes (via MutationObserver)
     useEffect(() => {
@@ -163,6 +177,8 @@ export default function FilterToolbar({
     className = '',
     actions = null,
     enableSearch = false,
+    searchValue = undefined,
+    onSearch = undefined,
     children,
 }) {
     const containerRef = useRef(null);
@@ -190,7 +206,11 @@ export default function FilterToolbar({
             ) : null}
             {enableSearch && (
                 <div className={title || description || actions ? 'mt-4' : ''}>
-                    <TableSearchInput containerRef={containerRef} />
+                    <TableSearchInput
+                        containerRef={containerRef}
+                        searchValue={searchValue}
+                        onSearchChange={onSearch}
+                    />
                 </div>
             )}
             <div className={title || description || actions || enableSearch ? 'mt-4' : ''}>

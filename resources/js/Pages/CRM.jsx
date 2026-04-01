@@ -220,6 +220,12 @@ export default function CRM(props) {
         }
     };
 
+    const handleClientSearch = (val) => {
+        const next = { ...clientFilters, search: val };
+        setClientFilters(next);
+        fetchClients(1, next);
+    };
+
     const fetchPayments = async (page = 1, filtersArg = paymentFilters) => {
         try {
             const paymentsRes = await axios.get('/api/v1/crm/payments', {
@@ -810,16 +816,10 @@ export default function CRM(props) {
                             className="mb-4 border-0 p-0 shadow-none"
                             title="Danh sách khách hàng"
                             description="Lọc theo tên, loại lead và nhóm khách trước khi thao tác CRM hoặc phân công phụ trách."
+                            searchValue={clientFilters.search}
+                            onSearch={handleClientSearch}
                         >
-                            <div className={`grid gap-3 ${isAdminRole ? 'md:grid-cols-2 xl:grid-cols-7' : 'md:grid-cols-2 xl:grid-cols-4'}`}>
-                                <FilterField label="Tìm kiếm">
-                                    <input
-                                        className={filterControlClass}
-                                        placeholder="Tìm theo tên khách hàng, email hoặc số điện thoại"
-                                        value={clientFilters.search}
-                                        onChange={(e) => setClientFilters((s) => ({ ...s, search: e.target.value }))}
-                                    />
-                                </FilterField>
+                            <div className={`grid gap-3 ${isAdminRole ? 'md:grid-cols-1 xl:grid-cols-6' : 'md:grid-cols-2 xl:grid-cols-3'}`}>
                                 <FilterField label="Trạng thái lead">
                                     <select
                                         className={filterControlClass}
