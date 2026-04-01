@@ -260,6 +260,17 @@
             height: 32px;
             color: #fff;
         }
+        .success-state .icon--custom {
+            background: none;
+            width: auto;
+            height: auto;
+        }
+        .success-state .icon--custom img {
+            width: 72px;
+            height: 72px;
+            object-fit: contain;
+            border-radius: 16px;
+        }
         .success-state h2 {
             font-size: 22px;
             margin: 0 0 10px;
@@ -376,12 +387,18 @@
                 </div>
 
                 <div id="success-state" class="success-state" style="display:none;">
+                    @if (!empty($style['success_icon_url']))
+                    <div class="icon icon--custom">
+                        <img src="{{ $style['success_icon_url'] }}" alt="Success">
+                    </div>
+                    @else
                     <div class="icon">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
                         </svg>
                     </div>
-                    <h2>Gửi thành công!</h2>
+                    @endif
+                    <h2 id="success-title">{{ $style['success_title'] ?? 'Gửi thành công!' }}</h2>
                     <p id="success-message"></p>
                 </div>
             </div>
@@ -432,7 +449,7 @@
             e.preventDefault();
             clearErrors();
             submitBtn.classList.add('btn-loading');
-            submitBtn.textContent = 'Đang gửi...';
+            submitBtn.textContent = @json($style['loading_text'] ?? 'Đang gửi...');
 
             var formData = new FormData(form);
 
@@ -465,7 +482,7 @@
                 if (result.data.redirect_url) {
                     window.location.href = result.data.redirect_url;
                 } else {
-                    showSuccess(result.data.success_message || 'Cảm ơn bạn đã gửi thông tin!');
+                    showSuccess(result.data.success_message || @json($style['success_message'] ?? 'Cảm ơn bạn đã gửi thông tin!'));
                 }
             })
             .catch(function() {

@@ -113,7 +113,10 @@ const defaultStyleConfig = (settings = null) => ({
     background_style: 'soft',
     surface_style: 'soft',
     submit_label: 'Gửi thông tin',
+    loading_text: 'Đang gửi...',
+    success_title: 'Gửi thành công!',
     success_message: 'Cảm ơn bạn đã gửi thông tin. Đội ngũ sẽ liên hệ sớm.',
+    success_icon_url: '',
     logo_mode: 'brand',
     logo_url: '',
     show_card_border: false,
@@ -1313,8 +1316,8 @@ export default function LeadForms(props) {
                                     </SectionCard>
 
                                     <SectionCard
-                                        title="Nút gửi và lời cảm ơn"
-                                        description="Đây là nội dung khách sẽ thấy khi bấm gửi thành công."
+                                        title="Nút gửi và màn hình thành công"
+                                        description="Cấu hình nhãn nút, text loading, tiêu đề thành công, lời cảm ơn và icon hiển thị khi gửi xong."
                                     >
                                         <div className="grid gap-4 md:grid-cols-2">
                                             <div>
@@ -1325,6 +1328,44 @@ export default function LeadForms(props) {
                                                     onChange={(e) => updateStyleConfig({ submit_label: e.target.value })}
                                                     placeholder="Ví dụ: Nhận tư vấn ngay"
                                                 />
+                                            </div>
+                                            <div>
+                                                <label className="mb-1 block text-sm font-medium text-slate-700">Text khi đang gửi</label>
+                                                <input
+                                                    className="w-full rounded-2xl border border-slate-200/80 px-4 py-3"
+                                                    value={form.style_config.loading_text || ''}
+                                                    onChange={(e) => updateStyleConfig({ loading_text: e.target.value })}
+                                                    placeholder="Đang gửi..."
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="mb-1 block text-sm font-medium text-slate-700">Tiêu đề khi gửi thành công</label>
+                                                <input
+                                                    className="w-full rounded-2xl border border-slate-200/80 px-4 py-3"
+                                                    value={form.style_config.success_title || ''}
+                                                    onChange={(e) => updateStyleConfig({ success_title: e.target.value })}
+                                                    placeholder="Gửi thành công!"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="mb-1 block text-sm font-medium text-slate-700">Icon thành công (URL ảnh)</label>
+                                                <input
+                                                    className="w-full rounded-2xl border border-slate-200/80 px-4 py-3"
+                                                    value={form.style_config.success_icon_url || ''}
+                                                    onChange={(e) => updateStyleConfig({ success_icon_url: e.target.value })}
+                                                    placeholder="Để trống = dùng icon ✓ mặc định"
+                                                />
+                                                {form.style_config.success_icon_url && (
+                                                    <div className="mt-2 flex items-center gap-2">
+                                                        <img
+                                                            src={form.style_config.success_icon_url}
+                                                            alt="Preview"
+                                                            className="h-10 w-10 rounded-lg object-contain border border-slate-200"
+                                                            onError={(e) => { e.target.style.display = 'none'; }}
+                                                        />
+                                                        <span className="text-xs text-text-muted">Xem trước icon</span>
+                                                    </div>
+                                                )}
                                             </div>
                                             <div className="md:col-span-2">
                                                 <label className="mb-1 block text-sm font-medium text-slate-700">Lời cảm ơn sau khi gửi</label>
@@ -1339,25 +1380,71 @@ export default function LeadForms(props) {
                                     </SectionCard>
 
                                     <SectionCard
-                                        title="Viền khung form"
-                                        description="Tùy chọn xem form có viền bao quanh hay không. Mặc định không có viền để dễ nhúng vào landing page."
+                                        title="Tùy chọn hiển thị"
+                                        description="Bật/tắt các thành phần trên form công khai. Tắt bớt để form gọn hơn khi nhúng vào landing page."
                                     >
-                                        <label className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">
-                                            <div>
-                                                <div className="font-medium text-slate-900">Hiển thị viền + bóng khung form</div>
-                                                <div className="text-sm text-text-muted">
-                                                    {form.style_config.show_card_border
-                                                        ? 'Form có viền và bóng đổ bao quanh.'
-                                                        : 'Form không có viền, hòa liền vào nền trang nhúng.'}
-                                                </div>
-                                            </div>
-                                            <input
-                                                type="checkbox"
-                                                className="h-5 w-5 rounded border-slate-300 text-primary focus:ring-primary"
-                                                checked={form.style_config.show_card_border || false}
-                                                onChange={(e) => updateStyleConfig({ show_card_border: e.target.checked })}
-                                            />
-                                        </label>
+                                        <div className="space-y-2">
+                                            {[
+                                                {
+                                                    key: 'show_card_border',
+                                                    label: 'Viền + bóng khung form',
+                                                    onDesc: 'Form có viền và bóng đổ bao quanh.',
+                                                    offDesc: 'Form không có viền, hòa liền vào nền trang nhúng.',
+                                                    defaultVal: false,
+                                                },
+                                                {
+                                                    key: 'show_title',
+                                                    label: 'Tiêu đề form',
+                                                    onDesc: 'Hiển thị tên form ở đầu trang.',
+                                                    offDesc: 'Ẩn tiêu đề, chỉ hiển thị các trường nhập liệu.',
+                                                    defaultVal: true,
+                                                },
+                                                {
+                                                    key: 'show_description',
+                                                    label: 'Mô tả ngắn',
+                                                    onDesc: 'Hiển thị dòng mô tả phía dưới tiêu đề.',
+                                                    offDesc: 'Ẩn mô tả để form gọn hơn.',
+                                                    defaultVal: true,
+                                                },
+                                                {
+                                                    key: 'show_footer_note',
+                                                    label: 'Ghi chú cuối form',
+                                                    onDesc: 'Hiển thị dòng ghi chú CRM ở cuối form.',
+                                                    offDesc: 'Ẩn ghi chú cuối form.',
+                                                    defaultVal: true,
+                                                },
+                                                {
+                                                    key: 'show_background_effects',
+                                                    label: 'Hiệu ứng nền trang kính',
+                                                    onDesc: 'Hiển thị các vùng sáng mờ trang trí phía sau form.',
+                                                    offDesc: 'Tắt hiệu ứng nền, phù hợp khi nhúng iframe.',
+                                                    defaultVal: true,
+                                                },
+                                            ].map((toggle) => {
+                                                const checked = form.style_config[toggle.key] ?? toggle.defaultVal;
+                                                return (
+                                                    <label
+                                                        key={toggle.key}
+                                                        className="flex cursor-pointer items-center justify-between gap-4 rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3 transition-colors hover:bg-slate-100/80"
+                                                    >
+                                                        <div>
+                                                            <div className="text-sm font-semibold text-slate-900">{toggle.label}</div>
+                                                            <div className="text-xs text-text-muted">
+                                                                {checked ? toggle.onDesc : toggle.offDesc}
+                                                            </div>
+                                                        </div>
+                                                        <input
+                                                            type="checkbox"
+                                                            className="h-5 w-5 shrink-0 rounded border-slate-300 text-primary focus:ring-primary"
+                                                            checked={checked}
+                                                            onChange={(e) =>
+                                                                updateStyleConfig({ [toggle.key]: e.target.checked })
+                                                            }
+                                                        />
+                                                    </label>
+                                                );
+                                            })}
+                                        </div>
                                     </SectionCard>
 
                                     <SectionCard
