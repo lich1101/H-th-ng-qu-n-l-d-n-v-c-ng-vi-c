@@ -189,11 +189,22 @@ export default function Dashboard(props) {
         });
     };
 
-    const resetReportFilters = () => {
-        setReportFilters({ from: '', to: '' });
+    const viewAllTime = () => {
+        setReportFilters({
+            from: availablePeriod.from || '',
+            to: availablePeriod.to || '',
+        });
         setDraftReportFilters({
             from: availablePeriod.from || '',
             to: availablePeriod.to || '',
+        });
+    };
+
+    const resetReportFilters = () => {
+        setReportFilters({ from: '', to: '' });
+        setDraftReportFilters({
+            from: report?.period?.current_from || '',
+            to: report?.period?.current_to || '',
         });
     };
 
@@ -213,7 +224,7 @@ export default function Dashboard(props) {
 
             <FilterToolbar enableSearch
                 title="Bộ lọc thời gian"
-                description="Mặc định trang chủ hiển thị toàn bộ dữ liệu từ trước đến nay. Bạn có thể giới hạn khoảng thời gian để quan sát chi tiết hơn."
+                description="Mặc định trang chủ hiển thị dữ liệu của tháng hiện tại. Bạn có thể thay đổi khoảng thời gian để quan sát chi tiết hơn."
                 actions={(
                     <FilterActionGroup>
                         <button
@@ -225,10 +236,17 @@ export default function Dashboard(props) {
                         </button>
                         <button
                             type="button"
-                            onClick={resetReportFilters}
+                            onClick={viewAllTime}
                             className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700"
                         >
                             Toàn thời gian
+                        </button>
+                        <button
+                            type="button"
+                            onClick={resetReportFilters}
+                            className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700"
+                        >
+                            Tháng hiện tại
                         </button>
                     </FilterActionGroup>
                 )}

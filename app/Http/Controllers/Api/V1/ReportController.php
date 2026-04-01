@@ -176,28 +176,14 @@ class ReportController extends Controller
         $requestedFrom = $parseFilterDate($request->input('from'));
         $requestedTo = $parseFilterDate($request->input('to'), true);
 
-        $currentPeriodStart = ($requestedFrom ?: $availableFrom)->copy();
-        $currentPeriodEnd = ($requestedTo ?: $availableTo)->copy();
+        $currentPeriodStart = ($requestedFrom ?: $now->copy()->startOfMonth())->copy();
+        $currentPeriodEnd = ($requestedTo ?: $now->copy()->endOfMonth())->copy();
 
         if ($currentPeriodEnd->lt($currentPeriodStart)) {
             [$currentPeriodStart, $currentPeriodEnd] = [
                 $currentPeriodEnd->copy()->startOfDay(),
                 $currentPeriodStart->copy()->endOfDay(),
             ];
-        }
-
-        // Only clamp to available range when NO explicit filter was set
-        if (! $requestedFrom && ! $requestedTo) {
-            if ($currentPeriodStart->lt($availableFrom)) {
-                $currentPeriodStart = $availableFrom->copy();
-            }
-            if ($currentPeriodEnd->gt($availableTo)) {
-                $currentPeriodEnd = $availableTo->copy();
-            }
-            if ($currentPeriodEnd->lt($currentPeriodStart)) {
-                $currentPeriodStart = $availableFrom->copy();
-                $currentPeriodEnd = $availableTo->copy();
-            }
         }
 
         $periodDays = max(1, $currentPeriodStart->diffInDays($currentPeriodEnd) + 1);

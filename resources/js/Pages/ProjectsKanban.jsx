@@ -781,27 +781,6 @@ export default function ProjectsKanban(props) {
                                                     {p.budget ? Number(p.budget).toLocaleString('vi-VN') : '—'}
                                                 </td>
                                                 <td className="py-3 text-right space-x-2">
-                                                    <a
-                                                        className="text-xs font-semibold text-slate-600"
-                                                        href={`/du-an/${p.id}`}
-                                                        onClick={(e) => e.stopPropagation()}
-                                                    >
-                                                        Chi tiết
-                                                    </a>
-                                                    <a
-                                                        className="text-xs font-semibold text-primary"
-                                                        href={`/du-an/${p.id}/luong`}
-                                                        onClick={(e) => e.stopPropagation()}
-                                                    >
-                                                        Luồng
-                                                    </a>
-                                                    <a
-                                                        className="text-xs font-semibold text-slate-600"
-                                                        href={`/du-an/${p.id}/kho`}
-                                                        onClick={(e) => e.stopPropagation()}
-                                                    >
-                                                        Kho
-                                                    </a>
                                                     {canSubmitProjectHandover(p) && (
                                                         <button
                                                             className="text-xs font-semibold text-amber-700"
@@ -865,7 +844,7 @@ export default function ProjectsKanban(props) {
                                             <div
                                                 key={p.id}
                                                 className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-card cursor-pointer"
-                                                onClick={() => { window.location.href = `/cong-viec?project_id=${p.id}`; }}
+                                                onClick={() => { window.location.href = `/du-an/${p.id}`; }}
                                             >
                                                 <div className="flex items-center justify-between">
                                                     <span className="text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
@@ -936,7 +915,7 @@ export default function ProjectsKanban(props) {
                     {viewMode === 'timeline' && (
                         <div className="space-y-4">
                             {sortedByDeadline.map((p) => (
-                                <div key={p.id} className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-card flex gap-4">
+                                <div key={p.id} className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-card flex gap-4 cursor-pointer" onClick={() => { window.location.href = `/du-an/${p.id}`; }}>
                                     <div className="flex flex-col items-center">
                                         <span className="h-3 w-3 rounded-full bg-primary" />
                                         <span className="flex-1 w-px bg-slate-200 mt-2" />
@@ -973,7 +952,7 @@ export default function ProjectsKanban(props) {
                                 const end = p.deadline ? new Date(p.deadline) : new Date(start.getTime() + 5 * 86400000);
                                 const totalDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / 86400000));
                                 return (
-                                    <div key={p.id} className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-card">
+                                    <div key={p.id} className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-card cursor-pointer" onClick={() => { window.location.href = `/du-an/${p.id}`; }}>
                                     <div className="flex items-center justify-between text-xs text-text-muted mb-2">
                                         <span>{p.name}</span>
                                         <span>{formatDate(p.deadline) || 'Chưa có hạn chót'}</span>
