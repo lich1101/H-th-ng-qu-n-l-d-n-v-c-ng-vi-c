@@ -62,6 +62,16 @@ const ensureTomSelectDropdownZIndex = (instance) => {
     instance.dropdown.style.zIndex = String(SELECT_DROPDOWN_Z_INDEX);
 };
 
+const findScrollParent = (el) => {
+    let parent = el?.parentElement;
+    while (parent && parent !== document.documentElement) {
+        const { overflowY } = window.getComputedStyle(parent);
+        if (overflowY === 'auto' || overflowY === 'scroll') return parent;
+        parent = parent.parentElement;
+    }
+    return null;
+};
+
 const parseDateValue = (raw) => {
     const value = normalizeText(raw);
     if (!value) return null;
@@ -437,6 +447,26 @@ const enhanceSelect = (select) => {
             select.dispatchEvent(new Event('change', { bubbles: true }));
             select.dispatchEvent(new Event('input', { bubbles: true }));
         });
+
+        const scrollParent = findScrollParent(select);
+        if (scrollParent) {
+            const repositionOnScroll = () => {
+                if (!instance.isOpen) return;
+                const controlRect = instance.control.getBoundingClientRect();
+                const parentRect = scrollParent.getBoundingClientRect();
+                if (controlRect.bottom < parentRect.top || controlRect.top > parentRect.bottom) {
+                    instance.close();
+                    return;
+                }
+                instance.positionDropdown();
+            };
+            instance.on('dropdown_open', () => {
+                scrollParent.addEventListener('scroll', repositionOnScroll, { passive: true });
+            });
+            instance.on('dropdown_close', () => {
+                scrollParent.removeEventListener('scroll', repositionOnScroll);
+            });
+        }
 
         select.dataset.searchableReady = '1';
         select.dataset.searchOptionsSignature = buildSelectOptionsSignature(select);
