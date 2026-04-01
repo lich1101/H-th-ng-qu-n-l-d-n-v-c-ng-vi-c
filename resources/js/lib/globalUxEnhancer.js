@@ -5,6 +5,7 @@ import { ArrowDownAZ, createElement as createLucideElement } from 'lucide';
 const TABLE_SELECTOR = 'table';
 const SELECT_SEARCH_MIN_OPTIONS = 11;
 const SELECT_MAX_VISIBLE_OPTIONS = 50;
+const SELECT_DROPDOWN_Z_INDEX = 10050;
 const tableSortInstances = new WeakMap();
 const remoteSortListeners = new Map();
 let hasRegisteredSortExtensions = false;
@@ -49,6 +50,18 @@ const syncTomSelectValueFromDom = (select, instance, isMultiple) => {
         return;
     }
     instance.setValue(domValue, true);
+};
+
+const hasDropdownInputLayout = (instance) => Boolean(
+    instance?.dropdown && instance.dropdown.querySelector('.dropdown-input-wrap')
+);
+
+const ensureTomSelectDropdownLayer = (instance) => {
+    if (!instance?.dropdown) return;
+    if (instance.dropdown.parentNode !== document.body) {
+        document.body.appendChild(instance.dropdown);
+    }
+    instance.dropdown.style.zIndex = String(SELECT_DROPDOWN_Z_INDEX);
 };
 
 const parseDateValue = (raw) => {
@@ -342,7 +355,10 @@ const enhanceSelect = (select) => {
     if (existing) {
         const nextSignature = buildSelectOptionsSignature(select);
         const currentSignature = String(select.dataset.searchOptionsSignature || '');
-        if (currentSignature !== nextSignature) {
+        const needsDropdownInput = !Boolean(select.multiple);
+        const missingDropdownInputLayout = needsDropdownInput && !hasDropdownInputLayout(existing);
+
+        if (currentSignature !== nextSignature || missingDropdownInputLayout) {
             existing.destroy();
             delete select.dataset.searchableReady;
             delete select.dataset.searchOptionsSignature;
@@ -381,7 +397,7 @@ const enhanceSelect = (select) => {
             allowEmptyOption: true,
             hidePlaceholder: false,
             copyClassesToDropdown: false,
-            dropdownParent: 'body',
+            dropdownParent: document.body,
             searchField: ['text'],
             sortField: [{ field: '$score' }, { field: '$order' }],
             maxOptions: SELECT_MAX_VISIBLE_OPTIONS,
@@ -399,6 +415,7 @@ const enhanceSelect = (select) => {
         if (!isMultiple && select.value === '') {
             instance.clear(true);
         }
+        ensureTomSelectDropdownLayer(instance);
         const inheritedInputClasses = Array.from(select.classList || []);
         if (inheritedInputClasses.length > 0 && instance.wrapper) {
             instance.wrapper.classList.remove(...inheritedInputClasses);
@@ -407,8 +424,13 @@ const enhanceSelect = (select) => {
             instance.control_input.setAttribute('placeholder', select.dataset.searchPlaceholder || placeholder || 'Tìm nhanh...');
             instance.control_input.classList.add('ts-dropdown-search-input');
             instance.on('dropdown_open', () => {
+                ensureTomSelectDropdownLayer(instance);
                 instance.setTextboxValue('');
                 instance.refreshOptions(false);
+            });
+        } else {
+            instance.on('dropdown_open', () => {
+                ensureTomSelectDropdownLayer(instance);
             });
         }
 
