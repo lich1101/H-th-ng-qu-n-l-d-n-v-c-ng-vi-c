@@ -117,6 +117,10 @@ const defaultStyleConfig = (settings = null) => ({
     logo_mode: 'brand',
     logo_url: '',
     show_card_border: false,
+    show_title: true,
+    show_description: true,
+    show_footer_note: true,
+    show_background_effects: true,
     custom_css: '',
     custom_js: '',
 });

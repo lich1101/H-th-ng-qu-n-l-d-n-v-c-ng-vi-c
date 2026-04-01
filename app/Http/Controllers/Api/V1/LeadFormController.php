@@ -175,6 +175,10 @@ class LeadFormController extends Controller
             'style_config.logo_mode' => ['nullable', Rule::in(self::LOGO_MODES)],
             'style_config.logo_url' => ['nullable', 'string', 'max:255'],
             'style_config.show_card_border' => ['nullable', 'boolean'],
+            'style_config.show_title' => ['nullable', 'boolean'],
+            'style_config.show_description' => ['nullable', 'boolean'],
+            'style_config.show_footer_note' => ['nullable', 'boolean'],
+            'style_config.show_background_effects' => ['nullable', 'boolean'],
             'style_config.custom_css' => ['nullable', 'string', 'max:10000'],
             'style_config.custom_js' => ['nullable', 'string', 'max:10000'],
             'submission_mapping' => ['nullable', 'array'],
@@ -319,6 +323,10 @@ class LeadFormController extends Controller
         }
 
         $normalized['show_card_border'] = (bool) ($normalized['show_card_border'] ?? false);
+        $normalized['show_title'] = (bool) ($normalized['show_title'] ?? true);
+        $normalized['show_description'] = (bool) ($normalized['show_description'] ?? true);
+        $normalized['show_footer_note'] = (bool) ($normalized['show_footer_note'] ?? true);
+        $normalized['show_background_effects'] = (bool) ($normalized['show_background_effects'] ?? true);
         $normalized['custom_css'] = trim((string) ($normalized['custom_css'] ?? ''));
         $normalized['custom_js'] = trim((string) ($normalized['custom_js'] ?? ''));
 

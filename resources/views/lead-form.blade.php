@@ -8,6 +8,10 @@
         : ($logoMode === 'brand' ? $brandLogoUrl : null);
     $showLogo = $logoMode !== 'hidden' && !empty($logoUrl);
     $showCardBorder = !empty($style['show_card_border']);
+    $showTitle = $style['show_title'] ?? true;
+    $showDescription = ($style['show_description'] ?? true) && !empty($form->description);
+    $showFooterNote = $style['show_footer_note'] ?? true;
+    $showBackgroundEffects = $style['show_background_effects'] ?? true;
     $customCss = trim($style['custom_css'] ?? '');
     $customJs = trim($style['custom_js'] ?? '');
 
@@ -68,6 +72,9 @@
             border-radius: 999px;
             filter: blur(28px);
             pointer-events: none;
+            @if (!$showBackgroundEffects)
+            display: none;
+            @endif
         }
         .shell::before {
             width: 240px;
@@ -299,8 +306,12 @@
                         </div>
                     @endif
 
+                    @if ($showTitle)
                     <h1>{{ $form->name }}</h1>
-                    <p class="intro">{{ $form->description ?: 'Điền nhanh thông tin bên dưới để đội ngũ tư vấn liên hệ lại đúng nhu cầu của bạn.' }}</p>
+                    @endif
+                    @if ($showDescription)
+                    <p class="intro">{{ $form->description }}</p>
+                    @endif
 
                     <div id="banner-area"></div>
 
@@ -355,9 +366,11 @@
 
                         <div class="actions">
                             <button type="submit" id="submit-btn">{{ $style['submit_label'] ?: 'Gửi thông tin' }}</button>
+                            @if ($showFooterNote)
                             <div class="footer-note">
                                 Dữ liệu từ form này sẽ được chuyển vào bảng khách hàng CRM để đội ngũ nội bộ tiếp nhận và xử lý.
                             </div>
+                            @endif
                         </div>
                     </form>
                 </div>
