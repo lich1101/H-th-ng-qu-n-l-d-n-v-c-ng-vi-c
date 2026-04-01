@@ -45,7 +45,7 @@ function TableSearchInput({ containerRef }) {
     const applyFilter = useCallback((searchText) => {
         if (!containerRef.current) return;
         // Walk up to the nearest common parent that also contains tables
-        const parent = containerRef.current.closest('.bg-white') || containerRef.current.parentElement;
+        const parent = containerRef.current.parentElement?.closest('.bg-white') || containerRef.current.parentElement;
         if (!parent) return;
 
         const tables = parent.querySelectorAll('table');
@@ -92,7 +92,7 @@ function TableSearchInput({ containerRef }) {
     // Re-apply filter when table data changes (via MutationObserver)
     useEffect(() => {
         if (!containerRef.current) return;
-        const parent = containerRef.current.closest('.bg-white') || containerRef.current.parentElement;
+        const parent = containerRef.current.parentElement?.closest('.bg-white') || containerRef.current.parentElement;
         if (!parent) return;
 
         const observer = new MutationObserver(() => {
