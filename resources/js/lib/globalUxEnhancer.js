@@ -56,15 +56,8 @@ const hasDropdownInputLayout = (instance) => Boolean(
     instance?.dropdown && instance.dropdown.querySelector('.dropdown-input-wrap')
 );
 
-const resolveTomSelectDropdownParent = (select) => (
-    select?.closest('[data-modal-panel="true"]') || document.body
-);
-
-const ensureTomSelectDropdownLayer = (instance, dropdownParent = document.body) => {
+const ensureTomSelectDropdownZIndex = (instance) => {
     if (!instance?.dropdown) return;
-    if (instance.dropdown.parentNode !== dropdownParent) {
-        dropdownParent.appendChild(instance.dropdown);
-    }
     instance.dropdown.style.zIndex = String(SELECT_DROPDOWN_Z_INDEX);
 };
 
@@ -393,7 +386,7 @@ const enhanceSelect = (select) => {
         || emptyOptionLabel
         || 'Chọn giá trị',
     );
-    const dropdownParent = resolveTomSelectDropdownParent(select);
+    const dropdownParent = document.body;
 
     try {
         const instance = new TomSelect(select, {
@@ -420,7 +413,7 @@ const enhanceSelect = (select) => {
         if (!isMultiple && select.value === '') {
             instance.clear(true);
         }
-        ensureTomSelectDropdownLayer(instance, dropdownParent);
+        ensureTomSelectDropdownZIndex(instance);
         const inheritedInputClasses = Array.from(select.classList || []);
         if (inheritedInputClasses.length > 0 && instance.wrapper) {
             instance.wrapper.classList.remove(...inheritedInputClasses);
@@ -429,13 +422,13 @@ const enhanceSelect = (select) => {
             instance.control_input.setAttribute('placeholder', select.dataset.searchPlaceholder || placeholder || 'Tìm nhanh...');
             instance.control_input.classList.add('ts-dropdown-search-input');
             instance.on('dropdown_open', () => {
-                ensureTomSelectDropdownLayer(instance, dropdownParent);
+                ensureTomSelectDropdownZIndex(instance);
                 instance.setTextboxValue('');
                 instance.refreshOptions(false);
             });
         } else {
             instance.on('dropdown_open', () => {
-                ensureTomSelectDropdownLayer(instance, dropdownParent);
+                ensureTomSelectDropdownZIndex(instance);
             });
         }
 
