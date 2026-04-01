@@ -270,7 +270,7 @@ export default function Products(props) {
                             </button>
                         )}
                     </div>
-                        <FilterToolbar
+                        <FilterToolbar enableSearch
                             title="Danh sách sản phẩm"
                             description="Quản lý sản phẩm và đơn giá gắn hợp đồng."
                         actions={(

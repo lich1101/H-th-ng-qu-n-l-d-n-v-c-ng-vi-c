@@ -120,7 +120,7 @@ export default function TasksByStaff(props) {
             stats={[]}
         >
             <div className="lg:col-span-2 space-y-4">
-                <FilterToolbar
+                <FilterToolbar enableSearch
                     title="Bộ lọc công việc theo nhân sự"
                     description="Lọc theo dự án, nhân sự, trạng thái và khoảng hạn chót để theo dõi khối lượng công việc rõ hơn."
                     actions={(

@@ -360,7 +360,7 @@ export default function UserAccountsDashboard(props) {
             </div>
 
             <form onSubmit={submitSearch} className="mb-4">
-                <FilterToolbar
+                <FilterToolbar enableSearch
                     title="Bộ lọc tài khoản"
                     description="Lọc theo tên, email, vai trò và trạng thái hoạt động để kiểm tra nhanh danh sách người dùng."
                     actions={(

@@ -806,7 +806,7 @@ export default function CRM(props) {
                                 </button>
                             </div>
                         )}
-                        <FilterToolbar
+                        <FilterToolbar enableSearch
                             className="mb-4 border-0 p-0 shadow-none"
                             title="Danh sách khách hàng"
                             description="Lọc theo tên, loại lead và nhóm khách trước khi thao tác CRM hoặc phân công phụ trách."
@@ -1417,7 +1417,7 @@ export default function CRM(props) {
                                 </button>
                             </div>
                         )}
-                        <FilterToolbar
+                        <FilterToolbar enableSearch
                             className="mb-4 border-0 p-0 shadow-none"
                             title="Danh sách thanh toán"
                             description="Lọc nhanh trạng thái thanh toán để theo dõi công nợ và nhắc hạn dễ hơn."

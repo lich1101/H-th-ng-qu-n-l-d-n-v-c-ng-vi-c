@@ -213,7 +213,7 @@ export default function DepartmentAssignments(props) {
                         </button>
                     )}
                 </div>
-                <FilterToolbar
+                <FilterToolbar enableSearch
                     title="Bộ lọc điều phối"
                     description="Lọc nhanh theo phòng ban và trạng thái triển khai để theo dõi nhóm đang xử lý."
                     actions={(

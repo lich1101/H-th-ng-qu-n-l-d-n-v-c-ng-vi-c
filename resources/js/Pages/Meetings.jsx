@@ -313,7 +313,7 @@ export default function Meetings(props) {
             title="Lịch họp"
             description="Lịch họp theo dạng lịch tháng, có chọn nhiều thành viên và xem nhanh thông tin cuộc họp."
         >
-            <FilterToolbar
+            <FilterToolbar enableSearch
                 title="Bộ lọc lịch họp"
                 description="Lọc theo tiêu đề, thời gian và thành viên tham gia để xem lịch tháng gọn và đúng phạm vi."
                 actions={(

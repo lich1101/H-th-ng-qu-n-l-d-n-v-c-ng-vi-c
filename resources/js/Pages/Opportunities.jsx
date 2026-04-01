@@ -392,7 +392,7 @@ export default function Opportunities(props) {
                     </button>
                 ) : null}
             </div>
-            <FilterToolbar
+            <FilterToolbar enableSearch
                 title="Danh sách cơ hội"
                 description="Lọc theo trạng thái, khách hàng và tìm kiếm nhanh theo tên cơ hội."
                 actions={(

@@ -211,7 +211,7 @@ export default function Dashboard(props) {
                 {loading ? <SectionChip tone="amber">Đang đồng bộ dữ liệu</SectionChip> : null}
             </div>
 
-            <FilterToolbar
+            <FilterToolbar enableSearch
                 title="Bộ lọc thời gian"
                 description="Mặc định trang chủ hiển thị toàn bộ dữ liệu từ trước đến nay. Bạn có thể giới hạn khoảng thời gian để quan sát chi tiết hơn."
                 actions={(

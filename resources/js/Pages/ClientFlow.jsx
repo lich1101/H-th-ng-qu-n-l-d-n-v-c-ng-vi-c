@@ -3,6 +3,7 @@ import axios from 'axios';
 import { Link } from '@inertiajs/inertia-react';
 import AppIcon from '@/Components/AppIcon';
 import PageContainer from '@/Components/PageContainer';
+import TableSearch from '@/Components/TableSearch';
 import { useToast } from '@/Contexts/ToastContext';
 import { formatVietnamDate, formatVietnamDateTime } from '@/lib/vietnamTime';
 
@@ -264,6 +265,8 @@ export default function ClientFlow({ auth, clientId }) {
                             />
                         ))}
                     </div>
+
+                    <TableSearch className="mt-4" />
 
                     {loading && (
                         <div className="mt-4 rounded-2xl border border-dashed border-slate-200/80 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">

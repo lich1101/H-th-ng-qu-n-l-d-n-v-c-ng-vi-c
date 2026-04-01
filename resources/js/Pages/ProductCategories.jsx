@@ -179,7 +179,7 @@ export default function ProductCategories(props) {
                         </button>
                     </div>
                 )}
-                <FilterToolbar
+                <FilterToolbar enableSearch
                     className="mb-4 border-0 p-0 shadow-none"
                     title="Danh sách danh mục"
                     description="Theo dõi mã tự sinh, trạng thái hoạt động và mở modal thêm/sửa ngay tại màn hình này."

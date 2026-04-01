@@ -1723,7 +1723,7 @@ export default function TasksBoard(props) {
                         </button>
                     </div>
                 )}
-                <FilterToolbar
+                <FilterToolbar enableSearch
                     title="Bộ lọc công việc"
                     description="Lọc theo dự án, trạng thái, nhân sự và thời hạn rồi chuyển giữa các chế độ xem mà không bị rối thao tác."
                     actions={(

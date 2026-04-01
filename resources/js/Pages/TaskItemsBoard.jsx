@@ -135,7 +135,7 @@ export default function TaskItemsBoard(props) {
             stats={[]}
         >
             <div className="lg:col-span-2 space-y-4">
-                <FilterToolbar
+                <FilterToolbar enableSearch
                     title="Bộ lọc đầu việc"
                     description="Lọc đầu việc theo dự án, công việc, nhân sự và mốc thời gian để rà tiến độ chính xác hơn."
                     actions={(

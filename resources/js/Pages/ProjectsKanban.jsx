@@ -554,7 +554,7 @@ export default function ProjectsKanban(props) {
                         </button>
                     </div>
                 )}
-                <FilterToolbar
+                <FilterToolbar enableSearch
                     title="Bộ lọc dự án"
                     description="Tìm nhanh theo mã dự án, trạng thái triển khai và nhóm dịch vụ trước khi chuyển chế độ xem."
                     actions={(

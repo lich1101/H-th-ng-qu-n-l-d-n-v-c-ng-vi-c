@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import PageContainer from '@/Components/PageContainer';
+import TableSearch from '@/Components/TableSearch';
 import { useToast } from '@/Contexts/ToastContext';
 
 export default function RevenueReport(props) {
@@ -52,6 +53,7 @@ export default function RevenueReport(props) {
                 <div className="flex items-center justify-between mb-4">
                     <h3 className="font-semibold">Doanh thu theo phòng ban</h3>
                 </div>
+                <TableSearch className="mb-4" />
                 <div className="overflow-x-auto">
                     <table className="min-w-full text-sm">
                         <thead>
@@ -103,6 +105,7 @@ export default function RevenueReport(props) {
                         {report.staffs ? `${report.staffs.length} nhân sự` : '—'}
                     </span>
                 </div>
+                <TableSearch className="mb-4" />
                 <div className="overflow-x-auto">
                     <table className="min-w-full text-sm">
                         <thead>

@@ -612,7 +612,7 @@ export default function AttendanceWifi(props) {
                                 <h3 className="text-lg font-semibold text-slate-900">Công cá nhân</h3>
                                 <p className="mt-1 text-sm text-text-muted">Theo dõi bản ghi công của bạn trong khoảng ngày cần xem.</p>
                             </div>
-                            <FilterToolbar
+                            <FilterToolbar enableSearch
                                 className="mt-4 mb-4"
                                 title="Bộ lọc bảng công"
                                 description="Chọn khoảng ngày để xem lịch sử công cá nhân theo đúng chuẩn hiển thị chung của hệ thống."
@@ -722,7 +722,7 @@ export default function AttendanceWifi(props) {
                             </div>
                         </div>
                         <div className={cardClass}>
-                            <FilterToolbar
+                            <FilterToolbar enableSearch
                                 className="mb-4"
                                 title="Danh sách đơn"
                                 description={canManage ? 'Xem và duyệt toàn bộ đơn đi muộn hoặc nghỉ phép của nhân sự.' : 'Theo dõi trạng thái đơn của bạn.'}
@@ -885,7 +885,7 @@ export default function AttendanceWifi(props) {
 
                 {activeTab === 'devices' && canManage && (
                     <div className={cardClass}>
-                        <FilterToolbar
+                        <FilterToolbar enableSearch
                             className="mb-4"
                             title="Thiết bị nhân viên"
                             description="Mỗi nhân viên chỉ dùng một thiết bị đã được duyệt để chấm công trên đúng Wi-Fi/BSSID công ty."
@@ -983,7 +983,7 @@ export default function AttendanceWifi(props) {
 
                 {activeTab === 'staff' && canManage && (
                     <div className={cardClass}>
-                        <FilterToolbar
+                        <FilterToolbar enableSearch
                             className="mb-4"
                             title="Cấu hình từng nhân viên"
                             description="Toàn thời gian phải chấm trong khung đầu giờ để được 1 công. Mỗi chiều lấy mốc từ giờ bắt đầu buổi chiều."
@@ -1063,7 +1063,7 @@ export default function AttendanceWifi(props) {
 
                 {activeTab === 'report' && canManage && (
                     <div className={cardClass}>
-                        <FilterToolbar
+                        <FilterToolbar enableSearch
                             className="mb-4"
                             title="Báo cáo công"
                             description="Lọc theo ngày bắt đầu/kết thúc để tổng hợp công, sửa công tay theo bước 0.1 và xuất file Excel. 1.0 là đủ ngày công."

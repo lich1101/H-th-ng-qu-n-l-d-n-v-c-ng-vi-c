@@ -1028,7 +1028,7 @@ export default function Contracts(props) {
                         </button>
                     )}
                 </div>
-                <FilterToolbar
+                <FilterToolbar enableSearch
                     className="mb-4 border-0 p-0 shadow-none"
                     title="Danh sách hợp đồng"
                     description="Lọc theo mã, trạng thái thực hiện và trạng thái duyệt trước khi thao tác chi tiết từng hợp đồng."

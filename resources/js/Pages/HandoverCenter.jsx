@@ -136,7 +136,7 @@ export default function HandoverCenter(props) {
             stats={stats}
         >
             <div className="space-y-4">
-                <FilterToolbar
+                <FilterToolbar enableSearch
                     title="Hàng đợi duyệt bàn giao"
                     description="Chỉ dự án đã được phụ trách gửi duyệt và đủ điều kiện mới xuất hiện tại đây."
                     actions={(
