@@ -186,15 +186,18 @@ class ReportController extends Controller
             ];
         }
 
-        if ($currentPeriodStart->lt($availableFrom)) {
-            $currentPeriodStart = $availableFrom->copy();
-        }
-        if ($currentPeriodEnd->gt($availableTo)) {
-            $currentPeriodEnd = $availableTo->copy();
-        }
-        if ($currentPeriodEnd->lt($currentPeriodStart)) {
-            $currentPeriodStart = $availableFrom->copy();
-            $currentPeriodEnd = $availableTo->copy();
+        // Only clamp to available range when NO explicit filter was set
+        if (! $requestedFrom && ! $requestedTo) {
+            if ($currentPeriodStart->lt($availableFrom)) {
+                $currentPeriodStart = $availableFrom->copy();
+            }
+            if ($currentPeriodEnd->gt($availableTo)) {
+                $currentPeriodEnd = $availableTo->copy();
+            }
+            if ($currentPeriodEnd->lt($currentPeriodStart)) {
+                $currentPeriodStart = $availableFrom->copy();
+                $currentPeriodEnd = $availableTo->copy();
+            }
         }
 
         $periodDays = max(1, $currentPeriodStart->diffInDays($currentPeriodEnd) + 1);
