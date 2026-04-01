@@ -125,22 +125,51 @@ const defaultSubmissionMapping = () => ({
 
 const createFieldId = () => `field_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
-const createField = (preset = {}) => ({
-    id: preset.id || createFieldId(),
-    key: preset.key || '',
-    label: preset.label || 'Trường mới',
-    type: preset.type || 'text',
-    placeholder: preset.placeholder || '',
-    help_text: preset.help_text || '',
-    required: preset.required ?? false,
-    width: preset.width || 'full',
-    options: Array.isArray(preset.options) ? preset.options : [],
-    validation: {
-        min_length: preset.validation?.min_length ?? '',
-        max_length: preset.validation?.max_length ?? '',
-    },
-    map_to: preset.map_to || 'ignore',
-});
+const parseSelectOptionsText = (value) =>
+    String(value ?? '')
+        .split(/\r?\n/)
+        .map((row) => row.trim())
+        .filter(Boolean);
+
+const resolveFieldOptionsText = (field = {}) => {
+    if (typeof field.options_text === 'string') return field.options_text;
+    if (Array.isArray(field.options)) return field.options.join('\n');
+    return '';
+};
+
+const resolveFieldOptions = (field = {}) => {
+    if (typeof field.options_text === 'string') {
+        return parseSelectOptionsText(field.options_text);
+    }
+
+    return Array.isArray(field.options)
+        ? field.options
+            .map((row) => String(row ?? '').trim())
+            .filter(Boolean)
+        : [];
+};
+
+const createField = (preset = {}) => {
+    const optionsText = resolveFieldOptionsText(preset);
+
+    return ({
+        id: preset.id || createFieldId(),
+        key: preset.key || '',
+        label: preset.label || 'Trường mới',
+        type: preset.type || 'text',
+        placeholder: preset.placeholder || '',
+        help_text: preset.help_text || '',
+        required: preset.required ?? false,
+        width: preset.width || 'full',
+        options_text: optionsText,
+        options: parseSelectOptionsText(optionsText),
+        validation: {
+            min_length: preset.validation?.min_length ?? '',
+            max_length: preset.validation?.max_length ?? '',
+        },
+        map_to: preset.map_to || 'ignore',
+    });
+};
 
 const defaultFieldSchema = () => [
     createField(FIELD_PRESETS[0]),
@@ -253,6 +282,7 @@ function FormPreview({ form, settings, logoPreview }) {
                     {form.field_schema.map((field) => {
                         const isFull = field.width !== 'half';
                         const wrapperClass = isFull ? 'col-span-2' : 'col-span-1';
+                        const selectOptions = resolveFieldOptions(field);
                         return (
                             <div key={field.id} className={wrapperClass}>
                                 <label className="mb-1 block text-xs font-semibold text-slate-600">
@@ -265,7 +295,7 @@ function FormPreview({ form, settings, logoPreview }) {
                                     </div>
                                 ) : field.type === 'select' ? (
                                     <div className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm text-slate-500">
-                                        {field.options?.[0] || `Chọn ${field.label.toLowerCase()}`}
+                                        {selectOptions[0] || `Chọn ${field.label.toLowerCase()}`}
                                     </div>
                                 ) : (
                                     <div className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm text-slate-400">
@@ -514,7 +544,7 @@ export default function LeadForms(props) {
                         },
                         options:
                             field.type === 'select'
-                                ? (field.options || []).filter(Boolean)
+                                ? resolveFieldOptions(field)
                                 : [],
                     }))
                 )
@@ -992,12 +1022,18 @@ export default function LeadForms(props) {
                                                             <select
                                                                 className="w-full rounded-2xl border border-slate-200/80 px-4 py-3"
                                                                 value={field.type}
-                                                                onChange={(e) =>
+                                                                onChange={(e) => {
+                                                                    const nextType = e.target.value;
+                                                                    const nextOptionsText = nextType === 'select'
+                                                                        ? resolveFieldOptionsText(field)
+                                                                        : '';
+
                                                                     updateField(field.id, {
-                                                                        type: e.target.value,
-                                                                        options: e.target.value === 'select' ? field.options : [],
-                                                                    })
-                                                                }
+                                                                        type: nextType,
+                                                                        options_text: nextOptionsText,
+                                                                        options: nextType === 'select' ? parseSelectOptionsText(nextOptionsText) : [],
+                                                                    });
+                                                                }}
                                                             >
                                                                 {FIELD_TYPE_OPTIONS.map((option) => (
                                                                     <option key={option.value} value={option.value}>
@@ -1087,13 +1123,10 @@ export default function LeadForms(props) {
                                                                 <textarea
                                                                     className="w-full rounded-2xl border border-slate-200/80 px-4 py-3"
                                                                     rows={4}
-                                                                    value={(field.options || []).join('\n')}
+                                                                    value={resolveFieldOptionsText(field)}
                                                                     onChange={(e) =>
                                                                         updateField(field.id, {
-                                                                            options: e.target.value
-                                                                                .split('\n')
-                                                                                .map((row) => row.trim())
-                                                                                .filter(Boolean),
+                                                                            options_text: e.target.value,
                                                                         })
                                                                     }
                                                                     placeholder={'Mỗi dòng là một lựa chọn.\nVí dụ:\nSEO tổng thể\nBacklinks\nContent'}
