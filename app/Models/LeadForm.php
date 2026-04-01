@@ -160,7 +160,7 @@ class LeadForm extends Model
 
     public static function makeFieldKey(string $label, int $index = 0): string
     {
-        $base = Str::of($label)->ascii()->snake()->trim('_')->value();
+        $base = (string) Str::of($label)->ascii()->snake()->trim('_');
         if ($base === '') {
             $base = 'field_'.$index;
         }
