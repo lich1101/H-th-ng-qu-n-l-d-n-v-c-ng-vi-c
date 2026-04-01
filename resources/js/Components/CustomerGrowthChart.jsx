@@ -1,44 +1,57 @@
 import React, { useMemo } from 'react';
 
 const svgWidth = 760;
-const svgHeight = 312;
-const padding = { top: 18, right: 24, bottom: 48, left: 46 };
+const svgHeight = 260;
+const padding = { top: 16, right: 20, bottom: 38, left: 42 };
 
 export default function CustomerGrowthChart({ data = [] }) {
     const chart = useMemo(() => {
         const normalized = Array.isArray(data) ? data : [];
-        const maxValue = Math.max(
+        const maxBar = Math.max(
             1,
-            ...normalized.map((item) => Math.max(
-                Number(item.first_purchase || 0) + Number(item.repeat_purchase || 0),
-                Number(item.created_clients || 0),
-            )),
+            ...normalized.map((item) =>
+                Math.max(
+                    Number(item.first_purchase || 0),
+                    Number(item.repeat_purchase || 0),
+                ),
+            ),
         );
+        const maxLine = Math.max(
+            1,
+            ...normalized.map((item) => Number(item.created_clients || 0)),
+        );
+        const maxValue = Math.max(maxBar, maxLine);
+
         const innerWidth = svgWidth - padding.left - padding.right;
         const innerHeight = svgHeight - padding.top - padding.bottom;
         const slotWidth = normalized.length > 0 ? innerWidth / normalized.length : innerWidth;
-        const barWidth = Math.min(30, Math.max(14, slotWidth * 0.28));
-        const tickValues = maxValue <= 4
-            ? Array.from({ length: maxValue + 1 }, (_, index) => index)
-            : [0, 0.25, 0.5, 0.75, 1].map((ratio) => Math.round(maxValue * ratio));
-        const uniqueTicks = Array.from(new Set(tickValues)).sort((a, b) => a - b);
+        const barWidth = Math.min(14, Math.max(6, slotWidth * 0.18));
+        const barGap = 3;
+
+        const tickCount = 5;
+        const niceMax = Math.ceil(maxValue / (tickCount - 1)) * (tickCount - 1) || tickCount - 1;
+        const tickValues = Array.from({ length: tickCount }, (_, i) =>
+            Math.round((niceMax / (tickCount - 1)) * i),
+        );
+
         const linePoints = normalized.map((item, index) => {
             const x = padding.left + (slotWidth * index) + (slotWidth / 2);
             const value = Number(item.created_clients || 0);
-            const y = padding.top + innerHeight - ((value / maxValue) * innerHeight);
+            const y = padding.top + innerHeight - ((value / niceMax) * innerHeight);
             return { x, y, value };
         });
 
         return {
             normalized,
-            maxValue,
+            niceMax,
             innerHeight,
             slotWidth,
             barWidth,
+            barGap,
             linePoints,
-            gridValues: uniqueTicks.map((value) => ({
+            gridValues: tickValues.map((value) => ({
                 value,
-                y: padding.top + innerHeight - ((value / maxValue) * innerHeight),
+                y: padding.top + innerHeight - ((value / niceMax) * innerHeight),
             })),
         };
     }, [data]);
@@ -51,26 +64,37 @@ export default function CustomerGrowthChart({ data = [] }) {
         .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
         .join(' ');
 
+    const areaPath = chart.linePoints.length > 0
+        ? `${linePath} L ${chart.linePoints[chart.linePoints.length - 1].x} ${padding.top + chart.innerHeight} L ${chart.linePoints[0].x} ${padding.top + chart.innerHeight} Z`
+        : '';
+
     return (
-        <div className="space-y-3">
-            <div className="grid gap-2 md:grid-cols-3">
-                <div className="inline-flex items-center gap-2.5 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">
-                    <span className="h-3 w-3 rounded-[4px] bg-emerald-500" />
-                    <span>Mua lần đầu</span>
-                </div>
-                <div className="inline-flex items-center gap-2.5 rounded-2xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-sm font-semibold text-cyan-700">
-                    <span className="h-3 w-3 rounded-[4px] bg-cyan-500" />
-                    <span>Mua lại</span>
-                </div>
-                <div className="inline-flex items-center gap-2.5 rounded-2xl border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-700">
-                    <span className="h-3 w-3 rounded-full bg-violet-500" />
-                    <span>Tạo mới (đường)</span>
-                </div>
+        <div className="space-y-2.5">
+            <div className="flex flex-wrap items-center gap-4 text-xs font-medium text-slate-500">
+                <span className="inline-flex items-center gap-1.5">
+                    <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: '#16A34A' }} />
+                    Mua lần đầu
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                    <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: '#0891B2' }} />
+                    Mua lại
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                    <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: '#7C3AED' }} />
+                    Tạo mới (đường)
+                </span>
             </div>
-            <div className="overflow-x-auto rounded-[22px] border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/40 p-4">
-                <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} className="min-w-[720px]">
+            <div className="overflow-x-auto">
+                <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} className="w-full" style={{ maxHeight: 280 }}>
+                    <defs>
+                        <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#7C3AED" stopOpacity="0.10" />
+                            <stop offset="100%" stopColor="#7C3AED" stopOpacity="0.01" />
+                        </linearGradient>
+                    </defs>
+
                     {chart.gridValues.map((grid) => (
-                        <g key={`grid-${grid.y}`}>
+                        <g key={`grid-${grid.value}`}>
                             <line
                                 x1={padding.left}
                                 y1={grid.y}
@@ -81,10 +105,10 @@ export default function CustomerGrowthChart({ data = [] }) {
                             />
                             <text
                                 x={padding.left - 8}
-                                y={grid.y + 5}
+                                y={grid.y + 4}
                                 textAnchor="end"
-                                fontSize="13"
-                                fontWeight="600"
+                                fontSize="11"
+                                fontWeight="500"
                                 fill="#94A3B8"
                             >
                                 {grid.value}
@@ -93,39 +117,43 @@ export default function CustomerGrowthChart({ data = [] }) {
                     ))}
 
                     {chart.normalized.map((item, index) => {
-                        const x = padding.left + (chart.slotWidth * index) + (chart.slotWidth / 2) - (chart.barWidth / 2);
+                        const centerX = padding.left + (chart.slotWidth * index) + (chart.slotWidth / 2);
                         const firstValue = Number(item.first_purchase || 0);
                         const repeatValue = Number(item.repeat_purchase || 0);
-                        const firstHeight = (firstValue / chart.maxValue) * chart.innerHeight;
-                        const repeatHeight = (repeatValue / chart.maxValue) * chart.innerHeight;
+                        const firstHeight = (firstValue / chart.niceMax) * chart.innerHeight;
+                        const repeatHeight = (repeatValue / chart.niceMax) * chart.innerHeight;
+                        const firstX = centerX - chart.barWidth - (chart.barGap / 2);
+                        const repeatX = centerX + (chart.barGap / 2);
                         const firstY = padding.top + chart.innerHeight - firstHeight;
-                        const repeatY = firstY - repeatHeight;
+                        const repeatY = padding.top + chart.innerHeight - repeatHeight;
 
                         return (
                             <g key={item.label || index}>
                                 <rect
-                                    x={x}
+                                    x={firstX}
                                     y={firstY}
                                     width={chart.barWidth}
                                     height={Math.max(firstHeight, 1)}
-                                    rx="8"
+                                    rx="4"
                                     fill="#16A34A"
+                                    opacity="0.85"
                                 />
                                 <rect
-                                    x={x}
+                                    x={repeatX}
                                     y={repeatY}
                                     width={chart.barWidth}
                                     height={Math.max(repeatHeight, 1)}
-                                    rx="8"
+                                    rx="4"
                                     fill="#0891B2"
+                                    opacity="0.85"
                                 />
                                 <text
-                                    x={padding.left + (chart.slotWidth * index) + (chart.slotWidth / 2)}
-                                    y={svgHeight - 10}
+                                    x={centerX}
+                                    y={svgHeight - 8}
                                     textAnchor="middle"
-                                    fontSize="14"
-                                    fontWeight="600"
-                                    fill="#64748B"
+                                    fontSize="12"
+                                    fontWeight="500"
+                                    fill="#94A3B8"
                                 >
                                     {item.label}
                                 </text>
@@ -133,11 +161,20 @@ export default function CustomerGrowthChart({ data = [] }) {
                         );
                     })}
 
-                    <path d={linePath} fill="none" stroke="#7C3AED" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                    {areaPath && (
+                        <path d={areaPath} fill="url(#areaGrad)" />
+                    )}
+                    <path
+                        d={linePath}
+                        fill="none"
+                        stroke="#7C3AED"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                    />
                     {chart.linePoints.map((point, index) => (
                         <g key={`point-${index}`}>
-                            <circle cx={point.x} cy={point.y} r="4" fill="#7C3AED" />
-                            <circle cx={point.x} cy={point.y} r="8" fill="#7C3AED" fillOpacity="0.16" />
+                            <circle cx={point.x} cy={point.y} r="3" fill="#fff" stroke="#7C3AED" strokeWidth="2" />
                         </g>
                     ))}
                 </svg>

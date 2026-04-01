@@ -285,25 +285,25 @@ export default function Dashboard(props) {
             <section className={`${cardClass} mt-5`}>
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                     <div>
-                        <h3 className="text-lg font-semibold text-slate-900">Biểu đồ tăng trưởng khách hàng</h3>
-                        <p className="mt-1 text-sm text-text-muted">Theo dõi khách hàng mua lần đầu, mua lại và số khách hàng tạo mới trong 12 tháng gần nhất.</p>
+                        <h3 className="text-lg font-semibold text-slate-900">Tăng trưởng khách hàng</h3>
+                        <p className="mt-1 text-sm text-text-muted">Theo dõi mua lần đầu, mua lại và khách hàng tạo mới trong 12 tháng gần nhất.</p>
                     </div>
-                    <div className="grid gap-3 sm:grid-cols-3">
-                        <div className="rounded-2xl border border-violet-100 bg-violet-50/70 px-4 py-3">
-                            <div className="text-xs font-semibold uppercase tracking-[0.12em] text-violet-700">Tổng khách tạo mới</div>
-                            <div className="mt-2 text-2xl font-semibold text-slate-900">{customerTotals.created}</div>
+                    <div className="flex flex-wrap gap-2">
+                        <div className="rounded-xl border border-violet-100 bg-violet-50/70 px-3 py-2">
+                            <div className="text-[10px] font-semibold uppercase tracking-wider text-violet-600">Tạo mới</div>
+                            <div className="mt-0.5 text-lg font-bold text-slate-900">{customerTotals.created}</div>
                         </div>
-                        <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 px-4 py-3">
-                            <div className="text-xs font-semibold uppercase tracking-[0.12em] text-emerald-700">Mua lần đầu</div>
-                            <div className="mt-2 text-2xl font-semibold text-slate-900">{customerTotals.firstPurchase}</div>
+                        <div className="rounded-xl border border-emerald-100 bg-emerald-50/70 px-3 py-2">
+                            <div className="text-[10px] font-semibold uppercase tracking-wider text-emerald-600">Mua đầu</div>
+                            <div className="mt-0.5 text-lg font-bold text-slate-900">{customerTotals.firstPurchase}</div>
                         </div>
-                        <div className="rounded-2xl border border-cyan-100 bg-cyan-50/70 px-4 py-3">
-                            <div className="text-xs font-semibold uppercase tracking-[0.12em] text-cyan-700">Mua lại</div>
-                            <div className="mt-2 text-2xl font-semibold text-slate-900">{customerTotals.repeatPurchase}</div>
+                        <div className="rounded-xl border border-cyan-100 bg-cyan-50/70 px-3 py-2">
+                            <div className="text-[10px] font-semibold uppercase tracking-wider text-cyan-600">Mua lại</div>
+                            <div className="mt-0.5 text-lg font-bold text-slate-900">{customerTotals.repeatPurchase}</div>
                         </div>
                     </div>
                 </div>
-                <div className="mt-5 rounded-2xl border border-slate-200/80 bg-white p-4">
+                <div className="mt-4">
                     <CustomerGrowthChart data={customerGrowth} />
                 </div>
             </section>
