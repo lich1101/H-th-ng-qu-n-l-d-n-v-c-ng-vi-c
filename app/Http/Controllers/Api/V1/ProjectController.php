@@ -83,6 +83,14 @@ class ProjectController extends Controller
             return response()->json(['message' => $error], 422);
         }
 
+        // Enforce contract ownership: only admin or contract collector/creator
+        if (! empty($validated['contract_id'])) {
+            $authError = $this->assertCanCreateFromContract($request->user(), (int) $validated['contract_id']);
+            if ($authError) {
+                return $authError;
+            }
+        }
+
         if (($validated['service_type'] ?? '') === 'khac') {
             $validated['service_type_other'] = trim((string) ($validated['service_type_other'] ?? ''));
             if ($validated['service_type_other'] === '') {
@@ -109,6 +117,81 @@ class ProjectController extends Controller
             $contract->update(['project_id' => $project->id]);
         }
 
+        $project->load($this->baseRelations());
+
+        return response()->json($this->transformProject($project, $request->user()), 201);
+    }
+
+    /**
+     * Create a project directly from a contract.
+     * Only admin or contract collector/creator can do this.
+     */
+    public function createFromContract(Request $request): JsonResponse
+    {
+        $contractId = (int) $request->input('contract_id');
+        if (! $contractId) {
+            return response()->json(['message' => 'contract_id là bắt buộc.'], 422);
+        }
+
+        $contract = Contract::with(['client'])->find($contractId);
+        if (! $contract) {
+            return response()->json(['message' => 'Hợp đồng không tồn tại.'], 404);
+        }
+
+        // 1:1 check
+        $existingProject = Project::where('contract_id', $contractId)->first();
+        if ($existingProject) {
+            return response()->json(['message' => 'Hợp đồng này đã có dự án liên kết.', 'project_id' => $existingProject->id], 422);
+        }
+        if ($contract->project_id) {
+            return response()->json(['message' => 'Hợp đồng đã liên kết với dự án khác.', 'project_id' => $contract->project_id], 422);
+        }
+
+        // Role check
+        $authError = $this->assertCanCreateFromContract($request->user(), $contractId, $contract);
+        if ($authError) {
+            return $authError;
+        }
+
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'service_type' => ['required', 'string', 'max:80'],
+            'service_type_other' => ['nullable', 'string', 'max:120'],
+            'start_date' => ['nullable', 'date'],
+            'deadline' => ['nullable', 'date'],
+            'budget' => ['nullable', 'numeric', 'min:0'],
+            'status' => ['nullable', 'string', 'max:50'],
+            'customer_requirement' => ['nullable', 'string'],
+            'owner_id' => ['nullable', 'integer', 'exists:users,id'],
+            'repo_url' => ['nullable', 'string', 'max:255'],
+            'website_url' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        if (! empty($validated['owner_id'])) {
+            if ($error = $this->validateProjectOwner($validated['owner_id'])) {
+                return response()->json(['message' => $error], 422);
+            }
+        }
+
+        $project = Project::create([
+            'code' => $this->generateProjectCode(),
+            'name' => $validated['name'],
+            'client_id' => $contract->client_id,
+            'contract_id' => $contract->id,
+            'service_type' => $validated['service_type'] ?? 'khac',
+            'service_type_other' => ($validated['service_type'] ?? '') === 'khac' ? ($validated['service_type_other'] ?? '') : null,
+            'start_date' => $validated['start_date'] ?? $contract->start_date,
+            'deadline' => $validated['deadline'] ?? $contract->end_date,
+            'budget' => $validated['budget'] ?? $contract->value ?? null,
+            'status' => $validated['status'] ?? 'moi_tao',
+            'customer_requirement' => $validated['customer_requirement'] ?? null,
+            'owner_id' => $validated['owner_id'] ?? null,
+            'repo_url' => $validated['repo_url'] ?? null,
+            'website_url' => $validated['website_url'] ?? null,
+            'created_by' => $request->user()->id,
+        ]);
+
+        $contract->update(['project_id' => $project->id]);
         $project->load($this->baseRelations());
 
         return response()->json($this->transformProject($project, $request->user()), 201);
@@ -366,8 +449,17 @@ class ProjectController extends Controller
             return response()->json(['message' => 'Hợp đồng không tồn tại.'], 422);
         }
 
+        // Strict 1:1: check contract.project_id
         if ($contract->project_id && (int) $contract->project_id !== (int) optional($project)->id) {
             return response()->json(['message' => 'Hợp đồng đã liên kết với dự án khác.'], 422);
+        }
+
+        // Also check projects table for any existing project with this contract_id
+        $existing = Project::where('contract_id', $contract->id)
+            ->where('id', '!=', (int) optional($project)->id)
+            ->first();
+        if ($existing) {
+            return response()->json(['message' => 'Hợp đồng đã có dự án liên kết (dự án #'.$existing->id.').'], 422);
         }
 
         if (! empty($validated['client_id']) && (int) $validated['client_id'] !== (int) $contract->client_id) {
@@ -377,6 +469,31 @@ class ProjectController extends Controller
         $validated['client_id'] = $contract->client_id;
 
         return $contract;
+    }
+
+    /**
+     * Check if user can create project from a specific contract.
+     * Only admin or the contract's collector/creator.
+     */
+    private function assertCanCreateFromContract(User $user, int $contractId, ?Contract $contract = null): ?JsonResponse
+    {
+        if ($user->role === 'admin') {
+            return null;
+        }
+
+        $contract = $contract ?: Contract::find($contractId);
+        if (! $contract) {
+            return response()->json(['message' => 'Hợp đồng không tồn tại.'], 404);
+        }
+
+        $isCollector = (int) ($contract->collector_user_id ?? 0) === (int) $user->id;
+        $isCreator = (int) ($contract->created_by ?? 0) === (int) $user->id;
+
+        if (! $isCollector && ! $isCreator) {
+            return response()->json(['message' => 'Chỉ admin hoặc nhân viên phụ trách hợp đồng mới được tạo dự án từ hợp đồng.'], 403);
+        }
+
+        return null;
     }
 
     private function baseRelations(): array

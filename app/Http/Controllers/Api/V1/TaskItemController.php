@@ -75,6 +75,29 @@ class TaskItemController extends Controller
         );
     }
 
+    public function show(int $id, Request $request): JsonResponse
+    {
+        $item = TaskItem::with([
+            'task:id,project_id,department_id,title,assignee_id,created_by,assigned_by,status,progress_percent,weight_percent,deadline',
+            'task.project:id,name,code,owner_id',
+            'task.project.owner:id,name,email',
+            'task.department:id,name,manager_id',
+            'assignee:id,name,email,avatar_url',
+            'reviewer:id,name,email,avatar_url',
+        ])->find($id);
+
+        if (! $item) {
+            return response()->json(['message' => 'Không tìm thấy đầu việc.'], 404);
+        }
+
+        $task = $item->task;
+        if ($task && ! ProjectScope::canAccessTask($request->user(), $task)) {
+            return response()->json(['message' => 'Không có quyền xem đầu việc.'], 403);
+        }
+
+        return response()->json($item);
+    }
+
     public function index(Task $task, Request $request): JsonResponse
     {
         if (! ProjectScope::canAccessTask($request->user(), $task)) {

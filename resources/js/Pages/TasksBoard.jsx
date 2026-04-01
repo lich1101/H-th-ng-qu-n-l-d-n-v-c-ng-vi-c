@@ -1339,6 +1339,19 @@ export default function TasksBoard(props) {
 
     const openCreate = () => {
         resetForm();
+        // Pre-fill from URL project_id if present
+        const urlProjectId = queryParams.get('project_id');
+        if (urlProjectId) {
+            const proj = projects.find((p) => String(p.id) === String(urlProjectId));
+            if (proj) {
+                setForm((prev) => ({
+                    ...prev,
+                    project_id: String(proj.id),
+                    department_id: proj.department_id ? String(proj.department_id) : prev.department_id,
+                    assignee_id: proj.owner_id ? String(proj.owner_id) : prev.assignee_id,
+                }));
+            }
+        }
         setShowForm(true);
     };
 

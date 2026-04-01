@@ -19,6 +19,14 @@ const STATUS_STYLES = {
     blocked: 'bg-rose-50 text-rose-700 border-rose-200',
 };
 
+const PRIORITY_LABELS = { low: 'Thấp', medium: 'TB', high: 'Cao', urgent: 'Khẩn' };
+const PRIORITY_STYLES = {
+    low: 'bg-slate-100 text-slate-700 border-slate-200',
+    medium: 'bg-amber-50 text-amber-700 border-amber-200',
+    high: 'bg-orange-50 text-orange-700 border-orange-200',
+    urgent: 'bg-rose-50 text-rose-700 border-rose-200',
+};
+
 const formatDate = (raw) => {
     if (!raw) return '—';
     return String(raw).slice(0, 10);
@@ -216,7 +224,9 @@ export default function TasksByStaff(props) {
                                         <th className="py-2">Công việc</th>
                                         <th className="py-2">Dự án</th>
                                         <th className="py-2">Trạng thái</th>
+                                        <th className="py-2">Ưu tiên</th>
                                         <th className="py-2">Tiến độ</th>
+                                        <th className="py-2">Tỷ trọng</th>
                                         <th className="py-2">Deadline</th>
                                         <th className="py-2 text-right">Đầu việc</th>
                                     </tr>
@@ -238,7 +248,20 @@ export default function TasksByStaff(props) {
                                                     {LABELS[task.status] || task.status}
                                                 </span>
                                             </td>
-                                            <td className="py-2.5 text-xs text-slate-600">{task.progress_percent ?? 0}%</td>
+                                            <td className="py-2.5">
+                                                <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${PRIORITY_STYLES[task.priority] || PRIORITY_STYLES.medium}`}>
+                                                    {PRIORITY_LABELS[task.priority] || task.priority || 'TB'}
+                                                </span>
+                                            </td>
+                                            <td className="py-2.5">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="h-1.5 w-16 rounded-full bg-slate-100">
+                                                        <div className="h-1.5 rounded-full bg-primary" style={{ width: `${Math.min(100, task.progress_percent || 0)}%` }} />
+                                                    </div>
+                                                    <span className="text-xs text-slate-600">{task.progress_percent ?? 0}%</span>
+                                                </div>
+                                            </td>
+                                            <td className="py-2.5 text-xs text-slate-600">{Number(task.weight_percent ?? 0)}%</td>
                                             <td className="py-2.5 text-xs text-slate-600">{formatDate(task.deadline)}</td>
                                             <td className="py-2.5 text-right">
                                                 <a

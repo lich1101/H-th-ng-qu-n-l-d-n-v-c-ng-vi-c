@@ -715,7 +715,7 @@ export default function ProjectsKanban(props) {
                                             <tr
                                                 key={p.id}
                                                 className={`border-b border-slate-100 cursor-pointer hover:bg-slate-50/70 ${selectedProjectSet.has(Number(p.id)) ? 'bg-primary/5' : ''}`}
-                                                onClick={() => { window.location.href = `/cong-viec?project_id=${p.id}`; }}
+                                                onClick={() => { window.location.href = `/du-an/${p.id}`; }}
                                             >
                                                 {canBulkActions && (
                                                     <td className="py-3 pr-3 align-top">

@@ -1758,7 +1758,38 @@ export default function Contracts(props) {
                                     </div>
                                     <div className="flex items-center justify-between gap-3">
                                         <span className="text-text-muted">Dự án liên kết</span>
-                                        <span className="font-semibold text-slate-900">{detailContract.project?.name || '—'}</span>
+                                        {detailContract.project?.id ? (
+                                            <a href={`/du-an/${detailContract.project.id}`} className="font-semibold text-primary hover:underline">
+                                                {detailContract.project.name || `Dự án #${detailContract.project.id}`}
+                                            </a>
+                                        ) : (
+                                            <span className="flex items-center gap-2">
+                                                <span className="text-text-muted">Chưa có</span>
+                                                {(userRole === 'admin' || Number(detailContract.collector_user_id || 0) === currentUserId || Number(detailContract.created_by || 0) === currentUserId) && (
+                                                    <button
+                                                        type="button"
+                                                        className="rounded-xl bg-primary px-3 py-1.5 text-xs font-semibold text-white"
+                                                        onClick={async () => {
+                                                            const name = prompt('Tên dự án:', detailContract.title || '');
+                                                            if (!name?.trim()) return;
+                                                            try {
+                                                                const res = await axios.post('/api/v1/projects/from-contract', {
+                                                                    contract_id: detailContract.id,
+                                                                    name: name.trim(),
+                                                                    service_type: 'khac',
+                                                                });
+                                                                toast.success('Đã tạo dự án từ hợp đồng.');
+                                                                window.location.href = `/du-an/${res.data?.id || res.data?.data?.id}`;
+                                                            } catch (e) {
+                                                                toast.error(e?.response?.data?.message || 'Lỗi tạo dự án.');
+                                                            }
+                                                        }}
+                                                    >
+                                                        Tạo dự án
+                                                    </button>
+                                                )}
+                                            </span>
+                                        )}
                                     </div>
                                     <div className="flex items-center justify-between gap-3">
                                         <span className="text-text-muted">Ngày ký</span>

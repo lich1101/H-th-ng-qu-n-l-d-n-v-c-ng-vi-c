@@ -258,7 +258,7 @@ export default function TaskItemsBoard(props) {
                                     <tr
                                         key={item.id}
                                         className="cursor-pointer border-b border-slate-100 hover:bg-slate-50"
-                                        onClick={() => { window.location.href = `/cong-viec/${item.task_id}`; }}
+                                        onClick={() => { window.location.href = `/dau-viec/${item.id}`; }}
                                     >
                                         <td className="py-2.5">
                                             <p className="font-medium text-slate-900">{item.title}</p>

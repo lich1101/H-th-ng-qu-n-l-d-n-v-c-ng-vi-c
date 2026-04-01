@@ -157,6 +157,8 @@ Route::prefix('v1')->group(function () {
             ->middleware('role:admin,quan_ly,nhan_vien');
         Route::post('/projects', [ProjectController::class, 'store'])
             ->middleware('role:admin,quan_ly');
+        Route::post('/projects/from-contract', [ProjectController::class, 'createFromContract'])
+            ->middleware('role:admin,quan_ly,nhan_vien');
         Route::put('/projects/{project}', [ProjectController::class, 'update'])
             ->middleware('role:admin,quan_ly');
         Route::delete('/projects/{project}', [ProjectController::class, 'destroy'])
@@ -215,6 +217,8 @@ Route::prefix('v1')->group(function () {
 
         Route::get('/tasks/{task}/items', [TaskItemController::class, 'index']);
         Route::get('/task-items', [TaskItemController::class, 'globalIndex'])
+            ->middleware('role:admin,quan_ly,nhan_vien');
+        Route::get('/task-items/{id}', [TaskItemController::class, 'show'])
             ->middleware('role:admin,quan_ly,nhan_vien');
         Route::post('/tasks/{task}/items', [TaskItemController::class, 'store'])
             ->middleware('role:admin,quan_ly');
