@@ -179,10 +179,11 @@
         }
         .field--full {
             grid-column: 1 / -1;
+            padding-bottom: 10px;
         }
         label {
-            font-size: 13px;
-            font-weight: 600;
+            font-size: 14px;
+            font-weight: 800;
             color: var(--text);
         }
         label span {
@@ -229,7 +230,7 @@
             flex-direction: column;
             gap: 10px;
             margin-top: auto;
-            padding-top: 24px;
+            padding-top: 45px;
         }
         button {
             border: none;
