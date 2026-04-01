@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 
-const DEFAULT_PER_PAGE_OPTIONS = [10, 20, 30, 50, 100, 200, 500, 1000, 2000, 5000, 10000];
+const DEFAULT_PER_PAGE_OPTIONS = [10, 20, 30, 50, 100, 200, 500, 1000, 2000];
 
 const buildPageItems = (currentPage, lastPage) => {
     if (lastPage <= 1) return [1];
