@@ -14,6 +14,43 @@ const hasMeaningfulTextNode = (node) => (
     node?.nodeType === Node.TEXT_NODE && normalizeText(node.textContent).length > 0
 );
 
+const buildSelectOptionsSignature = (select) =>
+    Array.from(select.options || [])
+        .map((option) => {
+            const value = String(option?.value ?? '');
+            const label = normalizeText(option?.textContent ?? '');
+            const disabled = option?.disabled ? '1' : '0';
+            return `${value}\u0001${label}\u0001${disabled}`;
+        })
+        .join('\u0002');
+
+const syncTomSelectValueFromDom = (select, instance, isMultiple) => {
+    if (!instance) return;
+
+    if (isMultiple) {
+        const domValues = Array.from(select.selectedOptions || []).map((option) => String(option?.value ?? ''));
+        const currentValues = Array.isArray(instance.items) ? instance.items.map((item) => String(item ?? '')) : [];
+        const isSame = domValues.length === currentValues.length
+            && domValues.every((value, index) => value === currentValues[index]);
+        if (!isSame) {
+            instance.setValue(domValues, true);
+        }
+        return;
+    }
+
+    const domValue = String(select.value ?? '');
+    const currentValue = Array.isArray(instance.items) && instance.items.length > 0
+        ? String(instance.items[0] ?? '')
+        : '';
+
+    if (domValue === currentValue) return;
+    if (domValue === '') {
+        instance.clear(true);
+        return;
+    }
+    instance.setValue(domValue, true);
+};
+
 const parseDateValue = (raw) => {
     const value = normalizeText(raw);
     if (!value) return null;
@@ -291,12 +328,36 @@ const shouldEnhanceSelect = (select) => {
 };
 
 const enhanceSelect = (select) => {
-    if (!shouldEnhanceSelect(select)) return;
-
+    const isEligible = shouldEnhanceSelect(select);
     const existing = select.tomselect;
+    if (!isEligible) {
+        if (existing) {
+            existing.destroy();
+        }
+        delete select.dataset.searchableReady;
+        delete select.dataset.searchOptionsSignature;
+        return;
+    }
+
     if (existing) {
-        if (select.disabled) existing.disable();
-        else existing.enable();
+        const nextSignature = buildSelectOptionsSignature(select);
+        const currentSignature = String(select.dataset.searchOptionsSignature || '');
+        if (currentSignature !== nextSignature) {
+            existing.destroy();
+            delete select.dataset.searchableReady;
+            delete select.dataset.searchOptionsSignature;
+        } else {
+            syncTomSelectValueFromDom(select, existing, Boolean(select.multiple));
+            if (select.disabled) existing.disable();
+            else existing.enable();
+            return;
+        }
+    }
+
+    const current = select.tomselect;
+    if (current) {
+        if (select.disabled) current.disable();
+        else current.enable();
         return;
     }
 
@@ -326,7 +387,8 @@ const enhanceSelect = (select) => {
             maxOptions: SELECT_MAX_VISIBLE_OPTIONS,
             openOnFocus: true,
             placeholder,
-            plugins: isMultiple ? ['remove_button'] : [],
+            plugins: isMultiple ? ['remove_button'] : ['dropdown_input'],
+            closeAfterSelect: !isMultiple,
             render: {
                 no_results(data, escape) {
                     return `<div class="no-results">Không tìm thấy: ${escape(data.input)}</div>`;
@@ -351,9 +413,11 @@ const enhanceSelect = (select) => {
         }
 
         select.dataset.searchableReady = '1';
+        select.dataset.searchOptionsSignature = buildSelectOptionsSignature(select);
         if (select.disabled) instance.disable();
     } catch {
         select.dataset.searchableReady = 'fallback';
+        delete select.dataset.searchOptionsSignature;
     }
 };
 
@@ -369,6 +433,7 @@ const destroyEnhancedSelects = () => {
         if (!instance) return;
         instance.destroy();
         delete select.dataset.searchableReady;
+        delete select.dataset.searchOptionsSignature;
     });
 };
 
