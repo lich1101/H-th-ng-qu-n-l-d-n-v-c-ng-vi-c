@@ -159,6 +159,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
         return Inertia::render('Contracts');
     })->name('contracts.index')->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
 
+    Route::get('/hop-dong/{contract}', function (App\Models\Contract $contract) {
+        return Inertia::render('ContractDetail', [
+            'contractId' => $contract->id,
+        ]);
+    })->name('contracts.detail')->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
+
     Route::get('/san-pham', function () {
         return Inertia::render('Products');
     })->name('products.index')->middleware('role:admin,ke_toan,quan_ly,nhan_vien');
