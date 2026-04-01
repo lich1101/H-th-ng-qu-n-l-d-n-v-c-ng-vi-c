@@ -386,7 +386,7 @@ const enhanceSelect = (select) => {
         || emptyOptionLabel
         || 'Chọn giá trị',
     );
-    const dropdownParent = document.body;
+    const dropdownParent = 'body';
 
     try {
         const instance = new TomSelect(select, {
