@@ -32,8 +32,15 @@ const CRM_FIELD_OPTIONS = [
     { value: 'company', label: 'Tên công ty' },
     { value: 'email', label: 'Email' },
     { value: 'phone', label: 'Số điện thoại' },
-    { value: 'lead_message', label: 'Nội dung nhu cầu' },
-    { value: 'notes', label: 'Ghi chú khách hàng' },
+    { value: 'external_code', label: 'Mã định danh (CRM cũ/ERP)' },
+    { value: 'customer_status_label', label: 'Trạng thái khách hàng' },
+    { value: 'customer_level', label: 'Hạng / Cấp độ khách hàng' },
+    { value: 'company_size', label: 'Quy mô công ty' },
+    { value: 'product_categories', label: 'Danh mục sản phẩm quan tâm' },
+    { value: 'lead_source', label: 'Nguồn khách hàng' },
+    { value: 'lead_channel', label: 'Kênh khách hàng' },
+    { value: 'lead_message', label: 'Nhu cầu chi tiết' },
+    { value: 'notes', label: 'Ghi chú nội bộ' },
 ];
 
 const BACKGROUND_OPTIONS = [

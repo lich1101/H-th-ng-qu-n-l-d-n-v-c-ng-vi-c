@@ -38,7 +38,14 @@ class CRMController extends Controller
                 $builder->where('name', 'like', "%{$search}%")
                     ->orWhere('company', 'like', "%{$search}%")
                     ->orWhere('email', 'like', "%{$search}%")
-                    ->orWhere('phone', 'like', "%{$search}%");
+                    ->orWhere('phone', 'like', "%{$search}%")
+                    ->orWhere('notes', 'like', "%{$search}%")
+                    ->orWhere('external_code', 'like', "%{$search}%")
+                    ->orWhere('lead_message', 'like', "%{$search}%")
+                    ->orWhere('customer_status_label', 'like', "%{$search}%")
+                    ->orWhere('customer_level', 'like', "%{$search}%")
+                    ->orWhere('company_size', 'like', "%{$search}%")
+                    ->orWhere('product_categories', 'like', "%{$search}%");
             });
         }
         if ($request->filled('type')) {

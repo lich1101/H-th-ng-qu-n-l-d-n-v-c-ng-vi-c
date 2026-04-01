@@ -45,7 +45,7 @@ function TableSearchInput({ containerRef, searchValue, onSearchChange }) {
     const inputRef = useRef(null);
 
     const applyFilter = useCallback((searchText) => {
-        if (!containerRef.current) return;
+        if (!containerRef.current || isControlled) return;
         // Walk up to the nearest common parent that also contains tables
         const parent = containerRef.current.parentElement?.closest('.bg-white') || containerRef.current.parentElement;
         if (!parent) return;
@@ -110,7 +110,7 @@ function TableSearchInput({ containerRef, searchValue, onSearchChange }) {
         if (!parent) return;
 
         const observer = new MutationObserver(() => {
-            if (term) applyFilter(term);
+            if (term && !isControlled) applyFilter(term);
         });
         observer.observe(parent, { childList: true, subtree: true });
         return () => observer.disconnect();
@@ -149,7 +149,7 @@ function TableSearchInput({ containerRef, searchValue, onSearchChange }) {
                 onChange={handleChange}
             />
             <div className="absolute inset-y-0 right-0 flex items-center gap-1.5 pr-3">
-                {matchCount !== null && (
+                {matchCount !== null && !isControlled && (
                     <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${matchCount > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
                         {matchCount} kết quả
                     </span>

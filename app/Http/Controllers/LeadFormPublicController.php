@@ -126,12 +126,18 @@ class LeadFormPublicController extends Controller
             'email' => $clientPayload['email'],
             'phone' => $clientPayload['phone'],
             'lead_type_id' => $leadTypeId,
-            'lead_source' => 'lead_form',
-            'lead_channel' => 'iframe:'.$form->slug,
+            'lead_source' => $clientPayload['lead_source'] ?: 'lead_form',
+            'lead_channel' => $clientPayload['lead_channel'] ?: 'iframe:'.$form->slug,
             'lead_message' => $clientPayload['lead_message'],
             'notes' => $clientPayload['notes'],
             'assigned_department_id' => $assignedDepartmentId,
             'assigned_staff_id' => $assignedStaffId,
+            // New fields
+            'external_code' => $clientPayload['external_code'] ?? null,
+            'customer_status_label' => $clientPayload['customer_status_label'] ?? null,
+            'customer_level' => $clientPayload['customer_level'] ?? null,
+            'company_size' => $clientPayload['company_size'] ?? null,
+            'product_categories' => $clientPayload['product_categories'] ?? null,
         ]);
 
         app(LeadNotificationService::class)->notifyNewLead(
@@ -252,6 +258,13 @@ class LeadFormPublicController extends Controller
             'company' => null,
             'email' => null,
             'phone' => null,
+            'external_code' => null,
+            'customer_status_label' => null,
+            'customer_level' => null,
+            'company_size' => null,
+            'product_categories' => null,
+            'lead_source' => null,
+            'lead_channel' => null,
         ];
         $leadMessageParts = [];
         $noteParts = [
@@ -284,6 +297,13 @@ class LeadFormPublicController extends Controller
                 case 'company':
                 case 'email':
                 case 'phone':
+                case 'external_code':
+                case 'customer_status_label':
+                case 'customer_level':
+                case 'company_size':
+                case 'product_categories':
+                case 'lead_source':
+                case 'lead_channel':
                     if (empty($mapped[$mapTo])) {
                         $mapped[$mapTo] = $value;
                     }
@@ -321,6 +341,13 @@ class LeadFormPublicController extends Controller
             'company' => $mapped['company'],
             'email' => $mapped['email'],
             'phone' => $mapped['phone'],
+            'external_code' => $mapped['external_code'],
+            'customer_status_label' => $mapped['customer_status_label'],
+            'customer_level' => $mapped['customer_level'],
+            'company_size' => $mapped['company_size'],
+            'product_categories' => $mapped['product_categories'],
+            'lead_source' => $mapped['lead_source'],
+            'lead_channel' => $mapped['lead_channel'],
             'lead_message' => count($leadMessageParts) > 0 ? implode("\n", $leadMessageParts) : null,
             'notes' => count($noteParts) > 0 ? implode("\n", $noteParts) : null,
         ];
