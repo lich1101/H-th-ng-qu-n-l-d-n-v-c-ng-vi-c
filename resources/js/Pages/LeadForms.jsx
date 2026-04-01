@@ -116,6 +116,9 @@ const defaultStyleConfig = (settings = null) => ({
     success_message: 'Cảm ơn bạn đã gửi thông tin. Đội ngũ sẽ liên hệ sớm.',
     logo_mode: 'brand',
     logo_url: '',
+    show_card_border: false,
+    custom_css: '',
+    custom_js: '',
 });
 
 const defaultSubmissionMapping = () => ({
@@ -585,6 +588,16 @@ export default function LeadForms(props) {
         }
     };
 
+    const duplicate = async (item) => {
+        try {
+            await axios.post(`/api/v1/lead-forms/${item.id}/duplicate`);
+            toast.success(`Đã sao chép form "${item.name}".`);
+            await fetchData(listFilters.page, listFilters);
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Không thể sao chép form.');
+        }
+    };
+
     const listStats = useMemo(() => {
         const active = forms.filter((row) => row.is_active).length;
         const totalFields = forms.reduce(
@@ -747,6 +760,13 @@ export default function LeadForms(props) {
                                             }
                                         >
                                             Sao chép mã nhúng
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="rounded-2xl border border-sky-200 px-3 py-2 text-sm font-semibold text-sky-600"
+                                            onClick={() => duplicate(item)}
+                                        >
+                                            Sao chép form
                                         </button>
                                         <button
                                             type="button"
@@ -1311,6 +1331,56 @@ export default function LeadForms(props) {
                                                     onChange={(e) => updateStyleConfig({ success_message: e.target.value })}
                                                 />
                                             </div>
+                                        </div>
+                                    </SectionCard>
+
+                                    <SectionCard
+                                        title="Viền khung form"
+                                        description="Tùy chọn xem form có viền bao quanh hay không. Mặc định không có viền để dễ nhúng vào landing page."
+                                    >
+                                        <label className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">
+                                            <div>
+                                                <div className="font-medium text-slate-900">Hiển thị viền + bóng khung form</div>
+                                                <div className="text-sm text-text-muted">
+                                                    {form.style_config.show_card_border
+                                                        ? 'Form có viền và bóng đổ bao quanh.'
+                                                        : 'Form không có viền, hòa liền vào nền trang nhúng.'}
+                                                </div>
+                                            </div>
+                                            <input
+                                                type="checkbox"
+                                                className="h-5 w-5 rounded border-slate-300 text-primary focus:ring-primary"
+                                                checked={form.style_config.show_card_border || false}
+                                                onChange={(e) => updateStyleConfig({ show_card_border: e.target.checked })}
+                                            />
+                                        </label>
+                                    </SectionCard>
+
+                                    <SectionCard
+                                        title="Tùy chỉnh CSS / JavaScript"
+                                        description="Dán code CSS hoặc JavaScript riêng để tùy biến đổi giao diện form theo ý muốn."
+                                    >
+                                        <div>
+                                            <label className="mb-1 block text-sm font-medium text-slate-700">Custom CSS</label>
+                                            <textarea
+                                                className="w-full rounded-2xl border border-slate-200/80 px-4 py-3 font-mono text-sm"
+                                                rows={5}
+                                                placeholder={".card { background: #fff; }\nbutton { border-radius: 8px; }"}
+                                                value={form.style_config.custom_css || ''}
+                                                onChange={(e) => updateStyleConfig({ custom_css: e.target.value })}
+                                            />
+                                            <p className="mt-1 text-xs text-text-muted">Sẽ được inject vào cuối trang form công khai dưới dạng {'<style>'}.</p>
+                                        </div>
+                                        <div>
+                                            <label className="mb-1 block text-sm font-medium text-slate-700">Custom JavaScript</label>
+                                            <textarea
+                                                className="w-full rounded-2xl border border-slate-200/80 px-4 py-3 font-mono text-sm"
+                                                rows={5}
+                                                placeholder="console.log('Form loaded');"
+                                                value={form.style_config.custom_js || ''}
+                                                onChange={(e) => updateStyleConfig({ custom_js: e.target.value })}
+                                            />
+                                            <p className="mt-1 text-xs text-text-muted">Sẽ được inject vào cuối trang form công khai dưới dạng {'<script>'}.</p>
                                         </div>
                                     </SectionCard>
                                 </>

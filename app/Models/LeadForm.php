@@ -125,6 +125,9 @@ class LeadForm extends Model
             'success_message' => 'Cảm ơn bạn đã gửi thông tin. Đội ngũ sẽ liên hệ sớm.',
             'logo_mode' => 'brand',
             'logo_url' => null,
+            'show_card_border' => false,
+            'custom_css' => '',
+            'custom_js' => '',
         ];
     }
 

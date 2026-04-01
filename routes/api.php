@@ -375,6 +375,8 @@ Route::prefix('v1')->group(function () {
             ->middleware('role:admin');
         Route::delete('/lead-forms/{leadForm}', [LeadFormController::class, 'destroy'])
             ->middleware('role:admin');
+        Route::post('/lead-forms/{leadForm}/duplicate', [LeadFormController::class, 'duplicate'])
+            ->middleware('role:admin');
 
         Route::post('/imports/clients', [ImportController::class, 'importClients'])
             ->middleware('role:admin,quan_ly,nhan_vien');

@@ -7,6 +7,9 @@
         ? $customLogoUrl
         : ($logoMode === 'brand' ? $brandLogoUrl : null);
     $showLogo = $logoMode !== 'hidden' && !empty($logoUrl);
+    $showCardBorder = !empty($style['show_card_border']);
+    $customCss = trim($style['custom_css'] ?? '');
+    $customJs = trim($style['custom_js'] ?? '');
 
     $pageBackground = '#f8fafc';
     $heroGlow = 'rgba(15, 23, 42, 0.06)';
@@ -89,10 +92,15 @@
         }
         .card {
             background: var(--card);
+            @if ($showCardBorder)
             border: 1px solid rgba(219, 228, 240, 0.88);
+            box-shadow: 0 24px 60px rgba(15, 23, 42, 0.10);
+            @else
+            border: none;
+            box-shadow: none;
+            @endif
             border-radius: var(--radius);
             padding: 22px;
-            box-shadow: 0 24px 60px rgba(15, 23, 42, 0.10);
             backdrop-filter: blur(16px);
         }
         .brand {
@@ -221,6 +229,45 @@
             font-size: 12px;
             line-height: 1.6;
         }
+        .btn-loading {
+            opacity: 0.7;
+            pointer-events: none;
+        }
+        .success-state {
+            text-align: center;
+            padding: 40px 20px;
+        }
+        .success-state .icon {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary), #34d399);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 18px;
+            animation: popIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .success-state .icon svg {
+            width: 32px;
+            height: 32px;
+            color: #fff;
+        }
+        .success-state h2 {
+            font-size: 22px;
+            margin: 0 0 10px;
+            color: var(--text);
+        }
+        .success-state p {
+            color: var(--muted);
+            font-size: 15px;
+            line-height: 1.6;
+            margin: 0;
+        }
+        @keyframes popIn {
+            0% { transform: scale(0); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
         @media (max-width: 680px) {
             .wrapper {
                 padding: 18px 12px 32px;
@@ -244,87 +291,180 @@
     <div class="shell">
         <div class="wrapper">
             <div class="card">
-                @if ($showLogo)
-                    <div class="brand">
-                        <img src="{{ $logoUrl }}" alt="{{ $brandName }}">
-                        <span>{{ $brandName }}</span>
-                    </div>
-                @endif
+                <div id="form-content">
+                    @if ($showLogo)
+                        <div class="brand">
+                            <img src="{{ $logoUrl }}" alt="{{ $brandName }}">
+                            <span>{{ $brandName }}</span>
+                        </div>
+                    @endif
 
-                <h1>{{ $form->name }}</h1>
-                <p class="intro">{{ $form->description ?: 'Điền nhanh thông tin bên dưới để đội ngũ tư vấn liên hệ lại đúng nhu cầu của bạn.' }}</p>
+                    <h1>{{ $form->name }}</h1>
+                    <p class="intro">{{ $form->description ?: 'Điền nhanh thông tin bên dưới để đội ngũ tư vấn liên hệ lại đúng nhu cầu của bạn.' }}</p>
 
-                @if (session('success'))
-                    <div class="banner banner--success">{{ session('success') }}</div>
-                @endif
+                    <div id="banner-area"></div>
 
-                @if ($errors->any())
-                    <div class="banner banner--error">Vui lòng kiểm tra lại các trường đang báo lỗi trước khi gửi.</div>
-                @endif
+                    <form id="lead-form" class="form-grid">
+                        @foreach ($fields as $field)
+                            @php
+                                $key = $field['key'];
+                                $type = $field['type'] ?? 'text';
+                                $width = $field['width'] === 'half' ? 'half' : 'full';
+                                $required = !empty($field['required']);
+                                $options = $field['options'] ?? [];
+                            @endphp
+                            <div class="field field--{{ $width }}">
+                                <label for="{{ $key }}">
+                                    {{ $field['label'] }}
+                                    @if ($required)
+                                        <span>*</span>
+                                    @endif
+                                </label>
 
-                <form method="POST" action="{{ route('lead-forms.submit', $form->slug) }}" class="form-grid">
-                    @csrf
-
-                    @foreach ($fields as $field)
-                        @php
-                            $key = $field['key'];
-                            $type = $field['type'] ?? 'text';
-                            $width = $field['width'] === 'half' ? 'half' : 'full';
-                            $required = !empty($field['required']);
-                            $options = $field['options'] ?? [];
-                        @endphp
-                        <div class="field field--{{ $width }}">
-                            <label for="{{ $key }}">
-                                {{ $field['label'] }}
-                                @if ($required)
-                                    <span>*</span>
+                                @if ($type === 'textarea')
+                                    <textarea
+                                        id="{{ $key }}"
+                                        name="{{ $key }}"
+                                        placeholder="{{ $field['placeholder'] ?? '' }}"
+                                        @if ($required) required @endif
+                                    ></textarea>
+                                @elseif ($type === 'select')
+                                    <select id="{{ $key }}" name="{{ $key }}" @if ($required) required @endif>
+                                        <option value="">Chọn {{ mb_strtolower($field['label']) }}</option>
+                                        @foreach ($options as $option)
+                                            <option value="{{ $option }}">{{ $option }}</option>
+                                        @endforeach
+                                    </select>
+                                @else
+                                    <input
+                                        id="{{ $key }}"
+                                        name="{{ $key }}"
+                                        type="{{ $type === 'phone' ? 'tel' : ($type === 'email' ? 'email' : 'text') }}"
+                                        placeholder="{{ $field['placeholder'] ?? '' }}"
+                                        @if ($required) required @endif
+                                    />
                                 @endif
-                            </label>
 
-                            @if ($type === 'textarea')
-                                <textarea
-                                    id="{{ $key }}"
-                                    name="{{ $key }}"
-                                    placeholder="{{ $field['placeholder'] ?? '' }}"
-                                    @if ($required) required @endif
-                                >{{ old($key) }}</textarea>
-                            @elseif ($type === 'select')
-                                <select id="{{ $key }}" name="{{ $key }}" @if ($required) required @endif>
-                                    <option value="">Chọn {{ mb_strtolower($field['label']) }}</option>
-                                    @foreach ($options as $option)
-                                        <option value="{{ $option }}" @selected(old($key) == $option)>{{ $option }}</option>
-                                    @endforeach
-                                </select>
-                            @else
-                                <input
-                                    id="{{ $key }}"
-                                    name="{{ $key }}"
-                                    type="{{ $type === 'phone' ? 'tel' : ($type === 'email' ? 'email' : 'text') }}"
-                                    value="{{ old($key) }}"
-                                    placeholder="{{ $field['placeholder'] ?? '' }}"
-                                    @if ($required) required @endif
-                                />
-                            @endif
+                                @if (!empty($field['help_text']))
+                                    <div class="help">{{ $field['help_text'] }}</div>
+                                @endif
 
-                            @if (!empty($field['help_text']))
-                                <div class="help">{{ $field['help_text'] }}</div>
-                            @endif
+                                <div class="error" id="error-{{ $key }}" style="display:none;"></div>
+                            </div>
+                        @endforeach
 
-                            @error($key)
-                                <div class="error">{{ $message }}</div>
-                            @enderror
+                        <div class="actions">
+                            <button type="submit" id="submit-btn">{{ $style['submit_label'] ?: 'Gửi thông tin' }}</button>
+                            <div class="footer-note">
+                                Dữ liệu từ form này sẽ được chuyển vào bảng khách hàng CRM để đội ngũ nội bộ tiếp nhận và xử lý.
+                            </div>
                         </div>
-                    @endforeach
+                    </form>
+                </div>
 
-                    <div class="actions">
-                        <button type="submit">{{ $style['submit_label'] ?: 'Gửi thông tin' }}</button>
-                        <div class="footer-note">
-                            Dữ liệu từ form này sẽ được chuyển vào bảng khách hàng CRM để đội ngũ nội bộ tiếp nhận và xử lý.
-                        </div>
+                <div id="success-state" class="success-state" style="display:none;">
+                    <div class="icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                        </svg>
                     </div>
-                </form>
+                    <h2>Gửi thành công!</h2>
+                    <p id="success-message"></p>
+                </div>
             </div>
         </div>
     </div>
+    @if ($customCss)
+    <style>{!! $customCss !!}</style>
+    @endif
+    <script>
+    (function() {
+        var form = document.getElementById('lead-form');
+        var submitBtn = document.getElementById('submit-btn');
+        var bannerArea = document.getElementById('banner-area');
+        var formContent = document.getElementById('form-content');
+        var successState = document.getElementById('success-state');
+        var successMessage = document.getElementById('success-message');
+        var submitUrl = @json(route('lead-forms.submit', $form->slug));
+        var btnLabel = submitBtn.textContent;
+
+        function clearErrors() {
+            var errors = form.querySelectorAll('.error');
+            for (var i = 0; i < errors.length; i++) {
+                errors[i].style.display = 'none';
+                errors[i].textContent = '';
+            }
+            bannerArea.innerHTML = '';
+        }
+
+        function showFieldErrors(errors) {
+            for (var key in errors) {
+                if (!errors.hasOwnProperty(key)) continue;
+                var el = document.getElementById('error-' + key);
+                if (el) {
+                    el.textContent = errors[key][0];
+                    el.style.display = 'block';
+                }
+            }
+            bannerArea.innerHTML = '<div class="banner banner--error">Vui lòng kiểm tra lại các trường đang báo lỗi trước khi gửi.</div>';
+        }
+
+        function showSuccess(message) {
+            successMessage.textContent = message;
+            formContent.style.display = 'none';
+            successState.style.display = 'block';
+        }
+
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            clearErrors();
+            submitBtn.classList.add('btn-loading');
+            submitBtn.textContent = 'Đang gửi...';
+
+            var formData = new FormData(form);
+
+            fetch(submitUrl, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: formData
+            })
+            .then(function(response) {
+                return response.json().then(function(data) {
+                    return { ok: response.ok, status: response.status, data: data };
+                });
+            })
+            .then(function(result) {
+                submitBtn.classList.remove('btn-loading');
+                submitBtn.textContent = btnLabel;
+
+                if (!result.ok) {
+                    if (result.status === 422 && result.data.errors) {
+                        showFieldErrors(result.data.errors);
+                    } else {
+                        bannerArea.innerHTML = '<div class="banner banner--error">' + (result.data.message || 'Đã có lỗi xảy ra. Vui lòng thử lại.') + '</div>';
+                    }
+                    return;
+                }
+
+                if (result.data.redirect_url) {
+                    window.location.href = result.data.redirect_url;
+                } else {
+                    showSuccess(result.data.success_message || 'Cảm ơn bạn đã gửi thông tin!');
+                }
+            })
+            .catch(function() {
+                submitBtn.classList.remove('btn-loading');
+                submitBtn.textContent = btnLabel;
+                bannerArea.innerHTML = '<div class="banner banner--error">Không thể kết nối. Vui lòng kiểm tra mạng và thử lại.</div>';
+            });
+        });
+    })();
+    </script>
+    @if ($customJs)
+    <script>{!! $customJs !!}</script>
+    @endif
 </body>
 </html>

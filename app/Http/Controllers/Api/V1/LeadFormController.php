@@ -105,6 +105,24 @@ class LeadFormController extends Controller
         return response()->json(['message' => 'Đã xóa form.']);
     }
 
+    public function duplicate(LeadForm $leadForm): JsonResponse
+    {
+        $newForm = $leadForm->replicate();
+        $newForm->name = $leadForm->name . ' (copy)';
+        $newForm->slug = $this->resolveUniqueSlug(
+            $leadForm->slug . '-copy'
+        );
+        $newForm->public_key = \Illuminate\Support\Str::random(32);
+        $newForm->created_at = now();
+        $newForm->updated_at = now();
+        $newForm->save();
+
+        return response()->json(
+            $newForm->load(['leadType', 'department', 'creator']),
+            201
+        );
+    }
+
     private function validatePayload(Request $request, ?LeadForm $leadForm = null): array
     {
         $payload = $request->all();
@@ -156,6 +174,9 @@ class LeadFormController extends Controller
             'style_config.success_message' => ['nullable', 'string', 'max:255'],
             'style_config.logo_mode' => ['nullable', Rule::in(self::LOGO_MODES)],
             'style_config.logo_url' => ['nullable', 'string', 'max:255'],
+            'style_config.show_card_border' => ['nullable', 'boolean'],
+            'style_config.custom_css' => ['nullable', 'string', 'max:10000'],
+            'style_config.custom_js' => ['nullable', 'string', 'max:10000'],
             'submission_mapping' => ['nullable', 'array'],
             'submission_mapping.target' => ['nullable', 'in:clients'],
             'submission_mapping.append_unmapped_to_notes' => ['nullable', 'boolean'],
@@ -296,6 +317,10 @@ class LeadFormController extends Controller
         if ($normalized['logo_mode'] !== 'custom') {
             $normalized['logo_url'] = $normalized['logo_mode'] === 'hidden' ? null : $normalized['logo_url'];
         }
+
+        $normalized['show_card_border'] = (bool) ($normalized['show_card_border'] ?? false);
+        $normalized['custom_css'] = trim((string) ($normalized['custom_css'] ?? ''));
+        $normalized['custom_js'] = trim((string) ($normalized['custom_js'] ?? ''));
 
         return $normalized;
     }

@@ -37,7 +37,7 @@ class LeadFormPublicController extends Controller
         ]);
     }
 
-    public function submit(string $slug, Request $request): RedirectResponse
+    public function submit(string $slug, Request $request)
     {
         $form = LeadForm::query()
             ->where('slug', $slug)
@@ -54,7 +54,12 @@ class LeadFormPublicController extends Controller
             $this->attributeNames($fields)
         );
 
-        $validated = $validator->validate();
+        if ($request->expectsJson()) {
+            $validated = $validator->validate();
+        } else {
+            $validated = $validator->validate();
+        }
+
         $clientPayload = $this->buildClientPayload($form, $fields, $mapping, $validated);
 
         $leadTypeId = $form->lead_type_id;
@@ -96,15 +101,24 @@ class LeadFormPublicController extends Controller
             'Form: '.$form->name
         );
 
+        $style = $form->resolvedStyleConfig();
+        $successMessage = $style['success_message'] ?: 'Cảm ơn bạn đã gửi thông tin!';
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'success' => true,
+                'redirect_url' => $form->redirect_url ?: null,
+                'success_message' => $successMessage,
+            ]);
+        }
+
         if ($form->redirect_url) {
             return redirect($form->redirect_url);
         }
 
-        $style = $form->resolvedStyleConfig();
-
         return redirect()
             ->back()
-            ->with('success', $style['success_message'] ?: 'Cảm ơn bạn đã gửi thông tin!');
+            ->with('success', $successMessage);
     }
 
     private function buildValidationRules(array $fields): array
