@@ -3,7 +3,7 @@ import Tablesort from 'tablesort';
 import { ArrowDownAZ, createElement as createLucideElement } from 'lucide';
 
 const TABLE_SELECTOR = 'table';
-const SELECT_SEARCH_MIN_OPTIONS = 2;
+const SELECT_SEARCH_MIN_OPTIONS = 11;
 const tableSortInstances = new WeakMap();
 const remoteSortListeners = new Map();
 let hasRegisteredSortExtensions = false;
@@ -121,7 +121,8 @@ const ensureSortHeaderLayout = (headerCell) => {
             return;
         }
         if (hasMeaningfulTextNode(node)) {
-            label.appendChild(document.createTextNode(normalizeText(node.textContent)));
+            node.textContent = normalizeText(node.textContent);
+            label.appendChild(node);
             return;
         }
         label.appendChild(node);
@@ -332,6 +333,10 @@ const enhanceSelect = (select) => {
 
         if (!isMultiple && select.value === '') {
             instance.clear(true);
+        }
+        const inheritedInputClasses = Array.from(select.classList || []);
+        if (inheritedInputClasses.length > 0 && instance.wrapper) {
+            instance.wrapper.classList.remove(...inheritedInputClasses);
         }
         if (!isMultiple && instance.control_input) {
             instance.control_input.setAttribute('placeholder', select.dataset.searchPlaceholder || 'Tìm nhanh...');
