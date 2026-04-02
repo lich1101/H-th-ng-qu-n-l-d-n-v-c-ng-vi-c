@@ -183,9 +183,6 @@ export default function TasksBoard(props) {
     const toast = useToast();
     const userRole = props?.auth?.user?.role || '';
     const currentUserId = Number(props?.auth?.user?.id || 0);
-    const canCreate = ['admin', 'quan_ly'].includes(userRole);
-    const canEdit = ['admin', 'quan_ly'].includes(userRole);
-    const canDelete = ['admin', 'quan_ly'].includes(userRole);
 
     const [loading, setLoading] = useState(false);
     const [tasks, setTasks] = useState([]);
@@ -346,14 +343,31 @@ export default function TasksBoard(props) {
 
     const canApproveItemReports = (taskRecord = itemsTask) => {
         if (!taskRecord) return false;
+        const projectOwnerId = Number(taskRecord?.project?.owner_id || 0);
+        return userRole === 'admin' || projectOwnerId === currentUserId;
+    };
+
+    const canManageTaskRecord = (taskRecord) => {
+        if (!taskRecord) return false;
+        const projectOwnerId = Number(taskRecord?.project?.owner_id || 0);
+        return userRole === 'admin' || projectOwnerId === currentUserId;
+    };
+
+    const canManageTaskItems = (taskRecord = itemsTask) => {
+        if (!taskRecord) return false;
+        const projectOwnerId = Number(taskRecord?.project?.owner_id || 0);
+        const taskOwnerId = Number(taskRecord?.assignee_id || 0);
         return userRole === 'admin'
-            || Number(taskRecord?.project?.owner_id || 0) === currentUserId
-            || Number(taskRecord?.department?.manager_id || 0) === currentUserId;
+            || projectOwnerId === currentUserId
+            || taskOwnerId === currentUserId;
     };
 
     const canSubmitItemReport = (item, taskRecord = itemsTask) => {
         if (!item) return false;
-        return canApproveItemReports(taskRecord) || Number(item.assignee_id || 0) === currentUserId;
+        const taskOwnerId = Number(taskRecord?.assignee_id || 0);
+        return userRole === 'admin'
+            || taskOwnerId === currentUserId
+            || Number(item.assignee_id || 0) === currentUserId;
     };
 
     const canEditPendingItemUpdate = (item, update, taskRecord = itemsTask) => {
@@ -921,25 +935,25 @@ export default function TasksBoard(props) {
         window.location.href = `/cong-viec/${taskId}`;
     };
 
-    const resetItemForm = () => {
+    const resetItemForm = (taskRecord = itemsTask) => {
         setEditingItemId(null);
         setItemForm({
             title: '',
-            description: '',
-            priority: 'medium',
-            status: statusOptions[0] || 'todo',
+            description: taskRecord?.description || '',
+            priority: taskRecord?.priority || 'medium',
+            status: taskRecord?.status || statusOptions[0] || 'todo',
             progress_percent: '',
             weight_percent: 100,
-            start_date: '',
-            deadline: '',
-            assignee_id: '',
+            start_date: taskRecord?.start_at ? String(taskRecord.start_at).slice(0, 10) : '',
+            deadline: taskRecord?.deadline ? String(taskRecord.deadline).slice(0, 10) : '',
+            assignee_id: taskRecord?.assignee_id || '',
         });
     };
 
     const openItemsModal = (task) => {
         setItemsTask(task);
         setShowItems(true);
-        resetItemForm();
+        resetItemForm(task);
         fetchTaskItems(task.id);
     };
 
@@ -1348,7 +1362,7 @@ export default function TasksBoard(props) {
         // Pre-fill from URL project_id if present
         const urlProjectId = queryParams.get('project_id');
         if (urlProjectId) {
-            const proj = projects.find((p) => String(p.id) === String(urlProjectId));
+            const proj = availableProjectOptions.find((p) => String(p.id) === String(urlProjectId));
             if (proj) {
                 setForm((prev) => ({
                     ...prev,
@@ -1370,6 +1384,16 @@ export default function TasksBoard(props) {
     const selectedProject = useMemo(
         () => projects.find((p) => String(p.id) === String(form.project_id)),
         [projects, form.project_id]
+    );
+    const availableProjectOptions = useMemo(
+        () => (userRole === 'admin'
+            ? projects
+            : projects.filter((project) => Number(project?.owner_id || 0) === currentUserId)),
+        [projects, userRole, currentUserId]
+    );
+    const canCreate = useMemo(
+        () => userRole === 'admin' || availableProjectOptions.length > 0,
+        [userRole, availableProjectOptions]
     );
     const projectHasContract = !!selectedProject?.contract_id;
 
@@ -1495,8 +1519,9 @@ export default function TasksBoard(props) {
 
     const save = async () => {
         if (savingTask) return;
+        const editingTask = editingId ? tasks.find((task) => Number(task.id) === Number(editingId)) : null;
         if (!canCreate && editingId == null) return toast.error('Bạn không có quyền tạo công việc.');
-        if (!canEdit && editingId != null) return toast.error('Bạn không có quyền cập nhật công việc.');
+        if (editingId != null && !canManageTaskRecord(editingTask)) return toast.error('Bạn không có quyền cập nhật công việc.');
         if (!form.project_id || !form.title?.trim()) return toast.error('Vui lòng chọn dự án và nhập tiêu đề.');
         if (!projectHasContract) return toast.error('Dự án chưa có hợp đồng, không thể tạo công việc.');
         setSavingTask(true);
@@ -1529,7 +1554,8 @@ export default function TasksBoard(props) {
     };
 
     const remove = async (id) => {
-        if (!canDelete) return toast.error('Bạn không có quyền xóa công việc.');
+        const targetTask = tasks.find((task) => Number(task.id) === Number(id));
+        if (!canManageTaskRecord(targetTask)) return toast.error('Bạn không có quyền xóa công việc.');
         if (!confirm('Xóa công việc này?')) return;
         try {
             await axios.delete(`/api/v1/tasks/${id}`);
@@ -1779,7 +1805,7 @@ export default function TasksBoard(props) {
                                 onChange={(e) => setFilters((s) => ({ ...s, project_id: e.target.value }))}
                             >
                                 <option value="">Tất cả dự án</option>
-                                {projects.map((p) => <option key={p.id} value={p.id}>{p.code}</option>)}
+                                {(userRole === 'admin' ? projects : availableProjectOptions).map((p) => <option key={p.id} value={p.id}>{p.code}</option>)}
                             </select>
                         </FilterField>
                         <FilterField label="Trạng thái">
@@ -1907,12 +1933,12 @@ export default function TasksBoard(props) {
                                                         {t.assignee?.name || '—'}
                                                     </td>
                                                     <td className="py-3 text-right space-x-2">
-                                                        {canEdit && (
+                                                        {canManageTaskRecord(t) && (
                                                             <button className="text-xs font-semibold text-primary" onClick={(e) => { e.stopPropagation(); startEdit(t); }} type="button">
                                                                 Sửa
                                                             </button>
                                                         )}
-                                                        {canDelete && (
+                                                        {canManageTaskRecord(t) && (
                                                             <button className="text-xs font-semibold text-rose-500" onClick={(e) => { e.stopPropagation(); remove(t.id); }} type="button">
                                                                 Xóa
                                                             </button>
@@ -1976,10 +2002,10 @@ export default function TasksBoard(props) {
                                                             {PRIORITY_LABELS[t.priority] || t.priority || 'Trung bình'}
                                                         </span>
                                                         <div className="flex items-center gap-2 text-xs text-text-muted">
-                                                            {canEdit && (
+                                                            {canManageTaskRecord(t) && (
                                                                 <button className="hover:text-slate-900" onClick={(e) => { e.stopPropagation(); startEdit(t); }} type="button">Sửa</button>
                                                             )}
-                                                            {canDelete && (
+                                                            {canManageTaskRecord(t) && (
                                                                 <button className="hover:text-danger" onClick={(e) => { e.stopPropagation(); remove(t.id); }} type="button">Xoá</button>
                                                             )}
                                                             <button className="hover:text-sky-600" onClick={(e) => { e.stopPropagation(); openItemsModal(t); }} type="button">Đầu việc</button>
@@ -2296,7 +2322,7 @@ export default function TasksBoard(props) {
                         <FieldLabel>Dự án liên kết</FieldLabel>
                         <select className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" value={form.project_id} onChange={(e) => setForm((s) => ({ ...s, project_id: e.target.value }))}>
                             <option value="">-- Chọn dự án * --</option>
-                            {projects.map((p) => <option key={p.id} value={p.id}>{p.code} - {p.name}</option>)}
+                            {availableProjectOptions.map((p) => <option key={p.id} value={p.id}>{p.code} - {p.name}</option>)}
                         </select>
                     </div>
                     {form.project_id && !projectHasContract && (
@@ -2527,7 +2553,7 @@ export default function TasksBoard(props) {
                 open={showItems}
                 onClose={() => setShowItems(false)}
                 title={`Đầu việc${itemsTask ? ` • ${itemsTask.title}` : ''}`}
-                description="Trưởng phòng chia đầu việc cho nhân sự và theo dõi báo cáo tiến độ."
+                description="Phụ trách dự án hoặc phụ trách công việc chia đầu việc cho nhân sự và theo dõi phiếu duyệt tiến độ."
                 size="xl"
             >
                 <div className="grid gap-4 lg:grid-cols-3">
@@ -2601,7 +2627,7 @@ export default function TasksBoard(props) {
                                                 Biểu đồ
                                             </button>
                                         )}
-                                        {['admin', 'quan_ly'].includes(userRole) && (
+                                        {canManageTaskItems(itemsTask) && (
                                             <button
                                                 className="text-primary font-semibold"
                                                 onClick={(e) => {
@@ -2613,7 +2639,7 @@ export default function TasksBoard(props) {
                                                 Sửa đầu việc
                                             </button>
                                         )}
-                                        {['admin', 'quan_ly'].includes(userRole) && (
+                                        {canManageTaskItems(itemsTask) && (
                                             <button
                                                 className="text-rose-600 font-semibold"
                                                 onClick={(e) => {
@@ -2631,7 +2657,7 @@ export default function TasksBoard(props) {
                         ))}
                     </div>
                     <div className="space-y-3">
-                        {['admin', 'quan_ly'].includes(userRole) ? (
+                        {canManageTaskItems(itemsTask) ? (
                             <div className="rounded-2xl border border-slate-200/80 p-4 bg-white">
                                 <h4 className="font-semibold text-slate-900 mb-3">
                                     {editingItemId ? `Sửa đầu việc #${editingItemId}` : 'Tạo đầu việc'}
@@ -2769,7 +2795,7 @@ export default function TasksBoard(props) {
                                 </div>
                             </div>
                         ) : (
-                            <p className="text-sm text-text-muted">Chỉ trưởng phòng hoặc admin được tạo đầu việc.</p>
+                            <p className="text-sm text-text-muted">Chỉ phụ trách dự án, phụ trách công việc hoặc admin được tạo đầu việc.</p>
                         )}
                     </div>
                 </div>

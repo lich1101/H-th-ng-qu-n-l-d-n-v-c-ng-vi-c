@@ -17,6 +17,7 @@ class TaskItemController extends Controller
 {
     public function globalIndex(Request $request): JsonResponse
     {
+        $user = $request->user();
         $query = TaskItem::query()
             ->with([
                 'task:id,project_id,department_id,title,assignee_id,created_by,assigned_by',
@@ -25,7 +26,11 @@ class TaskItemController extends Controller
                 'reviewer:id,name,email,avatar_url',
             ]);
 
-        ProjectScope::applyTaskItemScope($query, $request->user());
+        if ($request->filled('task_id') || $request->filled('project_id')) {
+            ProjectScope::applyTaskItemScope($query, $user);
+        } else {
+            ProjectScope::applyTaskItemListScope($query, $user);
+        }
 
         if ($request->filled('project_id')) {
             $projectId = (int) $request->input('project_id');
@@ -124,11 +129,13 @@ class TaskItemController extends Controller
 
     public function store(Task $task, Request $request): JsonResponse
     {
-        if (! in_array($request->user()->role, ['admin', 'quan_ly'], true)) {
-            return response()->json(['message' => 'Không có quyền tạo đầu việc.'], 403);
-        }
         if (! ProjectScope::canAccessTask($request->user(), $task)) {
             return response()->json(['message' => 'Không có quyền tạo đầu việc.'], 403);
+        }
+        if (! ProjectScope::canManageTaskItems($request->user(), $task)) {
+            return response()->json([
+                'message' => 'Chỉ admin, phụ trách dự án hoặc phụ trách công việc mới được tạo đầu việc.',
+            ], 403);
         }
 
         $validated = $request->validate([
@@ -210,11 +217,13 @@ class TaskItemController extends Controller
 
     public function update(Task $task, TaskItem $item, Request $request): JsonResponse
     {
-        if (! in_array($request->user()->role, ['admin', 'quan_ly'], true)) {
-            return response()->json(['message' => 'Không có quyền cập nhật đầu việc.'], 403);
-        }
         if (! ProjectScope::canAccessTask($request->user(), $task)) {
             return response()->json(['message' => 'Không có quyền cập nhật đầu việc.'], 403);
+        }
+        if (! ProjectScope::canManageTaskItems($request->user(), $task)) {
+            return response()->json([
+                'message' => 'Chỉ admin, phụ trách dự án hoặc phụ trách công việc mới được cập nhật đầu việc.',
+            ], 403);
         }
         if ($item->task_id !== $task->id) {
             return response()->json(['message' => 'Đầu việc không thuộc công việc.'], 422);
@@ -263,11 +272,13 @@ class TaskItemController extends Controller
 
     public function destroy(Task $task, TaskItem $item, Request $request): JsonResponse
     {
-        if (! in_array($request->user()->role, ['admin', 'quan_ly'], true)) {
-            return response()->json(['message' => 'Không có quyền xoá đầu việc.'], 403);
-        }
         if (! ProjectScope::canAccessTask($request->user(), $task)) {
             return response()->json(['message' => 'Không có quyền xoá đầu việc.'], 403);
+        }
+        if (! ProjectScope::canManageTaskItems($request->user(), $task)) {
+            return response()->json([
+                'message' => 'Chỉ admin, phụ trách dự án hoặc phụ trách công việc mới được xoá đầu việc.',
+            ], 403);
         }
         if ($item->task_id !== $task->id) {
             return response()->json(['message' => 'Đầu việc không thuộc công việc.'], 422);

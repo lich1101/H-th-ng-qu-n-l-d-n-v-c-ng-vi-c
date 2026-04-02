@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Http\Helpers\ProjectScope;
 use App\Models\Project;
 use App\Models\ProjectFile;
 use App\Services\ProjectFileService;
@@ -14,6 +15,10 @@ class ProjectFileController extends Controller
 {
     public function index(Project $project, Request $request): JsonResponse
     {
+        if (! ProjectScope::canAccessProject($request->user(), $project)) {
+            return response()->json(['message' => 'Không có quyền xem kho dự án.'], 403);
+        }
+
         $parentId = $request->input('parent_id');
         $trash = $request->boolean('trash');
 
@@ -31,11 +36,23 @@ class ProjectFileController extends Controller
             ->orderBy('name')
             ->get();
 
-        return response()->json(['data' => $items]);
+        return response()->json([
+            'data' => $items,
+            'permissions' => [
+                'can_manage' => ProjectScope::canManageProjectFiles($request->user(), $project),
+            ],
+        ]);
     }
 
     public function createFolder(Project $project, Request $request, ProjectFileService $files): JsonResponse
     {
+        if (! ProjectScope::canAccessProject($request->user(), $project)) {
+            return response()->json(['message' => 'Không có quyền xem kho dự án.'], 403);
+        }
+        if (! ProjectScope::canManageProjectFiles($request->user(), $project)) {
+            return response()->json(['message' => 'Không có quyền chỉnh sửa kho dự án.'], 403);
+        }
+
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:120'],
             'parent_id' => ['nullable', 'integer', 'exists:project_files,id'],
@@ -61,6 +78,13 @@ class ProjectFileController extends Controller
 
     public function upload(Project $project, Request $request, ProjectFileService $files): JsonResponse
     {
+        if (! ProjectScope::canAccessProject($request->user(), $project)) {
+            return response()->json(['message' => 'Không có quyền xem kho dự án.'], 403);
+        }
+        if (! ProjectScope::canManageProjectFiles($request->user(), $project)) {
+            return response()->json(['message' => 'Không có quyền chỉnh sửa kho dự án.'], 403);
+        }
+
         $validated = $request->validate([
             'file' => ['required', 'file', 'max:20480'],
             'parent_id' => ['nullable', 'integer', 'exists:project_files,id'],
@@ -92,6 +116,13 @@ class ProjectFileController extends Controller
         Request $request,
         ProjectFileService $files
     ): JsonResponse {
+        if (! ProjectScope::canAccessProject($request->user(), $project)) {
+            return response()->json(['message' => 'Không có quyền xem kho dự án.'], 403);
+        }
+        if (! ProjectScope::canManageProjectFiles($request->user(), $project)) {
+            return response()->json(['message' => 'Không có quyền chỉnh sửa kho dự án.'], 403);
+        }
+
         if ($file->project_id !== $project->id) {
             return response()->json(['message' => 'File không thuộc dự án.'], 422);
         }
@@ -111,6 +142,13 @@ class ProjectFileController extends Controller
         Request $request,
         ProjectFileService $files
     ): JsonResponse {
+        if (! ProjectScope::canAccessProject($request->user(), $project)) {
+            return response()->json(['message' => 'Không có quyền xem kho dự án.'], 403);
+        }
+        if (! ProjectScope::canManageProjectFiles($request->user(), $project)) {
+            return response()->json(['message' => 'Không có quyền chỉnh sửa kho dự án.'], 403);
+        }
+
         if ($file->project_id !== $project->id) {
             return response()->json(['message' => 'File không thuộc dự án.'], 422);
         }
@@ -122,6 +160,13 @@ class ProjectFileController extends Controller
 
     public function trash(Project $project, ProjectFile $file, Request $request): JsonResponse
     {
+        if (! ProjectScope::canAccessProject($request->user(), $project)) {
+            return response()->json(['message' => 'Không có quyền xem kho dự án.'], 403);
+        }
+        if (! ProjectScope::canManageProjectFiles($request->user(), $project)) {
+            return response()->json(['message' => 'Không có quyền chỉnh sửa kho dự án.'], 403);
+        }
+
         if ($file->project_id !== $project->id) {
             return response()->json(['message' => 'File không thuộc dự án.'], 422);
         }
@@ -132,6 +177,13 @@ class ProjectFileController extends Controller
 
     public function restore(Project $project, ProjectFile $file, Request $request): JsonResponse
     {
+        if (! ProjectScope::canAccessProject($request->user(), $project)) {
+            return response()->json(['message' => 'Không có quyền xem kho dự án.'], 403);
+        }
+        if (! ProjectScope::canManageProjectFiles($request->user(), $project)) {
+            return response()->json(['message' => 'Không có quyền chỉnh sửa kho dự án.'], 403);
+        }
+
         if ($file->project_id !== $project->id) {
             return response()->json(['message' => 'File không thuộc dự án.'], 422);
         }
@@ -140,8 +192,15 @@ class ProjectFileController extends Controller
         return response()->json(['message' => 'Đã khôi phục.']);
     }
 
-    public function destroy(Project $project, ProjectFile $file): JsonResponse
+    public function destroy(Project $project, ProjectFile $file, Request $request): JsonResponse
     {
+        if (! ProjectScope::canAccessProject($request->user(), $project)) {
+            return response()->json(['message' => 'Không có quyền xem kho dự án.'], 403);
+        }
+        if (! ProjectScope::canManageProjectFiles($request->user(), $project)) {
+            return response()->json(['message' => 'Không có quyền chỉnh sửa kho dự án.'], 403);
+        }
+
         if ($file->project_id !== $project->id) {
             return response()->json(['message' => 'File không thuộc dự án.'], 422);
         }

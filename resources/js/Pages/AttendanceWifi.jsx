@@ -192,8 +192,13 @@ export default function AttendanceWifi(props) {
     const [staffPaging, setStaffPaging] = useState({ current_page: 1, last_page: 1, total: 0, per_page: 200 });
     const [staffFilters, setStaffFilters] = useState({ search: '', role: '', per_page: 200, page: 1 });
     const [reportRows, setReportRows] = useState([]);
-    const [reportSummary, setReportSummary] = useState({ total_rows: 0, total_work_units: 0, late_count: 0, approved_full_count: 0, holiday_count: 0 });
+    const [reportSummary, setReportSummary] = useState({ total_staff: 0, today_work_units: 0 });
     const [reportFilters, setReportFilters] = useState({ start_date: monthStartIso(), end_date: todayIso(), user_id: '', search: '' });
+    const [reportExportModalOpen, setReportExportModalOpen] = useState(false);
+    const [reportExportRange, setReportExportRange] = useState({
+        start_date: monthStartIso(),
+        end_date: todayIso(),
+    });
     const [manualRecordModal, setManualRecordModal] = useState({ open: false, item: null });
     const [manualRecordForm, setManualRecordForm] = useState({ user_id: '', work_date: todayIso(), work_units: '1.0', check_in_time: '', note: '' });
 
@@ -387,7 +392,7 @@ export default function AttendanceWifi(props) {
         if (!canManage) return;
         const res = await axios.get('/api/v1/attendance/report', { params: filters });
         setReportRows(res.data?.data || []);
-        setReportSummary(res.data?.summary || { total_rows: 0, total_work_units: 0, late_count: 0, approved_full_count: 0, holiday_count: 0 });
+        setReportSummary(res.data?.summary || { total_staff: 0, today_work_units: 0 });
     };
 
     const initialLoad = async () => {
@@ -544,14 +549,42 @@ export default function AttendanceWifi(props) {
         }
     };
 
-    const exportReport = () => {
+    const exportReport = (filters = reportFilters) => {
         const params = new URLSearchParams();
-        Object.entries(reportFilters).forEach(([key, value]) => {
+        Object.entries(filters).forEach(([key, value]) => {
             if (value !== null && value !== undefined && String(value).trim() !== '') {
                 params.set(key, String(value));
             }
         });
         window.open(`/api/v1/attendance/export?${params.toString()}`, '_blank');
+    };
+
+    const openExportReportModal = () => {
+        setReportExportRange({
+            start_date: reportFilters.start_date || monthStartIso(),
+            end_date: reportFilters.end_date || todayIso(),
+        });
+        setReportExportModalOpen(true);
+    };
+
+    const confirmExportReport = () => {
+        const startDate = String(reportExportRange.start_date || '').trim();
+        const endDate = String(reportExportRange.end_date || '').trim();
+        if (!startDate || !endDate) {
+            toast.error('Vui lòng chọn đầy đủ từ ngày và đến ngày trước khi xuất báo cáo.');
+            return;
+        }
+        if (startDate > endDate) {
+            toast.error('Khoảng thời gian xuất không hợp lệ.');
+            return;
+        }
+
+        exportReport({
+            ...reportFilters,
+            start_date: startDate,
+            end_date: endDate,
+        });
+        setReportExportModalOpen(false);
     };
 
     const saveManualRecord = async () => {
@@ -1100,14 +1133,14 @@ export default function AttendanceWifi(props) {
                         <FilterToolbar enableSearch
                             className="mb-4"
                             title="Báo cáo công"
-                            description="Lọc theo ngày bắt đầu/kết thúc để tổng hợp công, sửa công tay theo bước 0.1 và xuất file Excel. 1.0 là đủ ngày công."
+                            description="Lọc theo ngày bắt đầu/kết thúc để xem chi tiết bảng công. Header chỉ hiển thị tổng nhân viên và số công trong ngày hiện tại."
                             searchValue={reportFilters.search}
                             onSearch={handleReportSearch}
                             actions={(
                                 <FilterActionGroup className="xl:justify-end">
                                     <button type="button" className={buttonSecondaryClass} onClick={() => openManualRecord()}>Sửa công tay</button>
                                     <button type="button" className={buttonSecondaryClass} onClick={() => loadReport(reportFilters)}>Xem báo cáo</button>
-                                    <button type="button" className={buttonPrimaryClass} onClick={exportReport}>Xuất Excel</button>
+                                    <button type="button" className={buttonPrimaryClass} onClick={openExportReportModal}>Xuất Excel</button>
                                 </FilterActionGroup>
                             )}
                         >
@@ -1120,12 +1153,9 @@ export default function AttendanceWifi(props) {
                                 </FilterField>
                             </div>
                         </FilterToolbar>
-                        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-                            <StatCard label="Tổng dòng" value={String(reportSummary.total_rows || 0)} />
-                            <StatCard label="Tổng công" value={String(reportSummary.total_work_units || 0)} />
-                            <StatCard label="Đi muộn" value={String(reportSummary.late_count || 0)} />
-                            <StatCard label="Duyệt đủ công" value={String(reportSummary.approved_full_count || 0)} />
-                            <StatCard label="Ngày lễ auto" value={String(reportSummary.holiday_count || 0)} />
+                        <div className="mt-4 grid gap-4 md:grid-cols-2">
+                            <StatCard label="Tổng nhân viên" value={String(reportSummary.total_staff || 0)} />
+                            <StatCard label="Công ngày hiện tại" value={String(reportSummary.today_work_units || 0)} />
                         </div>
                         <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200/80">
                             <table className="min-w-full divide-y divide-slate-200 text-sm">
@@ -1197,6 +1227,41 @@ export default function AttendanceWifi(props) {
                 <div className="mt-5 flex justify-end gap-3">
                     <button type="button" className={buttonSecondaryClass} onClick={() => setWifiModal({ open: false, item: null })}>Hủy</button>
                     <button type="button" className={buttonPrimaryClass} onClick={saveWifi}>Lưu WiFi</button>
+                </div>
+            </Modal>
+
+            <Modal
+                open={reportExportModalOpen}
+                onClose={() => setReportExportModalOpen(false)}
+                title="Chọn khoảng thời gian xuất báo cáo"
+                description="Thiết lập mốc từ ngày đến ngày trước khi xuất file Excel."
+                size="sm"
+            >
+                <div className="grid gap-4 md:grid-cols-2">
+                    <FormField label="Từ ngày" required>
+                        <input
+                            type="date"
+                            className={inputClass}
+                            value={reportExportRange.start_date}
+                            onChange={(e) => setReportExportRange((prev) => ({ ...prev, start_date: e.target.value }))}
+                        />
+                    </FormField>
+                    <FormField label="Đến ngày" required>
+                        <input
+                            type="date"
+                            className={inputClass}
+                            value={reportExportRange.end_date}
+                            onChange={(e) => setReportExportRange((prev) => ({ ...prev, end_date: e.target.value }))}
+                        />
+                    </FormField>
+                </div>
+                <div className="mt-5 flex justify-end gap-3">
+                    <button type="button" className={buttonSecondaryClass} onClick={() => setReportExportModalOpen(false)}>
+                        Hủy
+                    </button>
+                    <button type="button" className={buttonPrimaryClass} onClick={confirmExportReport}>
+                        Xuất báo cáo
+                    </button>
                 </div>
             </Modal>
 

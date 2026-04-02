@@ -27,7 +27,6 @@ export default function TaskDetail(props) {
     const taskId = props.taskId;
     const currentUserId = Number(props?.auth?.user?.id || 0);
     const currentUserRole = props?.auth?.user?.role || '';
-    const canManageItems = ['admin', 'quan_ly'].includes(currentUserRole);
 
     const [task, setTask] = useState(null);
     const [items, setItems] = useState([]);
@@ -84,6 +83,11 @@ export default function TaskDetail(props) {
         ...itemGroups.map((g) => ({ key: String(g.id), label: g.name, count: g.rows.length })),
     ], [items, itemGroups]);
 
+    const projectOwnerId = Number(task?.project?.owner_id || 0);
+    const isProjectOwner = projectOwnerId > 0 && projectOwnerId === currentUserId;
+    const isTaskAssignee = Number(task?.assignee_id || 0) === currentUserId;
+    const canManageItems = currentUserRole === 'admin' || isProjectOwner || isTaskAssignee;
+
     const visibleItems = useMemo(() => {
         if (activeTab === 'all') return items;
         return items.filter((i) => String(i?.assignee?.id || 0) === activeTab);
@@ -94,14 +98,18 @@ export default function TaskDetail(props) {
         setEditingItemId(item?.id || null);
         setItemForm({
             title: item?.title || '',
-            description: item?.description || '',
-            status: item?.status || 'todo',
-            priority: item?.priority || 'medium',
+            description: item?.description ?? (task?.description || ''),
+            status: item?.status || task?.status || 'todo',
+            priority: item?.priority || task?.priority || 'medium',
             progress_percent: item?.progress_percent ?? '',
             weight_percent: item?.weight_percent ?? '',
-            start_date: item?.start_date ? String(item.start_date).slice(0, 10) : '',
-            deadline: item?.deadline ? String(item.deadline).slice(0, 10) : '',
-            assignee_id: item?.assignee_id || '',
+            start_date: item?.start_date
+                ? String(item.start_date).slice(0, 10)
+                : (task?.start_at ? String(task.start_at).slice(0, 10) : ''),
+            deadline: item?.deadline
+                ? String(item.deadline).slice(0, 10)
+                : (task?.deadline ? String(task.deadline).slice(0, 10) : ''),
+            assignee_id: item?.assignee_id || task?.assignee_id || '',
         });
         setShowItemForm(true);
     };
@@ -304,7 +312,7 @@ export default function TaskDetail(props) {
                                             {canManageItems && (
                                                 <>
                                                     <button type="button" className="rounded-lg px-2.5 py-1.5 font-semibold text-slate-600 hover:bg-slate-100" onClick={() => openItemForm(item)}>Sửa</button>
-                                                    {currentUserRole === 'admin' && (
+                                                    {canManageItems && (
                                                         <button type="button" className="rounded-lg px-2.5 py-1.5 font-semibold text-rose-600 hover:bg-rose-50" onClick={() => deleteItem(item.id)}>Xóa</button>
                                                     )}
                                                 </>

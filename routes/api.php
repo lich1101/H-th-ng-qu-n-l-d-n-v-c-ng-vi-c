@@ -147,6 +147,7 @@ Route::prefix('v1')->group(function () {
         Route::get('/projects', [ProjectController::class, 'index']);
         Route::get('/projects/{project}', [ProjectController::class, 'show']);
         Route::get('/projects/{project}/search-console', [ProjectSearchConsoleController::class, 'show']);
+        Route::put('/projects/{project}/search-console/notification', [ProjectSearchConsoleController::class, 'updateNotification']);
         Route::post('/projects/{project}/search-console/sync', [ProjectSearchConsoleController::class, 'sync'])
             ->middleware('role:admin,quan_ly');
         Route::get('/project-handovers', [ProjectController::class, 'handoverQueue'])
@@ -166,7 +167,7 @@ Route::prefix('v1')->group(function () {
         Route::get('/projects/{project}/flow', [ProjectFlowController::class, 'show']);
         Route::get('/projects/{project}/files', [ProjectFileController::class, 'index']);
         Route::post('/projects/{project}/files/folder', [ProjectFileController::class, 'createFolder'])
-            ->middleware('role:admin,quan_ly');
+            ->middleware('role:admin,quan_ly,nhan_vien');
         Route::post('/projects/{project}/files/upload', [ProjectFileController::class, 'upload'])
             ->middleware('role:admin,quan_ly,nhan_vien');
         Route::put('/projects/{project}/files/{file}', [ProjectFileController::class, 'update'])
@@ -174,20 +175,20 @@ Route::prefix('v1')->group(function () {
         Route::post('/projects/{project}/files/{file}/duplicate', [ProjectFileController::class, 'duplicate'])
             ->middleware('role:admin,quan_ly,nhan_vien');
         Route::post('/projects/{project}/files/{file}/trash', [ProjectFileController::class, 'trash'])
-            ->middleware('role:admin,quan_ly');
+            ->middleware('role:admin,quan_ly,nhan_vien');
         Route::post('/projects/{project}/files/{file}/restore', [ProjectFileController::class, 'restore'])
-            ->middleware('role:admin,quan_ly');
+            ->middleware('role:admin,quan_ly,nhan_vien');
         Route::delete('/projects/{project}/files/{file}', [ProjectFileController::class, 'destroy'])
-            ->middleware('role:admin,quan_ly');
+            ->middleware('role:admin,quan_ly,nhan_vien');
 
         Route::get('/tasks', [TaskController::class, 'index']);
         Route::get('/tasks/{task}', [TaskController::class, 'show']);
         Route::post('/tasks', [TaskController::class, 'store'])
-            ->middleware('role:admin,quan_ly');
+            ->middleware('role:admin,quan_ly,nhan_vien');
         Route::put('/tasks/{task}', [TaskController::class, 'update'])
             ->middleware('role:admin,quan_ly,nhan_vien');
         Route::delete('/tasks/{task}', [TaskController::class, 'destroy'])
-            ->middleware('role:admin,quan_ly');
+            ->middleware('role:admin,quan_ly,nhan_vien');
         Route::get('/task-conversations', [TaskCommentController::class, 'threads']);
 
         Route::get('/tasks/{task}/comments', [TaskCommentController::class, 'index']);
@@ -209,11 +210,11 @@ Route::prefix('v1')->group(function () {
         Route::post('/tasks/{task}/updates', [TaskUpdateController::class, 'store'])
             ->middleware('role:admin,quan_ly,nhan_vien');
         Route::put('/tasks/{task}/updates/{update}', [TaskUpdateController::class, 'update'])
-            ->middleware('role:admin,quan_ly');
+            ->middleware('role:admin,quan_ly,nhan_vien');
         Route::post('/tasks/{task}/updates/{update}/approve', [TaskUpdateController::class, 'approve'])
-            ->middleware('role:admin,quan_ly');
+            ->middleware('role:admin,quan_ly,nhan_vien');
         Route::post('/tasks/{task}/updates/{update}/reject', [TaskUpdateController::class, 'reject'])
-            ->middleware('role:admin,quan_ly');
+            ->middleware('role:admin,quan_ly,nhan_vien');
 
         Route::get('/tasks/{task}/items', [TaskItemController::class, 'index']);
         Route::get('/task-items', [TaskItemController::class, 'globalIndex'])
@@ -221,11 +222,11 @@ Route::prefix('v1')->group(function () {
         Route::get('/task-items/{id}', [TaskItemController::class, 'show'])
             ->middleware('role:admin,quan_ly,nhan_vien');
         Route::post('/tasks/{task}/items', [TaskItemController::class, 'store'])
-            ->middleware('role:admin,quan_ly');
+            ->middleware('role:admin,quan_ly,nhan_vien');
         Route::put('/tasks/{task}/items/{item}', [TaskItemController::class, 'update'])
-            ->middleware('role:admin,quan_ly');
+            ->middleware('role:admin,quan_ly,nhan_vien');
         Route::delete('/tasks/{task}/items/{item}', [TaskItemController::class, 'destroy'])
-            ->middleware('role:admin,quan_ly');
+            ->middleware('role:admin,quan_ly,nhan_vien');
 
         Route::get('/tasks/{task}/items/{item}/updates', [TaskItemUpdateController::class, 'index']);
         Route::get('/tasks/{task}/items/{item}/progress-insight', [TaskItemUpdateController::class, 'insight'])

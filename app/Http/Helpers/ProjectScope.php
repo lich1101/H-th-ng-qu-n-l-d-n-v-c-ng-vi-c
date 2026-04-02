@@ -128,6 +128,37 @@ class ProjectScope
         });
     }
 
+    public static function applyTaskListScope(Builder $query, ?User $user): Builder
+    {
+        if (! $user) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        if ($user->role === 'admin') {
+            return $query;
+        }
+
+        if ($user->role === 'ke_toan') {
+            return $query->whereRaw('1 = 0');
+        }
+
+        if ($user->role === 'quan_ly') {
+            $managedDepartmentIds = self::managedDepartmentIds($user);
+            if ($managedDepartmentIds->isEmpty()) {
+                return $query->whereRaw('1 = 0');
+            }
+
+            return $query->where(function (Builder $builder) use ($managedDepartmentIds) {
+                $builder->whereIn('department_id', $managedDepartmentIds)
+                    ->orWhereHas('assignee', function (Builder $assigneeQuery) use ($managedDepartmentIds) {
+                        $assigneeQuery->whereIn('department_id', $managedDepartmentIds);
+                    });
+            });
+        }
+
+        return $query->where('assignee_id', $user->id);
+    }
+
     public static function canAccessTask(?User $user, Task $task): bool
     {
         if (! $user) {
@@ -163,6 +194,41 @@ class ProjectScope
                     self::applyTaskScope($taskQuery, $user);
                 });
         });
+    }
+
+    public static function applyTaskItemListScope(Builder $query, ?User $user): Builder
+    {
+        if (! $user) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        if ($user->role === 'admin') {
+            return $query;
+        }
+
+        if ($user->role === 'ke_toan') {
+            return $query->whereRaw('1 = 0');
+        }
+
+        if ($user->role === 'quan_ly') {
+            $managedDepartmentIds = self::managedDepartmentIds($user);
+            if ($managedDepartmentIds->isEmpty()) {
+                return $query->whereRaw('1 = 0');
+            }
+
+            return $query->where(function (Builder $builder) use ($managedDepartmentIds) {
+                $builder->whereHas('task', function (Builder $taskQuery) use ($managedDepartmentIds) {
+                    $taskQuery->whereIn('department_id', $managedDepartmentIds)
+                        ->orWhereHas('assignee', function (Builder $assigneeQuery) use ($managedDepartmentIds) {
+                            $assigneeQuery->whereIn('department_id', $managedDepartmentIds);
+                        });
+                })->orWhereHas('assignee', function (Builder $assigneeQuery) use ($managedDepartmentIds) {
+                    $assigneeQuery->whereIn('department_id', $managedDepartmentIds);
+                });
+            });
+        }
+
+        return $query->where('assignee_id', $user->id);
     }
 
     public static function canAccessTaskItem(?User $user, TaskItem $item): bool
@@ -226,6 +292,113 @@ class ProjectScope
             : (int) $project->contract()->value('collector_user_id');
 
         return max(0, $collectorId);
+    }
+
+    public static function projectOwnerId(Project $project): int
+    {
+        return max(0, (int) ($project->owner_id ?? 0));
+    }
+
+    public static function taskProjectOwnerId(Task $task): int
+    {
+        $ownerId = $task->project
+            ? (int) ($task->project->owner_id ?? 0)
+            : (int) $task->project()->value('owner_id');
+
+        return max(0, $ownerId);
+    }
+
+    public static function canManageProjectTasks(?User $user, Project $project): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        if ($user->role === 'admin') {
+            return true;
+        }
+
+        return self::projectOwnerId($project) > 0
+            && self::projectOwnerId($project) === (int) $user->id;
+    }
+
+    public static function canManageTaskItems(?User $user, Task $task): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        if ($user->role === 'admin') {
+            return true;
+        }
+
+        if (self::taskProjectOwnerId($task) > 0 && self::taskProjectOwnerId($task) === (int) $user->id) {
+            return true;
+        }
+
+        return (int) ($task->assignee_id ?? 0) === (int) $user->id;
+    }
+
+    public static function canManageProjectFiles(?User $user, Project $project): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        if ($user->role === 'admin') {
+            return true;
+        }
+
+        if (self::projectOwnerId($project) > 0 && self::projectOwnerId($project) === (int) $user->id) {
+            return true;
+        }
+
+        $hasTaskAssignee = Task::query()
+            ->where('project_id', $project->id)
+            ->where('assignee_id', $user->id)
+            ->exists();
+
+        if ($hasTaskAssignee) {
+            return true;
+        }
+
+        return TaskItem::query()
+            ->where('assignee_id', $user->id)
+            ->whereHas('task', function (Builder $taskQuery) use ($project) {
+                $taskQuery->where('project_id', $project->id);
+            })
+            ->exists();
+    }
+
+    public static function canReviewTaskProgress(?User $user, Task $task): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        if ($user->role === 'admin') {
+            return true;
+        }
+
+        return self::taskProjectOwnerId($task) > 0
+            && self::taskProjectOwnerId($task) === (int) $user->id;
+    }
+
+    public static function canSubmitTaskItemProgress(?User $user, Task $task, TaskItem $item): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        if ($user->role === 'admin') {
+            return true;
+        }
+
+        if ((int) ($task->assignee_id ?? 0) === (int) $user->id) {
+            return true;
+        }
+
+        return (int) ($item->assignee_id ?? 0) === (int) $user->id;
     }
 
     public static function resolveChatParticipantIds(Task $task): Collection

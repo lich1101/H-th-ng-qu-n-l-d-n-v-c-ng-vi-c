@@ -42,16 +42,14 @@ export default function ProjectDetail(props) {
     const toast = useToast();
     const projectId = props.projectId;
     const currentRole = props?.auth?.user?.role || '';
-    const currentUserId = Number(props?.auth?.user?.id || 0);
     const canManageTasks = ['admin', 'quan_ly'].includes(currentRole);
-    const canForceSync = ['admin', 'quan_ly'].includes(currentRole);
 
     const [project, setProject] = useState(null);
     const [tasks, setTasks] = useState([]);
     const [gsc, setGsc] = useState(null);
     const [loading, setLoading] = useState(true);
     const [gscLoading, setGscLoading] = useState(false);
-    const [syncing, setSyncing] = useState(false);
+    const [gscNotifySaving, setGscNotifySaving] = useState(false);
     const [activeTab, setActiveTab] = useState('all');
 
     // Task creation modal
@@ -66,11 +64,11 @@ export default function ProjectDetail(props) {
         department_id: '', assignee_id: '', reviewer_id: '',
     });
 
-    const fetchGsc = async ({ force = false } = {}) => {
+    const fetchGsc = async () => {
         setGscLoading(true);
         try {
             const response = await axios.get(`/api/v1/projects/${projectId}/search-console`, {
-                params: { refresh: 1, force: force ? 1 : 0, days: 21 },
+                params: { validate: 1, days: 3650 },
             });
             setGsc(response.data || null);
         } catch (e) {
@@ -89,8 +87,7 @@ export default function ProjectDetail(props) {
             ]);
             setProject(projRes.data || null);
             setTasks(taskRes.data?.data || []);
-            if (projRes.data?.website_url) await fetchGsc({ force: false });
-            else setGsc(null);
+            await fetchGsc();
         } catch (e) {
             toast.error(e?.response?.data?.message || 'Không tải được dự án.');
         } finally { setLoading(false); }
@@ -109,15 +106,24 @@ export default function ProjectDetail(props) {
 
     useEffect(() => { fetchData(); fetchLookups(); }, [projectId]);
 
-    const triggerSync = async () => {
-        if (!project?.website_url) { toast.error('Dự án chưa có website.'); return; }
-        setSyncing(true);
+    const updateGscNotification = async (enabled) => {
+        if (gscNotifySaving) return;
+        setGscNotifySaving(true);
         try {
-            await axios.post(`/api/v1/projects/${projectId}/search-console/sync`);
-            await fetchGsc({ force: true });
-            toast.success('Đã đồng bộ dữ liệu Search Console.');
-        } catch (e) { toast.error(e?.response?.data?.message || 'Đồng bộ thất bại.'); }
-        finally { setSyncing(false); }
+            const response = await axios.put(`/api/v1/projects/${projectId}/search-console/notification`, { enabled: !!enabled });
+            const payload = response?.data?.data || null;
+            if (payload) setGsc(payload);
+            else await fetchGsc();
+            toast.success(response?.data?.message || (enabled ? 'Đã bật thông báo GSC.' : 'Đã tắt thông báo GSC.'));
+        } catch (e) {
+            const message = e?.response?.data?.message || 'Không cập nhật được trạng thái thông báo GSC.';
+            const payload = e?.response?.data?.data || null;
+            if (payload) setGsc(payload);
+            else await fetchGsc();
+            toast.error(message);
+        } finally {
+            setGscNotifySaving(false);
+        }
     };
 
     // Group tasks by assignee
@@ -161,8 +167,27 @@ export default function ProjectDetail(props) {
         setShowTaskForm(true);
     };
 
+    const currentTotalWeight = useMemo(() => {
+        return tasks.reduce((sum, t) => sum + (Number(t.weight_percent) || 0), 0);
+    }, [tasks]);
+
+    const editingTaskWeight = useMemo(() => {
+        if (!editingTaskId) return 0;
+        const tt = tasks.find(x => x.id === editingTaskId);
+        return Number(tt?.weight_percent || 0);
+    }, [tasks, editingTaskId]);
+
+    const remainingWeight = Math.max(0, 100 - currentTotalWeight + editingTaskWeight);
+
     const saveTask = async () => {
         if (!taskForm.title.trim()) { toast.error('Tiêu đề công việc là bắt buộc.'); return; }
+        
+        const wp = taskForm.weight_percent === '' ? 0 : Number(taskForm.weight_percent);
+        if (wp > remainingWeight) {
+            toast.error(`Tổng tỷ trọng không được lố 100%. Mức nhập tối đa hiện tại: ${remainingWeight}%`);
+            return;
+        }
+
         setSavingTask(true);
         try {
             const payload = {
@@ -221,6 +246,13 @@ export default function ProjectDetail(props) {
     const gscLatest = gsc?.latest || null;
     const gscSummary = gsc?.summary || null;
     const gscStatus = gsc?.status || {};
+    const gscNotifyEnabled = !!gscStatus?.project_notify_enabled;
+    const gscCanManageNotification = !!gscStatus?.can_manage_notification;
+    const gscCanEnableNotification = !!gscStatus?.can_enable_notification;
+    const gscEnableBlockReason = String(gscStatus?.enable_block_reason || '').trim();
+    const gscTrackingStartedAt = gscStatus?.tracking_started_at || null;
+    const gscLastSyncedAt = gscStatus?.last_synced_at || null;
+    const gscCanToggleNotification = gscCanManageNotification && (gscNotifyEnabled || gscCanEnableNotification);
     const gscMaxClicks = useMemo(() => {
         const max = Math.max(...gscTrend.map((item) => Number(item?.clicks || 0)), 0);
         return max > 0 ? max : 1;
@@ -301,64 +333,104 @@ export default function ProjectDetail(props) {
                         </div>
                     </div>
 
-                    {/* GSC Section - compact */}
-                    {project.website_url && (
-                        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
-                            <div className="flex flex-wrap items-center justify-between gap-3">
+                    {/* GSC Section */}
+                    <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
                                 <h4 className="font-semibold text-slate-900">Google Search Console</h4>
-                                {canForceSync && (
-                                    <button className="text-sm text-primary font-semibold disabled:opacity-60" onClick={triggerSync} disabled={syncing || gscLoading}>
-                                        {syncing ? 'Đang đồng bộ...' : 'Đồng bộ ngay'}
-                                    </button>
+                                <p className="mt-1 text-xs text-text-muted">
+                                    Tự lấy dữ liệu hằng ngày theo giờ admin cấu hình ({gscStatus?.sync_time || '11:17'}).
+                                </p>
+                                {gscTrackingStartedAt && (
+                                    <p className="mt-1 text-[11px] text-text-muted">
+                                        Biểu đồ tính từ ngày thêm website: {formatDate(gscTrackingStartedAt)}
+                                        {gscLastSyncedAt ? ` • Đồng bộ gần nhất: ${formatDate(gscLastSyncedAt)}` : ''}
+                                    </p>
                                 )}
                             </div>
-                            {gscStatus?.sync_error && (
-                                <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">{gscStatus.sync_error}</div>
-                            )}
-                            {!gscLoading && gscLatest && (
-                                <div className="mt-3 grid gap-3 md:grid-cols-4">
-                                    <div className="rounded-xl border border-slate-200/80 p-3">
-                                        <div className="text-xs text-text-muted">Clicks</div>
-                                        <div className="text-base font-semibold text-slate-900">{formatNumber(gscLatest.last_clicks)}</div>
-                                        <div className={`text-xs ${Number(gscLatest.delta_clicks || 0) >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
-                                            {Number(gscLatest.delta_clicks || 0) >= 0 ? '+' : ''}{formatNumber(gscLatest.delta_clicks)}
-                                        </div>
-                                    </div>
-                                    <div className="rounded-xl border border-slate-200/80 p-3">
-                                        <div className="text-xs text-text-muted">Impressions</div>
-                                        <div className="text-base font-semibold text-slate-900">{formatNumber(gscLatest.last_impressions)}</div>
-                                    </div>
-                                    <div className="rounded-xl border border-slate-200/80 p-3">
-                                        <div className="text-xs text-text-muted">TB Clicks/ngày</div>
-                                        <div className="text-base font-semibold text-slate-900">{gscSummary ? formatNumber(gscSummary.avg_clicks_per_day) : '—'}</div>
-                                    </div>
-                                    <div className="rounded-xl border border-slate-200/80 p-3">
-                                        <div className="text-xs text-text-muted">Alerts</div>
-                                        <div className="text-base font-semibold text-slate-900">{formatNumber(gscLatest.alerts_total || 0)}</div>
-                                    </div>
-                                </div>
-                            )}
-                            {gscTrend.length > 0 && (
-                                <div className="mt-4 flex items-end gap-1 overflow-x-auto pb-2">
-                                    {gscTrend.map((item) => {
-                                        const clicks = Number(item.clicks || 0);
-                                        const h = Math.max(4, Math.round((clicks / gscMaxClicks) * 100));
-                                        return (
-                                            <div key={item.date} className="min-w-[28px] text-center">
-                                                <div className="h-24 flex items-end justify-center">
-                                                    <div className={`w-5 rounded-t ${Number(item.delta_clicks || 0) >= 0 ? 'bg-emerald-500/70' : 'bg-rose-500/70'}`} style={{ height: `${h}%` }}
-                                                        title={`${item.date}: ${formatNumber(clicks)} clicks`} />
-                                                </div>
-                                                <div className="text-[9px] text-text-muted mt-1">{formatDate(item.date).slice(0, 5)}</div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            )}
-                            {gscLoading && <p className="mt-3 text-sm text-text-muted">Đang tải...</p>}
-                            {!gscLoading && !gscLatest && <p className="mt-3 text-sm text-text-muted">Chưa có dữ liệu.</p>}
+                            <div className="flex items-center gap-3">
+                                <span className={`text-xs font-semibold ${gscNotifyEnabled ? 'text-emerald-700' : 'text-slate-500'}`}>
+                                    {gscNotifyEnabled ? 'Đang bật thông báo' : 'Đang tắt thông báo'}
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => updateGscNotification(!gscNotifyEnabled)}
+                                    disabled={gscNotifySaving || gscLoading || !gscCanToggleNotification}
+                                    className={`relative inline-flex h-7 w-12 items-center rounded-full border transition ${
+                                        gscNotifyEnabled ? 'border-primary bg-primary' : 'border-slate-300 bg-slate-200'
+                                    } disabled:cursor-not-allowed disabled:opacity-50`}
+                                    aria-label="Bật/tắt thông báo Google Search Console"
+                                >
+                                    <span
+                                        className={`inline-block h-5 w-5 rounded-full bg-white shadow transition ${
+                                            gscNotifyEnabled ? 'translate-x-6' : 'translate-x-1'
+                                        }`}
+                                    />
+                                </button>
+                            </div>
                         </div>
-                    )}
+
+                        {!project.website_url && (
+                            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700">
+                                Dự án chưa có website. Hãy cập nhật URL website hợp lệ trước khi bật thông báo GSC.
+                            </div>
+                        )}
+
+                        {gscEnableBlockReason && !gscNotifyEnabled && (
+                            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700">
+                                {gscEnableBlockReason}
+                            </div>
+                        )}
+
+                        {gscStatus?.sync_error && (
+                            <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">{gscStatus.sync_error}</div>
+                        )}
+
+                        {!gscLoading && gscLatest && (
+                            <div className="mt-3 grid gap-3 md:grid-cols-4">
+                                <div className="rounded-xl border border-slate-200/80 p-3">
+                                    <div className="text-xs text-text-muted">Clicks</div>
+                                    <div className="text-base font-semibold text-slate-900">{formatNumber(gscLatest.last_clicks)}</div>
+                                    <div className={`text-xs ${Number(gscLatest.delta_clicks || 0) >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                                        {Number(gscLatest.delta_clicks || 0) >= 0 ? '+' : ''}{formatNumber(gscLatest.delta_clicks)}
+                                    </div>
+                                </div>
+                                <div className="rounded-xl border border-slate-200/80 p-3">
+                                    <div className="text-xs text-text-muted">Impressions</div>
+                                    <div className="text-base font-semibold text-slate-900">{formatNumber(gscLatest.last_impressions)}</div>
+                                </div>
+                                <div className="rounded-xl border border-slate-200/80 p-3">
+                                    <div className="text-xs text-text-muted">TB Clicks/ngày</div>
+                                    <div className="text-base font-semibold text-slate-900">{gscSummary ? formatNumber(gscSummary.avg_clicks_per_day) : '—'}</div>
+                                </div>
+                                <div className="rounded-xl border border-slate-200/80 p-3">
+                                    <div className="text-xs text-text-muted">Alerts</div>
+                                    <div className="text-base font-semibold text-slate-900">{formatNumber(gscLatest.alerts_total || 0)}</div>
+                                </div>
+                            </div>
+                        )}
+
+                        {gscTrend.length > 0 && (
+                            <div className="mt-4 flex items-end gap-1 overflow-x-auto pb-2">
+                                {gscTrend.map((item) => {
+                                    const clicks = Number(item.clicks || 0);
+                                    const h = Math.max(4, Math.round((clicks / gscMaxClicks) * 100));
+                                    return (
+                                        <div key={item.date} className="min-w-[28px] text-center">
+                                            <div className="h-24 flex items-end justify-center">
+                                                <div className={`w-5 rounded-t ${Number(item.delta_clicks || 0) >= 0 ? 'bg-emerald-500/70' : 'bg-rose-500/70'}`} style={{ height: `${h}%` }}
+                                                    title={`${item.date}: ${formatNumber(clicks)} clicks`} />
+                                            </div>
+                                            <div className="text-[9px] text-text-muted mt-1">{formatDate(item.date).slice(0, 5)}</div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+
+                        {gscLoading && <p className="mt-3 text-sm text-text-muted">Đang tải...</p>}
+                        {!gscLoading && !gscLatest && <p className="mt-3 text-sm text-text-muted">Chưa có dữ liệu.</p>}
+                    </div>
 
                     {/* Task list with tabs */}
                     <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
@@ -521,8 +593,16 @@ export default function ProjectDetail(props) {
                             </select>
                         </div>
                         <div>
-                            <label className="text-xs text-text-muted">Tỷ trọng (%)</label>
-                            <input type="number" min="1" max="100" className="mt-2 w-full rounded-xl border border-slate-200/80 px-3 py-2" value={taskForm.weight_percent} onChange={(e) => setTaskForm((s) => ({ ...s, weight_percent: e.target.value }))} />
+                            <label className="text-xs text-text-muted">
+                                Tỷ trọng (%) 
+                                <span className={`ml-1 font-semibold ${remainingWeight < Number(taskForm.weight_percent || 0) ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                    - Còn trống: {remainingWeight}%
+                                </span>
+                            </label>
+                            <input type="number" min="1" max={remainingWeight || 100} className={`mt-2 w-full rounded-xl border px-3 py-2 ${remainingWeight < Number(taskForm.weight_percent || 0) ? 'border-rose-300 ring-4 ring-rose-50' : 'border-slate-200/80'}`} value={taskForm.weight_percent} onChange={(e) => setTaskForm((s) => ({ ...s, weight_percent: e.target.value }))} />
+                            {remainingWeight < Number(taskForm.weight_percent || 0) && (
+                                <p className="mt-1 text-xs text-rose-600">Vượt quá {remainingWeight}% tỷ trọng cho phép!</p>
+                            )}
                         </div>
                         <div>
                             <label className="text-xs text-text-muted">Ngày bắt đầu</label>

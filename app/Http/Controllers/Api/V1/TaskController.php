@@ -4,10 +4,10 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Helpers\ProjectScope;
+use App\Models\Department;
 use App\Models\Project;
 use App\Models\Task;
 use App\Models\User;
-use App\Models\Department;
 use App\Services\NotificationService;
 use App\Services\ProjectProgressService;
 use Illuminate\Http\JsonResponse;
@@ -17,6 +17,7 @@ class TaskController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
+        $user = $request->user();
         $query = Task::query()
             ->with(['project', 'project.owner', 'assignee', 'reviewer', 'department'])
             ->withCount(['comments', 'attachments', 'items'])
@@ -26,7 +27,11 @@ class TaskController extends Controller
                 },
             ]);
 
-        ProjectScope::applyTaskScope($query, $request->user());
+        if ($request->filled('project_id')) {
+            ProjectScope::applyTaskScope($query, $user);
+        } else {
+            ProjectScope::applyTaskListScope($query, $user);
+        }
 
         if ($request->filled('project_id')) {
             $query->where('project_id', (int) $request->input('project_id'));
@@ -85,9 +90,6 @@ class TaskController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        if (! in_array($request->user()->role, ['admin', 'quan_ly'], true)) {
-            return response()->json(['message' => 'Không có quyền tạo công việc.'], 403);
-        }
         $validated = $request->validate($this->rules(false));
         $project = Project::find($validated['project_id']);
         if (! $project || empty($project->contract_id)) {
@@ -95,12 +97,22 @@ class TaskController extends Controller
                 'message' => 'Dự án chưa có hợp đồng, không thể tạo công việc.',
             ], 422);
         }
+        if (! ProjectScope::canManageProjectTasks($request->user(), $project)) {
+            return response()->json([
+                'message' => 'Chỉ admin hoặc nhân sự phụ trách dự án mới được tạo công việc.',
+            ], 403);
+        }
         $this->applyDepartmentRules($request, $validated);
         $validated['created_by'] = $request->user()->id;
         $validated['assigned_by'] = $validated['assigned_by'] ?? $request->user()->id;
-        $validated['weight_percent'] = isset($validated['weight_percent'])
-            ? max(1, min(100, (int) $validated['weight_percent']))
-            : 100;
+        
+        $currentWeight = Task::where('project_id', $validated['project_id'])->sum('weight_percent');
+        $newWeight = isset($validated['weight_percent']) ? max(1, min(100, (int) $validated['weight_percent'])) : 100;
+
+        if ($currentWeight + $newWeight > 100) {
+            return response()->json(['message' => 'Tổng tỷ trọng các công việc trong dự án không được vượt quá 100%.'], 422);
+        }
+        $validated['weight_percent'] = $newWeight;
 
         $task = Task::create($validated);
 
@@ -112,17 +124,17 @@ class TaskController extends Controller
             }
         }
 
-        $managerId = null;
-        if ($request->user()->role === 'admin' && ! empty($task->department_id)) {
-            $managerId = Department::query()
+        $notifyUserId = $task->assignee_id ? (int) $task->assignee_id : 0;
+        if ($notifyUserId <= 0 && $request->user()->role === 'admin' && ! empty($task->department_id)) {
+            $notifyUserId = (int) Department::query()
                 ->where('id', $task->department_id)
                 ->value('manager_id');
         }
 
-        if ($managerId) {
+        if ($notifyUserId > 0) {
             try {
                 app(NotificationService::class)->notifyUsersAfterResponse(
-                    [$managerId],
+                    [$notifyUserId],
                     'Có công việc mới được phân công',
                     'Công việc: '.$task->title,
                     [
@@ -157,7 +169,10 @@ class TaskController extends Controller
             return response()->json(['message' => 'Không có quyền cập nhật công việc.'], 403);
         }
         $validated = $request->validate($this->rules(true));
-        if ($request->user()->role === 'nhan_vien') {
+        $canManageTask = $task->project
+            ? ProjectScope::canManageProjectTasks($request->user(), $task->project)
+            : false;
+        if ($request->user()->role === 'nhan_vien' && ! $canManageTask) {
             $validated = array_intersect_key($validated, array_flip([
                 'acknowledged_at',
             ]));
@@ -175,7 +190,16 @@ class TaskController extends Controller
         }
 
         if (isset($validated['weight_percent'])) {
-            $validated['weight_percent'] = max(1, min(100, (int) $validated['weight_percent']));
+            $projectId = $validated['project_id'] ?? $task->project_id;
+            $currentWeight = Task::where('project_id', $projectId)
+                ->where('id', '!=', $task->id)
+                ->sum('weight_percent');
+                
+            $newWeight = max(1, min(100, (int) $validated['weight_percent']));
+            if ($currentWeight + $newWeight > 100) {
+                return response()->json(['message' => 'Tổng tỷ trọng các công việc trong dự án không được vượt quá 100%.'], 422);
+            }
+            $validated['weight_percent'] = $newWeight;
         }
 
         if (isset($validated['status']) && $validated['status'] === 'done') {
@@ -207,7 +231,7 @@ class TaskController extends Controller
 
     public function destroy(Request $request, Task $task): JsonResponse
     {
-        if (! in_array($request->user()->role, ['admin', 'quan_ly'], true)) {
+        if (! $task->project || ! ProjectScope::canManageProjectTasks($request->user(), $task->project)) {
             return response()->json(['message' => 'Không có quyền xóa công việc.'], 403);
         }
         if (! ProjectScope::canAccessTask($request->user(), $task)) {

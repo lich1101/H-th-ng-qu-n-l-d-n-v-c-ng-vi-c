@@ -1098,7 +1098,7 @@ export default function ProjectsKanban(props) {
                             onChange={(e) => setForm((s) => ({ ...s, website_url: e.target.value }))}
                         />
                         <p className="mt-1 text-xs text-text-muted">
-                            Nếu có URL này, trang chi tiết dự án sẽ tự đồng bộ thống kê Google Search Console hằng ngày.
+                            Sau khi nhập URL, vào chi tiết dự án để bật thông báo GSC. Khi bật, hệ thống sẽ tự lấy dữ liệu hằng ngày theo giờ cấu hình.
                         </p>
                     </div>
                     <div>

@@ -321,8 +321,11 @@ export default function Authenticated({ auth, header, children }) {
                 label: 'Operations',
                 items: [
                     { label: 'Dự án', icon: 'project', routeName: 'projects.kanban', href: route('projects.kanban'), roles: ['admin', 'quan_ly', 'nhan_vien'] },
+                    { label: 'Công việc', icon: 'tasks', routeName: 'tasks.board', href: route('tasks.board'), roles: ['admin', 'quan_ly', 'nhan_vien'] },
+                    { label: 'Đầu việc', icon: 'tasks', routeName: 'task-items.board', href: route('task-items.board'), roles: ['admin', 'quan_ly', 'nhan_vien'] },
                     { label: 'Bàn giao dự án', icon: 'handover', routeName: 'handover.index', href: route('handover.index'), roles: ['admin', 'nhan_vien'] },
                     { label: 'Lịch họp', icon: 'calendar', routeName: 'meetings.index', href: route('meetings.index'), roles: ['admin', 'quan_ly'] },
+                    { label: 'Chấm công WiFi', icon: 'alarm', routeName: 'attendance.index', href: route('attendance.index'), roles: ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'] },
                 ],
             },
             {
@@ -340,7 +343,6 @@ export default function Authenticated({ auth, header, children }) {
                     { label: 'Trạng thái cơ hội', icon: 'trend', routeName: 'opportunity-statuses.index', href: route('opportunity-statuses.index'), roles: ['admin'] },
                     { label: 'Hạng doanh thu', icon: 'award', routeName: 'revenue-tiers.index', href: route('revenue-tiers.index'), roles: ['admin'] },
                     { label: 'Quy trình dịch vụ', icon: 'workflow', routeName: 'services.workflows', href: route('services.workflows'), roles: ['admin', 'quan_ly', 'nhan_vien'] },
-                    { label: 'Chấm công WiFi', icon: 'alarm', routeName: 'attendance.index', href: route('attendance.index'), roles: ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'] },
                     { label: 'Tải ứng dụng', icon: 'download', routeName: 'app-downloads.index', href: route('app-downloads.index'), roles: ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'] },
                     { label: 'Nhật ký hệ thống', icon: 'history', routeName: 'activity.logs', href: route('activity.logs'), roles: ['admin', 'quan_ly'] },
                     { label: 'Tài khoản người dùng', icon: 'users', routeName: 'accounts.dashboard', href: route('accounts.dashboard'), roles: ['admin'] },

@@ -31,6 +31,10 @@ class Project extends Model
         'owner_id',
         'repo_url',
         'website_url',
+        'gsc_notify_enabled',
+        'gsc_notify_last_error',
+        'gsc_tracking_started_at',
+        'gsc_last_synced_at',
         'progress_percent',
     ];
 
@@ -39,6 +43,9 @@ class Project extends Model
         'deadline' => 'date',
         'handover_requested_at' => 'datetime',
         'approved_at' => 'datetime',
+        'gsc_notify_enabled' => 'boolean',
+        'gsc_tracking_started_at' => 'date',
+        'gsc_last_synced_at' => 'datetime',
         'budget' => 'float',
         'progress_percent' => 'integer',
     ];

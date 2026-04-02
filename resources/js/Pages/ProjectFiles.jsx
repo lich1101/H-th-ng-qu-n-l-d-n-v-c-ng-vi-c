@@ -139,6 +139,7 @@ export default function ProjectFiles(props) {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
+  const [filePermissions, setFilePermissions] = useState({ can_manage: false });
 
   const currentFolder = breadcrumbs[breadcrumbs.length - 1] || null;
 
@@ -172,7 +173,11 @@ export default function ProjectFiles(props) {
         },
       });
       setItems(res.data?.data || []);
+      setFilePermissions({
+        can_manage: res.data?.permissions?.can_manage === true,
+      });
     } catch (e) {
+      setFilePermissions({ can_manage: false });
       toast.error(e?.response?.data?.message || 'Không tải được kho dự án.');
     } finally {
       setLoading(false);
@@ -443,6 +448,7 @@ export default function ProjectFiles(props) {
     if (!contextMenu) return null;
     const item = contextMenu.item || null;
     const isWorkspaceMenu = !item || contextMenu.scope === 'workspace';
+    const canManageFiles = filePermissions?.can_manage === true;
 
     return (
       <div
@@ -450,7 +456,7 @@ export default function ProjectFiles(props) {
         style={{ left: contextMenu.x, top: contextMenu.y }}
         onClick={(e) => e.stopPropagation()}
       >
-        {isWorkspaceMenu && !trashMode && (
+        {isWorkspaceMenu && !trashMode && canManageFiles && (
           <>
             <button
               type="button"
@@ -483,6 +489,19 @@ export default function ProjectFiles(props) {
               Làm mới danh sách
             </button>
           </>
+        )}
+
+        {isWorkspaceMenu && !trashMode && !canManageFiles && (
+          <button
+            type="button"
+            className="w-full rounded-xl px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100"
+            onClick={() => {
+              setContextMenu(null);
+              fetchItems();
+            }}
+          >
+            Làm mới danh sách
+          </button>
         )}
 
         {isWorkspaceMenu && trashMode && (
@@ -544,34 +563,38 @@ export default function ProjectFiles(props) {
                 Tải xuống
               </a>
             )}
-            <button
-              type="button"
-              className="w-full rounded-xl px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100"
-              onClick={() => duplicateItem(item)}
-            >
-              Nhân bản
-            </button>
-            <button
-              type="button"
-              className="w-full rounded-xl px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100"
-              onClick={() => openRename(item)}
-            >
-              Đổi tên
-            </button>
-            <button
-              type="button"
-              className="w-full rounded-xl px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50"
-              onClick={() => {
-                setContextMenu(null);
-                moveToTrash(item);
-              }}
-            >
-              Chuyển vào thùng rác
-            </button>
+            {canManageFiles && (
+              <>
+                <button
+                  type="button"
+                  className="w-full rounded-xl px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100"
+                  onClick={() => duplicateItem(item)}
+                >
+                  Nhân bản
+                </button>
+                <button
+                  type="button"
+                  className="w-full rounded-xl px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100"
+                  onClick={() => openRename(item)}
+                >
+                  Đổi tên
+                </button>
+                <button
+                  type="button"
+                  className="w-full rounded-xl px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50"
+                  onClick={() => {
+                    setContextMenu(null);
+                    moveToTrash(item);
+                  }}
+                >
+                  Chuyển vào thùng rác
+                </button>
+              </>
+            )}
           </>
         )}
 
-        {!isWorkspaceMenu && trashMode && (
+        {!isWorkspaceMenu && trashMode && filePermissions?.can_manage === true && (
           <>
             <button
               type="button"
@@ -662,6 +685,11 @@ export default function ProjectFiles(props) {
                     Nhấp đúp để mở, nhấp phải để hiện menu thao tác giống Finder.
                   </div>
                 </div>
+                {filePermissions?.can_manage !== true && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
+                    Tài khoản hiện tại chỉ có quyền xem dữ liệu kho dự án, không thể thêm/sửa/xóa.
+                  </div>
+                )}
               </div>
             </div>
           </aside>
@@ -683,7 +711,7 @@ export default function ProjectFiles(props) {
                   <ToolbarButton onClick={goUp}>Lùi cấp</ToolbarButton>
                   <ToolbarButton active={viewMode === 'list'} onClick={() => setViewMode('list')}>Danh sách</ToolbarButton>
                   <ToolbarButton active={viewMode === 'grid'} onClick={() => setViewMode('grid')}>Lưới</ToolbarButton>
-                  {!trashMode && (
+                  {!trashMode && filePermissions?.can_manage === true && (
                     <>
                       <ToolbarButton onClick={() => fileInputRef.current?.click()}>
                         {uploading ? 'Đang tải...' : 'Tải tệp'}
@@ -719,7 +747,7 @@ export default function ProjectFiles(props) {
                 ))}
               </div>
 
-              {!trashMode && (
+              {!trashMode && filePermissions?.can_manage === true && (
                 <div className="mt-4 flex flex-wrap items-center gap-3">
                   <input
                     ref={folderInputRef}

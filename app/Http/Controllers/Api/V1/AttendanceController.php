@@ -1048,14 +1048,35 @@ class AttendanceController extends Controller
         $rows = $records->map(function (AttendanceRecord $item) {
             return $this->reportRowPayload($item);
         })->values();
+
+        $attendance = app(AttendanceService::class);
+        $trackedUserQuery = $attendance->trackedUsersQuery();
+        if ($request->filled('search')) {
+            $search = trim((string) $request->input('search'));
+            $trackedUserQuery->where(function ($builder) use ($search) {
+                $builder->where('name', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%")
+                    ->orWhere('role', 'like', "%{$search}%")
+                    ->orWhere('department', 'like', "%{$search}%");
+            });
+        }
+        if ($request->filled('user_id')) {
+            $trackedUserQuery->where('id', (int) $request->input('user_id'));
+        }
+
+        $todayIso = Carbon::now('Asia/Ho_Chi_Minh')->toDateString();
+        $trackedUserIds = (clone $trackedUserQuery)
+            ->select('id')
+            ->pluck('id');
+        $todayWorkUnits = $trackedUserIds->isEmpty()
+            ? 0
+            : (float) AttendanceRecord::query()
+                ->whereDate('work_date', $todayIso)
+                ->whereIn('user_id', $trackedUserIds)
+                ->sum('work_units');
         $summary = [
-            'total_rows' => $rows->count(),
-            'total_work_units' => round($rows->sum(function ($item) {
-                return (float) ($item['work_units'] ?? 0);
-            }), 2),
-            'late_count' => $rows->whereIn('status', ['late_pending', 'late'])->count(),
-            'approved_full_count' => $rows->where('status', 'approved_full')->count(),
-            'holiday_count' => $rows->where('status', 'holiday_auto')->count(),
+            'total_staff' => (int) (clone $trackedUserQuery)->count(),
+            'today_work_units' => round($todayWorkUnits, 2),
         ];
 
         return [$rows, $summary];

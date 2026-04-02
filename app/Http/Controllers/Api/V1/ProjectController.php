@@ -10,6 +10,7 @@ use App\Models\Project;
 use App\Models\ProjectMeeting;
 use App\Models\User;
 use App\Services\NotificationService;
+use App\Services\ProjectGscSyncService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -80,7 +81,7 @@ class ProjectController extends Controller
         return response()->json($paginator);
     }
 
-    public function store(Request $request): JsonResponse
+    public function store(Request $request, ProjectGscSyncService $syncService): JsonResponse
     {
         if (! in_array($request->user()->role, ['admin', 'quan_ly'], true)) {
             return response()->json(['message' => 'Không có quyền tạo dự án.'], 403);
@@ -124,6 +125,7 @@ class ProjectController extends Controller
         }
 
         $project = Project::create($validated);
+        $syncService->handleWebsiteMutation($project, null);
 
         if ($contract && empty($contract->project_id)) {
             $contract->update(['project_id' => $project->id]);
@@ -135,10 +137,10 @@ class ProjectController extends Controller
     }
 
     /**
-     * Create a project directly from a contract.
-     * Only admin or contract collector/creator can do this.
+     * Create a project directly from an approved contract.
+     * Only admin or the contract collector can do this.
      */
-    public function createFromContract(Request $request): JsonResponse
+    public function createFromContract(Request $request, ProjectGscSyncService $syncService): JsonResponse
     {
         $contractId = (int) $request->input('contract_id');
         if (! $contractId) {
@@ -202,6 +204,7 @@ class ProjectController extends Controller
             'website_url' => $validated['website_url'] ?? null,
             'created_by' => $request->user()->id,
         ]);
+        $syncService->handleWebsiteMutation($project, null);
 
         $contract->update(['project_id' => $project->id]);
         $project->load($this->baseRelations());
@@ -228,7 +231,7 @@ class ProjectController extends Controller
         return response()->json($this->transformProject($project, $request->user(), true));
     }
 
-    public function update(Request $request, Project $project): JsonResponse
+    public function update(Request $request, Project $project, ProjectGscSyncService $syncService): JsonResponse
     {
         if (! ProjectScope::canAccessProject($request->user(), $project)) {
             return response()->json(['message' => 'Không có quyền cập nhật dự án.'], 403);
@@ -280,7 +283,9 @@ class ProjectController extends Controller
             return $contract;
         }
 
+        $oldWebsiteRaw = (string) ($project->website_url ?? '');
         $project->update($validated);
+        $syncService->handleWebsiteMutation($project, $oldWebsiteRaw);
 
         if ($contract && empty($contract->project_id)) {
             $contract->update(['project_id' => $project->id]);
@@ -517,7 +522,7 @@ class ProjectController extends Controller
 
     /**
      * Check if user can create project from a specific contract.
-     * Only admin or the contract's collector/creator.
+     * Only admin or the contract's collector.
      */
     private function assertCanCreateFromContract(User $user, int $contractId, ?Contract $contract = null): ?JsonResponse
     {
@@ -535,26 +540,11 @@ class ProjectController extends Controller
         }
 
         $isCollector = (int) ($contract->collector_user_id ?? 0) === (int) $user->id;
-        $isCreator = (int) ($contract->created_by ?? 0) === (int) $user->id;
-
-        if ($isCollector || $isCreator) {
+        if ($isCollector) {
             return null;
         }
 
-        $creatorDepartmentId = $contract->creator ? $contract->creator->department_id : null;
-        $collectorDepartmentId = $contract->collector ? $contract->collector->department_id : null;
-        
-        $managedDepartments = $user->managedDepartments()->pluck('id')->all();
-
-        if ($creatorDepartmentId && in_array($creatorDepartmentId, $managedDepartments, true)) {
-            return null;
-        }
-
-        if ($collectorDepartmentId && in_array($collectorDepartmentId, $managedDepartments, true)) {
-            return null;
-        }
-
-        return response()->json(['message' => 'Chỉ admin, nhân sự phụ trách hợp đồng, hoặc quản lý của nhân sự đó mới được tạo dự án từ hợp đồng.'], 403);
+        return response()->json(['message' => 'Chỉ admin hoặc nhân sự thu hợp đồng mới được tạo dự án từ hợp đồng đã duyệt.'], 403);
     }
 
     private function baseRelations(): array

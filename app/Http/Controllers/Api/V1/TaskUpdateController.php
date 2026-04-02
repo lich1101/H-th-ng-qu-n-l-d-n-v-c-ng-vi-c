@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Http\Helpers\ProjectScope;
 use App\Models\Task;
 use App\Models\TaskUpdate;
 use App\Models\User;
@@ -202,19 +203,6 @@ class TaskUpdateController extends Controller
 
     private function canReviewTask(?User $user, Task $task): bool
     {
-        if (! $user) {
-            return false;
-        }
-        if ($user->role === 'admin') {
-            return true;
-        }
-        if ($user->role !== 'quan_ly') {
-            return false;
-        }
-        $deptIds = $user->managedDepartments()->pluck('id');
-        if ($task->department_id && $deptIds->contains($task->department_id)) {
-            return true;
-        }
-        return $task->assignee && $deptIds->contains($task->assignee->department_id);
+        return ProjectScope::canReviewTaskProgress($user, $task);
     }
 }

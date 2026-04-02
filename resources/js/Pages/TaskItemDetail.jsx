@@ -49,14 +49,16 @@ export default function TaskItemDetail(props) {
 
     const taskId = item?.task_id;
     const task = item?.task;
+    const projectOwnerId = Number(task?.project?.owner_id || 0);
 
-    const isProjectOwner = Number(task?.project?.owner_id || 0) === currentUserId;
     const isTaskAssignee = Number(task?.assignee_id || 0) === currentUserId;
-    const isTaskCreator = Number(task?.created_by || 0) === currentUserId;
-    const canApprove = currentUserRole === 'admin' || isProjectOwner || isTaskAssignee || isTaskCreator;
-    const canEdit = ['admin', 'quan_ly'].includes(currentUserRole) || isTaskAssignee || isTaskCreator;
+    const isProjectOwner = projectOwnerId > 0 && projectOwnerId === currentUserId;
+    const canApprove = currentUserRole === 'admin' || isProjectOwner;
+    const canEdit = currentUserRole === 'admin' || isProjectOwner || isTaskAssignee;
 
-    const canSubmitReport = canApprove || Number(item?.assignee_id || 0) === currentUserId;
+    const canSubmitReport = currentUserRole === 'admin'
+        || isTaskAssignee
+        || Number(item?.assignee_id || 0) === currentUserId;
     const canEditPendingUpdate = (update) => {
         if (!update || update.review_status !== 'pending') return false;
         if (canApprove) return true;
@@ -409,7 +411,7 @@ export default function TaskItemDetail(props) {
                         )}
                         {canApprove && (
                             <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
-                                Bạn có quyền duyệt phiếu
+                                Bạn là người duyệt phiếu tiến độ của đầu việc này
                             </span>
                         )}
                     </div>

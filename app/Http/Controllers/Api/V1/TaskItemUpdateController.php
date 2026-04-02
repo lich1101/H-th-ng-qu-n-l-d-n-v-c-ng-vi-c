@@ -45,8 +45,10 @@ class TaskItemUpdateController extends Controller
         }
 
         $user = $request->user();
-        if ($user->role === 'nhan_vien' && (int) $item->assignee_id !== (int) $user->id) {
-            return response()->json(['message' => 'Chỉ nhân sự phụ trách mới được gửi phiếu duyệt tiến độ.'], 403);
+        if (! ProjectScope::canSubmitTaskItemProgress($user, $task, $item)) {
+            return response()->json([
+                'message' => 'Chỉ phụ trách đầu việc, phụ trách công việc hoặc admin mới được gửi phiếu duyệt tiến độ.',
+            ], 403);
         }
 
         $validated = $request->validate([
@@ -244,24 +246,7 @@ class TaskItemUpdateController extends Controller
 
     private function canApproveTask(?User $user, Task $task): bool
     {
-        if (! $user) {
-            return false;
-        }
-        if ($user->role === 'admin') {
-            return true;
-        }
-        if ($this->isProjectOwner($user, $task)) {
-            return true;
-        }
-        if ($task->assignee_id && (int) $task->assignee_id === (int) $user->id) {
-            return true;
-        }
-
-        if ($task->created_by && (int) $task->created_by === (int) $user->id) {
-            return true;
-        }
-
-        return false;
+        return ProjectScope::canReviewTaskProgress($user, $task);
     }
 
     private function canEditPendingUpdate(?User $user, Task $task, TaskItem $item, TaskItemUpdate $update): bool
@@ -294,9 +279,7 @@ class TaskItemUpdateController extends Controller
             $targetIds = array_merge(
                 $this->adminIds(),
                 array_filter([
-                    $this->projectOwnerId($task),
-                    $task->assignee_id ? (int) $task->assignee_id : null,
-                    $task->created_by ? (int) $task->created_by : null,
+                    ProjectScope::taskProjectOwnerId($task),
                 ])
             );
 
@@ -338,6 +321,7 @@ class TaskItemUpdateController extends Controller
             $targets = array_filter([
                 (int) $update->submitted_by,
                 (int) $item->assignee_id,
+                (int) $task->assignee_id,
             ]);
             $targets = array_values(array_filter(array_unique($targets), function ($id) use ($actor) {
                 return $id > 0 && $id !== (int) $actor->id;
