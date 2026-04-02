@@ -531,7 +531,7 @@ class AttendanceController extends Controller
         return response()->json([
             'message' => $record->status === 'present'
                 ? 'Chấm công thành công.'
-                : 'Bạn đã chấm công nhưng đang ở trạng thái đi muộn, cần duyệt đơn nếu muốn đủ công.',
+                : sprintf('Đã chấm công. Bạn đi muộn %d phút, hệ thống đã tự tính công tương ứng.', (int) $evaluation['minutes_late']),
             'record' => $this->recordPayload($record->fresh()),
         ]);
     }
@@ -1052,7 +1052,7 @@ class AttendanceController extends Controller
             'total_work_units' => round($rows->sum(function ($item) {
                 return (float) ($item['work_units'] ?? 0);
             }), 2),
-            'late_count' => $rows->where('status', 'late_pending')->count(),
+            'late_count' => $rows->whereIn('status', ['late_pending', 'late'])->count(),
             'approved_full_count' => $rows->where('status', 'approved_full')->count(),
             'holiday_count' => $rows->where('status', 'holiday_auto')->count(),
         ];
@@ -1335,7 +1335,8 @@ class AttendanceController extends Controller
                 $statusLabel = 'Đúng công';
                 break;
             case 'late_pending':
-                $statusLabel = 'Đi muộn chờ duyệt';
+            case 'late':
+                $statusLabel = 'Đi muộn ' . ((int) ($item->minutes_late ?? 0)) . ' phút';
                 break;
             case 'approved_full':
                 $statusLabel = 'Duyệt đủ công';

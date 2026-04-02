@@ -137,7 +137,7 @@ class AttendanceService
             'allowed_late_until' => $allowedLateUntil,
             'minutes_late' => $minutesLate,
             'work_units' => $calculatedWorkUnits,
-            'status' => $isOnTime ? 'present' : 'late_pending',
+            'status' => $isOnTime ? 'present' : 'late',
         ];
     }
 

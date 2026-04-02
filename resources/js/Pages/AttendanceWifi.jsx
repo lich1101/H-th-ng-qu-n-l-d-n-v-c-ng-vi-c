@@ -26,7 +26,8 @@ const attendanceTabs = {
 
 const statusLabels = {
     present: 'Đúng công',
-    late_pending: 'Đi muộn chờ duyệt',
+    late_pending: 'Đi muộn',
+    late: 'Đi muộn',
     approved_full: 'Duyệt đủ công',
     approved_partial: 'Duyệt công thủ công',
     holiday_auto: 'Ngày lễ tự động',
@@ -101,7 +102,7 @@ function Badge({ children, tone = 'slate' }) {
 
 function toneForStatus(status) {
     if (['present', 'approved', 'approved_full', 'holiday_auto'].includes(status)) return 'emerald';
-    if (['late_pending', 'pending', 'approved_partial'].includes(status)) return 'amber';
+    if (['late_pending', 'late', 'pending', 'approved_partial'].includes(status)) return 'amber';
     if (['rejected'].includes(status)) return 'rose';
     return 'slate';
 }
@@ -681,7 +682,7 @@ export default function AttendanceWifi(props) {
                                                 <td className="px-4 py-3">{formatVietnamTime(item.check_in_at)}</td>
                                                 <td className="px-4 py-3">{item.minutes_late || 0} phút</td>
                                                 <td className="px-4 py-3 font-semibold text-slate-900">{item.work_units || 0}</td>
-                                                <td className="px-4 py-3"><Badge tone={toneForStatus(item.status)}>{statusLabels[item.status] || item.status}</Badge></td>
+                                                <td className="px-4 py-3"><Badge tone={toneForStatus(item.status)}>{['late', 'late_pending'].includes(item.status) ? `Đi muộn ${item.minutes_late || 0} phút` : (statusLabels[item.status] || item.status)}</Badge></td>
                                                 <td className="px-4 py-3 text-text-muted">{item.note || '—'}</td>
                                             </tr>
                                         ))}
