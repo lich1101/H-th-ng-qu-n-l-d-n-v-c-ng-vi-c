@@ -70,6 +70,11 @@ class Project extends Model
         return $this->belongsTo(Contract::class);
     }
 
+    public function linkedContract()
+    {
+        return $this->hasOne(Contract::class, 'project_id');
+    }
+
     public function creator()
     {
         return $this->belongsTo(User::class, 'created_by');

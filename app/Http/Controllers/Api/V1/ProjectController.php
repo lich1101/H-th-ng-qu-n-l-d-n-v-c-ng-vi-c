@@ -592,12 +592,23 @@ class ProjectController extends Controller
             'handoverRequester:id,name,email,role,avatar_url',
             'contract:id,code,title,client_id,project_id,value,status,approval_status,start_date,end_date,signed_at,collector_user_id,handover_receive_status,handover_received_by,handover_received_at',
             'contract.collector:id,name,email,role,avatar_url,department_id',
+            'linkedContract:id,code,title,client_id,project_id,value,status,approval_status,start_date,end_date,signed_at,collector_user_id,handover_receive_status,handover_received_by,handover_received_at',
+            'linkedContract.collector:id,name,email,role,avatar_url,department_id',
         ];
     }
 
     private function transformProject(Project $project, ?User $user, bool $detailed = false): array
     {
         $payload = $project->toArray();
+        $primaryContract = $payload['contract'] ?? null;
+        $fallbackContract = $payload['linked_contract'] ?? null;
+        $resolvedContract = $primaryContract ?: $fallbackContract;
+        if ($resolvedContract) {
+            $payload['contract'] = $resolvedContract;
+            $payload['contract_id'] = (int) ($payload['contract_id'] ?? $resolvedContract['id'] ?? 0) ?: (int) ($resolvedContract['id'] ?? 0);
+        }
+        unset($payload['linked_contract']);
+
         $payload['permissions'] = $this->projectPermissions($project, $user);
         $payload['handover_min_progress_percent'] = $this->handoverMinimumProgressPercent();
         $payload['collector_user_id'] = ProjectScope::projectCollectorId($project);
