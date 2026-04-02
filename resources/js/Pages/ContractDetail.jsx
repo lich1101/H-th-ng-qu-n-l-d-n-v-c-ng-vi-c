@@ -139,7 +139,7 @@ function DetailMetric({ label, value, tone = 'slate' }) {
 export default function ContractDetail(props) {
     const { contractId, auth } = props;
     const toast = useToast();
-    
+
     const userRole = auth?.user?.role || '';
     const currentUserId = auth?.user?.id;
 
@@ -187,7 +187,7 @@ export default function ContractDetail(props) {
         try {
             const res = await axios.get(`/api/v1/contracts/${contractId}`);
             setContract(res.data);
-            
+
             // Set default project name based on contract
             if (res.data) {
                 setProjectForm(s => ({ ...s, name: res.data.title || '' }));
@@ -250,12 +250,12 @@ export default function ContractDetail(props) {
                 owner_id: projectForm.owner_id ? Number(projectForm.owner_id) : null,
                 budget: resolveContractValue(contract),
             };
-            
+
             const res = await axios.post('/api/v1/projects/from-contract', payload).catch(async (e) => {
                // if fallback fails, we create manually via /projects
                return await axios.post('/api/v1/projects', payload);
             });
-            
+
             toast.success('Đã tạo dự án thành công.');
             setShowProjectForm(false);
             window.location.href = `/du-an/${res.data?.id || res.data?.data?.id}`;
@@ -283,8 +283,8 @@ export default function ContractDetail(props) {
         );
     }
 
-    const canCreateProject = userRole === 'admin' 
-        || Number(contract.collector_user_id || 0) === currentUserId 
+    const canCreateProject = userRole === 'admin'
+        || Number(contract.collector_user_id || 0) === currentUserId
         || Number(contract.created_by || 0) === currentUserId;
 
     return (
@@ -593,23 +593,23 @@ export default function ContractDetail(props) {
             >
                 <div className="space-y-4 text-sm mt-2">
                     <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-800">
-                        Hợp đồng đang liên kết: <strong>{contract.code} {contract.title ? `- ${contract.title}` : ''}</strong>. 
+                        Hợp đồng đang liên kết: <strong>{contract.code} {contract.title ? `- ${contract.title}` : ''}</strong>.
                         Ngân sách dự tính sẽ áp dụng: <strong>{formatCurrency(resolveContractValue(contract))} VNĐ</strong>.
                     </div>
                     <div>
                         <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Tên dự án</label>
-                        <input 
-                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2 outline-none focus:border-primary focus:ring-1 focus:ring-primary" 
-                            placeholder="Tên dự án hiển thị với đội triển khai" 
-                            value={projectForm.name} 
-                            onChange={(e) => setProjectForm((s) => ({ ...s, name: e.target.value }))} 
+                        <input
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2 outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                            placeholder="Tên dự án hiển thị với đội triển khai"
+                            value={projectForm.name}
+                            onChange={(e) => setProjectForm((s) => ({ ...s, name: e.target.value }))}
                         />
                     </div>
                     <div>
                         <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Loại dịch vụ</label>
-                        <select 
-                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" 
-                            value={projectForm.service_type} 
+                        <select
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            value={projectForm.service_type}
                             onChange={(e) => setProjectForm((s) => ({ ...s, service_type: e.target.value }))}
                         >
                             {serviceOptions.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
@@ -629,9 +629,9 @@ export default function ContractDetail(props) {
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Trạng thái</label>
-                            <select 
-                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" 
-                                value={projectForm.status} 
+                            <select
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                value={projectForm.status}
                                 onChange={(e) => setProjectForm((s) => ({ ...s, status: e.target.value }))}
                             >
                                 {statusOptions.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
@@ -656,20 +656,20 @@ export default function ContractDetail(props) {
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Ngày bắt đầu</label>
-                            <input 
-                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" 
-                                type="date" 
-                                value={projectForm.start_date} 
-                                onChange={(e) => setProjectForm((s) => ({ ...s, start_date: e.target.value }))} 
+                            <input
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                type="date"
+                                value={projectForm.start_date}
+                                onChange={(e) => setProjectForm((s) => ({ ...s, start_date: e.target.value }))}
                             />
                         </div>
                         <div>
                             <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Hạn chót</label>
-                            <input 
-                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" 
-                                type="date" 
-                                value={projectForm.deadline} 
-                                onChange={(e) => setProjectForm((s) => ({ ...s, deadline: e.target.value }))} 
+                            <input
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                type="date"
+                                value={projectForm.deadline}
+                                onChange={(e) => setProjectForm((s) => ({ ...s, deadline: e.target.value }))}
                             />
                         </div>
                     </div>
@@ -677,7 +677,7 @@ export default function ContractDetail(props) {
                         <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Tài nguyên, repo dự án</label>
                         <input
                             className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                            placeholder="URL kho dự án (tuỳ chọn)"
+                            placeholder="URL link dự án (tuỳ chọn)"
                             value={projectForm.repo_url}
                             onChange={(e) => setProjectForm((s) => ({ ...s, repo_url: e.target.value }))}
                         />
@@ -693,25 +693,25 @@ export default function ContractDetail(props) {
                     </div>
                     <div>
                         <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Yêu cầu từ khách / Phạm vi</label>
-                        <textarea 
-                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" 
-                            rows={3} 
-                            placeholder="Mô tả cụ thể KPIs, yêu cầu tính năng..." 
-                            value={projectForm.customer_requirement} 
-                            onChange={(e) => setProjectForm((s) => ({ ...s, customer_requirement: e.target.value }))} 
+                        <textarea
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            rows={3}
+                            placeholder="Mô tả cụ thể KPIs, yêu cầu tính năng..."
+                            value={projectForm.customer_requirement}
+                            onChange={(e) => setProjectForm((s) => ({ ...s, customer_requirement: e.target.value }))}
                         />
                     </div>
                     <div className="flex items-center gap-3 pt-2">
-                        <button 
-                            className="flex-1 rounded-2xl bg-primary px-4 py-2.5 font-semibold text-white shadow-sm hover:bg-primary/90" 
-                            onClick={saveProject} 
+                        <button
+                            className="flex-1 rounded-2xl bg-primary px-4 py-2.5 font-semibold text-white shadow-sm hover:bg-primary/90"
+                            onClick={saveProject}
                             type="button"
                         >
                             Tạo Dự Án
                         </button>
-                        <button 
-                            className="flex-1 rounded-2xl border border-slate-200 px-4 py-2.5 font-semibold text-slate-700 hover:bg-slate-50" 
-                            onClick={() => setShowProjectForm(false)} 
+                        <button
+                            className="flex-1 rounded-2xl border border-slate-200 px-4 py-2.5 font-semibold text-slate-700 hover:bg-slate-50"
+                            onClick={() => setShowProjectForm(false)}
                             type="button"
                         >
                             Hủy bỏ

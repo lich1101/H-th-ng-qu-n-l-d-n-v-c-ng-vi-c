@@ -1369,6 +1369,8 @@ export default function TasksBoard(props) {
                     project_id: String(proj.id),
                     department_id: proj.department_id ? String(proj.department_id) : prev.department_id,
                     assignee_id: proj.owner_id ? String(proj.owner_id) : prev.assignee_id,
+                    deadline: proj.deadline ? String(proj.deadline).slice(0, 10) : prev.deadline,
+                    description: prev.description || proj.customer_requirement || '',
                 }));
             }
         }
@@ -1395,8 +1397,6 @@ export default function TasksBoard(props) {
         () => userRole === 'admin' || availableProjectOptions.length > 0,
         [userRole, availableProjectOptions]
     );
-    const projectHasContract = !!selectedProject?.contract_id;
-
     const siblingProjectTasks = useMemo(
         () => projectWeightReference.filter((task) => Number(task.id) !== Number(editingId || 0)),
         [projectWeightReference, editingId]
@@ -1523,7 +1523,6 @@ export default function TasksBoard(props) {
         if (!canCreate && editingId == null) return toast.error('Bạn không có quyền tạo công việc.');
         if (editingId != null && !canManageTaskRecord(editingTask)) return toast.error('Bạn không có quyền cập nhật công việc.');
         if (!form.project_id || !form.title?.trim()) return toast.error('Vui lòng chọn dự án và nhập tiêu đề.');
-        if (!projectHasContract) return toast.error('Dự án chưa có hợp đồng, không thể tạo công việc.');
         setSavingTask(true);
         try {
             const payload = {
@@ -2261,8 +2260,8 @@ export default function TasksBoard(props) {
                             {availableProjectOptions.map((p) => <option key={p.id} value={p.id}>{p.code} - {p.name}</option>)}
                         </select>
                     </div>
-                    {form.project_id && !projectHasContract && (
-                        <p className="text-xs text-warning">Dự án chưa có hợp đồng, cần tạo hợp đồng trước khi tạo công việc.</p>
+                    {form.project_id && !selectedProject?.contract_id && (
+                        <p className="text-xs text-text-muted">Dự án này chưa liên kết hợp đồng, hệ thống xử lý theo luồng dự án nội bộ.</p>
                     )}
                     <div>
                         <FieldLabel>Phòng ban phụ trách</FieldLabel>

@@ -249,6 +249,10 @@ class ProjectScope
             return false;
         }
 
+        if (! self::hasLinkedContract($project)) {
+            return false;
+        }
+
         if (in_array((string) $user->role, ['admin', 'administrator'], true)) {
             $progress = (int) ($project->progress_percent ?? 0);
 
@@ -276,6 +280,10 @@ class ProjectScope
             return false;
         }
 
+        if (! self::hasLinkedContract($project)) {
+            return false;
+        }
+
         if (in_array((string) $user->role, ['admin', 'administrator'], true)) {
             return true;
         }
@@ -298,6 +306,25 @@ class ProjectScope
         }
 
         return max(0, $collectorId);
+    }
+
+    public static function hasLinkedContract(Project $project): bool
+    {
+        if ((int) ($project->contract_id ?? 0) > 0) {
+            return true;
+        }
+
+        if ($project->relationLoaded('contract') && $project->contract) {
+            return true;
+        }
+
+        if ($project->contract()->exists()) {
+            return true;
+        }
+
+        return \App\Models\Contract::query()
+            ->where('project_id', $project->id)
+            ->exists();
     }
 
     public static function projectOwnerId(Project $project): int

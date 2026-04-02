@@ -68,9 +68,9 @@ const BLOCKED_ASSIGNMENT_ROLES = ['admin', 'administrator', 'ke_toan'];
 export default function ProjectsKanban(props) {
     const toast = useToast();
     const userRole = props?.auth?.user?.role || '';
-    const canCreate = ['admin', 'quan_ly'].includes(userRole);
-    const canUpdate = ['admin', 'quan_ly'].includes(userRole);
-    const canDelete = userRole === 'admin';
+    const canCreate = ['admin', 'administrator', 'quan_ly'].includes(userRole);
+    const canUpdate = ['admin', 'administrator', 'quan_ly'].includes(userRole);
+    const canDelete = ['admin', 'administrator'].includes(userRole);
     const canBulkActions = canUpdate || canDelete;
 
     const [loading, setLoading] = useState(false);
@@ -255,7 +255,10 @@ export default function ProjectsKanban(props) {
         return LABELS[project.service_type] || project.service_type || '';
     };
 
-    const handoverLabel = (value) => {
+    const hasLinkedContract = (project) => !!(project?.contract_id || project?.contract?.id);
+
+    const handoverLabel = (value, project = null) => {
+        if (!hasLinkedContract(project)) return 'Không yêu cầu';
         if (!value) return 'Chưa bàn giao';
         return HANDOVER_LABELS[value] || value;
     };
@@ -335,7 +338,7 @@ export default function ProjectsKanban(props) {
         code: patch.code ?? project.code,
         name: patch.name ?? project.name,
         client_id: patch.client_id ?? project.client_id,
-        contract_id: patch.contract_id ?? project.contract_id,
+        contract_id: patch.contract_id ?? project.contract_id ?? project.contract?.id ?? null,
         service_type: patch.service_type ?? project.service_type,
         service_type_other: patch.service_type_other ?? project.service_type_other ?? null,
         start_date: patch.start_date ?? project.start_date,
@@ -343,7 +346,7 @@ export default function ProjectsKanban(props) {
         budget: patch.budget ?? project.budget,
         status: patch.status ?? project.status,
         customer_requirement: patch.customer_requirement ?? project.customer_requirement,
-        owner_id: patch.owner_id ?? project.owner_id,
+        owner_id: patch.owner_id ?? project.owner_id ?? project.owner?.id ?? null,
         repo_url: patch.repo_url ?? project.repo_url,
         website_url: patch.website_url ?? project.website_url,
     });
@@ -381,11 +384,21 @@ export default function ProjectsKanban(props) {
 
     const startEdit = (p) => {
         setEditingId(p.id);
+        if (p?.contract?.id && !contracts.some((item) => Number(item.id) === Number(p.contract.id))) {
+            setContracts((prev) => ([
+                {
+                    id: p.contract.id,
+                    code: p.contract.code,
+                    title: p.contract.title,
+                },
+                ...prev,
+            ]));
+        }
         setForm({
             code: p.code || '',
             name: p.name || '',
             client_id: p.client_id || '',
-            contract_id: p.contract_id || '',
+            contract_id: p.contract_id || p.contract?.id || '',
             service_type: p.service_type || serviceOptions[0]?.value || DEFAULT_SERVICES[0].value,
             service_type_other: p.service_type_other || '',
             start_date: p.start_date || '',
@@ -393,7 +406,7 @@ export default function ProjectsKanban(props) {
             budget: p.budget ?? '',
             status: p.status || statusOptions[0]?.value || DEFAULT_STATUSES[0].value,
             customer_requirement: p.customer_requirement || '',
-            owner_id: p.owner_id || '',
+            owner_id: p.owner_id || p.owner?.id || '',
             repo_url: p.repo_url || '',
             website_url: p.website_url || '',
         });
@@ -706,6 +719,7 @@ export default function ProjectsKanban(props) {
                                                 </th>
                                             )}
                                             <th className="py-2">Dự án</th>
+                                            <th className="py-2">Website</th>
                                             <th className="py-2">Dịch vụ</th>
                                             <th className="py-2">Trạng thái</th>
                                             <th className="py-2">Tiến độ</th>
@@ -741,6 +755,22 @@ export default function ProjectsKanban(props) {
                                                     <div className="text-xs text-text-muted">{p.code}</div>
                                                 </td>
                                                 <td className="py-3">
+                                                    {p.website_url ? (
+                                                        <a
+                                                            href={p.website_url}
+                                                            target="_blank"
+                                                            rel="noreferrer"
+                                                            className="inline-block max-w-[220px] truncate text-xs font-semibold text-primary hover:underline"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            title={p.website_url}
+                                                        >
+                                                            {p.website_url}
+                                                        </a>
+                                                    ) : (
+                                                        <span className="text-xs text-text-muted">—</span>
+                                                    )}
+                                                </td>
+                                                <td className="py-3">
                                                     <span
                                                         className={`rounded-full border px-2 py-1 text-xs font-semibold ${
                                                             SERVICE_STYLES[p.service_type] || 'bg-slate-100 text-slate-700 border-slate-200'
@@ -772,7 +802,7 @@ export default function ProjectsKanban(props) {
                                                             HANDOVER_STYLES[p.handover_status] || 'bg-slate-100 text-slate-600 border-slate-200'
                                                         }`}
                                                     >
-                                                        {handoverLabel(p.handover_status)}
+                                                        {handoverLabel(p.handover_status, p)}
                                                     </span>
                                                 </td>
                                                 <td className="py-3 text-xs text-text-muted">
@@ -821,14 +851,14 @@ export default function ProjectsKanban(props) {
                                         ))}
                                         {loading && (
                                             <tr>
-                                                <td className="py-6 text-center text-sm text-text-muted" colSpan={canBulkActions ? 11 : 10}>
+                                                <td className="py-6 text-center text-sm text-text-muted" colSpan={canBulkActions ? 12 : 11}>
                                                     Đang tải...
                                                 </td>
                                             </tr>
                                         )}
                                         {!loading && projects.length === 0 && (
                                             <tr>
-                                                <td className="py-6 text-center text-sm text-text-muted" colSpan={canBulkActions ? 11 : 10}>
+                                                <td className="py-6 text-center text-sm text-text-muted" colSpan={canBulkActions ? 12 : 11}>
                                                     Chưa có dự án theo bộ lọc.
                                                 </td>
                                             </tr>
@@ -873,7 +903,7 @@ export default function ProjectsKanban(props) {
                                                 </p>
                                                 <div className="mt-2 flex items-center justify-between text-xs text-text-muted">
                                                     <span>Tiến độ: {projectProgress(p)}%</span>
-                                                    <span>{handoverLabel(p.handover_status)}</span>
+                                                    <span>{handoverLabel(p.handover_status, p)}</span>
                                                 </div>
                                                 <div className="mt-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
                                                     <div className="h-1.5 bg-primary" style={{ width: `${projectProgress(p)}%` }} />
@@ -938,7 +968,7 @@ export default function ProjectsKanban(props) {
                                         </p>
                                         <div className="mt-2 text-xs text-text-muted">Trạng thái: {LABELS[p.status] || p.status}</div>
                                         <div className="mt-1 text-xs text-text-muted">Tiến độ: {projectProgress(p)}%</div>
-                                        <div className="mt-1 text-xs text-text-muted">Bàn giao: {handoverLabel(p.handover_status)}</div>
+                                        <div className="mt-1 text-xs text-text-muted">Bàn giao: {handoverLabel(p.handover_status, p)}</div>
                                     </div>
                                 </div>
                             ))}
@@ -968,7 +998,7 @@ export default function ProjectsKanban(props) {
                                         Hợp đồng: {p.contract?.code || 'Chưa có hợp đồng'}
                                     </div>
                                     <div className="mb-2 text-xs text-text-muted">
-                                        Tiến độ: {projectProgress(p)}% • Bàn giao: {handoverLabel(p.handover_status)} • {totalDays} ngày
+                                        Tiến độ: {projectProgress(p)}% • Bàn giao: {handoverLabel(p.handover_status, p)} • {totalDays} ngày
                                     </div>
                                     <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
                                             <div className="h-2 bg-primary" style={{ width: `${projectProgress(p)}%` }} />
@@ -999,7 +1029,7 @@ export default function ProjectsKanban(props) {
                 open={showForm}
                 onClose={closeForm}
                 title={editingId ? `Sửa dự án #${editingId}` : 'Tạo dự án'}
-                description="Nhập thông tin dự án và gắn hợp đồng."
+                description="Nhập thông tin dự án. Dự án nội bộ có thể để trống hợp đồng liên kết."
                 size="lg"
             >
                 <div className="space-y-5 text-sm">
@@ -1053,6 +1083,9 @@ export default function ProjectsKanban(props) {
                                     </option>
                                 ))}
                             </select>
+                            <p className="mt-1 text-xs text-text-muted">
+                                Nếu để trống, dự án được hiểu là dự án nội bộ và không cần phiếu duyệt bàn giao.
+                            </p>
                         </div>
                         <div>
                             <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Người phụ trách triển khai</label>
@@ -1081,10 +1114,10 @@ export default function ProjectsKanban(props) {
                         </div>
                     </div>
                     <div>
-                        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Link kho dự án</label>
+                        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Link link dự án</label>
                         <input
                             className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                            placeholder="URL kho dự án hoặc repo lưu tài liệu (tuỳ chọn)"
+                            placeholder="URL link dự án hoặc repo lưu tài liệu (tuỳ chọn)"
                             value={form.repo_url}
                             onChange={(e) => setForm((s) => ({ ...s, repo_url: e.target.value }))}
                         />

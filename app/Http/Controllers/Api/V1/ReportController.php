@@ -1078,6 +1078,34 @@ class ReportController extends Controller
             $periodTotals = $this->summarizeContracts($filteredContracts);
             $periodContractIds = $filteredContracts->pluck('id')->all();
 
+            $periodCashflowByDate = [];
+            $periodPaymentRows = collect();
+            if ($hasPaymentsTable && $hasPaymentsPaidAt) {
+                $periodPaymentRows = ContractPayment::query()
+                    ->join('contracts', 'contract_payments.contract_id', '=', 'contracts.id')
+                    ->when($hasContractApprovalStatus, function ($query) {
+                        $query->where('contracts.approval_status', 'approved');
+                    })
+                    ->whereNotNull('contract_payments.paid_at')
+                    ->whereBetween(DB::raw('DATE(contract_payments.paid_at)'), [$startDate, $endDate])
+                    ->selectRaw('contract_payments.contract_id, DATE(contract_payments.paid_at) as paid_date, SUM(contract_payments.amount) as amount')
+                    ->groupBy('contract_payments.contract_id', DB::raw('DATE(contract_payments.paid_at)'))
+                    ->get();
+
+                $periodCashflowTotal = 0.0;
+                foreach ($periodPaymentRows as $paymentRow) {
+                    $paidDate = (string) ($paymentRow->paid_date ?? '');
+                    $amount = (float) ($paymentRow->amount ?? 0);
+                    if ($paidDate === '') {
+                        continue;
+                    }
+                    $periodCashflowByDate[$paidDate] = (float) ($periodCashflowByDate[$paidDate] ?? 0) + $amount;
+                    $periodCashflowTotal += $amount;
+                }
+
+                $periodTotals['cashflow'] = $periodCashflowTotal;
+            }
+
             $dailyMetrics = [];
             foreach ($filteredContracts as $contract) {
                 $dateKey = (string) $contract->contract_date;
@@ -1095,9 +1123,20 @@ class ReportController extends Controller
                 $costsTotal = (float) $contract->costs_total;
 
                 $dailyMetrics[$dateKey]['revenue'] += $contractValue;
-                $dailyMetrics[$dateKey]['cashflow'] += $paymentsTotal;
                 $dailyMetrics[$dateKey]['costs'] += $costsTotal;
                 $dailyMetrics[$dateKey]['debt'] += max(0, $contractValue - $paymentsTotal);
+            }
+
+            foreach ($periodCashflowByDate as $paidDate => $amount) {
+                if (! isset($dailyMetrics[$paidDate])) {
+                    $dailyMetrics[$paidDate] = [
+                        'revenue' => 0.0,
+                        'cashflow' => 0.0,
+                        'debt' => 0.0,
+                        'costs' => 0.0,
+                    ];
+                }
+                $dailyMetrics[$paidDate]['cashflow'] += (float) $amount;
             }
 
             $dailyRows = [];
@@ -1189,6 +1228,10 @@ class ReportController extends Controller
                 ->whereIn('role', ['admin', 'quan_ly', 'nhan_vien', 'ke_toan'])
                 ->orderBy('name')
                 ->get($staffUserColumns);
+            $contractStaffMap = [];
+            foreach ($lifetimeContracts as $contract) {
+                $contractStaffMap[(int) $contract->id] = (int) ($contract->collector_user_id ?: $contract->created_by ?: 0);
+            }
             $staffMetrics = [];
             foreach ($filteredContracts as $contract) {
                 $staffId = (int) ($contract->collector_user_id ?: $contract->created_by ?: 0);
@@ -1207,10 +1250,24 @@ class ReportController extends Controller
                 $costsTotal = (float) $contract->costs_total;
 
                 $staffMetrics[$staffId]['revenue'] += $contractValue;
-                $staffMetrics[$staffId]['cashflow'] += $paymentsTotal;
                 $staffMetrics[$staffId]['costs'] += $costsTotal;
                 $staffMetrics[$staffId]['debt'] += max(0, $contractValue - $paymentsTotal);
                 $staffMetrics[$staffId]['contracts_count'] += 1;
+            }
+
+            foreach ($periodPaymentRows as $paymentRow) {
+                $contractId = (int) ($paymentRow->contract_id ?? 0);
+                $staffId = (int) ($contractStaffMap[$contractId] ?? 0);
+                if (! isset($staffMetrics[$staffId])) {
+                    $staffMetrics[$staffId] = [
+                        'revenue' => 0.0,
+                        'cashflow' => 0.0,
+                        'debt' => 0.0,
+                        'costs' => 0.0,
+                        'contracts_count' => 0,
+                    ];
+                }
+                $staffMetrics[$staffId]['cashflow'] += (float) ($paymentRow->amount ?? 0);
             }
 
             $staffBreakdown = [];

@@ -43,12 +43,30 @@ class ProjectController extends Controller
             $query->where(function ($builder) use ($search) {
                 $builder->where('name', 'like', "%{$search}%")
                     ->orWhere('code', 'like', "%{$search}%")
+                    ->orWhere('status', 'like', "%{$search}%")
+                    ->orWhere('service_type', 'like', "%{$search}%")
                     ->orWhere('service_type_other', 'like', "%{$search}%")
+                    ->orWhere('website_url', 'like', "%{$search}%")
+                    ->orWhere('repo_url', 'like', "%{$search}%")
+                    ->orWhere('customer_requirement', 'like', "%{$search}%")
+                    ->orWhere('start_date', 'like', "%{$search}%")
+                    ->orWhere('deadline', 'like', "%{$search}%")
+                    ->orWhere('handover_status', 'like', "%{$search}%")
+                    ->orWhere('budget', 'like', "%{$search}%")
+                    ->orWhere('progress_percent', 'like', "%{$search}%")
                     ->orWhereHas('client', function ($clientQuery) use ($search) {
                         $clientQuery->where('name', 'like', "%{$search}%")
                             ->orWhere('company', 'like', "%{$search}%")
                             ->orWhere('email', 'like', "%{$search}%")
                             ->orWhere('phone', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('owner', function ($ownerQuery) use ($search) {
+                        $ownerQuery->where('name', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('contract', function ($contractQuery) use ($search) {
+                        $contractQuery->where('code', 'like', "%{$search}%")
+                            ->orWhere('title', 'like', "%{$search}%");
                     });
             });
         }
@@ -83,7 +101,7 @@ class ProjectController extends Controller
 
     public function store(Request $request, ProjectGscSyncService $syncService): JsonResponse
     {
-        if (! in_array($request->user()->role, ['admin', 'quan_ly'], true)) {
+        if (! in_array($request->user()->role, ['admin', 'administrator', 'quan_ly'], true)) {
             return response()->json(['message' => 'Không có quyền tạo dự án.'], 403);
         }
 
@@ -92,12 +110,7 @@ class ProjectController extends Controller
             return response()->json(['message' => $error], 422);
         }
 
-        // Enforce contract ownership and approval
-        if (empty($validated['contract_id'])) {
-            if (($validated['service_type'] ?? '') !== 'noi_bo') {
-                return response()->json(['message' => 'Bắt buộc chọn hợp đồng để tạo dự án (ngoại trừ dự án nội bộ).'], 422);
-            }
-        } else {
+        if (! empty($validated['contract_id'])) {
             $authError = $this->assertCanCreateFromContract($request->user(), (int) $validated['contract_id']);
             if ($authError) {
                 return $authError;
@@ -237,12 +250,11 @@ class ProjectController extends Controller
             return response()->json(['message' => 'Không có quyền cập nhật dự án.'], 403);
         }
         
-        $canEdit = in_array($request->user()->role, ['admin', 'quan_ly'], true);
-        if (! $canEdit && $project->contract_id) {
+        $canEdit = in_array($request->user()->role, ['admin', 'administrator', 'quan_ly'], true)
+            || (int) $project->owner_id === (int) $request->user()->id;
+        if (! $canEdit && $this->projectHasLinkedContract($project)) {
             $collectorId = ProjectScope::projectCollectorId($project);
-            $contractCreatorId = $project->relationLoaded('contract') 
-                ? (int) optional($project->contract)->created_by 
-                : (int) $project->contract()->value('created_by');
+            $contractCreatorId = $this->projectContractCreatorId($project);
 
             if ($collectorId === (int) $request->user()->id || $contractCreatorId === (int) $request->user()->id) {
                 $canEdit = true;
@@ -262,12 +274,6 @@ class ProjectController extends Controller
         $nextStatus = (string) ($validated['status'] ?? $project->status);
         $currentHandoverStatus = (string) ($project->handover_status ?? 'chua_ban_giao');
 
-        if ($nextStatus === 'hoan_thanh' && $currentHandoverStatus !== 'approved') {
-            return response()->json([
-                'message' => 'Dự án chỉ được chuyển Hoàn thành sau khi phiếu bàn giao đã được duyệt.',
-            ], 422);
-        }
-
         if (($validated['service_type'] ?? $project->service_type) === 'khac') {
             $validated['service_type_other'] = trim((string) ($validated['service_type_other'] ?? $project->service_type_other ?? ''));
             if ($validated['service_type_other'] === '') {
@@ -281,6 +287,14 @@ class ProjectController extends Controller
         $contract = $this->resolveContractForProject($validated, $project);
         if ($contract instanceof JsonResponse) {
             return $contract;
+        }
+        $needsHandoverApproval = $contract
+            ? true
+            : ($this->projectHasLinkedContract($project) && ! array_key_exists('contract_id', $validated));
+        if ($nextStatus === 'hoan_thanh' && $needsHandoverApproval && $currentHandoverStatus !== 'approved') {
+            return response()->json([
+                'message' => 'Dự án chỉ được chuyển Hoàn thành sau khi phiếu bàn giao đã được duyệt.',
+            ], 422);
         }
 
         $oldWebsiteRaw = (string) ($project->website_url ?? '');
@@ -308,8 +322,8 @@ class ProjectController extends Controller
         if (! ProjectScope::canAccessProject($request->user(), $project)) {
             return response()->json(['message' => 'Không có quyền xóa dự án.'], 403);
         }
-        if ($request->user()->role !== 'admin') {
-            return response()->json(['message' => 'Chỉ admin mới có quyền xóa dự án.'], 403);
+        if (! in_array((string) $request->user()->role, ['admin', 'administrator'], true)) {
+            return response()->json(['message' => 'Chỉ admin/administrator mới có quyền xóa dự án.'], 403);
         }
 
         DB::transaction(function () use ($project) {
@@ -334,7 +348,15 @@ class ProjectController extends Controller
         $user = $request->user();
         $query = Project::query()
             ->with($this->baseRelations())
-            ->where('handover_status', 'pending');
+            ->where('handover_status', 'pending')
+            ->where(function ($projectQuery) {
+                $projectQuery->whereNotNull('projects.contract_id')
+                    ->orWhereExists(function ($existsQuery) {
+                        $existsQuery->select(DB::raw(1))
+                            ->from('contracts')
+                            ->whereColumn('contracts.project_id', 'projects.id');
+                    });
+            });
 
         if (! in_array((string) $user->role, ['admin', 'administrator'], true)) {
             $query->where(function ($projectQuery) use ($user) {
@@ -384,6 +406,12 @@ class ProjectController extends Controller
     {
         if (! ProjectScope::canAccessProject($request->user(), $project)) {
             return response()->json(['message' => 'Không có quyền gửi duyệt bàn giao dự án này.'], 403);
+        }
+
+        if (! $this->projectHasLinkedContract($project)) {
+            return response()->json([
+                'message' => 'Dự án nội bộ không cần gửi phiếu duyệt bàn giao vì không có hợp đồng liên kết.',
+            ], 422);
         }
 
         $minimum = $this->handoverMinimumProgressPercent();
@@ -542,7 +570,7 @@ class ProjectController extends Controller
             return response()->json(['message' => 'Bạn chỉ có thể tạo dự án cho hợp đồng đã được duyệt.'], 422);
         }
 
-        if ($user->role === 'admin') {
+        if (in_array((string) $user->role, ['admin', 'administrator'], true)) {
             return null;
         }
 
@@ -587,12 +615,13 @@ class ProjectController extends Controller
     {
         $minimum = $this->handoverMinimumProgressPercent();
 
-        $canEdit = $user ? in_array($user->role, ['admin', 'quan_ly'], true) : false;
-        if (! $canEdit && $user && $project->contract_id) {
+        $canEdit = $user
+            ? in_array($user->role, ['admin', 'administrator', 'quan_ly'], true)
+                || (int) $project->owner_id === (int) $user->id
+            : false;
+        if (! $canEdit && $user && $this->projectHasLinkedContract($project)) {
             $collectorId = ProjectScope::projectCollectorId($project);
-            $contractCreatorId = $project->relationLoaded('contract') 
-                ? (int) optional($project->contract)->created_by 
-                : (int) $project->contract()->value('created_by');
+            $contractCreatorId = $this->projectContractCreatorId($project);
 
             if ($collectorId === (int) $user->id || $contractCreatorId === (int) $user->id) {
                 $canEdit = true;
@@ -602,7 +631,7 @@ class ProjectController extends Controller
         return [
             'can_view' => ProjectScope::canAccessProject($user, $project),
             'can_edit' => $canEdit,
-            'can_delete' => $user ? $user->role === 'admin' : false,
+            'can_delete' => $user ? in_array((string) $user->role, ['admin', 'administrator'], true) : false,
             'can_submit_handover' => ProjectScope::canSubmitProjectHandover($user, $project, $minimum),
             'can_review_handover' => ProjectScope::canReviewProjectHandover($user, $project),
         ];
@@ -730,5 +759,25 @@ class ProjectController extends Controller
             'handover_received_by' => $reviewer->id,
             'handover_received_at' => now(),
         ]);
+    }
+
+    private function projectHasLinkedContract(Project $project): bool
+    {
+        return ProjectScope::hasLinkedContract($project);
+    }
+
+    private function projectContractCreatorId(Project $project): int
+    {
+        $creatorId = $project->relationLoaded('contract')
+            ? (int) optional($project->contract)->created_by
+            : (int) $project->contract()->value('created_by');
+
+        if ($creatorId <= 0) {
+            $creatorId = (int) Contract::query()
+                ->where('project_id', $project->id)
+                ->value('created_by');
+        }
+
+        return max(0, $creatorId);
     }
 }

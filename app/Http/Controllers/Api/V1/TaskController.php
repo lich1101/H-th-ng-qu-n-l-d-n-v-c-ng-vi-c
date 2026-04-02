@@ -91,9 +91,9 @@ class TaskController extends Controller
     {
         $validated = $request->validate($this->rules(false));
         $project = Project::find($validated['project_id']);
-        if (! $project || empty($project->contract_id)) {
+        if (! $project) {
             return response()->json([
-                'message' => 'Dự án chưa có hợp đồng, không thể tạo công việc.',
+                'message' => 'Dự án không tồn tại, không thể tạo công việc.',
             ], 422);
         }
         if (! ProjectScope::canManageProjectTasks($request->user(), $project)) {
@@ -176,9 +176,9 @@ class TaskController extends Controller
         }
         if (isset($validated['project_id'])) {
             $project = Project::find($validated['project_id']);
-            if (! $project || empty($project->contract_id)) {
+            if (! $project) {
                 return response()->json([
-                    'message' => 'Dự án chưa có hợp đồng, không thể chuyển công việc.',
+                    'message' => 'Dự án không tồn tại, không thể chuyển công việc.',
                 ], 422);
             }
         }
@@ -322,9 +322,6 @@ class TaskController extends Controller
             }
         }
 
-        if (empty($validated['reviewer_id'])) {
-            $validated['reviewer_id'] = $user->id;
-        }
     }
 
     private function assertAssignableStaffRole($assigneeId, string $label): void

@@ -178,7 +178,7 @@ export default function ProjectFiles(props) {
       });
     } catch (e) {
       setFilePermissions({ can_manage: false });
-      toast.error(e?.response?.data?.message || 'Không tải được kho dự án.');
+      toast.error(e?.response?.data?.message || 'Không tải được link dự án.');
     } finally {
       setLoading(false);
     }
@@ -247,7 +247,7 @@ export default function ProjectFiles(props) {
   }, [copiedLink]);
 
   const breadcrumbLabel = useMemo(() => {
-    if (!breadcrumbs.length) return 'Kho dự án';
+    if (!breadcrumbs.length) return 'Link dự án';
     return breadcrumbs.map((item) => item.name).join(' / ');
   }, [breadcrumbs]);
 
@@ -525,7 +525,7 @@ export default function ProjectFiles(props) {
                 goRoot();
               }}
             >
-              Quay lại kho dự án
+              Quay lại Link dự án
             </button>
           </>
         )}
@@ -625,8 +625,8 @@ export default function ProjectFiles(props) {
   return (
     <PageContainer
       auth={props.auth}
-      title="Kho dự án"
-      description="Kho file dùng chung cho dự án, chat công việc và tài liệu triển khai."
+      title="Link dự án"
+      description="Link file dùng chung cho dự án, chat công việc và tài liệu triển khai."
       stats={currentStats}
     >
       <div className="overflow-hidden rounded-[28px] border border-slate-200/80 bg-white shadow-card">
@@ -647,7 +647,7 @@ export default function ProjectFiles(props) {
                     goRoot();
                   }}
                 >
-                  <span>Kho dự án</span>
+                  <span>Link dự án</span>
                   <span className="text-xs opacity-70">{items.length}</span>
                 </button>
                 <button
@@ -673,7 +673,7 @@ export default function ProjectFiles(props) {
               <div className="mt-3 space-y-2 text-sm text-slate-600">
                 <div>
                   <div className="text-xs text-slate-400">Hiện tại</div>
-                  <div className="font-semibold text-slate-900">{trashMode ? 'Thùng rác' : (currentFolder?.name || 'Kho dự án')}</div>
+                  <div className="font-semibold text-slate-900">{trashMode ? 'Thùng rác' : (currentFolder?.name || 'Link dự án')}</div>
                 </div>
                 <div>
                   <div className="text-xs text-slate-400">Đường dẫn</div>
@@ -687,7 +687,7 @@ export default function ProjectFiles(props) {
                 </div>
                 {filePermissions?.can_manage !== true && (
                   <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
-                    Tài khoản hiện tại chỉ có quyền xem dữ liệu kho dự án, không thể thêm/sửa/xóa.
+                    Tài khoản hiện tại chỉ có quyền xem dữ liệu link dự án, không thể thêm/sửa/xóa.
                   </div>
                 )}
               </div>
@@ -699,10 +699,10 @@ export default function ProjectFiles(props) {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <div className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
-                    Kho dự án
+                    Link dự án
                   </div>
                   <div className="mt-1 text-2xl font-semibold text-slate-900">
-                    {trashMode ? 'Thùng rác' : (currentFolder?.name || 'Kho dự án')}
+                    {trashMode ? 'Thùng rác' : (currentFolder?.name || 'Link dự án')}
                   </div>
                 </div>
 
@@ -760,7 +760,7 @@ export default function ProjectFiles(props) {
                     }}
                   />
                   <div className="text-xs text-slate-500">
-                    File tải lên từ chat công việc sẽ được gom trong cùng kho dự án.
+                    File tải lên từ chat công việc sẽ được gom trong cùng link dự án.
                   </div>
                 </div>
               )}

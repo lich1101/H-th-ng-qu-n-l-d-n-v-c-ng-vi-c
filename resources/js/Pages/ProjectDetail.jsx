@@ -42,7 +42,6 @@ export default function ProjectDetail(props) {
     const toast = useToast();
     const projectId = props.projectId;
     const currentRole = props?.auth?.user?.role || '';
-    const canManageTasks = ['admin', 'quan_ly'].includes(currentRole);
 
     const [project, setProject] = useState(null);
     const [tasks, setTasks] = useState([]);
@@ -61,8 +60,13 @@ export default function ProjectDetail(props) {
     const [taskForm, setTaskForm] = useState({
         title: '', description: '', status: 'todo', priority: 'medium',
         weight_percent: '', start_date: '', deadline: '',
-        department_id: '', assignee_id: '', reviewer_id: '',
+        department_id: '', assignee_id: '',
     });
+
+    const canManageTasks = useMemo(
+        () => !!project?.permissions?.can_edit || ['admin', 'administrator', 'quan_ly'].includes(currentRole),
+        [project, currentRole]
+    );
 
     const fetchGsc = async () => {
         setGscLoading(true);
@@ -151,18 +155,27 @@ export default function ProjectDetail(props) {
 
     // Task form actions
     const openTaskForm = (task = null) => {
+        const projectDefaultStatus = project?.status === 'hoan_thanh'
+            ? 'done'
+            : project?.status === 'dang_trien_khai'
+                ? 'doing'
+                : 'todo';
+
         setEditingTaskId(task?.id || null);
         setTaskForm({
             title: task?.title || '',
-            description: task?.description || '',
-            status: task?.status || 'todo',
+            description: task?.description || (!task && project?.customer_requirement ? String(project.customer_requirement) : ''),
+            status: task?.status || projectDefaultStatus,
             priority: task?.priority || 'medium',
             weight_percent: task?.weight_percent ?? '',
-            start_date: task?.start_date ? String(task.start_date).slice(0, 10) : '',
-            deadline: task?.deadline ? String(task.deadline).slice(0, 10) : '',
+            start_date: task?.start_at
+                ? String(task.start_at).slice(0, 10)
+                : (!task && project?.start_date ? String(project.start_date).slice(0, 10) : ''),
+            deadline: task?.deadline
+                ? String(task.deadline).slice(0, 10)
+                : (!task && project?.deadline ? String(project.deadline).slice(0, 10) : ''),
             department_id: task?.department_id || project?.owner?.department_id || '',
-            assignee_id: task?.assignee_id || '',
-            reviewer_id: task?.reviewer_id || '',
+            assignee_id: task?.assignee_id || project?.owner_id || '',
         });
         setShowTaskForm(true);
     };
@@ -196,8 +209,7 @@ export default function ProjectDetail(props) {
                 weight_percent: taskForm.weight_percent === '' ? null : Number(taskForm.weight_percent),
                 department_id: taskForm.department_id ? Number(taskForm.department_id) : null,
                 assignee_id: taskForm.assignee_id ? Number(taskForm.assignee_id) : null,
-                reviewer_id: taskForm.reviewer_id ? Number(taskForm.reviewer_id) : null,
-                start_date: taskForm.start_date || null,
+                start_at: taskForm.start_date || null,
                 deadline: taskForm.deadline || null,
             };
             if (editingTaskId) {
@@ -228,7 +240,6 @@ export default function ProjectDetail(props) {
                 ...task, project_id: projectId, status: nextStatus,
                 department_id: task.department_id || null,
                 assignee_id: task.assignee_id || null,
-                reviewer_id: task.reviewer_id || null,
             });
             toast.success('Đã đổi trạng thái.');
             await fetchData();
@@ -616,13 +627,6 @@ export default function ProjectDetail(props) {
                             <select className="mt-2 w-full rounded-xl border border-slate-200/80 px-3 py-2" value={taskForm.assignee_id} onChange={(e) => setTaskForm((s) => ({ ...s, assignee_id: e.target.value }))}>
                                 <option value="">-- Chọn --</option>
                                 {users.filter((u) => !['admin', 'administrator', 'ke_toan'].includes(u.role)).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="text-xs text-text-muted">Người duyệt</label>
-                            <select className="mt-2 w-full rounded-xl border border-slate-200/80 px-3 py-2" value={taskForm.reviewer_id} onChange={(e) => setTaskForm((s) => ({ ...s, reviewer_id: e.target.value }))}>
-                                <option value="">-- Chọn --</option>
-                                {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                             </select>
                         </div>
                         <div>
