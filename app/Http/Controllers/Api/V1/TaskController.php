@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Helpers\ProjectScope;
-use App\Models\Department;
 use App\Models\Project;
 use App\Models\Task;
 use App\Models\User;
@@ -105,6 +104,7 @@ class TaskController extends Controller
         $this->applyDepartmentRules($request, $validated);
         $validated['created_by'] = $request->user()->id;
         $validated['assigned_by'] = $validated['assigned_by'] ?? $request->user()->id;
+        $this->applyOneWayAssignment($validated);
         
         $currentWeight = Task::where('project_id', $validated['project_id'])->sum('weight_percent');
         $newWeight = isset($validated['weight_percent']) ? max(1, min(100, (int) $validated['weight_percent'])) : 100;
@@ -125,12 +125,6 @@ class TaskController extends Controller
         }
 
         $notifyUserId = $task->assignee_id ? (int) $task->assignee_id : 0;
-        if ($notifyUserId <= 0 && $request->user()->role === 'admin' && ! empty($task->department_id)) {
-            $notifyUserId = (int) Department::query()
-                ->where('id', $task->department_id)
-                ->value('manager_id');
-        }
-
         if ($notifyUserId > 0) {
             try {
                 app(NotificationService::class)->notifyUsersAfterResponse(
@@ -207,6 +201,12 @@ class TaskController extends Controller
         }
 
         $oldProject = $task->project;
+        $oldAssigneeId = (int) ($task->assignee_id ?? 0);
+        $assigneeProvided = array_key_exists('assignee_id', $validated);
+        if ($assigneeProvided && (int) ($validated['assignee_id'] ?? 0) !== $oldAssigneeId) {
+            $validated['assigned_by'] = $request->user()->id;
+        }
+        $this->applyOneWayAssignment($validated, $task);
         $task->update($validated);
 
         if ($oldProject) {
@@ -219,6 +219,23 @@ class TaskController extends Controller
         if ($task->project && (! $oldProject || (int) $oldProject->id !== (int) $task->project->id)) {
             try {
                 ProjectProgressService::recalc($task->project);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
+        $newAssigneeId = (int) ($task->assignee_id ?? 0);
+        if ($newAssigneeId > 0 && $newAssigneeId !== $oldAssigneeId) {
+            try {
+                app(NotificationService::class)->notifyUsersAfterResponse(
+                    [$newAssigneeId],
+                    'Bạn được giao phụ trách công việc',
+                    'Công việc: '.$task->title,
+                    [
+                        'type' => 'task_assigned',
+                        'task_id' => $task->id,
+                    ]
+                );
             } catch (\Throwable $e) {
                 report($e);
             }
@@ -327,5 +344,45 @@ class TaskController extends Controller
                 'message' => "{$label} không được chọn role admin/administrator/kế toán.",
             ], 422));
         }
+    }
+
+    private function applyOneWayAssignment(array &$validated, ?Task $task = null): void
+    {
+        $assigneeProvided = array_key_exists('assignee_id', $validated);
+
+        if (! $assigneeProvided) {
+            $validated['require_acknowledgement'] = false;
+            if (! $task) {
+                $validated['acknowledged_at'] = ! empty($validated['assignee_id']) ? now() : null;
+                return;
+            }
+            $currentAssigneeId = (int) ($task->assignee_id ?? 0);
+            if ($currentAssigneeId <= 0) {
+                $validated['acknowledged_at'] = null;
+            } elseif (! empty($task->acknowledged_at)) {
+                $validated['acknowledged_at'] = $task->acknowledged_at;
+            } else {
+                $validated['acknowledged_at'] = now();
+            }
+            return;
+        }
+
+        $assigneeId = (int) ($validated['assignee_id'] ?? 0);
+        $currentAssigneeId = $task ? (int) ($task->assignee_id ?? 0) : 0;
+
+        if ($task && $assigneeId === $currentAssigneeId) {
+            $validated['require_acknowledgement'] = false;
+            if ($assigneeId <= 0) {
+                $validated['acknowledged_at'] = null;
+            } elseif (! empty($task->acknowledged_at)) {
+                $validated['acknowledged_at'] = $task->acknowledged_at;
+            } else {
+                $validated['acknowledged_at'] = now();
+            }
+            return;
+        }
+
+        $validated['require_acknowledgement'] = false;
+        $validated['acknowledged_at'] = $assigneeId > 0 ? now() : null;
     }
 }

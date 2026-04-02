@@ -253,7 +253,13 @@ class TaskItemController extends Controller
             $this->assertAssigneeInDepartment($request->user(), $task, $validated['assignee_id']);
         }
 
-        $item->update([
+        $oldAssigneeId = (int) ($item->assignee_id ?? 0);
+        $assigneeProvided = array_key_exists('assignee_id', $validated);
+        $nextAssigneeId = $assigneeProvided
+            ? (int) ($validated['assignee_id'] ?? 0)
+            : $oldAssigneeId;
+
+        $updatePayload = [
             'title' => $validated['title'] ?? $item->title,
             'description' => array_key_exists('description', $validated) ? $validated['description'] : $item->description,
             'priority' => $validated['priority'] ?? $item->priority,
@@ -263,9 +269,31 @@ class TaskItemController extends Controller
             'start_date' => $validated['start_date'] ?? $item->start_date,
             'deadline' => $validated['deadline'] ?? $item->deadline,
             'assignee_id' => array_key_exists('assignee_id', $validated) ? $validated['assignee_id'] : $item->assignee_id,
-        ]);
+        ];
+        if ($assigneeProvided && $nextAssigneeId !== $oldAssigneeId) {
+            $updatePayload['assigned_by'] = $request->user()->id;
+        }
+
+        $item->update($updatePayload);
 
         TaskProgressService::recalc($task);
+
+        if ($assigneeProvided && $nextAssigneeId > 0 && $nextAssigneeId !== $oldAssigneeId) {
+            try {
+                app(NotificationService::class)->notifyUsersAfterResponse(
+                    [$nextAssigneeId],
+                    'Bạn có đầu việc mới',
+                    'Đầu việc: '.$item->title,
+                    [
+                        'type' => 'task_item_assigned',
+                        'task_id' => $task->id,
+                        'task_item_id' => $item->id,
+                    ]
+                );
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
 
         return response()->json($item->fresh()->load(['assignee', 'reviewer']));
     }

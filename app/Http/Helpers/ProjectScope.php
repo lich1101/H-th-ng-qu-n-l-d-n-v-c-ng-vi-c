@@ -18,7 +18,7 @@ class ProjectScope
             return $query->whereRaw('1 = 0');
         }
 
-        if ($user->role === 'admin') {
+        if (self::isAdminRole($user)) {
             return $query;
         }
 
@@ -82,7 +82,7 @@ class ProjectScope
             return $query->whereRaw('1 = 0');
         }
 
-        if ($user->role === 'admin') {
+        if (self::isAdminRole($user)) {
             return $query;
         }
 
@@ -134,7 +134,7 @@ class ProjectScope
             return $query->whereRaw('1 = 0');
         }
 
-        if ($user->role === 'admin') {
+        if (self::isAdminRole($user)) {
             return $query;
         }
 
@@ -177,7 +177,7 @@ class ProjectScope
             return $query->whereRaw('1 = 0');
         }
 
-        if ($user->role === 'admin') {
+        if (self::isAdminRole($user)) {
             return $query;
         }
 
@@ -202,7 +202,7 @@ class ProjectScope
             return $query->whereRaw('1 = 0');
         }
 
-        if ($user->role === 'admin') {
+        if (self::isAdminRole($user)) {
             return $query;
         }
 
@@ -249,7 +249,7 @@ class ProjectScope
             return false;
         }
 
-        if ($user->role === 'admin') {
+        if (in_array((string) $user->role, ['admin', 'administrator'], true)) {
             $progress = (int) ($project->progress_percent ?? 0);
 
             return $progress >= max(0, min(100, $minimumProgressPercent))
@@ -276,7 +276,7 @@ class ProjectScope
             return false;
         }
 
-        if ($user->role === 'admin') {
+        if (in_array((string) $user->role, ['admin', 'administrator'], true)) {
             return true;
         }
 
@@ -290,6 +290,12 @@ class ProjectScope
         $collectorId = $project->relationLoaded('contract')
             ? (int) optional($project->contract)->collector_user_id
             : (int) $project->contract()->value('collector_user_id');
+
+        if ($collectorId <= 0) {
+            $collectorId = (int) \App\Models\Contract::query()
+                ->where('project_id', $project->id)
+                ->value('collector_user_id');
+        }
 
         return max(0, $collectorId);
     }
@@ -314,7 +320,7 @@ class ProjectScope
             return false;
         }
 
-        if ($user->role === 'admin') {
+        if (self::isAdminRole($user)) {
             return true;
         }
 
@@ -328,7 +334,7 @@ class ProjectScope
             return false;
         }
 
-        if ($user->role === 'admin') {
+        if (self::isAdminRole($user)) {
             return true;
         }
 
@@ -345,7 +351,7 @@ class ProjectScope
             return false;
         }
 
-        if ($user->role === 'admin') {
+        if (self::isAdminRole($user)) {
             return true;
         }
 
@@ -376,7 +382,7 @@ class ProjectScope
             return false;
         }
 
-        if ($user->role === 'admin') {
+        if (self::isAdminRole($user)) {
             return true;
         }
 
@@ -390,7 +396,7 @@ class ProjectScope
             return false;
         }
 
-        if ($user->role === 'admin') {
+        if (self::isAdminRole($user)) {
             return true;
         }
 
@@ -405,7 +411,7 @@ class ProjectScope
     {
         $ids = collect(
             User::query()
-                ->where('role', 'admin')
+                ->whereIn('role', ['admin', 'administrator'])
                 ->pluck('id')
                 ->all()
         );
@@ -464,5 +470,10 @@ class ProjectScope
         return $user->role === 'quan_ly'
             ? $user->managedDepartments()->pluck('id')
             : collect();
+    }
+
+    private static function isAdminRole(User $user): bool
+    {
+        return in_array((string) $user->role, ['admin', 'administrator'], true);
     }
 }

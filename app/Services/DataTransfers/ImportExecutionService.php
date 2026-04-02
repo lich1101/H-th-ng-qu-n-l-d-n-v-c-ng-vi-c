@@ -263,7 +263,8 @@ class ImportExecutionService
                     'created_by' => $user->id,
                     'assigned_by' => $user->id,
                     'assignee_id' => $assigneeId,
-                    'require_acknowledgement' => true,
+                    'require_acknowledgement' => false,
+                    'acknowledged_at' => $assigneeId ? now() : null,
                     'weight_percent' => 100,
                 ];
 

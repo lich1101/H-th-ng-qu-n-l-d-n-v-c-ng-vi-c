@@ -336,9 +336,16 @@ class ProjectController extends Controller
             ->with($this->baseRelations())
             ->where('handover_status', 'pending');
 
-        if ($user->role !== 'admin') {
-            $query->whereHas('contract', function ($contractQuery) use ($user) {
-                $contractQuery->where('collector_user_id', $user->id);
+        if (! in_array((string) $user->role, ['admin', 'administrator'], true)) {
+            $query->where(function ($projectQuery) use ($user) {
+                $projectQuery->whereHas('contract', function ($contractQuery) use ($user) {
+                    $contractQuery->where('collector_user_id', $user->id);
+                })->orWhereExists(function ($existsQuery) use ($user) {
+                    $existsQuery->select(DB::raw(1))
+                        ->from('contracts')
+                        ->whereColumn('contracts.project_id', 'projects.id')
+                        ->where('contracts.collector_user_id', $user->id);
+                });
             });
         }
 
@@ -609,7 +616,7 @@ class ProjectController extends Controller
     private function handoverReviewerIds(Project $project, int $excludeUserId = 0): array
     {
         $targetIds = User::query()
-            ->where('role', 'admin')
+            ->whereIn('role', ['admin', 'administrator'])
             ->pluck('id')
             ->map(function ($id) {
                 return (int) $id;
@@ -633,7 +640,7 @@ class ProjectController extends Controller
             return;
         }
 
-        app(NotificationService::class)->notifyUsersAfterResponse(
+        app(NotificationService::class)->notifyUsers(
             $targetIds,
             'Có phiếu duyệt bàn giao dự án',
             sprintf(
@@ -645,6 +652,7 @@ class ProjectController extends Controller
                 'type' => 'project_handover_pending',
                 'project_id' => $project->id,
                 'requested_by' => $request->user()->id,
+                'dedupe' => false,
             ]
         );
     }
@@ -666,7 +674,7 @@ class ProjectController extends Controller
             $reason ? ' • Lý do: '.$reason : ''
         );
 
-        app(NotificationService::class)->notifyUsersAfterResponse(
+        app(NotificationService::class)->notifyUsers(
             [$ownerId],
             $title,
             $body,
@@ -675,6 +683,7 @@ class ProjectController extends Controller
                 'project_id' => $project->id,
                 'decision' => $decision,
                 'reason' => $reason,
+                'dedupe' => false,
             ]
         );
     }

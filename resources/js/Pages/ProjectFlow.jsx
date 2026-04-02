@@ -628,10 +628,10 @@ export default function ProjectFlow({ auth, projectId }) {
                     { label: 'Bắt đầu', value: formatDate(task.start_at, true) },
                     { label: 'Deadline', value: formatDate(task.deadline, true) },
                     {
-                        label: 'Xác nhận',
-                        value: task.require_acknowledgement
-                            ? `Bắt buộc${task.acknowledged_at ? ` • ${formatDate(task.acknowledged_at, true)}` : ''}`
-                            : 'Không yêu cầu',
+                        label: 'Giao việc',
+                        value: task.acknowledged_at
+                            ? `Đã xác nhận tự động • ${formatDate(task.acknowledged_at, true)}`
+                            : 'Đã xác nhận tự động',
                     },
                 ],
                 description: task.description || 'Chưa có mô tả công việc.',

@@ -1599,44 +1599,6 @@ export default function TasksBoard(props) {
         })
     ), [tasks]);
 
-    const buildAckStamp = () => {
-        const now = new Date();
-        const y = now.getFullYear();
-        const m = String(now.getMonth() + 1).padStart(2, '0');
-        const d = String(now.getDate()).padStart(2, '0');
-        const hh = String(now.getHours()).padStart(2, '0');
-        const mm = String(now.getMinutes()).padStart(2, '0');
-        return `${y}-${m}-${d} ${hh}:${mm}:00`;
-    };
-
-    const acknowledgeTask = async (t) => {
-        if (!['admin', 'quan_ly', 'nhan_vien'].includes(userRole)) {
-            return toast.error('Bạn không có quyền xác nhận.');
-        }
-        try {
-            await axios.put(`/api/v1/tasks/${t.id}`, {
-                project_id: t.project_id,
-                title: t.title,
-                description: t.description || null,
-                priority: t.priority || 'medium',
-                status: t.status,
-                start_at: t.start_at || null,
-                deadline: t.deadline || null,
-                completed_at: t.completed_at || null,
-                progress_percent: t.progress_percent ?? 0,
-                assigned_by: t.assigned_by || null,
-                assignee_id: t.assignee_id || null,
-                reviewer_id: t.reviewer_id || null,
-                require_acknowledgement: t.require_acknowledgement ?? true,
-                acknowledged_at: buildAckStamp(),
-            });
-            toast.success('Đã xác nhận nhận công việc.');
-            await fetchTasks(filters.page, filters);
-        } catch (e) {
-            toast.error(e?.response?.data?.message || 'Xác nhận thất bại.');
-        }
-    };
-
     const openReportModal = (task) => {
         setReportTask(task);
         setReportForm({
@@ -1880,9 +1842,6 @@ export default function TasksBoard(props) {
                                     </thead>
                                     <tbody>
                                         {tasks.map((t) => {
-                                            const canAck = t.require_acknowledgement && !t.acknowledged_at && (
-                                                t.assignee_id === props?.auth?.user?.id || ['admin', 'quan_ly'].includes(userRole)
-                                            );
                                             return (
                                                 <tr
                                                     key={t.id}
@@ -1905,11 +1864,6 @@ export default function TasksBoard(props) {
                                                             >
                                                                 {LABELS[t.status] || t.status}
                                                             </span>
-                                                            {t.require_acknowledgement && !t.acknowledged_at && (
-                                                                <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">
-                                                                    Chưa xác nhận
-                                                                </span>
-                                                            )}
                                                         </div>
                                                     </td>
                                                     <td className="py-3">
@@ -1950,11 +1904,6 @@ export default function TasksBoard(props) {
                                                             <AppIcon name="chat" className="h-3.5 w-3.5" />
                                                             Chat
                                                         </button>
-                                                        {canAck && (
-                                                            <button className="text-xs font-semibold text-amber-600" onClick={(e) => { e.stopPropagation(); acknowledgeTask(t); }} type="button">
-                                                                Xác nhận
-                                                            </button>
-                                                        )}
                                                     </td>
                                                 </tr>
                                             );
@@ -1988,9 +1937,6 @@ export default function TasksBoard(props) {
                                     </div>
                                     <div className="space-y-3">
                                         {col.items.map((t) => {
-                                            const canAck = t.require_acknowledgement && !t.acknowledged_at && (
-                                                t.assignee_id === props?.auth?.user?.id || ['admin', 'quan_ly'].includes(userRole)
-                                            );
                                             return (
                                                 <div
                                                     key={t.id}
@@ -2024,16 +1970,6 @@ export default function TasksBoard(props) {
                                                     <div className="mt-1 text-xs text-text-muted">
                                                         Tỷ trọng: {Number(t.weight_percent ?? 0)}%
                                                     </div>
-                                                    {t.require_acknowledgement && !t.acknowledged_at && (
-                                                        <div className="mt-3 flex items-center justify-between text-xs">
-                                                            <span className="text-warning font-semibold">Chưa xác nhận</span>
-                                                            {canAck && (
-                                                                <button className="text-primary font-semibold" onClick={(e) => { e.stopPropagation(); acknowledgeTask(t); }} type="button">
-                                                                    Xác nhận nhận công việc
-                                                                </button>
-                                                            )}
-                                                        </div>
-                                                    )}
                                                 </div>
                                             );
                                         })}
