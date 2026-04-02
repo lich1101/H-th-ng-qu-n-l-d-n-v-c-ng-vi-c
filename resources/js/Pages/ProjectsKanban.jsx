@@ -108,6 +108,38 @@ export default function ProjectsKanban(props) {
     const [selectedProjectIds, setSelectedProjectIds] = useState([]);
     const [bulkLoading, setBulkLoading] = useState(false);
 
+    const toDateInputValue = (raw) => {
+        if (!raw) return '';
+        const value = String(raw).trim();
+        const directMatch = value.match(/^(\d{4}-\d{2}-\d{2})/);
+        if (directMatch?.[1]) return directMatch[1];
+
+        const parsed = new Date(value);
+        if (Number.isNaN(parsed.getTime())) return '';
+
+        const yyyy = parsed.getFullYear();
+        const mm = String(parsed.getMonth() + 1).padStart(2, '0');
+        const dd = String(parsed.getDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`;
+    };
+
+    const injectCurrentProjectContract = (rows, project) => {
+        const contractId = Number(project?.contract_id || project?.contract?.id || 0);
+        if (contractId <= 0) return rows;
+        if (rows.some((item) => Number(item?.id || 0) === contractId)) {
+            return rows;
+        }
+
+        return [
+            {
+                id: contractId,
+                code: project?.contract?.code || `HĐ #${contractId}`,
+                title: project?.contract?.title || `Hợp đồng liên kết của dự án #${project?.id || ''}`,
+            },
+            ...rows,
+        ];
+    };
+
     const statusOptions = useMemo(() => {
         const values = meta.project_statuses || [];
         if (!values.length) return DEFAULT_STATUSES;
@@ -172,7 +204,7 @@ export default function ProjectsKanban(props) {
         }
     };
 
-    const fetchContracts = async (projectId = null) => {
+    const fetchContracts = async (projectId = null, currentProject = null) => {
         try {
             const res = await axios.get('/api/v1/contracts', {
                 params: {
@@ -182,9 +214,12 @@ export default function ProjectsKanban(props) {
                     ...(projectId ? { project_id: projectId } : {}),
                 },
             });
-            setContracts(res.data?.data || []);
+            const rows = injectCurrentProjectContract(res.data?.data || [], currentProject);
+            setContracts(rows);
         } catch {
-            // ignore
+            if (currentProject) {
+                setContracts(injectCurrentProjectContract([], currentProject));
+            }
         }
     };
 
@@ -384,34 +419,24 @@ export default function ProjectsKanban(props) {
 
     const startEdit = (p) => {
         setEditingId(p.id);
-        if (p?.contract?.id && !contracts.some((item) => Number(item.id) === Number(p.contract.id))) {
-            setContracts((prev) => ([
-                {
-                    id: p.contract.id,
-                    code: p.contract.code,
-                    title: p.contract.title,
-                },
-                ...prev,
-            ]));
-        }
         setForm({
             code: p.code || '',
             name: p.name || '',
             client_id: p.client_id || '',
-            contract_id: p.contract_id || p.contract?.id || '',
+            contract_id: String(p.contract_id || p.contract?.id || ''),
             service_type: p.service_type || serviceOptions[0]?.value || DEFAULT_SERVICES[0].value,
             service_type_other: p.service_type_other || '',
-            start_date: p.start_date || '',
-            deadline: p.deadline || '',
+            start_date: toDateInputValue(p.start_date),
+            deadline: toDateInputValue(p.deadline),
             budget: p.budget ?? '',
             status: p.status || statusOptions[0]?.value || DEFAULT_STATUSES[0].value,
             customer_requirement: p.customer_requirement || '',
-            owner_id: p.owner_id || p.owner?.id || '',
+            owner_id: String(p.owner_id || p.owner?.id || ''),
             repo_url: p.repo_url || '',
             website_url: p.website_url || '',
         });
         setShowForm(true);
-        fetchContracts(p.id);
+        fetchContracts(p.id, p);
     };
 
     const save = async () => {
@@ -1078,7 +1103,7 @@ export default function ProjectsKanban(props) {
                             >
                                 <option value="">Chọn hợp đồng (khuyên chọn để tạo công việc đúng phạm vi)</option>
                                 {contracts.map((c) => (
-                                    <option key={c.id} value={c.id}>
+                                    <option key={c.id} value={String(c.id)}>
                                         {c.code} • {c.title}
                                     </option>
                                 ))}

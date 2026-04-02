@@ -325,7 +325,7 @@ export default function Authenticated({ auth, header, children }) {
                     { label: 'Đầu việc', icon: 'tasks', routeName: 'task-items.board', href: route('task-items.board'), roles: ['admin', 'quan_ly', 'nhan_vien'] },
                     { label: 'Bàn giao dự án', icon: 'handover', routeName: 'handover.index', href: route('handover.index'), roles: ['admin', 'nhan_vien'] },
                     { label: 'Lịch họp', icon: 'calendar', routeName: 'meetings.index', href: route('meetings.index'), roles: ['admin', 'quan_ly'] },
-                    { label: 'Chấm công WiFi', icon: 'alarm', routeName: 'attendance.index', href: route('attendance.index'), roles: ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'] },
+                    { label: 'Chấm công', icon: 'alarm', routeName: 'attendance.index', href: route('attendance.index'), roles: ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'] },
                 ],
             },
             {
