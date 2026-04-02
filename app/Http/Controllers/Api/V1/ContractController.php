@@ -738,6 +738,11 @@ class ContractController extends Controller
         $contract->setAttribute('can_manage', $this->canManageContract($user, $contract));
         $contract->setAttribute('can_delete', $this->canManageContract($user, $contract));
         $contract->setAttribute('can_add_care_note', $this->canAddCareNote($user, $contract));
+        
+        $canCreateProject = $user->role === 'admin' 
+            || (int) ($contract->collector_user_id ?? 0) === (int) $user->id 
+            || (int) ($contract->created_by ?? 0) === (int) $user->id;
+        $contract->setAttribute('can_create_project', $canCreateProject);
 
         return $contract;
     }

@@ -233,7 +233,20 @@ class ProjectController extends Controller
         if (! ProjectScope::canAccessProject($request->user(), $project)) {
             return response()->json(['message' => 'Không có quyền cập nhật dự án.'], 403);
         }
-        if (! in_array($request->user()->role, ['admin', 'quan_ly'], true)) {
+        
+        $canEdit = in_array($request->user()->role, ['admin', 'quan_ly'], true);
+        if (! $canEdit && $project->contract_id) {
+            $collectorId = ProjectScope::projectCollectorId($project);
+            $contractCreatorId = $project->relationLoaded('contract') 
+                ? (int) optional($project->contract)->created_by 
+                : (int) $project->contract()->value('created_by');
+
+            if ($collectorId === (int) $request->user()->id || $contractCreatorId === (int) $request->user()->id) {
+                $canEdit = true;
+            }
+        }
+        
+        if (! $canEdit) {
             return response()->json(['message' => 'Bạn chỉ có quyền xem dự án trong phạm vi phụ trách.'], 403);
         }
 
@@ -577,9 +590,21 @@ class ProjectController extends Controller
     {
         $minimum = $this->handoverMinimumProgressPercent();
 
+        $canEdit = $user ? in_array($user->role, ['admin', 'quan_ly'], true) : false;
+        if (! $canEdit && $user && $project->contract_id) {
+            $collectorId = ProjectScope::projectCollectorId($project);
+            $contractCreatorId = $project->relationLoaded('contract') 
+                ? (int) optional($project->contract)->created_by 
+                : (int) $project->contract()->value('created_by');
+
+            if ($collectorId === (int) $user->id || $contractCreatorId === (int) $user->id) {
+                $canEdit = true;
+            }
+        }
+
         return [
             'can_view' => ProjectScope::canAccessProject($user, $project),
-            'can_edit' => $user ? in_array($user->role, ['admin', 'quan_ly'], true) : false,
+            'can_edit' => $canEdit,
             'can_delete' => $user ? $user->role === 'admin' : false,
             'can_submit_handover' => ProjectScope::canSubmitProjectHandover($user, $project, $minimum),
             'can_review_handover' => ProjectScope::canReviewProjectHandover($user, $project),
