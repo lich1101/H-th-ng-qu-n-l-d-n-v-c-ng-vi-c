@@ -755,9 +755,10 @@ class AttendanceController extends Controller
         $workUnits = $this->normalizeWorkUnits($validated['work_units']);
         $defaultWorkUnits = (float) $evaluation['default_work_units'];
         $status = $workUnits >= $defaultWorkUnits ? 'approved_full' : 'approved_partial';
-        $minutesLate = $checkInAt
-            ? max(0, $evaluation['required_start_at']->diffInMinutes($checkInAt, false))
-            : 0;
+        $minutesLate = 0;
+        if ($checkInAt && $checkInAt->gt($evaluation['allowed_late_until'])) {
+            $minutesLate = max(0, (int) $evaluation['allowed_late_until']->diffInMinutes($checkInAt, false));
+        }
 
         $record->fill([
             'check_in_at' => $checkInAt,

@@ -253,16 +253,15 @@ class TaskItemUpdateController extends Controller
         if ($this->isProjectOwner($user, $task)) {
             return true;
         }
-        if ($user->role !== 'quan_ly') {
-            return false;
-        }
-
-        $deptIds = $user->managedDepartments()->pluck('id');
-        if ($task->department_id && $deptIds->contains($task->department_id)) {
+        if ($task->assignee_id && (int) $task->assignee_id === (int) $user->id) {
             return true;
         }
 
-        return $task->assignee && $deptIds->contains($task->assignee->department_id);
+        if ($task->created_by && (int) $task->created_by === (int) $user->id) {
+            return true;
+        }
+
+        return false;
     }
 
     private function canEditPendingUpdate(?User $user, Task $task, TaskItem $item, TaskItemUpdate $update): bool
@@ -296,7 +295,8 @@ class TaskItemUpdateController extends Controller
                 $this->adminIds(),
                 array_filter([
                     $this->projectOwnerId($task),
-                    $this->departmentManagerId($task),
+                    $task->assignee_id ? (int) $task->assignee_id : null,
+                    $task->created_by ? (int) $task->created_by : null,
                 ])
             );
 
@@ -413,16 +413,7 @@ class TaskItemUpdateController extends Controller
         return $ownerId ? (int) $ownerId : null;
     }
 
-    private function departmentManagerId(Task $task): ?int
-    {
-        if (! $task->department_id) {
-            return null;
-        }
 
-        $managerId = $task->department()->value('manager_id');
-
-        return $managerId ? (int) $managerId : null;
-    }
 
     private function buildInsightPayload(Task $task, TaskItem $item): array
     {

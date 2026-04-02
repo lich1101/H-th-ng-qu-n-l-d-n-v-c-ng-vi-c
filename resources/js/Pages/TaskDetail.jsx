@@ -102,13 +102,22 @@ export default function TaskDetail(props) {
             start_date: item?.start_date ? String(item.start_date).slice(0, 10) : '',
             deadline: item?.deadline ? String(item.deadline).slice(0, 10) : '',
             assignee_id: item?.assignee_id || '',
-            reviewer_id: item?.reviewer_id || '',
         });
         setShowItemForm(true);
     };
 
+    const availableWeight = useMemo(() => {
+        const used = items
+            .filter((i) => String(i.id) !== String(editingItemId))
+            .reduce((sum, item) => sum + (Number(item.weight_percent) || 0), 0);
+        return Math.max(0, 100 - used);
+    }, [items, editingItemId]);
+
     const saveItem = async () => {
         if (!itemForm.title.trim()) { toast.error('Tiêu đề đầu việc là bắt buộc.'); return; }
+        const weightVal = Number(itemForm.weight_percent) || 0;
+        if (weightVal > availableWeight) { toast.error(`Tỷ trọng tối đa bạn có thể trích cho đầu việc này là ${availableWeight}%.`); return; }
+        
         setSavingItem(true);
         try {
             const payload = {
@@ -116,7 +125,6 @@ export default function TaskDetail(props) {
                 progress_percent: itemForm.progress_percent === '' ? null : Number(itemForm.progress_percent),
                 weight_percent: itemForm.weight_percent === '' ? null : Number(itemForm.weight_percent),
                 assignee_id: itemForm.assignee_id ? Number(itemForm.assignee_id) : null,
-                reviewer_id: itemForm.reviewer_id ? Number(itemForm.reviewer_id) : null,
                 start_date: itemForm.start_date || null,
                 deadline: itemForm.deadline || null,
             };
@@ -279,7 +287,6 @@ export default function TaskDetail(props) {
                                             </div>
                                             <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-text-muted">
                                                 <span>Phụ trách: {item.assignee?.name || '—'}</span>
-                                                <span>Người duyệt: {item.reviewer?.name || '—'}</span>
                                                 <span className="flex items-center gap-1">
                                                     Tiến độ:
                                                     <span className="inline-block h-1.5 w-12 rounded-full bg-slate-200">
@@ -320,6 +327,12 @@ export default function TaskDetail(props) {
                 size="lg"
             >
                 <div className="space-y-4 text-sm">
+                    {task && (
+                        <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+                            <strong>Lịch trình công việc cha: </strong>
+                            {task.start_date ? formatDate(task.start_date) : 'Chưa có'} — {task.deadline ? formatDate(task.deadline) : 'Chưa có'}
+                        </div>
+                    )}
                     <div className="grid gap-4 md:grid-cols-2">
                         <div className="md:col-span-2">
                             <label className="text-xs text-text-muted">Tiêu đề *</label>
@@ -349,15 +362,8 @@ export default function TaskDetail(props) {
                             </select>
                         </div>
                         <div>
-                            <label className="text-xs text-text-muted">Người duyệt</label>
-                            <select className="mt-2 w-full rounded-xl border border-slate-200/80 px-3 py-2" value={itemForm.reviewer_id} onChange={(e) => setItemForm((s) => ({ ...s, reviewer_id: e.target.value }))}>
-                                <option value="">-- Chọn --</option>
-                                {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="text-xs text-text-muted">Tỷ trọng (%)</label>
-                            <input type="number" min="1" max="100" className="mt-2 w-full rounded-xl border border-slate-200/80 px-3 py-2" value={itemForm.weight_percent} onChange={(e) => setItemForm((s) => ({ ...s, weight_percent: e.target.value }))} />
+                            <label className="text-xs text-text-muted">Tỷ trọng (%) - Tối đa còn {availableWeight}%</label>
+                            <input type="number" min="1" max={availableWeight} className="mt-2 w-full rounded-xl border border-slate-200/80 px-3 py-2" value={itemForm.weight_percent} onChange={(e) => setItemForm((s) => ({ ...s, weight_percent: e.target.value }))} />
                         </div>
                         <div>
                             <label className="text-xs text-text-muted">Tiến độ (%)</label>

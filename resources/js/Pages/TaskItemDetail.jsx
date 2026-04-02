@@ -51,9 +51,10 @@ export default function TaskItemDetail(props) {
     const task = item?.task;
 
     const isProjectOwner = Number(task?.project?.owner_id || 0) === currentUserId;
-    const isDepartmentManager = Number(task?.department?.manager_id || 0) === currentUserId;
-    const canApprove = currentUserRole === 'admin' || isProjectOwner || isDepartmentManager;
-    const canEdit = ['admin', 'quan_ly'].includes(currentUserRole);
+    const isTaskAssignee = Number(task?.assignee_id || 0) === currentUserId;
+    const isTaskCreator = Number(task?.created_by || 0) === currentUserId;
+    const canApprove = currentUserRole === 'admin' || isProjectOwner || isTaskAssignee || isTaskCreator;
+    const canEdit = ['admin', 'quan_ly'].includes(currentUserRole) || isTaskAssignee || isTaskCreator;
 
     const canSubmitReport = canApprove || Number(item?.assignee_id || 0) === currentUserId;
     const canEditPendingUpdate = (update) => {
@@ -112,7 +113,6 @@ export default function TaskItemDetail(props) {
                 start_date: item.start_date ? String(item.start_date).slice(0, 10) : '',
                 deadline: item.deadline ? String(item.deadline).slice(0, 10) : '',
                 assignee_id: item.assignee_id || '',
-                reviewer_id: item.reviewer_id || '',
             });
         }
     }, [showEditForm, item]);
@@ -126,7 +126,6 @@ export default function TaskItemDetail(props) {
                 progress_percent: editForm.progress_percent === '' ? null : Number(editForm.progress_percent),
                 weight_percent: editForm.weight_percent === '' ? null : Number(editForm.weight_percent),
                 assignee_id: editForm.assignee_id ? Number(editForm.assignee_id) : null,
-                reviewer_id: editForm.reviewer_id ? Number(editForm.reviewer_id) : null,
                 start_date: editForm.start_date || null,
                 deadline: editForm.deadline || null,
             });
@@ -303,10 +302,6 @@ export default function TaskItemDetail(props) {
                             <div className="rounded-2xl bg-slate-50 px-4 py-3">
                                 <div className="text-xs text-text-muted">Nhân sự phụ trách</div>
                                 <div className="mt-1 font-semibold text-slate-900">{item.assignee?.name || '—'}</div>
-                            </div>
-                            <div className="rounded-2xl bg-slate-50 px-4 py-3">
-                                <div className="text-xs text-text-muted">Người duyệt</div>
-                                <div className="mt-1 font-semibold text-slate-900">{item.reviewer?.name || '—'}</div>
                             </div>
                             <div className="rounded-2xl bg-slate-50 px-4 py-3">
                                 <div className="text-xs text-text-muted">Tiến độ</div>
@@ -637,13 +632,6 @@ export default function TaskItemDetail(props) {
                             <select className="mt-2 w-full rounded-xl border border-slate-200/80 px-3 py-2" value={editForm.assignee_id || ''} onChange={(e) => setEditForm((s) => ({ ...s, assignee_id: e.target.value }))}>
                                 <option value="">-- Chọn --</option>
                                 {editUsers.filter((u) => !['admin', 'administrator', 'ke_toan'].includes(u.role)).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="text-xs text-text-muted">Người duyệt</label>
-                            <select className="mt-2 w-full rounded-xl border border-slate-200/80 px-3 py-2" value={editForm.reviewer_id || ''} onChange={(e) => setEditForm((s) => ({ ...s, reviewer_id: e.target.value }))}>
-                                <option value="">-- Chọn --</option>
-                                {editUsers.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                             </select>
                         </div>
                         <div>

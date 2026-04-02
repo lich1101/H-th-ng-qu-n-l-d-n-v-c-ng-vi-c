@@ -141,8 +141,13 @@ class TaskItemController extends Controller
             'start_date' => ['nullable', 'date'],
             'deadline' => ['nullable', 'date'],
             'assignee_id' => ['nullable', 'integer', 'exists:users,id'],
-            'reviewer_id' => ['nullable', 'integer', 'exists:users,id'],
         ]);
+
+        $currentTotalWeight = $task->items()->sum('weight_percent');
+        $newWeight = isset($validated['weight_percent']) ? (int) $validated['weight_percent'] : 100;
+        if ($currentTotalWeight + $newWeight > 100) {
+            return response()->json(['message' => 'Tổng tỷ trọng của các đầu việc không được vượt quá 100%.'], 422);
+        }
 
         $this->assertAssigneeInDepartment($request->user(), $task, $validated['assignee_id'] ?? null);
 
@@ -159,7 +164,7 @@ class TaskItemController extends Controller
                 'assignee_id' => $validated['assignee_id'] ?? null,
                 'created_by' => $request->user()->id,
                 'assigned_by' => $request->user()->id,
-                'reviewer_id' => $validated['reviewer_id'] ?? $request->user()->id,
+                'reviewer_id' => null,
             ]);
         } catch (\Throwable $e) {
             report($e);
@@ -225,8 +230,15 @@ class TaskItemController extends Controller
             'start_date' => ['nullable', 'date'],
             'deadline' => ['nullable', 'date'],
             'assignee_id' => ['nullable', 'integer', 'exists:users,id'],
-            'reviewer_id' => ['nullable', 'integer', 'exists:users,id'],
         ]);
+
+        if (array_key_exists('weight_percent', $validated)) {
+            $currentTotalWeight = $task->items()->where('id', '!=', $item->id)->sum('weight_percent');
+            $newWeight = (int) $validated['weight_percent'];
+            if ($currentTotalWeight + $newWeight > 100) {
+                return response()->json(['message' => 'Tổng tỷ trọng của các đầu việc không được vượt quá 100%.'], 422);
+            }
+        }
 
         if (isset($validated['assignee_id'])) {
             $this->assertAssigneeInDepartment($request->user(), $task, $validated['assignee_id']);
@@ -242,7 +254,6 @@ class TaskItemController extends Controller
             'start_date' => $validated['start_date'] ?? $item->start_date,
             'deadline' => $validated['deadline'] ?? $item->deadline,
             'assignee_id' => array_key_exists('assignee_id', $validated) ? $validated['assignee_id'] : $item->assignee_id,
-            'reviewer_id' => array_key_exists('reviewer_id', $validated) ? $validated['reviewer_id'] : $item->reviewer_id,
         ]);
 
         TaskProgressService::recalc($task);

@@ -118,16 +118,19 @@ class AttendanceService
         [$endHour, $endMinute] = array_map('intval', explode(':', $endTimeSetting));
         $endAt = $checkedAt->copy()->setTimezone('Asia/Ho_Chi_Minh')->setTime($endHour, $endMinute, 0);
 
-        $minutesLate = max(0, $requiredStartAt->diffInMinutes($checkedAt, false));
+        // Đúng quy chuẩn: tính muộn từ (giờ bắt đầu + phút cho phép trễ)
+        // VD: bắt đầu 08:30, cho phép trễ 10 phút → mốc = 08:40
+        //     Check-in 08:42 → muộn 2 phút (không phải 12 phút)
         $isOnTime = $checkedAt->lte($allowedLateUntil);
+        $minutesLate = $isOnTime ? 0 : max(0, (int) $allowedLateUntil->diffInMinutes($checkedAt, false));
 
-        // Tính công thực tế theo số phút thực đi muộn
+        // Tính công thực tế: lấy tổng phút ca trừ đi số phút muộn thực sự
         $calculatedWorkUnits = $defaultWorkUnits;
         if (!$isOnTime && $minutesLate > 0) {
-            $totalDayMinutes = max(1, $requiredStartAt->diffInMinutes($endAt));
+            $totalDayMinutes = max(1, (int) $requiredStartAt->diffInMinutes($endAt));
             $workedMinutes = max(0, $totalDayMinutes - $minutesLate);
             $fraction = $workedMinutes / $totalDayMinutes;
-            $calculatedWorkUnits = round($defaultWorkUnits * $fraction, 2);
+            $calculatedWorkUnits = round($defaultWorkUnits * $fraction, 1);
         }
 
         return [
