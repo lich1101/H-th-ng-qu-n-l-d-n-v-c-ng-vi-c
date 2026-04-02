@@ -909,11 +909,12 @@ class AttendanceController extends Controller
             return response()->json(['message' => 'Không có quyền xem báo cáo chấm công.'], 403);
         }
 
-        [$rows, $summary] = $this->buildReport($request);
+        [$rows, $summary, $matrix] = $this->buildReport($request);
 
         return response()->json([
             'data' => $rows,
             'summary' => $summary,
+            'matrix' => $matrix,
         ]);
     }
 
@@ -1005,11 +1006,14 @@ class AttendanceController extends Controller
 
         $spreadsheet->setActiveSheetIndex(0);
 
-        $fileName = sprintf(
-            'bao-cao-cham-cong-%s-den-%s.xlsx',
-            $request->input('start_date', Carbon::now('Asia/Ho_Chi_Minh')->startOfMonth()->toDateString()),
-            $request->input('end_date', Carbon::now('Asia/Ho_Chi_Minh')->endOfMonth()->toDateString())
-        );
+        [$startDate, $endDate, $monthKey, $fromMonthFilter] = $this->resolveReportRange($request);
+        $fileName = $fromMonthFilter
+            ? sprintf('bao-cao-cham-cong-thang-%s.xlsx', $monthKey)
+            : sprintf(
+                'bao-cao-cham-cong-%s-den-%s.xlsx',
+                $startDate->toDateString(),
+                $endDate->toDateString()
+            );
 
         return response()->streamDownload(function () use ($spreadsheet) {
             $writer = new Xlsx($spreadsheet);
@@ -1021,8 +1025,7 @@ class AttendanceController extends Controller
 
     private function buildReport(Request $request): array
     {
-        $startDate = $this->resolveDate($request->input('start_date'), Carbon::now('Asia/Ho_Chi_Minh')->startOfMonth());
-        $endDate = $this->resolveDate($request->input('end_date'), Carbon::now('Asia/Ho_Chi_Minh')->endOfMonth());
+        [$startDate, $endDate, $monthKey] = $this->resolveReportRange($request);
 
         $query = AttendanceRecord::query()
             ->with(['user:id,name,email,role,department,department_id'])
@@ -1044,13 +1047,16 @@ class AttendanceController extends Controller
             $query->where('user_id', (int) $request->input('user_id'));
         }
 
+        /** @var \Illuminate\Support\Collection<int, AttendanceRecord> $records */
         $records = $query->get();
         $rows = $records->map(function (AttendanceRecord $item) {
             return $this->reportRowPayload($item);
         })->values();
 
         $attendance = app(AttendanceService::class);
-        $trackedUserQuery = $attendance->trackedUsersQuery();
+        $trackedUserQuery = $attendance->trackedUsersQuery()
+            ->select(['id', 'name', 'email', 'role', 'department', 'attendance_employment_type'])
+            ->orderBy('name');
         if ($request->filled('search')) {
             $search = trim((string) $request->input('search'));
             $trackedUserQuery->where(function ($builder) use ($search) {
@@ -1068,6 +1074,8 @@ class AttendanceController extends Controller
         $trackedUserIds = (clone $trackedUserQuery)
             ->select('id')
             ->pluck('id');
+        /** @var \Illuminate\Support\Collection<int, User> $trackedUsers */
+        $trackedUsers = (clone $trackedUserQuery)->get();
         $todayWorkUnits = $trackedUserIds->isEmpty()
             ? 0
             : (float) AttendanceRecord::query()
@@ -1075,18 +1083,139 @@ class AttendanceController extends Controller
                 ->whereIn('user_id', $trackedUserIds)
                 ->sum('work_units');
         $summary = [
-            'total_staff' => (int) (clone $trackedUserQuery)->count(),
+            'total_staff' => (int) $trackedUsers->count(),
             'today_work_units' => round($todayWorkUnits, 2),
         ];
 
-        return [$rows, $summary];
+        $recordIndex = [];
+        foreach ($records as $record) {
+            $dateKey = optional($record->work_date)->toDateString();
+            if (! $dateKey) {
+                continue;
+            }
+            $recordIndex[(int) $record->user_id][$dateKey] = $record;
+        }
+
+        $today = Carbon::now('Asia/Ho_Chi_Minh')->startOfDay();
+        $dayCursor = $startDate->copy();
+        $dayColumns = [];
+        $weekdayLabels = [
+            1 => 'T2',
+            2 => 'T3',
+            3 => 'T4',
+            4 => 'T5',
+            5 => 'T6',
+            6 => 'T7',
+            7 => 'CN',
+        ];
+        $dayKeys = [];
+        while ($dayCursor->lte($endDate)) {
+            $dateKey = $dayCursor->toDateString();
+            $dayKeys[] = $dateKey;
+            $weekday = $weekdayLabels[$dayCursor->dayOfWeekIso] ?? '';
+            $dayColumns[] = [
+                'date' => $dateKey,
+                'weekday' => $weekday,
+                'day' => (int) $dayCursor->day,
+                'label' => sprintf('%s %s', $weekday, $dayCursor->format('d/m')),
+                'is_weekend' => (bool) $dayCursor->isWeekend(),
+                'is_today' => (bool) $dayCursor->isSameDay($today),
+            ];
+            $dayCursor->addDay();
+        }
+
+        $matrixRows = $trackedUsers->map(function (User $user) use ($dayKeys, $recordIndex) {
+            $userRecords = $recordIndex[(int) $user->id] ?? [];
+            $totalWorkUnits = 0.0;
+            $lateDays = 0;
+
+            $cells = [];
+            foreach ($dayKeys as $dayKey) {
+                /** @var AttendanceRecord|null $record */
+                $record = $userRecords[$dayKey] ?? null;
+                if (! $record) {
+                    $cells[] = [
+                        'date' => $dayKey,
+                        'record_id' => null,
+                        'has_record' => false,
+                        'work_units' => 0,
+                        'work_units_display' => '',
+                        'minutes_late' => 0,
+                        'status' => 'absent',
+                        'status_label' => 'Không chấm công',
+                        'source' => '',
+                        'source_label' => '',
+                        'check_in_at' => '—',
+                        'note' => '',
+                        'tone' => 'slate',
+                    ];
+                    continue;
+                }
+
+                $reportRow = $this->reportRowPayload($record);
+                $workUnits = (float) ($reportRow['work_units'] ?? 0);
+                $minutesLate = (int) ($reportRow['minutes_late'] ?? 0);
+                $totalWorkUnits += $workUnits;
+                if ($minutesLate > 0) {
+                    $lateDays++;
+                }
+
+                $status = (string) ($reportRow['status'] ?? 'absent');
+                $cells[] = [
+                    'date' => $dayKey,
+                    'record_id' => (int) ($reportRow['id'] ?? 0),
+                    'has_record' => true,
+                    'work_units' => $workUnits,
+                    'work_units_display' => $this->formatMatrixWorkUnits($workUnits),
+                    'minutes_late' => $minutesLate,
+                    'status' => $status,
+                    'status_label' => (string) ($reportRow['status_label'] ?? '—'),
+                    'source' => (string) ($reportRow['source'] ?? ''),
+                    'source_label' => (string) ($reportRow['source_label'] ?? ''),
+                    'check_in_at' => (string) ($reportRow['check_in_at'] ?? '—'),
+                    'note' => (string) ($reportRow['note'] ?? ''),
+                    'tone' => $this->matrixCellTone($status),
+                ];
+            }
+
+            $employmentType = $user->attendance_employment_type ?: 'full_time';
+            return [
+                'user_id' => (int) $user->id,
+                'user_name' => $user->name ?: '—',
+                'email' => $user->email ?: '',
+                'role' => $user->role ?: '—',
+                'department' => $user->department ?: '—',
+                'employment_type' => $employmentType,
+                'employment_type_label' => $this->employmentTypeLabel((string) $employmentType),
+                'total_work_units' => round($totalWorkUnits, 1),
+                'late_days' => (int) $lateDays,
+                'cells' => $cells,
+            ];
+        })->values();
+
+        $matrix = [
+            'month' => $monthKey,
+            'month_label' => sprintf('Tháng %s', Carbon::parse($startDate->toDateString(), 'Asia/Ho_Chi_Minh')->format('m/Y')),
+            'start_date' => $startDate->toDateString(),
+            'end_date' => $endDate->toDateString(),
+            'days' => $dayColumns,
+            'rows' => $matrixRows,
+            'legend' => [
+                ['key' => 'present', 'label' => 'Đúng công', 'tone' => 'emerald'],
+                ['key' => 'late', 'label' => 'Đi muộn', 'tone' => 'amber'],
+                ['key' => 'approved', 'label' => 'Duyệt công', 'tone' => 'blue'],
+                ['key' => 'holiday', 'label' => 'Ngày lễ', 'tone' => 'teal'],
+                ['key' => 'absent', 'label' => 'Không chấm công', 'tone' => 'slate'],
+            ],
+        ];
+
+        return [$rows, $summary, $matrix];
     }
 
     private function buildExportSummary(Request $request): array
     {
         $attendance = app(AttendanceService::class);
-        $startDate = $this->resolveDate($request->input('start_date'), Carbon::now('Asia/Ho_Chi_Minh')->startOfMonth());
-        $endDate = $this->resolveDate($request->input('end_date'), Carbon::now('Asia/Ho_Chi_Minh')->endOfMonth());
+        [$startDate, $endDate] = $this->resolveReportRange($request);
         $totalDays = max(1, $startDate->diffInDays($endDate) + 1);
 
         $userQuery = $attendance->trackedUsersQuery()
@@ -1158,6 +1287,52 @@ class AttendanceController extends Controller
                 'total_late_minutes' => $totalLateMinutes,
             ];
         })->values()->all();
+    }
+
+    private function resolveReportRange(Request $request): array
+    {
+        $now = Carbon::now('Asia/Ho_Chi_Minh');
+        $monthRaw = trim((string) $request->input('month', ''));
+        if (preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $monthRaw) === 1) {
+            $startDate = Carbon::createFromFormat('Y-m-d', $monthRaw . '-01', 'Asia/Ho_Chi_Minh')->startOfDay();
+            $endDate = $startDate->copy()->endOfMonth()->startOfDay();
+            return [$startDate, $endDate, $monthRaw, true];
+        }
+
+        $startDate = $this->resolveDate($request->input('start_date'), $now->copy()->startOfMonth());
+        $endDate = $this->resolveDate($request->input('end_date'), $now->copy()->endOfMonth());
+        if ($endDate->lt($startDate)) {
+            [$startDate, $endDate] = [$endDate, $startDate];
+        }
+
+        return [$startDate, $endDate, $startDate->format('Y-m'), false];
+    }
+
+    private function formatMatrixWorkUnits(float $workUnits): string
+    {
+        if (abs($workUnits - (float) round($workUnits)) < 0.0001) {
+            return (string) ((int) round($workUnits));
+        }
+
+        return rtrim(rtrim(number_format($workUnits, 1, '.', ''), '0'), '.');
+    }
+
+    private function matrixCellTone(string $status): string
+    {
+        if (in_array($status, ['present'], true)) {
+            return 'emerald';
+        }
+        if (in_array($status, ['late', 'late_pending'], true)) {
+            return 'amber';
+        }
+        if (in_array($status, ['approved_full', 'approved_partial'], true)) {
+            return 'blue';
+        }
+        if ($status === 'holiday_auto') {
+            return 'teal';
+        }
+
+        return 'slate';
     }
 
     private function resolveDate($value, Carbon $fallback): Carbon

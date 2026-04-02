@@ -181,7 +181,7 @@ export default function ProjectDetail(props) {
 
     const saveTask = async () => {
         if (!taskForm.title.trim()) { toast.error('Tiêu đề công việc là bắt buộc.'); return; }
-        
+
         const wp = taskForm.weight_percent === '' ? 0 : Number(taskForm.weight_percent);
         if (wp > remainingWeight) {
             toast.error(`Tổng tỷ trọng không được lố 100%. Mức nhập tối đa hiện tại: ${remainingWeight}%`);
@@ -245,6 +245,32 @@ export default function ProjectDetail(props) {
     const gscTrend = gsc?.trend || [];
     const gscLatest = gsc?.latest || null;
     const gscSummary = gsc?.summary || null;
+    const gscTrendChart = useMemo(() => {
+        if (Array.isArray(gscTrend) && gscTrend.length > 0) return gscTrend;
+        if (!gscLatest) return [];
+
+        const priorDate = gscLatest?.prior_date ? String(gscLatest.prior_date) : '';
+        const metricDate = gscLatest?.metric_date ? String(gscLatest.metric_date) : '';
+        const priorClicks = Number(gscLatest?.prior_clicks || 0);
+        const lastClicks = Number(gscLatest?.last_clicks || 0);
+
+        const rows = [];
+        if (priorDate) {
+            rows.push({
+                date: priorDate,
+                clicks: priorClicks,
+                delta_clicks: 0,
+            });
+        }
+        if (metricDate) {
+            rows.push({
+                date: metricDate,
+                clicks: lastClicks,
+                delta_clicks: Number(gscLatest?.delta_clicks || (lastClicks - priorClicks)),
+            });
+        }
+        return rows;
+    }, [gscLatest, gscTrend]);
     const gscStatus = gsc?.status || {};
     const gscNotifyEnabled = !!gscStatus?.project_notify_enabled;
     const gscCanManageNotification = !!gscStatus?.can_manage_notification;
@@ -254,9 +280,9 @@ export default function ProjectDetail(props) {
     const gscLastSyncedAt = gscStatus?.last_synced_at || null;
     const gscCanToggleNotification = gscCanManageNotification && (gscNotifyEnabled || gscCanEnableNotification);
     const gscMaxClicks = useMemo(() => {
-        const max = Math.max(...gscTrend.map((item) => Number(item?.clicks || 0)), 0);
+        const max = Math.max(...gscTrendChart.map((item) => Number(item?.clicks || 0)), 0);
         return max > 0 ? max : 1;
-    }, [gscTrend]);
+    }, [gscTrendChart]);
 
     return (
         <PageContainer
@@ -338,9 +364,6 @@ export default function ProjectDetail(props) {
                         <div className="flex flex-wrap items-start justify-between gap-3">
                             <div>
                                 <h4 className="font-semibold text-slate-900">Google Search Console</h4>
-                                <p className="mt-1 text-xs text-text-muted">
-                                    Tự lấy dữ liệu hằng ngày theo giờ admin cấu hình ({gscStatus?.sync_time || '11:17'}).
-                                </p>
                                 {gscTrackingStartedAt && (
                                     <p className="mt-1 text-[11px] text-text-muted">
                                         Biểu đồ tính từ ngày thêm website: {formatDate(gscTrackingStartedAt)}
@@ -410,9 +433,18 @@ export default function ProjectDetail(props) {
                             </div>
                         )}
 
-                        {gscTrend.length > 0 && (
-                            <div className="mt-4 flex items-end gap-1 overflow-x-auto pb-2">
-                                {gscTrend.map((item) => {
+                        {gscTrendChart.length > 0 && (
+                            <div className="mt-4">
+                                <div className="mb-2 flex items-center justify-between">
+                                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                                        Biểu đồ tăng trưởng clicks
+                                    </p>
+                                    <p className="text-[11px] text-text-muted">
+                                        {gscTrendChart.length} mốc dữ liệu
+                                    </p>
+                                </div>
+                                <div className="flex items-end gap-1 overflow-x-auto pb-2">
+                                {gscTrendChart.map((item) => {
                                     const clicks = Number(item.clicks || 0);
                                     const h = Math.max(4, Math.round((clicks / gscMaxClicks) * 100));
                                     return (
@@ -425,6 +457,7 @@ export default function ProjectDetail(props) {
                                         </div>
                                     );
                                 })}
+                                </div>
                             </div>
                         )}
 
@@ -594,7 +627,7 @@ export default function ProjectDetail(props) {
                         </div>
                         <div>
                             <label className="text-xs text-text-muted">
-                                Tỷ trọng (%) 
+                                Tỷ trọng (%)
                                 <span className={`ml-1 font-semibold ${remainingWeight < Number(taskForm.weight_percent || 0) ? 'text-rose-600' : 'text-emerald-600'}`}>
                                     - Còn trống: {remainingWeight}%
                                 </span>

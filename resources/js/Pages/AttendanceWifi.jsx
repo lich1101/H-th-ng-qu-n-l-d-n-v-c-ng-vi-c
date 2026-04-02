@@ -107,6 +107,21 @@ function toneForStatus(status) {
     return 'slate';
 }
 
+function matrixToneClass(tone) {
+    switch (tone) {
+        case 'emerald':
+            return 'bg-emerald-500';
+        case 'amber':
+            return 'bg-amber-500';
+        case 'blue':
+            return 'bg-cyan-500';
+        case 'teal':
+            return 'bg-teal-500';
+        default:
+            return 'bg-slate-300';
+    }
+}
+
 function requestTypeLabel(type) {
     if (type === 'leave_request') return 'Nghỉ phép';
     return 'Đi muộn';
@@ -118,6 +133,10 @@ function todayIso() {
 
 function monthStartIso() {
     return monthStartIsoVietnam();
+}
+
+function currentMonthKey() {
+    return todayIso().slice(0, 7);
 }
 
 function displayDateToIso(value) {
@@ -191,14 +210,9 @@ export default function AttendanceWifi(props) {
     const [staffRows, setStaffRows] = useState([]);
     const [staffPaging, setStaffPaging] = useState({ current_page: 1, last_page: 1, total: 0, per_page: 200 });
     const [staffFilters, setStaffFilters] = useState({ search: '', role: '', per_page: 200, page: 1 });
-    const [reportRows, setReportRows] = useState([]);
     const [reportSummary, setReportSummary] = useState({ total_staff: 0, today_work_units: 0 });
-    const [reportFilters, setReportFilters] = useState({ start_date: monthStartIso(), end_date: todayIso(), user_id: '', search: '' });
-    const [reportExportModalOpen, setReportExportModalOpen] = useState(false);
-    const [reportExportRange, setReportExportRange] = useState({
-        start_date: monthStartIso(),
-        end_date: todayIso(),
-    });
+    const [reportMatrix, setReportMatrix] = useState({ month: currentMonthKey(), month_label: '', days: [], rows: [], legend: [] });
+    const [reportFilters, setReportFilters] = useState({ month: currentMonthKey(), user_id: '', search: '' });
     const [manualRecordModal, setManualRecordModal] = useState({ open: false, item: null });
     const [manualRecordForm, setManualRecordForm] = useState({ user_id: '', work_date: todayIso(), work_units: '1.0', check_in_time: '', note: '' });
 
@@ -223,6 +237,31 @@ export default function AttendanceWifi(props) {
         }
         return rows;
     }, [manualRecordModal.item, staffRows]);
+
+    const reportGrowth = useMemo(() => {
+        const days = Array.isArray(reportMatrix?.days) ? reportMatrix.days : [];
+        const rows = Array.isArray(reportMatrix?.rows) ? reportMatrix.rows : [];
+        if (days.length === 0 || rows.length === 0) {
+            return { items: [], max: 1 };
+        }
+
+        const items = days.map((day, dayIndex) => {
+            const totalWorkUnits = rows.reduce((sum, row) => {
+                const cell = Array.isArray(row?.cells) ? row.cells[dayIndex] : null;
+                return sum + Number(cell?.work_units || 0);
+            }, 0);
+            return {
+                date: day?.date,
+                label: String(day?.day || '').padStart(2, '0'),
+                weekday: day?.weekday || '',
+                value: Number(totalWorkUnits.toFixed(1)),
+                is_weekend: !!day?.is_weekend,
+            };
+        });
+
+        const max = items.reduce((carry, item) => Math.max(carry, Number(item.value || 0)), 0);
+        return { items, max: max > 0 ? max : 1 };
+    }, [reportMatrix]);
 
     const stats = useMemo(() => {
         const todayRecord = dashboard?.today_record;
@@ -295,6 +334,20 @@ export default function AttendanceWifi(props) {
             note: item?.note || '',
         });
         setManualRecordModal({ open: true, item });
+    };
+
+    const openManualRecordFromMatrixCell = (row, cell) => {
+        openManualRecord({
+            user_id: row?.user_id,
+            user_name: row?.user_name,
+            role: row?.role,
+            department: row?.department,
+            employment_type: row?.employment_type,
+            work_date: cell?.date,
+            work_units: cell?.has_record ? cell?.work_units : (row?.employment_type === 'full_time' ? 1 : 0.5),
+            check_in_at: cell?.has_record ? (cell?.check_in_at || '') : '',
+            note: cell?.has_record ? (cell?.note || '') : '',
+        });
     };
 
     const loadDashboard = async () => {
@@ -391,8 +444,8 @@ export default function AttendanceWifi(props) {
     const loadReport = async (filters = reportFilters) => {
         if (!canManage) return;
         const res = await axios.get('/api/v1/attendance/report', { params: filters });
-        setReportRows(res.data?.data || []);
         setReportSummary(res.data?.summary || { total_staff: 0, today_work_units: 0 });
+        setReportMatrix(res.data?.matrix || { month: filters.month || currentMonthKey(), month_label: '', days: [], rows: [], legend: [] });
     };
 
     const initialLoad = async () => {
@@ -557,34 +610,6 @@ export default function AttendanceWifi(props) {
             }
         });
         window.open(`/api/v1/attendance/export?${params.toString()}`, '_blank');
-    };
-
-    const openExportReportModal = () => {
-        setReportExportRange({
-            start_date: reportFilters.start_date || monthStartIso(),
-            end_date: reportFilters.end_date || todayIso(),
-        });
-        setReportExportModalOpen(true);
-    };
-
-    const confirmExportReport = () => {
-        const startDate = String(reportExportRange.start_date || '').trim();
-        const endDate = String(reportExportRange.end_date || '').trim();
-        if (!startDate || !endDate) {
-            toast.error('Vui lòng chọn đầy đủ từ ngày và đến ngày trước khi xuất báo cáo.');
-            return;
-        }
-        if (startDate > endDate) {
-            toast.error('Khoảng thời gian xuất không hợp lệ.');
-            return;
-        }
-
-        exportReport({
-            ...reportFilters,
-            start_date: startDate,
-            end_date: endDate,
-        });
-        setReportExportModalOpen(false);
     };
 
     const saveManualRecord = async () => {
@@ -1133,23 +1158,32 @@ export default function AttendanceWifi(props) {
                         <FilterToolbar enableSearch
                             className="mb-4"
                             title="Báo cáo công"
-                            description="Lọc theo ngày bắt đầu/kết thúc để xem chi tiết bảng công. Header chỉ hiển thị tổng nhân viên và số công trong ngày hiện tại."
+                            description="Bảng công dạng ma trận theo tháng: mỗi hàng là nhân sự, mỗi cột là ngày trong tháng."
                             searchValue={reportFilters.search}
                             onSearch={handleReportSearch}
                             actions={(
                                 <FilterActionGroup className="xl:justify-end">
                                     <button type="button" className={buttonSecondaryClass} onClick={() => openManualRecord()}>Sửa công tay</button>
                                     <button type="button" className={buttonSecondaryClass} onClick={() => loadReport(reportFilters)}>Xem báo cáo</button>
-                                    <button type="button" className={buttonPrimaryClass} onClick={openExportReportModal}>Xuất Excel</button>
+                                    <button type="button" className={buttonPrimaryClass} onClick={() => exportReport(reportFilters)}>Xuất Excel</button>
                                 </FilterActionGroup>
                             )}
                         >
                             <div className="grid gap-4 md:grid-cols-2">
-                                <FilterField label="Từ ngày">
-                                    <input type="date" className={filterControlClass} value={reportFilters.start_date} onChange={(e) => setReportFilters((s) => ({ ...s, start_date: e.target.value }))} />
+                                <FilterField label="Tháng báo cáo">
+                                    <input
+                                        type="month"
+                                        className={filterControlClass}
+                                        value={reportFilters.month}
+                                        onChange={(e) => setReportFilters((s) => ({ ...s, month: e.target.value }))}
+                                    />
                                 </FilterField>
-                                <FilterField label="Đến ngày">
-                                    <input type="date" className={filterControlClass} value={reportFilters.end_date} onChange={(e) => setReportFilters((s) => ({ ...s, end_date: e.target.value }))} />
+                                <FilterField label="Kỳ đang xem">
+                                    <input
+                                        className={`${filterControlClass} bg-slate-50`}
+                                        value={reportMatrix.month_label || '—'}
+                                        readOnly
+                                    />
                                 </FilterField>
                             </div>
                         </FilterToolbar>
@@ -1157,44 +1191,101 @@ export default function AttendanceWifi(props) {
                             <StatCard label="Tổng nhân viên" value={String(reportSummary.total_staff || 0)} />
                             <StatCard label="Công ngày hiện tại" value={String(reportSummary.today_work_units || 0)} />
                         </div>
+                        {Array.isArray(reportMatrix.legend) && reportMatrix.legend.length > 0 && (
+                            <div className="mt-4 flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">
+                                {reportMatrix.legend.map((item) => (
+                                    <div key={item.key} className="inline-flex items-center gap-2 text-xs font-medium text-slate-700">
+                                        <span className={`h-2.5 w-2.5 rounded-full ${matrixToneClass(item.tone)}`} />
+                                        {item.label}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                        {reportGrowth.items.length > 0 && (
+                            <div className="mt-4 rounded-2xl border border-slate-200/80 bg-white p-4">
+                                <div className="mb-3 flex items-center justify-between">
+                                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                                        Biểu đồ tăng trưởng công theo ngày
+                                    </p>
+                                    <p className="text-[11px] text-text-muted">
+                                        Tổng hợp theo {reportMatrix.month_label || 'tháng'}
+                                    </p>
+                                </div>
+                                <div className="flex items-end gap-1 overflow-x-auto pb-2">
+                                    {reportGrowth.items.map((item) => {
+                                        const h = Math.max(4, Math.round((Number(item.value || 0) / reportGrowth.max) * 100));
+                                        return (
+                                            <div key={item.date} className="min-w-[28px] text-center">
+                                                <div className="flex h-24 items-end justify-center">
+                                                    <div
+                                                        className={`w-5 rounded-t ${item.is_weekend ? 'bg-cyan-400/75' : 'bg-primary/75'}`}
+                                                        style={{ height: `${h}%` }}
+                                                        title={`${item.date}: ${item.value} công`}
+                                                    />
+                                                </div>
+                                                <div className="mt-1 text-[9px] text-text-muted">{item.label}</div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
                         <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200/80">
-                            <table className="min-w-full divide-y divide-slate-200 text-sm">
+                            <table className="min-w-max divide-y divide-slate-200 text-sm">
                                 <thead className="bg-slate-50">
                                     <tr>
-                                        <th className="px-4 py-3 text-left font-semibold text-slate-700">Ngày</th>
                                         <th className="px-4 py-3 text-left font-semibold text-slate-700">Nhân sự</th>
                                         <th className="px-4 py-3 text-left font-semibold text-slate-700">Vai trò</th>
                                         <th className="px-4 py-3 text-left font-semibold text-slate-700">Phòng ban</th>
-                                        <th className="px-4 py-3 text-left font-semibold text-slate-700">Giờ vào</th>
-                                        <th className="px-4 py-3 text-left font-semibold text-slate-700">Công</th>
-                                        <th className="px-4 py-3 text-left font-semibold text-slate-700">Trạng thái</th>
-                                        <th className="px-4 py-3 text-left font-semibold text-slate-700">Nguồn</th>
-                                        <th className="px-4 py-3 text-right font-semibold text-slate-700">Thao tác</th>
+                                        <th className="px-4 py-3 text-right font-semibold text-slate-700">Tổng công</th>
+                                        {(reportMatrix.days || []).map((day) => (
+                                            <th key={day.date} className={`px-2 py-3 text-center font-semibold text-slate-700 ${day.is_weekend ? 'bg-slate-100/80' : ''}`}>
+                                                <div className="text-[10px] uppercase tracking-[0.12em] text-text-muted">{day.weekday}</div>
+                                                <div className="text-xs font-semibold">{String(day.day).padStart(2, '0')}</div>
+                                            </th>
+                                        ))}
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 bg-white">
-                                    {reportRows.length === 0 && (
+                                    {(reportMatrix.rows || []).length === 0 && (
                                         <tr>
-                                            <td className="px-4 py-6 text-center text-text-muted" colSpan={9}>Chưa có dữ liệu báo cáo trong khoảng này.</td>
+                                            <td className="px-4 py-6 text-center text-text-muted" colSpan={4 + (reportMatrix.days || []).length}>
+                                                Chưa có dữ liệu báo cáo trong tháng đã chọn.
+                                            </td>
                                         </tr>
                                     )}
-                                    {reportRows.map((item) => (
-                                        <tr key={item.id}>
-                                            <td className="px-4 py-3">{item.work_date}</td>
-                                            <td className="px-4 py-3 font-semibold text-slate-900">{item.user_name}</td>
-                                            <td className="px-4 py-3">{item.role}</td>
-                                            <td className="px-4 py-3">{item.department}</td>
-                                            <td className="px-4 py-3">{item.check_in_at}</td>
-                                            <td className="px-4 py-3">{item.work_units}</td>
-                                            <td className="px-4 py-3"><Badge tone={toneForStatus(item.status)}>{item.status_label}</Badge></td>
-                                            <td className="px-4 py-3">{item.source_label}</td>
-                                            <td className="px-4 py-3 text-right">
-                                                <button type="button" className={buttonSecondaryClass} onClick={() => openManualRecord(item)}>Sửa công</button>
+                                    {(reportMatrix.rows || []).map((row) => (
+                                        <tr key={row.user_id}>
+                                            <td className="px-4 py-3">
+                                                <div className="font-semibold text-slate-900">{row.user_name}</div>
+                                                <div className="text-xs text-text-muted">{row.email || '—'}</div>
                                             </td>
+                                            <td className="px-4 py-3">{row.role}</td>
+                                            <td className="px-4 py-3">{row.department}</td>
+                                            <td className="px-4 py-3 text-right font-semibold text-slate-900">{row.total_work_units}</td>
+                                            {(row.cells || []).map((cell) => (
+                                                <td
+                                                    key={`${row.user_id}-${cell.date}`}
+                                                    className={`px-2 py-2 text-center align-middle ${cell.has_record ? 'bg-white' : 'bg-slate-50/60'}`}
+                                                    title={`${cell.date} • ${cell.status_label}${cell.minutes_late ? ` • Trễ ${cell.minutes_late} phút` : ''}`}
+                                                >
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => openManualRecordFromMatrixCell(row, cell)}
+                                                        className="mx-auto inline-flex min-h-[30px] min-w-[38px] items-center justify-center gap-1 rounded-lg border border-transparent px-1.5 py-1 text-xs font-semibold text-slate-700 transition hover:border-slate-200 hover:bg-slate-100"
+                                                    >
+                                                        <span>{cell.work_units_display || '·'}</span>
+                                                        <span className={`h-1.5 w-1.5 rounded-full ${matrixToneClass(cell.tone)}`} />
+                                                    </button>
+                                                </td>
+                                            ))}
                                         </tr>
                                     ))}
                                 </tbody>
                             </table>
+                        </div>
+                        <div className="mt-3 rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3 text-xs text-text-muted">
+                            Bấm vào từng ô ngày để sửa công tay nhanh cho đúng nhân sự và đúng ngày.
                         </div>
                     </div>
                 )}
@@ -1227,41 +1318,6 @@ export default function AttendanceWifi(props) {
                 <div className="mt-5 flex justify-end gap-3">
                     <button type="button" className={buttonSecondaryClass} onClick={() => setWifiModal({ open: false, item: null })}>Hủy</button>
                     <button type="button" className={buttonPrimaryClass} onClick={saveWifi}>Lưu WiFi</button>
-                </div>
-            </Modal>
-
-            <Modal
-                open={reportExportModalOpen}
-                onClose={() => setReportExportModalOpen(false)}
-                title="Chọn khoảng thời gian xuất báo cáo"
-                description="Thiết lập mốc từ ngày đến ngày trước khi xuất file Excel."
-                size="sm"
-            >
-                <div className="grid gap-4 md:grid-cols-2">
-                    <FormField label="Từ ngày" required>
-                        <input
-                            type="date"
-                            className={inputClass}
-                            value={reportExportRange.start_date}
-                            onChange={(e) => setReportExportRange((prev) => ({ ...prev, start_date: e.target.value }))}
-                        />
-                    </FormField>
-                    <FormField label="Đến ngày" required>
-                        <input
-                            type="date"
-                            className={inputClass}
-                            value={reportExportRange.end_date}
-                            onChange={(e) => setReportExportRange((prev) => ({ ...prev, end_date: e.target.value }))}
-                        />
-                    </FormField>
-                </div>
-                <div className="mt-5 flex justify-end gap-3">
-                    <button type="button" className={buttonSecondaryClass} onClick={() => setReportExportModalOpen(false)}>
-                        Hủy
-                    </button>
-                    <button type="button" className={buttonPrimaryClass} onClick={confirmExportReport}>
-                        Xuất báo cáo
-                    </button>
                 </div>
             </Modal>
 
