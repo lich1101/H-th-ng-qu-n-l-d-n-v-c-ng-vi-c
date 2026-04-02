@@ -110,8 +110,25 @@ class AttendanceService
         $allowedLateUntil = $this->allowedLateUntil($user, $checkedAt, $settings);
         $employmentType = $this->employmentTypeForUser($user);
         $defaultWorkUnits = $this->defaultWorkUnitsForEmployment($employmentType);
+        
+        // Lấy thời điểm kết thúc theo ca làm việc
+        $endTimeSetting = $employmentType === self::EMPLOYMENT_HALF_DAY_MORNING 
+            ? $settings['afternoon_start_time'] 
+            : $settings['work_end_time'];
+        [$endHour, $endMinute] = array_map('intval', explode(':', $endTimeSetting));
+        $endAt = $checkedAt->copy()->setTimezone('Asia/Ho_Chi_Minh')->setTime($endHour, $endMinute, 0);
+
         $minutesLate = max(0, $requiredStartAt->diffInMinutes($checkedAt, false));
         $isOnTime = $checkedAt->lte($allowedLateUntil);
+
+        // Tính công thực tế theo số phút thực đi muộn
+        $calculatedWorkUnits = $defaultWorkUnits;
+        if (!$isOnTime && $minutesLate > 0) {
+            $totalDayMinutes = max(1, $requiredStartAt->diffInMinutes($endAt));
+            $workedMinutes = max(0, $totalDayMinutes - $minutesLate);
+            $fraction = $workedMinutes / $totalDayMinutes;
+            $calculatedWorkUnits = round($defaultWorkUnits * $fraction, 2);
+        }
 
         return [
             'employment_type' => $employmentType,
@@ -119,7 +136,7 @@ class AttendanceService
             'required_start_at' => $requiredStartAt,
             'allowed_late_until' => $allowedLateUntil,
             'minutes_late' => $minutesLate,
-            'work_units' => $isOnTime ? $defaultWorkUnits : 0.0,
+            'work_units' => $calculatedWorkUnits,
             'status' => $isOnTime ? 'present' : 'late_pending',
         ];
     }
