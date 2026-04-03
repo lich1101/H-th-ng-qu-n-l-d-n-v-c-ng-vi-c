@@ -46,7 +46,7 @@ const emptyTask = (sortOrder = 1) => ({
 export default function ServiceWorkflows(props) {
     const toast = useToast();
     const userRole = props?.auth?.user?.role || '';
-    const canEdit = ['admin', 'quan_ly'].includes(userRole);
+    const canEdit = ['admin', 'administrator', 'quan_ly'].includes(userRole);
 
     const [loading, setLoading] = useState(false);
     const [search, setSearch] = useState('');

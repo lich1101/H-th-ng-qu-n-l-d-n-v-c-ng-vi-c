@@ -448,13 +448,13 @@ Route::prefix('v1')->group(function () {
             ->middleware('role:admin');
 
         Route::get('/workflow-topics', [WorkflowTopicController::class, 'index'])
-            ->middleware('role:admin,quan_ly,nhan_vien');
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien');
         Route::post('/workflow-topics', [WorkflowTopicController::class, 'store'])
-            ->middleware('role:admin,quan_ly');
+            ->middleware('role:admin,administrator,quan_ly');
         Route::put('/workflow-topics/{workflowTopic}', [WorkflowTopicController::class, 'update'])
-            ->middleware('role:admin,quan_ly');
+            ->middleware('role:admin,administrator,quan_ly');
         Route::delete('/workflow-topics/{workflowTopic}', [WorkflowTopicController::class, 'destroy'])
-            ->middleware('role:admin');
+            ->middleware('role:admin,administrator');
 
         Route::get('/notifications/in-app', [NotificationCenterController::class, 'index']);
         Route::post('/notifications/in-app/read', [NotificationCenterController::class, 'markRead']);

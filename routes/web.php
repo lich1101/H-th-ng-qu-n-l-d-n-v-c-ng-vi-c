@@ -114,7 +114,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('/quy-trinh-dich-vu', function () {
         return Inertia::render('ServiceWorkflows');
-    })->name('services.workflows')->middleware('role:admin,quan_ly,nhan_vien');
+    })->name('services.workflows')->middleware('role:admin,administrator,quan_ly,nhan_vien');
 
     Route::get('/lich-hop', function () {
         return Inertia::render('Meetings');
