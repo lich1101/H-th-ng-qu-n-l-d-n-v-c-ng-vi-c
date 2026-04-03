@@ -23,7 +23,7 @@ const TASK_STATUS_STYLES = {
     done: 'bg-emerald-50 text-emerald-700 border-emerald-200',
     blocked: 'bg-rose-50 text-rose-700 border-rose-200',
 };
-const PRIORITY = { low: 'Thấp', medium: 'TB', high: 'Cao', urgent: 'Khẩn' };
+const PRIORITY = { low: 'Thấp', medium: 'Trung Bình', high: 'Cao', urgent: 'Khẩn' };
 const PRIORITY_STYLES = {
     low: 'bg-slate-100 text-slate-700 border-slate-200',
     medium: 'bg-amber-50 text-amber-700 border-amber-200',
@@ -546,7 +546,7 @@ export default function ProjectDetail(props) {
                                                 </td>
                                                 <td className="py-2.5">
                                                     <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${PRIORITY_STYLES[task.priority] || PRIORITY_STYLES.medium}`}>
-                                                        {PRIORITY[task.priority] || task.priority || 'TB'}
+                                                        {PRIORITY[task.priority] || task.priority || 'Trung Bình'}
                                                     </span>
                                                 </td>
                                                 <td className="py-2.5">

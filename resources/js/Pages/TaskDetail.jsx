@@ -12,7 +12,7 @@ const TASK_STATUS_STYLES = {
     done: 'bg-emerald-50 text-emerald-700 border-emerald-200',
     blocked: 'bg-rose-50 text-rose-700 border-rose-200',
 };
-const PRIORITY = { low: 'Thấp', medium: 'TB', high: 'Cao', urgent: 'Khẩn' };
+const PRIORITY = { low: 'Thấp', medium: 'Trung Bình', high: 'Cao', urgent: 'Khẩn' };
 const PRIORITY_STYLES = {
     low: 'bg-slate-100 text-slate-700 border-slate-200',
     medium: 'bg-amber-50 text-amber-700 border-amber-200',
@@ -125,7 +125,7 @@ export default function TaskDetail(props) {
         if (!itemForm.title.trim()) { toast.error('Tiêu đề đầu việc là bắt buộc.'); return; }
         const weightVal = Number(itemForm.weight_percent) || 0;
         if (weightVal > availableWeight) { toast.error(`Tỷ trọng tối đa bạn có thể trích cho đầu việc này là ${availableWeight}%.`); return; }
-        
+
         setSavingItem(true);
         try {
             const payload = {

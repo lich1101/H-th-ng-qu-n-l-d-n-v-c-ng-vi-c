@@ -11,6 +11,7 @@ use App\Models\LeadType;
 use App\Models\RevenueTier;
 use App\Models\User;
 use App\Services\LeadNotificationService;
+use App\Services\NotificationService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -191,6 +192,8 @@ class CRMController extends Controller
         if (! $this->canManageClient($request->user(), $client)) {
             return response()->json(['message' => 'Không có quyền cập nhật khách hàng.'], 403);
         }
+        $oldAssignedStaffId = (int) ($client->assigned_staff_id ?? 0);
+
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'company' => ['nullable', 'string', 'max:255'],
@@ -214,6 +217,7 @@ class CRMController extends Controller
             $validated['sales_owner_id'] = $validated['assigned_staff_id'];
         }
         $client->update($validated);
+
         if (array_key_exists('care_staff_ids', $validated)) {
             $this->syncClientCareStaff(
                 $client,
@@ -221,6 +225,8 @@ class CRMController extends Controller
                 (int) $user->id
             );
         }
+
+        $this->notifyClientReassignment($client, $oldAssignedStaffId, $user);
 
         return response()->json($client->load([
             'leadType',
@@ -572,5 +578,74 @@ class CRMController extends Controller
         }
 
         return (string) ($client->lead_source ?: 'CRM');
+    }
+
+    private function notifyClientReassignment(Client $client, int $oldAssignedStaffId, User $actor): void
+    {
+        $newAssignedStaffId = (int) ($client->assigned_staff_id ?? 0);
+        if ($newAssignedStaffId <= 0 || $newAssignedStaffId === $oldAssignedStaffId) {
+            return;
+        }
+
+        $client->loadMissing([
+            'assignedStaff.departmentRelation.manager',
+        ]);
+
+        $assignedStaff = $client->assignedStaff;
+        if (! $assignedStaff || ! $assignedStaff->is_active) {
+            return;
+        }
+
+        $managerId = (int) optional(optional($assignedStaff->departmentRelation)->manager)->id;
+        $recipientIds = collect([
+            (int) $assignedStaff->id,
+            $managerId > 0 ? $managerId : null,
+        ])
+            ->filter(function ($id) {
+                return (int) $id > 0;
+            })
+            ->map(function ($id) {
+                return (int) $id;
+            })
+            ->unique()
+            ->values()
+            ->all();
+
+        if (empty($recipientIds)) {
+            return;
+        }
+
+        $clientName = trim((string) ($client->name ?: 'Khách hàng'));
+        $phone = trim((string) ($client->phone ?: 'Chưa có SĐT'));
+        $assigneeName = trim((string) ($assignedStaff->name ?: 'Chưa rõ'));
+        $departmentName = trim((string) optional($assignedStaff->departmentRelation)->name);
+        $actorName = trim((string) ($actor->name ?: 'Hệ thống'));
+
+        $body = sprintf(
+            '%s • %s • Phụ trách mới: %s%s • Cập nhật bởi: %s',
+            $clientName,
+            $phone,
+            $assigneeName,
+            $departmentName !== '' ? ' ('.$departmentName.')' : '',
+            $actorName
+        );
+
+        app(NotificationService::class)->notifyUsersAfterResponse(
+            $recipientIds,
+            'Khách hàng được đổi phụ trách',
+            $body,
+            [
+                'type' => 'crm_client_reassigned',
+                'category' => 'crm_realtime',
+                'client_id' => (int) $client->id,
+                'assigned_staff_id' => (int) $assignedStaff->id,
+                'assigned_staff_name' => $assigneeName,
+                'department_id' => $assignedStaff->department_id ? (int) $assignedStaff->department_id : null,
+                'manager_id' => $managerId > 0 ? $managerId : null,
+                'previous_assigned_staff_id' => $oldAssignedStaffId > 0 ? $oldAssignedStaffId : null,
+                'changed_by_user_id' => (int) $actor->id,
+                'changed_by_user_name' => $actorName,
+            ]
+        );
     }
 }

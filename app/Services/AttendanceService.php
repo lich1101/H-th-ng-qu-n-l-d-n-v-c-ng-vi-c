@@ -110,13 +110,6 @@ class AttendanceService
         $allowedLateUntil = $this->allowedLateUntil($user, $checkedAt, $settings);
         $employmentType = $this->employmentTypeForUser($user);
         $defaultWorkUnits = $this->defaultWorkUnitsForEmployment($employmentType);
-        
-        // Lấy thời điểm kết thúc theo ca làm việc
-        $endTimeSetting = $employmentType === self::EMPLOYMENT_HALF_DAY_MORNING 
-            ? $settings['afternoon_start_time'] 
-            : $settings['work_end_time'];
-        [$endHour, $endMinute] = array_map('intval', explode(':', $endTimeSetting));
-        $endAt = $checkedAt->copy()->setTimezone('Asia/Ho_Chi_Minh')->setTime($endHour, $endMinute, 0);
 
         // Đúng quy chuẩn: tính muộn từ (giờ bắt đầu + phút cho phép trễ)
         // VD: bắt đầu 08:30, cho phép trễ 10 phút → mốc = 08:40
@@ -124,22 +117,13 @@ class AttendanceService
         $isOnTime = $checkedAt->lte($allowedLateUntil);
         $minutesLate = $isOnTime ? 0 : max(0, (int) $allowedLateUntil->diffInMinutes($checkedAt, false));
 
-        // Tính công thực tế: lấy tổng phút ca trừ đi số phút muộn thực sự
-        $calculatedWorkUnits = $defaultWorkUnits;
-        if (!$isOnTime && $minutesLate > 0) {
-            $totalDayMinutes = max(1, (int) $requiredStartAt->diffInMinutes($endAt));
-            $workedMinutes = max(0, $totalDayMinutes - $minutesLate);
-            $fraction = $workedMinutes / $totalDayMinutes;
-            $calculatedWorkUnits = round($defaultWorkUnits * $fraction, 1);
-        }
-
         return [
             'employment_type' => $employmentType,
             'default_work_units' => $defaultWorkUnits,
             'required_start_at' => $requiredStartAt,
             'allowed_late_until' => $allowedLateUntil,
             'minutes_late' => $minutesLate,
-            'work_units' => $calculatedWorkUnits,
+            'work_units' => $defaultWorkUnits,
             'status' => $isOnTime ? 'present' : 'late',
         ];
     }
@@ -185,34 +169,35 @@ class AttendanceService
         $date = Carbon::parse($attendanceRequest->request_date, 'Asia/Ho_Chi_Minh')->startOfDay();
         $settings = $this->settings();
         $evaluation = $this->evaluateCheckIn($user, $date, $settings);
-        $approvalMode = trim((string) ($attendanceRequest->approval_mode ?? ''));
-
-        if ($approvalMode === 'no_change') {
-            return AttendanceRecord::query()
-                ->where('user_id', $user->id)
-                ->whereDate('work_date', $date->toDateString())
-                ->first();
+        $approvalMode = trim((string) ($attendanceRequest->approval_mode ?? 'full_work'));
+        if (! in_array($approvalMode, ['full_work', 'no_change'], true)) {
+            $approvalMode = 'full_work';
         }
 
         $defaultWorkUnits = (float) $evaluation['default_work_units'];
-        $approvedUnits = is_numeric($attendanceRequest->approved_work_units)
-            ? max(0.0, (float) $attendanceRequest->approved_work_units)
-            : null;
-
-        if ($approvalMode === 'full_work') {
-            $approvedUnits = $defaultWorkUnits;
-        }
-
-        if ($approvedUnits === null) {
-            $approvedUnits = $defaultWorkUnits;
-        }
 
         $record = AttendanceRecord::query()->firstOrNew([
             'user_id' => (int) $user->id,
             'work_date' => $date->toDateString(),
         ]);
 
-        $status = $approvedUnits >= $defaultWorkUnits ? 'approved_full' : 'approved_partial';
+        $expectedTime = trim((string) ($attendanceRequest->expected_check_in_time ?? ''));
+        $checkInAt = null;
+        if ($expectedTime !== '' && preg_match('/^\d{2}:\d{2}$/', $expectedTime)) {
+            [$hour, $minute] = array_map('intval', explode(':', $expectedTime));
+            $checkInAt = $date->copy()->setTime($hour, $minute, 0);
+        }
+
+        $minutesLate = $record->minutes_late ?? 0;
+        if ($checkInAt) {
+            $minutesLate = max(0, (int) $evaluation['allowed_late_until']->diffInMinutes($checkInAt, false));
+        }
+
+        $workUnits = $approvalMode === 'no_change'
+            ? (float) ($record->work_units ?? $defaultWorkUnits)
+            : $defaultWorkUnits;
+
+        $status = $workUnits >= $defaultWorkUnits ? 'approved_full' : 'approved_partial';
         $existingNote = trim((string) ($record->note ?? ''));
         $decisionNote = trim((string) ($attendanceRequest->decision_note ?? ''));
         $noteParts = array_values(array_filter([$existingNote, $decisionNote]));
@@ -220,9 +205,10 @@ class AttendanceService
         $record->fill([
             'required_start_at' => $record->required_start_at ?: $evaluation['required_start_at'],
             'allowed_late_until' => $record->allowed_late_until ?: $evaluation['allowed_late_until'],
-            'minutes_late' => max((int) ($record->minutes_late ?? 0), (int) $evaluation['minutes_late']),
+            'check_in_at' => $checkInAt ?: $record->check_in_at,
+            'minutes_late' => (int) $minutesLate,
             'default_work_units' => $defaultWorkUnits,
-            'work_units' => $approvedUnits,
+            'work_units' => $workUnits,
             'employment_type' => $evaluation['employment_type'],
             'status' => $status,
             'source' => 'request_approval',

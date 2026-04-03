@@ -19,7 +19,7 @@ const STATUS_STYLES = {
     blocked: 'bg-rose-50 text-rose-700 border-rose-200',
 };
 
-const PRIORITY_LABELS = { low: 'Thấp', medium: 'TB', high: 'Cao', urgent: 'Khẩn' };
+const PRIORITY_LABELS = { low: 'Thấp', medium: 'Trung Bình', high: 'Cao', urgent: 'Khẩn' };
 const PRIORITY_STYLES = {
     low: 'bg-slate-100 text-slate-700 border-slate-200',
     medium: 'bg-amber-50 text-amber-700 border-amber-200',
@@ -250,7 +250,7 @@ export default function TasksByStaff(props) {
                                             </td>
                                             <td className="py-2.5">
                                                 <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${PRIORITY_STYLES[task.priority] || PRIORITY_STYLES.medium}`}>
-                                                    {PRIORITY_LABELS[task.priority] || task.priority || 'TB'}
+                                                    {PRIORITY_LABELS[task.priority] || task.priority || 'Trung Bình'}
                                                 </span>
                                             </td>
                                             <td className="py-2.5">

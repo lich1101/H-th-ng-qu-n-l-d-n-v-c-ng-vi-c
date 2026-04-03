@@ -31,7 +31,7 @@ export default function EmployeeRevenueBars({ data = [] }) {
     }, [data]);
 
     if (!Array.isArray(data) || data.length === 0) {
-        return <p className="text-sm text-text-muted">Chưa có dữ liệu doanh số theo nhân viên.</p>;
+        return <p className="text-sm text-text-muted">Chưa có dữ liệu doanh số.</p>;
     }
 
     return (

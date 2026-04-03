@@ -15,6 +15,11 @@ class UserAccountController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate($this->rules());
+        if ($request->user()->role === 'admin' && $validated['role'] === 'administrator') {
+            return response()->json([
+                'message' => 'Admin không được tạo tài khoản administrator.',
+            ], 403);
+        }
 
         $user = User::create([
             'name' => $validated['name'],
@@ -55,6 +60,9 @@ class UserAccountController extends Controller
                 'created_at',
                 'updated_at',
             ]);
+        if ($request->user()->role === 'admin') {
+            $query->where('role', '!=', 'administrator');
+        }
 
         if ($request->filled('search')) {
             $search = trim((string) $request->input('search'));
@@ -128,7 +136,17 @@ class UserAccountController extends Controller
 
     public function update(Request $request, User $user): JsonResponse
     {
+        if ($request->user()->role === 'admin' && $user->role === 'administrator') {
+            return response()->json([
+                'message' => 'Admin không được quản lý tài khoản administrator.',
+            ], 403);
+        }
         $validated = $request->validate($this->rules($user->id, false));
+        if ($request->user()->role === 'admin' && $validated['role'] === 'administrator') {
+            return response()->json([
+                'message' => 'Admin không được gán role administrator.',
+            ], 403);
+        }
 
         $payload = [
             'name' => $validated['name'],
@@ -162,6 +180,11 @@ class UserAccountController extends Controller
 
     public function destroy(Request $request, User $user): JsonResponse
     {
+        if ($request->user()->role === 'admin' && $user->role === 'administrator') {
+            return response()->json([
+                'message' => 'Admin không được quản lý tài khoản administrator.',
+            ], 403);
+        }
         if ((int) $request->user()->id === (int) $user->id) {
             return response()->json([
                 'message' => 'Không thể tự xóa tài khoản đang đăng nhập.',

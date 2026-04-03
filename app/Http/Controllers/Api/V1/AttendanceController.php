@@ -651,8 +651,7 @@ class AttendanceController extends Controller
 
         $validated = $request->validate([
             'status' => ['required', 'in:approved,rejected'],
-            'approval_mode' => ['nullable', 'in:full_work,no_change,manual'],
-            'approved_work_units' => ['nullable', 'numeric', 'min:0', 'max:1'],
+            'approval_mode' => ['nullable', 'in:full_work,no_change'],
             'decision_note' => ['nullable', 'string', 'max:5000'],
         ]);
 
@@ -660,19 +659,11 @@ class AttendanceController extends Controller
         $approvalMode = $status === 'approved'
             ? (string) ($validated['approval_mode'] ?? 'full_work')
             : null;
-        if ($status === 'approved' && $approvalMode === 'manual' && ! $this->isValidWorkUnitStep($validated['approved_work_units'] ?? null)) {
-            return response()->json([
-                'message' => 'Số công thủ công chỉ nhận bước 0.1 và tối đa 1.0 công.',
-            ], 422);
-        }
-        $approvedUnits = $status === 'approved' && $approvalMode === 'manual'
-            ? $this->normalizeWorkUnits($validated['approved_work_units'] ?? 0)
-            : ($status === 'approved' && $approvalMode === 'full_work' ? null : null);
 
         $attendanceRequest->update([
             'status' => $status,
             'approval_mode' => $approvalMode,
-            'approved_work_units' => $approvedUnits,
+            'approved_work_units' => null,
             'decision_note' => trim((string) ($validated['decision_note'] ?? '')) ?: null,
             'decided_by' => $request->user()->id,
             'decided_at' => now(),
@@ -710,7 +701,7 @@ class AttendanceController extends Controller
         Request $request,
         AttendanceService $attendance
     ): JsonResponse {
-        if (! $this->canManageAttendance($request->user())) {
+        if (! $this->canManualAdjustAttendance($request->user())) {
             return response()->json(['message' => 'Không có quyền sửa công thủ công.'], 403);
         }
 
@@ -724,7 +715,7 @@ class AttendanceController extends Controller
 
         if (! $this->isValidWorkUnitStep($validated['work_units'])) {
             return response()->json([
-                'message' => 'Số công thủ công chỉ nhận bước 0.1 trong khoảng từ 0.0 đến 1.0 công.',
+                'message' => 'Số công thủ công chỉ nhận bước 0.5 trong khoảng từ 0.0 đến 1.0 công.',
             ], 422);
         }
 
@@ -935,10 +926,10 @@ class AttendanceController extends Controller
             'Tên nhân viên',
             'Kiểu làm việc',
             'Số công',
-            'Số công thiếu',
+            'Số công đi muộn',
+            'Tổng phút đi muộn',
+            'Số công còn lại',
             'Số lần gửi đơn',
-            'Số ngày đi muộn',
-            'Tổng thời gian muộn (phút)',
         ];
 
         $summarySheet->fromArray($summaryHeaders, null, 'A1');
@@ -948,10 +939,10 @@ class AttendanceController extends Controller
                 $row['user_name'],
                 $row['employment_type_label'],
                 $row['work_units'],
+                $row['late_work_units'],
+                $row['total_late_minutes'],
                 $row['missing_work_units'],
                 $row['request_count'],
-                $row['late_days'],
-                $row['total_late_minutes'],
             ], null, 'A'.$summaryRowIndex);
             $summaryRowIndex++;
         }
@@ -1268,6 +1259,12 @@ class AttendanceController extends Controller
                 return (float) ($record->work_units ?? 0);
             }), 1);
             $missingUnits = round(max(0, $expectedUnits - $actualUnits), 1);
+            $lateWorkUnits = round((float) $userRecords->sum(function (AttendanceRecord $record) {
+                if ((int) ($record->minutes_late ?? 0) <= 0) {
+                    return 0;
+                }
+                return (float) ($record->work_units ?? 0);
+            }), 1);
             $lateDays = (int) $userRecords->filter(function (AttendanceRecord $record) {
                 return (int) ($record->minutes_late ?? 0) > 0;
             })->count();
@@ -1284,6 +1281,7 @@ class AttendanceController extends Controller
                 'missing_work_units' => $missingUnits,
                 'request_count' => $requestCount,
                 'late_days' => $lateDays,
+                'late_work_units' => $lateWorkUnits,
                 'total_late_minutes' => $totalLateMinutes,
             ];
         })->values()->all();
@@ -1653,7 +1651,7 @@ class AttendanceController extends Controller
 
     private function normalizeWorkUnits($value): float
     {
-        return round((float) $value, 1);
+        return round((float) $value * 2) / 2;
     }
 
     private function isValidWorkUnitStep($value): bool
@@ -1663,8 +1661,13 @@ class AttendanceController extends Controller
         }
 
         $numeric = (float) $value;
-        $scaled = round($numeric * 10, 6);
+        $scaled = round($numeric * 2, 6);
 
         return abs($scaled - round($scaled)) < 0.0001;
+    }
+
+    private function canManualAdjustAttendance(?User $user): bool
+    {
+        return $user && $user->role === 'administrator';
     }
 }

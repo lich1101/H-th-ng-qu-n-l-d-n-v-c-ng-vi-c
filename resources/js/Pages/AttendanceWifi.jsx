@@ -50,7 +50,6 @@ const requestTypeOptions = [
 const approvalModeOptions = [
     { value: 'full_work', label: 'Duyệt đủ công' },
     { value: 'no_change', label: 'Duyệt không đủ công' },
-    { value: 'manual', label: 'Nhập số công thủ công' },
 ];
 
 const cardClass = 'rounded-[28px] border border-slate-200/70 bg-white p-6 shadow-soft';
@@ -169,6 +168,7 @@ export default function AttendanceWifi(props) {
     const toast = useToast();
     const role = props?.auth?.user?.role || '';
     const canManage = ['admin', 'administrator', 'ke_toan'].includes(role);
+    const canManualAdjust = role === 'administrator';
     const [activeTab, setActiveTab] = useState('personal');
     const [loading, setLoading] = useState(false);
     const [dashboard, setDashboard] = useState(null);
@@ -203,7 +203,7 @@ export default function AttendanceWifi(props) {
         content: '',
     });
     const [reviewModal, setReviewModal] = useState({ open: false, item: null });
-    const [reviewForm, setReviewForm] = useState({ status: 'approved', approval_mode: 'full_work', approved_work_units: '1', decision_note: '' });
+    const [reviewForm, setReviewForm] = useState({ status: 'approved', approval_mode: 'full_work', decision_note: '' });
     const [holidays, setHolidays] = useState([]);
     const [holidayModal, setHolidayModal] = useState({ open: false, item: null });
     const [holidayForm, setHolidayForm] = useState({ start_date: todayIso(), end_date: todayIso(), title: '', note: '', is_active: true });
@@ -316,13 +316,13 @@ export default function AttendanceWifi(props) {
         setReviewForm({
             status: 'approved',
             approval_mode: 'full_work',
-            approved_work_units: String(item?.approved_work_units ?? fallbackUnits),
             decision_note: '',
         });
         setReviewModal({ open: true, item });
     };
 
     const openManualRecord = (item = null) => {
+        if (!canManualAdjust) return;
         const fallbackUnits = Number.isFinite(Number(item?.work_units))
             ? Number(item.work_units).toFixed(1)
             : ((item?.employment_type || 'full_time') === 'full_time' ? '1.0' : '0.5');
@@ -337,6 +337,7 @@ export default function AttendanceWifi(props) {
     };
 
     const openManualRecordFromMatrixCell = (row, cell) => {
+        if (!canManualAdjust) return;
         openManualRecord({
             user_id: row?.user_id,
             user_name: row?.user_name,
@@ -534,9 +535,6 @@ export default function AttendanceWifi(props) {
         const payload = {
             status: reviewForm.status,
             approval_mode: reviewForm.status === 'approved' ? reviewForm.approval_mode : null,
-            approved_work_units: reviewForm.status === 'approved' && reviewForm.approval_mode === 'manual'
-                ? Number(reviewForm.approved_work_units || 0)
-                : null,
             decision_note: reviewForm.decision_note || null,
         };
         try {
@@ -636,44 +634,6 @@ export default function AttendanceWifi(props) {
             description="Check-in bằng Wi‑Fi/BSSID trên app mobile, đồng thời quản trị thiết bị, đơn xin phép, ngày lễ và báo cáo công trên web."
             stats={stats}
         >
-            <div className="mt-1 rounded-[30px] border border-slate-200/70 bg-white p-6 shadow-soft">
-                <div className="grid gap-5 xl:grid-cols-[1.12fr_0.88fr]">
-                    <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-primary/80">Mobile-first workflow</p>
-                        <h2 className="mt-3 text-3xl font-semibold leading-tight text-slate-900">Check-in diễn ra trên app, quản trị diễn ra trên web.</h2>
-                        <p className="mt-3 max-w-2xl text-sm leading-6 text-text-muted">
-                            Người dùng chấm công trên mobile với Wi-Fi/BSSID và thiết bị đã duyệt. Trên web, admin tập trung cấu hình rule,
-                            duyệt thiết bị, xử lý đơn đi muộn và theo dõi báo cáo theo cùng một ngôn ngữ giao diện.
-                        </p>
-                    </div>
-                    <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-1">
-                        <div className="rounded-[22px] border border-slate-200/70 bg-white p-4">
-                            <div className="text-sm font-semibold text-slate-900">Xin quyền ngay từ đầu</div>
-                            <div className="mt-1 text-sm leading-6 text-text-muted">App nên hỏi Wi-Fi/location và thông báo ngay khi vào để tránh ngắt luồng khi check-in.</div>
-                        </div>
-                        <div className="rounded-[22px] border border-slate-200/70 bg-white p-4">
-                            <div className="text-sm font-semibold text-slate-900">Thiết bị và Wi-Fi tách vai</div>
-                            <div className="mt-1 text-sm leading-6 text-text-muted">Mobile dùng để đọc BSSID. Web tập trung phê duyệt và cấu hình, không cố thay thế quyền hệ thống.</div>
-                        </div>
-                        <div className="rounded-[22px] border border-slate-200/70 bg-white p-4">
-                            <div className="text-sm font-semibold text-slate-900">Giao diện đồng nhất</div>
-                            <div className="mt-1 text-sm leading-6 text-text-muted">Palette teal/slate, card bo lớn và surface sáng giúp app lẫn web nhìn liền mạch hơn.</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                {stats.map((item) => (
-                    <StatCard key={item.label} label={item.label} value={item.value} hint={item.hint} />
-                ))}
-            </div>
-
-            <div className="mt-5 rounded-[24px] border border-teal-200/70 bg-teal-50/85 px-5 py-4 text-sm leading-6 text-teal-900 shadow-card">
-                Check-in và lấy BSSID Wi-Fi hiện tại chỉ hỗ trợ trên app mobile vì trình duyệt web không có quyền đọc BSSID hệ thống.
-                Màn web này dành cho duyệt, cấu hình, xem công và xuất báo cáo theo cùng chuẩn hiển thị với app.
-            </div>
-
             <div className="mt-5 flex flex-wrap gap-2">
                 {tabs.map((key) => (
                     <button
@@ -775,8 +735,8 @@ export default function AttendanceWifi(props) {
                 {activeTab === 'requests' && (
                     <div className="grid gap-5 xl:grid-cols-[0.92fr_1.08fr]">
                         <div className={cardClass}>
-                                <h3 className="text-lg font-semibold text-slate-900">Gửi đơn xin phép</h3>
-                                <p className="mt-1 text-sm text-text-muted">Nhân viên có thể gửi đơn đi muộn hoặc nghỉ phép. Admin, quản trị hệ thống và kế toán có thể duyệt và quyết định số công.</p>
+                            <h3 className="text-lg font-semibold text-slate-900">Gửi đơn xin phép</h3>
+                                <p className="mt-1 text-sm text-text-muted">Nhân viên có thể gửi đơn đi muộn hoặc nghỉ phép. Admin và kế toán duyệt đơn; khi duyệt sẽ điều chỉnh giờ vào theo đơn xin phép (nếu có).</p>
                             <div className="mt-4 grid gap-4">
                                 <FormField label="Loại đơn" required>
                                     <select className={inputClass} value={requestForm.request_type} onChange={(e) => setRequestForm((s) => ({ ...s, request_type: e.target.value }))}>
@@ -1163,7 +1123,9 @@ export default function AttendanceWifi(props) {
                             onSearch={handleReportSearch}
                             actions={(
                                 <FilterActionGroup className="xl:justify-end">
-                                    <button type="button" className={buttonSecondaryClass} onClick={() => openManualRecord()}>Sửa công tay</button>
+                                    {canManualAdjust ? (
+                                        <button type="button" className={buttonSecondaryClass} onClick={() => openManualRecord()}>Sửa công tay</button>
+                                    ) : null}
                                     <button type="button" className={buttonSecondaryClass} onClick={() => loadReport(reportFilters)}>Xem báo cáo</button>
                                     <button type="button" className={buttonPrimaryClass} onClick={() => exportReport(reportFilters)}>Xuất Excel</button>
                                 </FilterActionGroup>
@@ -1272,6 +1234,7 @@ export default function AttendanceWifi(props) {
                                                     <button
                                                         type="button"
                                                         onClick={() => openManualRecordFromMatrixCell(row, cell)}
+                                                        disabled={!canManualAdjust}
                                                         className="mx-auto inline-flex min-h-[30px] min-w-[38px] items-center justify-center gap-1 rounded-lg border border-transparent px-1.5 py-1 text-xs font-semibold text-slate-700 transition hover:border-slate-200 hover:bg-slate-100"
                                                     >
                                                         <span>{cell.work_units_display || '·'}</span>
@@ -1284,9 +1247,11 @@ export default function AttendanceWifi(props) {
                                 </tbody>
                             </table>
                         </div>
-                        <div className="mt-3 rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3 text-xs text-text-muted">
-                            Bấm vào từng ô ngày để sửa công tay nhanh cho đúng nhân sự và đúng ngày.
-                        </div>
+                        {canManualAdjust ? (
+                            <div className="mt-3 rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3 text-xs text-text-muted">
+                                Bấm vào từng ô ngày để sửa công tay nhanh cho đúng nhân sự và đúng ngày.
+                            </div>
+                        ) : null}
                     </div>
                 )}
             </div>
@@ -1358,7 +1323,7 @@ export default function AttendanceWifi(props) {
                 open={reviewModal.open}
                 onClose={() => setReviewModal({ open: false, item: null })}
                 title={reviewModal.item ? `Duyệt đơn #${reviewModal.item.id}` : 'Duyệt đơn'}
-                description="Chọn duyệt đủ công, duyệt không đủ công hoặc nhập số công thủ công theo quyết định xử lý."
+                description="Chọn duyệt đủ công hoặc duyệt không đủ công. Hệ thống sẽ điều chỉnh giờ vào theo giờ xin phép nếu có."
                 size="md"
             >
                 <div className="grid gap-4 md:grid-cols-2">
@@ -1377,12 +1342,6 @@ export default function AttendanceWifi(props) {
                             </select>
                         </FormField>
                     ) : null}
-                    {reviewForm.status === 'approved' && reviewForm.approval_mode === 'manual' ? (
-                        <FormField label="Số công duyệt" required className="md:col-span-2">
-                            <input type="number" step="0.1" min="0" max="1" className={inputClass} value={reviewForm.approved_work_units} onChange={(e) => setReviewForm((s) => ({ ...s, approved_work_units: e.target.value }))} />
-                            <span className="mt-1 block text-xs text-text-muted">Hệ thống nhận bước 0.1. 1.0 là đủ ngày công, 0.5 là nửa buổi.</span>
-                        </FormField>
-                    ) : null}
                     <FormField label="Ghi chú duyệt" className="md:col-span-2">
                         <textarea className={textAreaClass} value={reviewForm.decision_note} onChange={(e) => setReviewForm((s) => ({ ...s, decision_note: e.target.value }))} placeholder="Ghi chú gửi lại cho nhân viên" />
                     </FormField>
@@ -1397,7 +1356,7 @@ export default function AttendanceWifi(props) {
                 open={manualRecordModal.open}
                 onClose={() => setManualRecordModal({ open: false, item: null })}
                 title={manualRecordModal.item ? `Sửa công ${manualRecordModal.item.user_name}` : 'Sửa công thủ công'}
-                description="Admin, administrator và kế toán có thể sửa công cho bất kỳ nhân sự nào theo bước 0.1. 1.0 là đủ ngày công."
+                description="Chỉ administrator được sửa công thủ công. Bước công là 0.5 (0.5 hoặc 1.0)."
                 size="md"
             >
                 <div className="grid gap-4 md:grid-cols-2">
@@ -1418,8 +1377,8 @@ export default function AttendanceWifi(props) {
                         <input type="time" className={inputClass} value={manualRecordForm.check_in_time} onChange={(e) => setManualRecordForm((s) => ({ ...s, check_in_time: e.target.value }))} />
                     </FormField>
                     <FormField label="Số công" required>
-                        <input type="number" step="0.1" min="0" max="1" className={inputClass} value={manualRecordForm.work_units} onChange={(e) => setManualRecordForm((s) => ({ ...s, work_units: e.target.value }))} />
-                        <span className="mt-1 block text-xs text-text-muted">Nhập từ 0.0 đến 1.0 theo bước 0.1. Ví dụ: 1.0 đủ ngày, 0.5 nửa buổi.</span>
+                        <input type="number" step="0.5" min="0" max="1" className={inputClass} value={manualRecordForm.work_units} onChange={(e) => setManualRecordForm((s) => ({ ...s, work_units: e.target.value }))} />
+                        <span className="mt-1 block text-xs text-text-muted">Nhập 0.5 hoặc 1.0 theo bước 0.5.</span>
                     </FormField>
                     <FormField label="Ghi chú" className="md:col-span-2">
                         <textarea className={textAreaClass} value={manualRecordForm.note} onChange={(e) => setManualRecordForm((s) => ({ ...s, note: e.target.value }))} placeholder="Ví dụ: Điều chỉnh tay theo quyết định quản lý" />
