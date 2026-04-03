@@ -746,7 +746,11 @@ export default function SystemSettings(props) {
             toast.success('Đã cập nhật cài đặt hệ thống.');
             await reloadSystemStatus();
         } catch (e) {
-            toast.error(e?.response?.data?.message || 'Cập nhật thất bại.');
+            const validationErrors = e?.response?.data?.errors;
+            const firstValidationMessage = validationErrors && typeof validationErrors === 'object'
+                ? Object.values(validationErrors).flat().find(Boolean)
+                : null;
+            toast.error(firstValidationMessage || e?.response?.data?.message || 'Cập nhật thất bại.');
         } finally {
             setLoading(false);
         }

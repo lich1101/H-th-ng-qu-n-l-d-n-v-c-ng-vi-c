@@ -38,7 +38,6 @@ export default function ProductCategories(props) {
     const handleSearch = (val) => {
         const next = { ...filters, search: val, page: 1 };
         setFilters(next);
-        fetchCategories(1, next);
     };
 
     const fetchCategories = async (pageOrFilters = filters.page, maybeFilters = filters) => {

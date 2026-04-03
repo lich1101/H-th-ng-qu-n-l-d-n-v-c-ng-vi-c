@@ -79,7 +79,6 @@ export default function TaskItemsBoard(props) {
     const handleSearch = (val) => {
         const next = { ...filters, search: val, page: 1 };
         setFilters(next);
-        fetchItems(1, next);
     };
 
     const fetchItems = async (page = filters.page, nextFilters = filters) => {

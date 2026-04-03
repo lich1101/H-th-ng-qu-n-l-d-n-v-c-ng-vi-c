@@ -423,18 +423,42 @@ export default function ServiceWorkflows(props) {
                                 </div>
 
                                 <div className="grid gap-3 md:grid-cols-2">
-                                    <input className="rounded-xl border border-slate-200 px-3 py-2" placeholder="Tiêu đề công việc" value={task.title} onChange={(e) => updateTaskField(taskIndex, 'title', e.target.value)} />
-                                    <input className="rounded-xl border border-slate-200 px-3 py-2" placeholder="Mô tả ngắn" value={task.description || ''} onChange={(e) => updateTaskField(taskIndex, 'description', e.target.value)} />
-                                    <select className="rounded-xl border border-slate-200 px-3 py-2" value={task.priority} onChange={(e) => updateTaskField(taskIndex, 'priority', e.target.value)}>
-                                        {TASK_PRIORITY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                                    </select>
-                                    <select className="rounded-xl border border-slate-200 px-3 py-2" value={task.status} onChange={(e) => updateTaskField(taskIndex, 'status', e.target.value)}>
-                                        {TASK_STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                                    </select>
-                                    <input type="number" min="1" max="100" className="rounded-xl border border-slate-200 px-3 py-2" placeholder="Tỷ trọng %" value={task.weight_percent} onChange={(e) => updateTaskField(taskIndex, 'weight_percent', e.target.value)} />
-                                    <input type="number" min="0" className="rounded-xl border border-slate-200 px-3 py-2" placeholder="Bắt đầu sau N ngày từ ngày bắt đầu dự án" value={task.start_offset_days} onChange={(e) => updateTaskField(taskIndex, 'start_offset_days', e.target.value)} />
-                                    <input type="number" min="1" className="rounded-xl border border-slate-200 px-3 py-2" placeholder="Thời lượng (ngày)" value={task.duration_days} onChange={(e) => updateTaskField(taskIndex, 'duration_days', e.target.value)} />
-                                    <input type="number" min="0" className="rounded-xl border border-slate-200 px-3 py-2" placeholder="Thứ tự" value={task.sort_order} onChange={(e) => updateTaskField(taskIndex, 'sort_order', e.target.value)} />
+                                    <div>
+                                        <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-text-subtle">Tiêu đề công việc</label>
+                                        <input className="w-full rounded-xl border border-slate-200 px-3 py-2" placeholder="Nhập tiêu đề công việc mẫu" value={task.title} onChange={(e) => updateTaskField(taskIndex, 'title', e.target.value)} />
+                                    </div>
+                                    <div>
+                                        <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-text-subtle">Mô tả ngắn</label>
+                                        <input className="w-full rounded-xl border border-slate-200 px-3 py-2" placeholder="Nhập mô tả ngắn" value={task.description || ''} onChange={(e) => updateTaskField(taskIndex, 'description', e.target.value)} />
+                                    </div>
+                                    <div>
+                                        <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-text-subtle">Ưu tiên</label>
+                                        <select className="w-full rounded-xl border border-slate-200 px-3 py-2" value={task.priority} onChange={(e) => updateTaskField(taskIndex, 'priority', e.target.value)}>
+                                            {TASK_PRIORITY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-text-subtle">Trạng thái</label>
+                                        <select className="w-full rounded-xl border border-slate-200 px-3 py-2" value={task.status} onChange={(e) => updateTaskField(taskIndex, 'status', e.target.value)}>
+                                            {TASK_STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-text-subtle">Tỷ trọng (%)</label>
+                                        <input type="number" min="1" max="100" className="w-full rounded-xl border border-slate-200 px-3 py-2" placeholder="1 - 100" value={task.weight_percent} onChange={(e) => updateTaskField(taskIndex, 'weight_percent', e.target.value)} />
+                                    </div>
+                                    <div>
+                                        <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-text-subtle">Bắt đầu sau (ngày)</label>
+                                        <input type="number" min="0" className="w-full rounded-xl border border-slate-200 px-3 py-2" placeholder="Số ngày tính từ ngày bắt đầu dự án" value={task.start_offset_days} onChange={(e) => updateTaskField(taskIndex, 'start_offset_days', e.target.value)} />
+                                    </div>
+                                    <div>
+                                        <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-text-subtle">Thời lượng (ngày)</label>
+                                        <input type="number" min="1" className="w-full rounded-xl border border-slate-200 px-3 py-2" placeholder="Số ngày thực hiện" value={task.duration_days} onChange={(e) => updateTaskField(taskIndex, 'duration_days', e.target.value)} />
+                                    </div>
+                                    <div>
+                                        <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-text-subtle">Thứ tự</label>
+                                        <input type="number" min="0" className="w-full rounded-xl border border-slate-200 px-3 py-2" placeholder="Thứ tự hiển thị" value={task.sort_order} onChange={(e) => updateTaskField(taskIndex, 'sort_order', e.target.value)} />
+                                    </div>
                                 </div>
 
                                 <div className="mt-3 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -454,18 +478,42 @@ export default function ServiceWorkflows(props) {
                                                 </button>
                                             </div>
                                             <div className="grid gap-2 md:grid-cols-2">
-                                                <input className="rounded-xl border border-slate-200 px-3 py-2" placeholder="Tiêu đề đầu việc" value={item.title} onChange={(e) => updateItemField(taskIndex, itemIndex, 'title', e.target.value)} />
-                                                <input className="rounded-xl border border-slate-200 px-3 py-2" placeholder="Mô tả" value={item.description || ''} onChange={(e) => updateItemField(taskIndex, itemIndex, 'description', e.target.value)} />
-                                                <select className="rounded-xl border border-slate-200 px-3 py-2" value={item.priority} onChange={(e) => updateItemField(taskIndex, itemIndex, 'priority', e.target.value)}>
-                                                    {TASK_PRIORITY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                                                </select>
-                                                <select className="rounded-xl border border-slate-200 px-3 py-2" value={item.status} onChange={(e) => updateItemField(taskIndex, itemIndex, 'status', e.target.value)}>
-                                                    {TASK_STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                                                </select>
-                                                <input type="number" min="1" max="100" className="rounded-xl border border-slate-200 px-3 py-2" placeholder="Tỷ trọng %" value={item.weight_percent} onChange={(e) => updateItemField(taskIndex, itemIndex, 'weight_percent', e.target.value)} />
-                                                <input type="number" min="0" className="rounded-xl border border-slate-200 px-3 py-2" placeholder="Bắt đầu sau N ngày (so với công việc cha)" value={item.start_offset_days} onChange={(e) => updateItemField(taskIndex, itemIndex, 'start_offset_days', e.target.value)} />
-                                                <input type="number" min="1" className="rounded-xl border border-slate-200 px-3 py-2" placeholder="Thời lượng (ngày)" value={item.duration_days} onChange={(e) => updateItemField(taskIndex, itemIndex, 'duration_days', e.target.value)} />
-                                                <input type="number" min="0" className="rounded-xl border border-slate-200 px-3 py-2" placeholder="Thứ tự" value={item.sort_order} onChange={(e) => updateItemField(taskIndex, itemIndex, 'sort_order', e.target.value)} />
+                                                <div>
+                                                    <label className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.08em] text-text-subtle">Tiêu đề đầu việc</label>
+                                                    <input className="w-full rounded-xl border border-slate-200 px-3 py-2" placeholder="Nhập tiêu đề đầu việc mẫu" value={item.title} onChange={(e) => updateItemField(taskIndex, itemIndex, 'title', e.target.value)} />
+                                                </div>
+                                                <div>
+                                                    <label className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.08em] text-text-subtle">Mô tả</label>
+                                                    <input className="w-full rounded-xl border border-slate-200 px-3 py-2" placeholder="Nhập mô tả đầu việc" value={item.description || ''} onChange={(e) => updateItemField(taskIndex, itemIndex, 'description', e.target.value)} />
+                                                </div>
+                                                <div>
+                                                    <label className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.08em] text-text-subtle">Ưu tiên</label>
+                                                    <select className="w-full rounded-xl border border-slate-200 px-3 py-2" value={item.priority} onChange={(e) => updateItemField(taskIndex, itemIndex, 'priority', e.target.value)}>
+                                                        {TASK_PRIORITY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.08em] text-text-subtle">Trạng thái</label>
+                                                    <select className="w-full rounded-xl border border-slate-200 px-3 py-2" value={item.status} onChange={(e) => updateItemField(taskIndex, itemIndex, 'status', e.target.value)}>
+                                                        {TASK_STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.08em] text-text-subtle">Tỷ trọng (%)</label>
+                                                    <input type="number" min="1" max="100" className="w-full rounded-xl border border-slate-200 px-3 py-2" placeholder="1 - 100" value={item.weight_percent} onChange={(e) => updateItemField(taskIndex, itemIndex, 'weight_percent', e.target.value)} />
+                                                </div>
+                                                <div>
+                                                    <label className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.08em] text-text-subtle">Bắt đầu sau (ngày)</label>
+                                                    <input type="number" min="0" className="w-full rounded-xl border border-slate-200 px-3 py-2" placeholder="So với công việc cha" value={item.start_offset_days} onChange={(e) => updateItemField(taskIndex, itemIndex, 'start_offset_days', e.target.value)} />
+                                                </div>
+                                                <div>
+                                                    <label className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.08em] text-text-subtle">Thời lượng (ngày)</label>
+                                                    <input type="number" min="1" className="w-full rounded-xl border border-slate-200 px-3 py-2" placeholder="Số ngày thực hiện" value={item.duration_days} onChange={(e) => updateItemField(taskIndex, itemIndex, 'duration_days', e.target.value)} />
+                                                </div>
+                                                <div>
+                                                    <label className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.08em] text-text-subtle">Thứ tự</label>
+                                                    <input type="number" min="0" className="w-full rounded-xl border border-slate-200 px-3 py-2" placeholder="Thứ tự hiển thị" value={item.sort_order} onChange={(e) => updateItemField(taskIndex, itemIndex, 'sort_order', e.target.value)} />
+                                                </div>
                                             </div>
                                         </div>
                                     ))}

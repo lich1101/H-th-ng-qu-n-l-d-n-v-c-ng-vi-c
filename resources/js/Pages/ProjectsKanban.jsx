@@ -166,7 +166,6 @@ export default function ProjectsKanban(props) {
     const handleProjectSearch = (val) => {
         const next = { ...filters, search: val, page: 1 };
         setFilters(next);
-        fetchProjects(1, next);
     };
 
     const fetchProjects = async (pageOrFilters = filters.page, maybeFilters = filters) => {

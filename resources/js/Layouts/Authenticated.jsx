@@ -364,8 +364,7 @@ export default function Authenticated({ auth, header, children }) {
     const [collapsedGroups, setCollapsedGroups] = useState(() => {
         const next = {};
         visibleGroups.forEach((group) => {
-            const active = group.items.some((item) => route().current(item.routeName));
-            next[group.label] = !active;
+            next[group.label] = false;
         });
         return next;
     });
@@ -373,8 +372,7 @@ export default function Authenticated({ auth, header, children }) {
     useEffect(() => {
         const next = {};
         visibleGroups.forEach((group) => {
-            const active = group.items.some((item) => route().current(item.routeName));
-            next[group.label] = !active;
+            next[group.label] = false;
         });
         setCollapsedGroups(next);
     }, [currentRole]);

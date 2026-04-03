@@ -45,7 +45,6 @@ export default function HandoverCenter(props) {
     const handleSearch = (val) => {
         const next = { ...filters, search: val, page: 1 };
         setFilters(next);
-        fetchQueue(1, next);
     };
 
     const fetchQueue = async (pageOrFilters = filters.page, maybeFilters = filters) => {
@@ -154,6 +153,13 @@ export default function HandoverCenter(props) {
                     onSearch={handleSearch}
                     actions={(
                         <FilterActionGroup>
+                            <button
+                                type="button"
+                                className="rounded-xl border border-slate-200/80 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700"
+                                onClick={() => fetchQueue(1, { ...filters, page: 1 })}
+                            >
+                                Lọc
+                            </button>
                             {userRole === 'nhan_vien' && (
                                 <button
                                     type="button"

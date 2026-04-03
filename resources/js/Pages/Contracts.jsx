@@ -368,7 +368,6 @@ export default function Contracts(props) {
     const handleContractSearch = (val) => {
         const next = { ...filters, search: val, page: 1 };
         setFilters(next);
-        fetchContracts(1, next);
     };
 
     const fetchContracts = async (pageOrFilters = filters.page, maybeFilters = filters) => {

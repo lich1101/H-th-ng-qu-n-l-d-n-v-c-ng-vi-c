@@ -159,7 +159,6 @@ export default function Opportunities(props) {
     const handleOpportunitySearch = (val) => {
         const next = { ...filters, search: val, page: 1 };
         setFilters(next);
-        fetchOpportunities(1, next);
     };
 
     const fetchOpportunities = async (pageOrFilters = filters.page, maybeFilters = filters) => {

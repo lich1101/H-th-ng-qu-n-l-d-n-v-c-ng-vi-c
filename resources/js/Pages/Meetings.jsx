@@ -136,7 +136,6 @@ export default function Meetings(props) {
     const handleSearch = (val) => {
         const next = { ...filters, search: val, page: 1 };
         setFilters(next);
-        fetchMeetings(1, next);
     };
 
     const fetchMeetings = async (nextPage = 1, nextFilters = filters) => {

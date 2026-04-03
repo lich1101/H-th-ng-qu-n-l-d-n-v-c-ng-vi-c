@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
 import PageContainer from '@/Components/PageContainer';
@@ -27,6 +27,7 @@ function FormField({ label, required = false, children, className = '' }) {
 
 export default function UserAccountsDashboard(props) {
     const [filters, setFilters] = useState({ search: '', role: '', status: '', per_page: 10, page: 1 });
+    const filtersRef = useRef(filters);
     const [usersData, setUsersData] = useState([]);
     const [departments, setDepartments] = useState([]);
     const [pagination, setPagination] = useState({ current_page: 1, last_page: 1, total: 0 });
@@ -111,17 +112,20 @@ export default function UserAccountsDashboard(props) {
     }, [filters.page, filters.per_page, filters.role, filters.status]);
 
     useEffect(() => {
+        filtersRef.current = filters;
+    }, [filters]);
+
+    useEffect(() => {
         fetchDepartments();
         const timer = window.setInterval(() => {
-            fetchAccounts(filters);
+            fetchAccounts(filtersRef.current);
         }, 30000);
         return () => window.clearInterval(timer);
-    }, [filters]);
+    }, []);
 
     const handleSearch = (val) => {
         const next = { ...filters, search: val, page: 1 };
         setFilters(next);
-        fetchAccounts(next);
     };
 
     const submitSearch = (e) => {

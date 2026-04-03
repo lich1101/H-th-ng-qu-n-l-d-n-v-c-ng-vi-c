@@ -223,7 +223,6 @@ export default function CRM(props) {
     const handleClientSearch = (val) => {
         const next = { ...clientFilters, search: val };
         setClientFilters(next);
-        fetchClients(1, next);
     };
 
     const fetchPayments = async (page = 1, filtersArg = paymentFilters) => {

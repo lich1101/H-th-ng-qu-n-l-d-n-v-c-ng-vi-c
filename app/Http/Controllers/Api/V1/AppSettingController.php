@@ -82,7 +82,7 @@ class AppSettingController extends Controller
             'gsc_recipes_path_token' => ['nullable', 'string', 'max:120'],
             'gsc_brand_terms' => ['nullable', 'string', 'max:12000'],
             'gsc_sync_time' => ['nullable', 'regex:/^\d{2}:\d{2}$/'],
-            'app_android_apk_url' => ['nullable', 'url', 'max:255'],
+            'app_android_apk_url' => ['nullable', 'string', 'max:255'],
             'app_ios_testflight_url' => ['nullable', 'url', 'max:255'],
             'app_release_notes' => ['nullable', 'string', 'max:20000'],
             'app_release_version' => ['nullable', 'string', 'max:40'],
@@ -105,7 +105,12 @@ class AppSettingController extends Controller
             $logoUrl = Storage::url($stored);
         }
 
-        $apkUrl = $validated['app_android_apk_url'] ?? $setting->app_android_apk_url ?? null;
+        $apkUrl = array_key_exists('app_android_apk_url', $validated)
+            ? trim((string) ($validated['app_android_apk_url'] ?? ''))
+            : ($setting->app_android_apk_url ?? null);
+        if ($apkUrl === '') {
+            $apkUrl = null;
+        }
         if ($request->hasFile('app_android_apk_file')) {
             $storedApk = $request->file('app_android_apk_file')->store('app-builds', 'public');
             $apkUrl = Storage::url($storedApk);

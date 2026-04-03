@@ -374,7 +374,6 @@ export default function AttendanceWifi(props) {
     const handleRequestSearch = (val) => {
         const next = { ...requestFilters, search: val, page: 1 };
         setRequestFilters(next);
-        loadRequests(next);
     };
 
     const loadRequests = async (filters = requestFilters) => {
@@ -397,7 +396,6 @@ export default function AttendanceWifi(props) {
     const handleDeviceSearch = (val) => {
         const next = { ...deviceFilters, search: val, page: 1 };
         setDeviceFilters(next);
-        loadDevices(next);
     };
 
     const loadDevices = async (filters = deviceFilters) => {
@@ -421,7 +419,6 @@ export default function AttendanceWifi(props) {
     const handleStaffSearch = (val) => {
         const next = { ...staffFilters, search: val, page: 1 };
         setStaffFilters(next);
-        loadStaff(next);
     };
 
     const loadStaff = async (filters = staffFilters) => {
@@ -439,7 +436,6 @@ export default function AttendanceWifi(props) {
     const handleReportSearch = (val) => {
         const next = { ...reportFilters, search: val };
         setReportFilters(next);
-        loadReport(next);
     };
 
     const loadReport = async (filters = reportFilters) => {
@@ -771,13 +767,23 @@ export default function AttendanceWifi(props) {
                                 description={canManage ? 'Xem và duyệt toàn bộ đơn đi muộn hoặc nghỉ phép của nhân sự.' : 'Theo dõi trạng thái đơn của bạn.'}
                                 searchValue={requestFilters.search}
                                 onSearch={handleRequestSearch}
+                                actions={(
+                                    <FilterActionGroup className="xl:justify-end">
+                                        <button
+                                            type="button"
+                                            className={buttonSecondaryClass}
+                                            onClick={() => loadRequests({ ...requestFilters, page: 1 })}
+                                        >
+                                            Lọc
+                                        </button>
+                                    </FilterActionGroup>
+                                )}
                             >
                                 <div className="grid gap-4 md:grid-cols-1">
                                     <FilterField label="Trạng thái">
                                         <select className={filterControlClass} value={requestFilters.status} onChange={(e) => {
                                             const next = { ...requestFilters, status: e.target.value, page: 1 };
                                             setRequestFilters(next);
-                                            loadRequests(next);
                                         }}>
                                             <option value="">Tất cả trạng thái</option>
                                             <option value="pending">Chờ duyệt</option>
@@ -937,13 +943,23 @@ export default function AttendanceWifi(props) {
                             description="Mỗi nhân viên chỉ dùng một thiết bị đã được duyệt để chấm công trên đúng Wi-Fi/BSSID công ty."
                             searchValue={deviceFilters.search}
                             onSearch={handleDeviceSearch}
+                            actions={(
+                                <FilterActionGroup className="xl:justify-end">
+                                    <button
+                                        type="button"
+                                        className={buttonSecondaryClass}
+                                        onClick={() => loadDevices({ ...deviceFilters, page: 1 })}
+                                    >
+                                        Lọc
+                                    </button>
+                                </FilterActionGroup>
+                            )}
                         >
                             <div className="grid gap-4 md:grid-cols-1">
                                 <FilterField label="Trạng thái">
                                     <select className={filterControlClass} value={deviceFilters.status} onChange={(e) => {
                                         const next = { ...deviceFilters, status: e.target.value, page: 1 };
                                         setDeviceFilters(next);
-                                        loadDevices(next);
                                     }}>
                                         <option value="">Tất cả trạng thái</option>
                                         <option value="pending">Chờ duyệt</option>
@@ -1038,13 +1054,23 @@ export default function AttendanceWifi(props) {
                             description="Toàn thời gian phải chấm trong khung đầu giờ để được 1 công. Mỗi chiều lấy mốc từ giờ bắt đầu buổi chiều."
                             searchValue={staffFilters.search}
                             onSearch={handleStaffSearch}
+                            actions={(
+                                <FilterActionGroup className="xl:justify-end">
+                                    <button
+                                        type="button"
+                                        className={buttonSecondaryClass}
+                                        onClick={() => loadStaff({ ...staffFilters, page: 1 })}
+                                    >
+                                        Lọc
+                                    </button>
+                                </FilterActionGroup>
+                            )}
                         >
                             <div className="grid gap-4 md:grid-cols-1">
                                 <FilterField label="Vai trò">
                                     <select className={filterControlClass} value={staffFilters.role} onChange={(e) => {
                                         const next = { ...staffFilters, role: e.target.value, page: 1 };
                                         setStaffFilters(next);
-                                        loadStaff(next);
                                     }}>
                                         <option value="">Tất cả vai trò</option>
                                         <option value="admin">Admin</option>
