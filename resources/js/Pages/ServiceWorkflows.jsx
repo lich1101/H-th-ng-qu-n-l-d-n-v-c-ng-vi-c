@@ -286,6 +286,7 @@ export default function ServiceWorkflows(props) {
 
     return (
         <PageContainer
+            auth={props.auth}
             title="Barem công việc theo Topic"
             description="Tạo topic barem gồm công việc mẫu và đầu việc mẫu để khi tạo dự án chỉ cần chọn barem là hệ thống tự sinh kế hoạch."
             actions={canEdit ? (

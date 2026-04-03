@@ -1,5 +1,5 @@
 import React from 'react';
-import { Head } from '@inertiajs/inertia-react';
+import { Head, usePage } from '@inertiajs/inertia-react';
 import Authenticated from '@/Layouts/Authenticated';
 
 export default function PageContainer({
@@ -9,9 +9,12 @@ export default function PageContainer({
     stats = [],
     children,
 }) {
+    const page = usePage();
+    const resolvedAuth = auth || page?.props?.auth || { user: null };
+
     return (
         <Authenticated
-            auth={auth}
+            auth={resolvedAuth}
             header={
                 <div className="rounded-[28px] border border-slate-200/80 bg-white p-6 shadow-soft">
                     <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
