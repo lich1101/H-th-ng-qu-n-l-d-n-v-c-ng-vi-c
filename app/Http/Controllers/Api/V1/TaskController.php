@@ -124,22 +124,7 @@ class TaskController extends Controller
             }
         }
 
-        $notifyUserId = $task->assignee_id ? (int) $task->assignee_id : 0;
-        if ($notifyUserId > 0) {
-            try {
-                app(NotificationService::class)->notifyUsersAfterResponse(
-                    [$notifyUserId],
-                    'Có công việc mới được phân công',
-                    'Công việc: '.$task->title,
-                    [
-                        'type' => 'task_assigned',
-                        'task_id' => $task->id,
-                    ]
-                );
-            } catch (\Throwable $e) {
-                report($e);
-            }
-        }
+        $this->notifyTaskAssignee($task, true);
 
         return response()->json(
             $task->load(['project', 'project.owner', 'assignee', 'reviewer', 'department'])->loadCount(['comments', 'attachments']),
@@ -226,19 +211,7 @@ class TaskController extends Controller
 
         $newAssigneeId = (int) ($task->assignee_id ?? 0);
         if ($newAssigneeId > 0 && $newAssigneeId !== $oldAssigneeId) {
-            try {
-                app(NotificationService::class)->notifyUsersAfterResponse(
-                    [$newAssigneeId],
-                    'Bạn được giao phụ trách công việc',
-                    'Công việc: '.$task->title,
-                    [
-                        'type' => 'task_assigned',
-                        'task_id' => $task->id,
-                    ]
-                );
-            } catch (\Throwable $e) {
-                report($e);
-            }
+            $this->notifyTaskAssignee($task, false);
         }
 
         return response()->json(
@@ -381,5 +354,30 @@ class TaskController extends Controller
 
         $validated['require_acknowledgement'] = false;
         $validated['acknowledged_at'] = $assigneeId > 0 ? now() : null;
+    }
+
+    private function notifyTaskAssignee(Task $task, bool $isInitialAssignment): void
+    {
+        $assigneeId = (int) ($task->assignee_id ?? 0);
+        if ($assigneeId <= 0) {
+            return;
+        }
+
+        try {
+            app(NotificationService::class)->notifyUsersAfterResponse(
+                [$assigneeId],
+                $isInitialAssignment
+                    ? 'Có công việc mới được phân công'
+                    : 'Bạn được điều chuyển phụ trách công việc',
+                'Công việc: '.$task->title,
+                [
+                    'type' => 'task_assigned',
+                    'task_id' => (int) $task->id,
+                    'is_reassignment' => ! $isInitialAssignment,
+                ]
+            );
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 }

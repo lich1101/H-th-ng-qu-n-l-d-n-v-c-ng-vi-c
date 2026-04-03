@@ -16,6 +16,7 @@ class Project extends Model
         'contract_id',
         'service_type',
         'service_type_other',
+        'workflow_topic_id',
         'start_date',
         'deadline',
         'budget',
@@ -78,6 +79,11 @@ class Project extends Model
     public function creator()
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function workflowTopic()
+    {
+        return $this->belongsTo(WorkflowTopic::class, 'workflow_topic_id');
     }
 
     public function owner()

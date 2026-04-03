@@ -300,6 +300,7 @@ class TaskItemUpdateController extends Controller
                 $body,
                 [
                     'type' => 'task_item_update_pending',
+                    'project_id' => (int) $task->project_id,
                     'task_id' => $task->id,
                     'task_item_id' => $item->id,
                     'task_item_update_id' => $update->id,
@@ -354,6 +355,7 @@ class TaskItemUpdateController extends Controller
                 $payload['body'],
                 [
                     'type' => 'task_item_update_feedback',
+                    'project_id' => (int) $task->project_id,
                     'task_id' => $task->id,
                     'task_item_id' => $item->id,
                     'task_item_update_id' => $update->id,
@@ -382,7 +384,7 @@ class TaskItemUpdateController extends Controller
     private function adminIds(): array
     {
         return User::query()
-            ->where('role', 'admin')
+            ->whereIn('role', ['admin', 'administrator'])
             ->pluck('id')
             ->map(function ($id) {
                 return (int) $id;

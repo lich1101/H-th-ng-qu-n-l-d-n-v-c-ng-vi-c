@@ -49,6 +49,7 @@ use App\Http\Controllers\Api\V1\UserLookupController;
 use App\Http\Controllers\Api\V1\TaskUpdateController;
 use App\Http\Controllers\Api\V1\UserAccountController;
 use App\Http\Controllers\Api\V1\UserNotificationPreferenceController;
+use App\Http\Controllers\Api\V1\WorkflowTopicController;
 
 /*
 |--------------------------------------------------------------------------
@@ -444,6 +445,15 @@ Route::prefix('v1')->group(function () {
         Route::put('/services/{type}/items/{id}', [ServiceWorkflowController::class, 'update'])
             ->middleware('role:admin,quan_ly');
         Route::delete('/services/{type}/items/{id}', [ServiceWorkflowController::class, 'destroy'])
+            ->middleware('role:admin');
+
+        Route::get('/workflow-topics', [WorkflowTopicController::class, 'index'])
+            ->middleware('role:admin,quan_ly,nhan_vien');
+        Route::post('/workflow-topics', [WorkflowTopicController::class, 'store'])
+            ->middleware('role:admin,quan_ly');
+        Route::put('/workflow-topics/{workflowTopic}', [WorkflowTopicController::class, 'update'])
+            ->middleware('role:admin,quan_ly');
+        Route::delete('/workflow-topics/{workflowTopic}', [WorkflowTopicController::class, 'destroy'])
             ->middleware('role:admin');
 
         Route::get('/notifications/in-app', [NotificationCenterController::class, 'index']);

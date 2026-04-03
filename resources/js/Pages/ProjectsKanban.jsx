@@ -76,6 +76,7 @@ export default function ProjectsKanban(props) {
     const [loading, setLoading] = useState(false);
     const [projects, setProjects] = useState([]);
     const [contracts, setContracts] = useState([]);
+    const [workflowTopics, setWorkflowTopics] = useState([]);
     const [owners, setOwners] = useState([]);
     const [meta, setMeta] = useState({});
     const [paging, setPaging] = useState({ current_page: 1, last_page: 1, total: 0 });
@@ -104,6 +105,7 @@ export default function ProjectsKanban(props) {
         owner_id: '',
         repo_url: '',
         website_url: '',
+        workflow_topic_id: '',
     });
     const [selectedProjectIds, setSelectedProjectIds] = useState([]);
     const [bulkLoading, setBulkLoading] = useState(false);
@@ -234,6 +236,17 @@ export default function ProjectsKanban(props) {
         }
     };
 
+    const fetchWorkflowTopics = async () => {
+        try {
+            const res = await axios.get('/api/v1/workflow-topics', {
+                params: { per_page: 200, is_active: true },
+            });
+            setWorkflowTopics(res.data?.data || []);
+        } catch {
+            setWorkflowTopics([]);
+        }
+    };
+
     const ownerOptions = useMemo(
         () => owners.filter((owner) => !BLOCKED_ASSIGNMENT_ROLES.includes(String(owner?.role || '').toLowerCase())),
         [owners]
@@ -244,6 +257,7 @@ export default function ProjectsKanban(props) {
         fetchProjects();
         fetchContracts();
         fetchOwners();
+        fetchWorkflowTopics();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -384,6 +398,7 @@ export default function ProjectsKanban(props) {
         owner_id: patch.owner_id ?? project.owner_id ?? project.owner?.id ?? null,
         repo_url: patch.repo_url ?? project.repo_url,
         website_url: patch.website_url ?? project.website_url,
+        workflow_topic_id: patch.workflow_topic_id ?? project.workflow_topic_id ?? project.workflow_topic?.id ?? null,
     });
 
     const resetForm = () => {
@@ -403,6 +418,7 @@ export default function ProjectsKanban(props) {
             owner_id: '',
             repo_url: '',
             website_url: '',
+            workflow_topic_id: '',
         });
         fetchContracts();
     };
@@ -434,6 +450,7 @@ export default function ProjectsKanban(props) {
             owner_id: String(p.owner_id || p.owner?.id || ''),
             repo_url: p.repo_url || '',
             website_url: p.website_url || '',
+            workflow_topic_id: String(p.workflow_topic_id || p.workflow_topic?.id || ''),
         });
         setShowForm(true);
         fetchContracts(p.id, p);
@@ -464,6 +481,7 @@ export default function ProjectsKanban(props) {
                 owner_id: form.owner_id ? Number(form.owner_id) : null,
                 repo_url: form.repo_url?.trim() ? form.repo_url.trim() : null,
                 website_url: form.website_url?.trim() ? form.website_url.trim() : null,
+                workflow_topic_id: form.workflow_topic_id ? Number(form.workflow_topic_id) : null,
             };
             if (editingId) {
                 await axios.put(`/api/v1/projects/${editingId}`, payload);
@@ -1090,6 +1108,24 @@ export default function ProjectsKanban(props) {
                         <select className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" value={form.service_type} onChange={(e) => setForm((s) => ({ ...s, service_type: e.target.value }))}>
                             {serviceOptions.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
                         </select>
+                    </div>
+                    <div>
+                        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Barem công việc theo Topic</label>
+                        <select
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            value={form.workflow_topic_id}
+                            onChange={(e) => setForm((s) => ({ ...s, workflow_topic_id: e.target.value }))}
+                        >
+                            <option value="">Không dùng barem (tạo dự án trống)</option>
+                            {workflowTopics.map((topic) => (
+                                <option key={topic.id} value={String(topic.id)}>
+                                    {topic.name} {topic.code ? `• ${topic.code}` : ''} ({topic.tasks?.length || 0} công việc mẫu)
+                                </option>
+                            ))}
+                        </select>
+                        <p className="mt-1 text-xs text-text-muted">
+                            Khi tạo dự án mới, nếu chọn barem thì hệ thống tự sinh công việc và đầu việc theo timeline dự án, chưa gán người phụ trách.
+                        </p>
                     </div>
                     {form.service_type === 'khac' && (
                         <div>

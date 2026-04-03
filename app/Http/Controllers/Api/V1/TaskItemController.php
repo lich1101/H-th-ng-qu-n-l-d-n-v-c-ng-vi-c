@@ -190,19 +190,7 @@ class TaskItemController extends Controller
         }
 
         if (! empty($item->assignee_id)) {
-            try {
-                app(NotificationService::class)->notifyUsersAfterResponse(
-                    [$item->assignee_id],
-                    'Bạn có đầu việc mới',
-                    'Đầu việc: '.$item->title,
-                    [
-                        'type' => 'task_item_assigned',
-                        'task_id' => $task->id,
-                        'task_item_id' => $item->id,
-                    ]
-                );
-            } catch (\Throwable $e) {
-                report($e);
+            if (! $this->notifyTaskItemAssignee($task, $item, true)) {
                 $warnings[] = 'push';
             }
         }
@@ -279,20 +267,7 @@ class TaskItemController extends Controller
         TaskProgressService::recalc($task);
 
         if ($assigneeProvided && $nextAssigneeId > 0 && $nextAssigneeId !== $oldAssigneeId) {
-            try {
-                app(NotificationService::class)->notifyUsersAfterResponse(
-                    [$nextAssigneeId],
-                    'Bạn có đầu việc mới',
-                    'Đầu việc: '.$item->title,
-                    [
-                        'type' => 'task_item_assigned',
-                        'task_id' => $task->id,
-                        'task_item_id' => $item->id,
-                    ]
-                );
-            } catch (\Throwable $e) {
-                report($e);
-            }
+            $this->notifyTaskItemAssignee($task, $item, false);
         }
 
         return response()->json($item->fresh()->load(['assignee', 'reviewer']));
@@ -339,6 +314,35 @@ class TaskItemController extends Controller
                 abort(response()->json(['message' => 'Nhân sự không thuộc phòng ban bạn quản lý.'], 403));
             }
         }
+    }
+
+    private function notifyTaskItemAssignee(Task $task, TaskItem $item, bool $isInitialAssignment): bool
+    {
+        $assigneeId = (int) ($item->assignee_id ?? 0);
+        if ($assigneeId <= 0) {
+            return true;
+        }
+
+        try {
+            app(NotificationService::class)->notifyUsersAfterResponse(
+                [$assigneeId],
+                $isInitialAssignment
+                    ? 'Bạn có đầu việc mới'
+                    : 'Bạn được điều chuyển phụ trách đầu việc',
+                'Đầu việc: '.$item->title,
+                [
+                    'type' => 'task_item_assigned',
+                    'task_id' => (int) $task->id,
+                    'task_item_id' => (int) $item->id,
+                    'is_reassignment' => ! $isInitialAssignment,
+                ]
+            );
+        } catch (\Throwable $e) {
+            report($e);
+            return false;
+        }
+
+        return true;
     }
 
 }

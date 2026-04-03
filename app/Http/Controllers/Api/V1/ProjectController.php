@@ -11,6 +11,7 @@ use App\Models\ProjectMeeting;
 use App\Models\User;
 use App\Services\NotificationService;
 use App\Services\ProjectGscSyncService;
+use App\Services\WorkflowTopicApplierService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -73,6 +74,11 @@ class ProjectController extends Controller
                         $contractQuery->where('code', 'like', "%{$search}%")
                             ->orWhere('title', 'like', "%{$search}%")
                             ->orWhere('notes', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('workflowTopic', function ($topicQuery) use ($search) {
+                        $topicQuery->where('name', 'like', "%{$search}%")
+                            ->orWhere('code', 'like', "%{$search}%")
+                            ->orWhere('description', 'like', "%{$search}%");
                     });
             });
         }
@@ -105,7 +111,11 @@ class ProjectController extends Controller
         return response()->json($paginator);
     }
 
-    public function store(Request $request, ProjectGscSyncService $syncService): JsonResponse
+    public function store(
+        Request $request,
+        ProjectGscSyncService $syncService,
+        WorkflowTopicApplierService $workflowTopicApplier
+    ): JsonResponse
     {
         if (! in_array($request->user()->role, ['admin', 'administrator', 'quan_ly'], true)) {
             return response()->json(['message' => 'Không có quyền tạo dự án.'], 403);
@@ -144,6 +154,13 @@ class ProjectController extends Controller
         }
 
         $project = Project::create($validated);
+        if (! empty($validated['workflow_topic_id'])) {
+            $workflowTopicApplier->applyToProject(
+                $project,
+                (int) $validated['workflow_topic_id'],
+                (int) $request->user()->id
+            );
+        }
         $syncService->handleWebsiteMutation($project, null);
 
         if ($contract && empty($contract->project_id)) {
@@ -159,7 +176,11 @@ class ProjectController extends Controller
      * Create a project directly from an approved contract.
      * Only admin or the contract collector can do this.
      */
-    public function createFromContract(Request $request, ProjectGscSyncService $syncService): JsonResponse
+    public function createFromContract(
+        Request $request,
+        ProjectGscSyncService $syncService,
+        WorkflowTopicApplierService $workflowTopicApplier
+    ): JsonResponse
     {
         $contractId = (int) $request->input('contract_id');
         if (! $contractId) {
@@ -190,6 +211,7 @@ class ProjectController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'service_type' => ['required', 'string', 'max:80'],
             'service_type_other' => ['nullable', 'string', 'max:120'],
+            'workflow_topic_id' => ['nullable', 'integer', 'exists:workflow_topics,id'],
             'start_date' => ['nullable', 'date'],
             'deadline' => ['nullable', 'date'],
             'budget' => ['nullable', 'numeric', 'min:0'],
@@ -213,6 +235,7 @@ class ProjectController extends Controller
             'contract_id' => $contract->id,
             'service_type' => $validated['service_type'] ?? 'khac',
             'service_type_other' => ($validated['service_type'] ?? '') === 'khac' ? ($validated['service_type_other'] ?? '') : null,
+            'workflow_topic_id' => $validated['workflow_topic_id'] ?? null,
             'start_date' => $validated['start_date'] ?? $contract->start_date,
             'deadline' => $validated['deadline'] ?? $contract->end_date,
             'budget' => $validated['budget'] ?? $contract->value ?? null,
@@ -223,6 +246,13 @@ class ProjectController extends Controller
             'website_url' => $validated['website_url'] ?? null,
             'created_by' => $request->user()->id,
         ]);
+        if (! empty($validated['workflow_topic_id'])) {
+            $workflowTopicApplier->applyToProject(
+                $project,
+                (int) $validated['workflow_topic_id'],
+                (int) $request->user()->id
+            );
+        }
         $syncService->handleWebsiteMutation($project, null);
 
         $contract->update(['project_id' => $project->id]);
@@ -503,6 +533,7 @@ class ProjectController extends Controller
             'contract_id' => ['nullable', 'integer', 'exists:contracts,id'],
             'service_type' => ['required', 'string', 'max:80'],
             'service_type_other' => ['nullable', 'string', 'max:120'],
+            'workflow_topic_id' => ['nullable', 'integer', 'exists:workflow_topics,id'],
             'start_date' => ['nullable', 'date'],
             'deadline' => ['nullable', 'date'],
             'budget' => ['nullable', 'numeric', 'min:0'],
@@ -594,6 +625,7 @@ class ProjectController extends Controller
             'client:id,name,company,email,phone',
             'creator:id,name,email,role,avatar_url',
             'owner:id,name,email,role,avatar_url,department_id',
+            'workflowTopic:id,name,code,is_active',
             'approver:id,name,email,role,avatar_url',
             'handoverRequester:id,name,email,role,avatar_url',
             'contract:id,code,title,notes,client_id,project_id,value,status,approval_status,start_date,end_date,signed_at,collector_user_id,handover_receive_status,handover_received_by,handover_received_at',
