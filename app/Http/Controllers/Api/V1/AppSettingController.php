@@ -83,11 +83,11 @@ class AppSettingController extends Controller
             'gsc_brand_terms' => ['nullable', 'string', 'max:12000'],
             'gsc_sync_time' => ['nullable', 'regex:/^\d{2}:\d{2}$/'],
             'app_android_apk_url' => ['nullable', 'string', 'max:255'],
-            'app_ios_testflight_url' => ['nullable', 'url', 'max:255'],
+            'app_ios_testflight_url' => ['nullable', 'string', 'max:255'],
             'app_release_notes' => ['nullable', 'string', 'max:20000'],
             'app_release_version' => ['nullable', 'string', 'max:40'],
             'logo' => ['nullable', 'file', 'max:5120'],
-            'app_android_apk_file' => ['nullable', 'file', 'mimes:apk', 'max:262144'],
+            'app_android_apk_file' => ['nullable', 'file', 'max:262144'],
         ]);
 
         $setting = AppSetting::query()->first();
@@ -114,6 +114,12 @@ class AppSettingController extends Controller
         if ($request->hasFile('app_android_apk_file')) {
             $storedApk = $request->file('app_android_apk_file')->store('app-builds', 'public');
             $apkUrl = Storage::url($storedApk);
+        }
+        $iosTestflightUrl = array_key_exists('app_ios_testflight_url', $validated)
+            ? trim((string) ($validated['app_ios_testflight_url'] ?? ''))
+            : $setting->app_ios_testflight_url;
+        if ($iosTestflightUrl === '') {
+            $iosTestflightUrl = null;
         }
 
         $setting->update([
@@ -248,9 +254,7 @@ class AppSettingController extends Controller
                 ? (string) $validated['gsc_sync_time']
                 : (string) ($setting->gsc_sync_time ?: '11:17'),
             'app_android_apk_url' => $apkUrl,
-            'app_ios_testflight_url' => array_key_exists('app_ios_testflight_url', $validated)
-                ? trim((string) ($validated['app_ios_testflight_url'] ?? ''))
-                : $setting->app_ios_testflight_url,
+            'app_ios_testflight_url' => $iosTestflightUrl,
             'app_release_notes' => array_key_exists('app_release_notes', $validated)
                 ? trim((string) ($validated['app_release_notes'] ?? ''))
                 : $setting->app_release_notes,
