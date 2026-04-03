@@ -744,13 +744,14 @@ export default function ProjectsKanban(props) {
                                                 </th>
                                             )}
                                             <th className="py-2">Dự án</th>
-                                            <th className="py-2">Website</th>
+                                            <th className="py-2">Website dự án</th>
                                             <th className="py-2">Dịch vụ</th>
                                             <th className="py-2">Trạng thái</th>
                                             <th className="py-2">Tiến độ</th>
                                             <th className="py-2">Bàn giao</th>
                                             <th className="py-2">Phụ trách</th>
                                             <th className="py-2">Hợp đồng</th>
+                                            <th className="py-2">Ghi chú</th>
                                             <th className="py-2">Hạn chót</th>
                                             <th className="py-2">Ngân sách</th>
                                             <th className="py-2"></th>
@@ -836,6 +837,14 @@ export default function ProjectsKanban(props) {
                                                 <td className={`py-3 text-xs ${p.contract ? 'text-text-muted' : 'text-warning'}`}>
                                                     {p.contract?.code || 'Chưa có hợp đồng'}
                                                 </td>
+                                                <td className="py-3">
+                                                    <div
+                                                        className="max-w-[240px] truncate text-xs text-text-muted"
+                                                        title={p.contract?.notes || '—'}
+                                                    >
+                                                        {p.contract?.notes || '—'}
+                                                    </div>
+                                                </td>
                                                 <td className="py-3 text-xs text-text-muted">
                                                     {p.deadline ? String(p.deadline).slice(0, 10) : '—'}
                                                 </td>
@@ -876,14 +885,14 @@ export default function ProjectsKanban(props) {
                                         ))}
                                         {loading && (
                                             <tr>
-                                                <td className="py-6 text-center text-sm text-text-muted" colSpan={canBulkActions ? 12 : 11}>
+                                                <td className="py-6 text-center text-sm text-text-muted" colSpan={canBulkActions ? 13 : 12}>
                                                     Đang tải...
                                                 </td>
                                             </tr>
                                         )}
                                         {!loading && projects.length === 0 && (
                                             <tr>
-                                                <td className="py-6 text-center text-sm text-text-muted" colSpan={canBulkActions ? 12 : 11}>
+                                                <td className="py-6 text-center text-sm text-text-muted" colSpan={canBulkActions ? 13 : 12}>
                                                     Chưa có dự án theo bộ lọc.
                                                 </td>
                                             </tr>

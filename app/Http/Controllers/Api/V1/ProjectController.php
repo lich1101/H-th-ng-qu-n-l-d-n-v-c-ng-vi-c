@@ -66,7 +66,13 @@ class ProjectController extends Controller
                     })
                     ->orWhereHas('contract', function ($contractQuery) use ($search) {
                         $contractQuery->where('code', 'like', "%{$search}%")
-                            ->orWhere('title', 'like', "%{$search}%");
+                            ->orWhere('title', 'like', "%{$search}%")
+                            ->orWhere('notes', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('linkedContract', function ($contractQuery) use ($search) {
+                        $contractQuery->where('code', 'like', "%{$search}%")
+                            ->orWhere('title', 'like', "%{$search}%")
+                            ->orWhere('notes', 'like', "%{$search}%");
                     });
             });
         }
@@ -590,9 +596,9 @@ class ProjectController extends Controller
             'owner:id,name,email,role,avatar_url,department_id',
             'approver:id,name,email,role,avatar_url',
             'handoverRequester:id,name,email,role,avatar_url',
-            'contract:id,code,title,client_id,project_id,value,status,approval_status,start_date,end_date,signed_at,collector_user_id,handover_receive_status,handover_received_by,handover_received_at',
+            'contract:id,code,title,notes,client_id,project_id,value,status,approval_status,start_date,end_date,signed_at,collector_user_id,handover_receive_status,handover_received_by,handover_received_at',
             'contract.collector:id,name,email,role,avatar_url,department_id',
-            'linkedContract:id,code,title,client_id,project_id,value,status,approval_status,start_date,end_date,signed_at,collector_user_id,handover_receive_status,handover_received_by,handover_received_at',
+            'linkedContract:id,code,title,notes,client_id,project_id,value,status,approval_status,start_date,end_date,signed_at,collector_user_id,handover_receive_status,handover_received_by,handover_received_at',
             'linkedContract.collector:id,name,email,role,avatar_url,department_id',
         ];
     }
