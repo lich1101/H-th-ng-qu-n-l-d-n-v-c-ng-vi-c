@@ -120,6 +120,25 @@ export default function ServiceWorkflows(props) {
         [selectedTopic, routeTopicTaskId]
     );
 
+    const pageMeta = useMemo(() => {
+        if (isItemsPage) {
+            return {
+                title: 'Danh sách đầu việc mẫu',
+                description: `Quản lý đầu việc mẫu của công việc "${selectedTask?.title || '—'}".`,
+            };
+        }
+        if (isTasksPage) {
+            return {
+                title: 'Danh sách công việc mẫu',
+                description: `Quản lý công việc mẫu của topic "${selectedTopic?.name || '—'}".`,
+            };
+        }
+        return {
+            title: 'Barem công việc theo Topic',
+            description: 'Tạo topic barem gồm công việc mẫu và đầu việc mẫu để khi tạo dự án chỉ cần chọn barem là hệ thống tự sinh kế hoạch.',
+        };
+    }, [isItemsPage, isTasksPage, selectedTask?.title, selectedTopic?.name]);
+
     const stats = useMemo(() => {
         const total = topics.length;
         const active = topics.filter((t) => !!t.is_active).length;
@@ -438,9 +457,9 @@ export default function ServiceWorkflows(props) {
     return (
         <PageContainer
             auth={props.auth}
-            title="Barem công việc theo Topic"
-            description="Tạo topic barem gồm công việc mẫu và đầu việc mẫu để khi tạo dự án chỉ cần chọn barem là hệ thống tự sinh kế hoạch."
-            actions={canEdit ? (
+            title={pageMeta.title}
+            description={pageMeta.description}
+            actions={canEdit && isTopicsPage ? (
                 <button
                     type="button"
                     className="inline-flex items-center rounded-2xl bg-primary px-4 py-2 text-sm font-semibold text-white"
@@ -452,14 +471,16 @@ export default function ServiceWorkflows(props) {
             ) : null}
         >
             <div className="space-y-6">
-                <div className="grid gap-4 md:grid-cols-4">
-                    {stats.map((item) => (
-                        <div key={item.label} className="rounded-2xl border border-slate-200 bg-white p-4">
-                            <p className="text-xs uppercase tracking-[0.12em] text-text-subtle">{item.label}</p>
-                            <p className="mt-2 text-2xl font-semibold text-slate-900">{item.value}</p>
-                        </div>
-                    ))}
-                </div>
+                {isTopicsPage && (
+                    <div className="grid gap-4 md:grid-cols-4">
+                        {stats.map((item) => (
+                            <div key={item.label} className="rounded-2xl border border-slate-200 bg-white p-4">
+                                <p className="text-xs uppercase tracking-[0.12em] text-text-subtle">{item.label}</p>
+                                <p className="mt-2 text-2xl font-semibold text-slate-900">{item.value}</p>
+                            </div>
+                        ))}
+                    </div>
+                )}
 
                 {isTopicsPage && (
                     <TopicListPage
