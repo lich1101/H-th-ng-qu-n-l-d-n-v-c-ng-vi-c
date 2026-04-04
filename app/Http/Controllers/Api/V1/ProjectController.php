@@ -280,7 +280,12 @@ class ProjectController extends Controller
         return response()->json($this->transformProject($project, $request->user(), true));
     }
 
-    public function update(Request $request, Project $project, ProjectGscSyncService $syncService): JsonResponse
+    public function update(
+        Request $request,
+        Project $project,
+        ProjectGscSyncService $syncService,
+        WorkflowTopicApplierService $workflowTopicApplier
+    ): JsonResponse
     {
         if (! ProjectScope::canAccessProject($request->user(), $project)) {
             return response()->json(['message' => 'Không có quyền cập nhật dự án.'], 403);
@@ -320,6 +325,7 @@ class ProjectController extends Controller
         }
 
         $oldContractId = $project->contract_id;
+        $oldWorkflowTopicId = (int) ($project->workflow_topic_id ?? 0);
         $contract = $this->resolveContractForProject($validated, $project);
         if ($contract instanceof JsonResponse) {
             return $contract;
@@ -333,9 +339,36 @@ class ProjectController extends Controller
             ], 422);
         }
 
+        $newWorkflowTopicId = array_key_exists('workflow_topic_id', $validated)
+            ? (int) ($validated['workflow_topic_id'] ?? 0)
+            : $oldWorkflowTopicId;
+        $workflowTopicChanged = $oldWorkflowTopicId !== $newWorkflowTopicId;
+        $confirmReapplyWorkflow = filter_var($request->input('confirm_reapply_workflow', false), FILTER_VALIDATE_BOOLEAN);
+        if ($workflowTopicChanged && $oldWorkflowTopicId > 0 && $newWorkflowTopicId > 0 && ! $confirmReapplyWorkflow) {
+            return response()->json([
+                'message' => 'Đổi Topic Barem sẽ xóa toàn bộ công việc/đầu việc hiện tại. Vui lòng xác nhận trước khi lưu.',
+                'code' => 'workflow_topic_reapply_confirmation_required',
+            ], 422);
+        }
+
         $oldWebsiteRaw = (string) ($project->website_url ?? '');
         $project->update($validated);
         $syncService->handleWebsiteMutation($project, $oldWebsiteRaw);
+
+        if ($workflowTopicChanged && $newWorkflowTopicId > 0) {
+            DB::transaction(function () use ($project, $oldWorkflowTopicId, $newWorkflowTopicId, $request, $workflowTopicApplier) {
+                if ($oldWorkflowTopicId > 0) {
+                    // Đổi từ barem A sang barem B: làm mới danh sách công việc/đầu việc để khớp 100% barem mới.
+                    $project->tasks()->delete();
+                }
+
+                $workflowTopicApplier->applyToProject(
+                    $project,
+                    $newWorkflowTopicId,
+                    (int) $request->user()->id
+                );
+            });
+        }
 
         if ($contract && empty($contract->project_id)) {
             $contract->update(['project_id' => $project->id]);
@@ -542,6 +575,7 @@ class ProjectController extends Controller
             'owner_id' => ['nullable', 'integer', 'exists:users,id'],
             'repo_url' => ['nullable', 'string', 'max:255'],
             'website_url' => ['nullable', 'string', 'max:255'],
+            'confirm_reapply_workflow' => ['nullable', 'boolean'],
         ];
     }
 

@@ -81,6 +81,7 @@ export default function ProjectsKanban(props) {
     const [meta, setMeta] = useState({});
     const [paging, setPaging] = useState({ current_page: 1, last_page: 1, total: 0 });
     const [editingId, setEditingId] = useState(null);
+    const [editingOriginalWorkflowTopicId, setEditingOriginalWorkflowTopicId] = useState(0);
     const [showForm, setShowForm] = useState(false);
     const [viewMode, setViewMode] = useState('list');
     const [filters, setFilters] = useState({
@@ -402,6 +403,7 @@ export default function ProjectsKanban(props) {
 
     const resetForm = () => {
         setEditingId(null);
+        setEditingOriginalWorkflowTopicId(0);
         setForm({
             code: '',
             name: '',
@@ -434,6 +436,7 @@ export default function ProjectsKanban(props) {
 
     const startEdit = (p) => {
         setEditingId(p.id);
+        setEditingOriginalWorkflowTopicId(Number(p.workflow_topic_id || p.workflow_topic?.id || 0));
         setForm({
             code: p.code || '',
             name: p.name || '',
@@ -483,6 +486,27 @@ export default function ProjectsKanban(props) {
                 workflow_topic_id: form.workflow_topic_id ? Number(form.workflow_topic_id) : null,
             };
             if (editingId) {
+                const previousTopicId = Number(editingOriginalWorkflowTopicId || 0);
+                const nextTopicId = Number(payload.workflow_topic_id || 0);
+                const isChangingBetweenTopics =
+                    previousTopicId > 0 &&
+                    nextTopicId > 0 &&
+                    previousTopicId !== nextTopicId;
+                if (isChangingBetweenTopics) {
+                    const oldTopic = workflowTopics.find((topic) => Number(topic.id) === previousTopicId);
+                    const newTopic = workflowTopics.find((topic) => Number(topic.id) === nextTopicId);
+                    const oldTopicName = oldTopic?.name || `#${previousTopicId}`;
+                    const newTopicName = newTopic?.name || `#${nextTopicId}`;
+                    const confirmed = window.confirm(
+                        `Bạn đang đổi Topic Barem từ "${oldTopicName}" sang "${newTopicName}".\n\n` +
+                        'Hệ thống sẽ xóa toàn bộ công việc/đầu việc hiện tại của dự án và tạo lại theo barem mới.\n' +
+                        'Bạn có chắc chắn muốn tiếp tục không?'
+                    );
+                    if (!confirmed) {
+                        return;
+                    }
+                    payload.confirm_reapply_workflow = true;
+                }
                 await axios.put(`/api/v1/projects/${editingId}`, payload);
                 toast.success('Đã cập nhật dự án.');
             } else {

@@ -338,14 +338,6 @@ export default function ClientFlow({ auth, clientId }) {
                             <div className="text-xs uppercase tracking-[0.14em] text-text-subtle">Khách hàng</div>
                             <h3 className="mt-1 text-xl font-semibold text-slate-900">{flow?.client?.name || '—'}</h3>
                             <p className="mt-1 text-sm text-slate-500">{flow?.client?.company || 'Chưa có công ty'} • {flow?.client?.phone || 'Chưa có số điện thoại'}</p>
-                        </div>
-                        <Link
-                            href={route('crm.index')}
-                            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:border-primary/30 hover:text-primary"
-                        >
-                            <AppIcon name="route" className="h-4 w-4" />
-                            Quay lại khách hàng
-                        </Link>
                         {flow?.permissions?.can_manage_client && (
                             <button
                                 type="button"
