@@ -338,6 +338,7 @@ export default function ClientFlow({ auth, clientId }) {
                             <div className="text-xs uppercase tracking-[0.14em] text-text-subtle">Khách hàng</div>
                             <h3 className="mt-1 text-xl font-semibold text-slate-900">{flow?.client?.name || '—'}</h3>
                             <p className="mt-1 text-sm text-slate-500">{flow?.client?.company || 'Chưa có công ty'} • {flow?.client?.phone || 'Chưa có số điện thoại'}</p>
+                        </div>
                         {flow?.permissions?.can_manage_client && (
                             <button
                                 type="button"
