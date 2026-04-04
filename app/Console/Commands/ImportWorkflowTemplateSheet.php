@@ -11,7 +11,7 @@ use Illuminate\Support\Str;
 class ImportWorkflowTemplateSheet extends Command
 {
     protected $signature = 'workflow:import-sheet
-        {--file= : Đường dẫn CSV. Mặc định: storage/app/public/templates/du-lieu-barem-tu-markdown.csv}
+        {--file= : Đường dẫn CSV. Mặc định: database/seeders/data/workflow-topic-template.csv}
         {--mode=replace : replace|append}
         {--dry-run : Chỉ kiểm tra dữ liệu, không ghi DB}';
 
@@ -27,7 +27,7 @@ class ImportWorkflowTemplateSheet extends Command
 
     public function handle(): int
     {
-        $relativePath = 'storage/app/public/templates/du-lieu-barem-tu-markdown.csv';
+        $relativePath = 'database/seeders/data/workflow-topic-template.csv';
         $fileOption = trim((string) $this->option('file'));
         $csvPath = $fileOption !== '' ? $fileOption : base_path($relativePath);
         if (! Str::startsWith($csvPath, DIRECTORY_SEPARATOR)) {

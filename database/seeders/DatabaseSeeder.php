@@ -23,5 +23,11 @@ class DatabaseSeeder extends Seeder
         $this->call([
             DemoDataSeeder::class,
         ]);
+
+        if (filter_var(env('SEED_WORKFLOW_TOPIC_TEMPLATES', false), FILTER_VALIDATE_BOOLEAN)) {
+            $this->call([
+                WorkflowTopicTemplateSeeder::class,
+            ]);
+        }
     }
 }
