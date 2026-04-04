@@ -51,8 +51,22 @@ export default function ServiceWorkflows(props) {
     const [loading, setLoading] = useState(false);
     const [search, setSearch] = useState('');
     const [topics, setTopics] = useState([]);
+    const [viewMode, setViewMode] = useState('topics');
+    const [selectedTopicId, setSelectedTopicId] = useState(null);
+    const [selectedTaskId, setSelectedTaskId] = useState(null);
+    const [showTopicCreateForm, setShowTopicCreateForm] = useState(false);
+    const [topicCreateForm, setTopicCreateForm] = useState({
+        name: '',
+        code: '',
+        description: '',
+        is_active: true,
+    });
     const [showForm, setShowForm] = useState(false);
     const [editingId, setEditingId] = useState(null);
+    const [showTaskForm, setShowTaskForm] = useState(false);
+    const [taskForm, setTaskForm] = useState(emptyTask(1));
+    const [showItemForm, setShowItemForm] = useState(false);
+    const [itemForm, setItemForm] = useState(emptyItem(1));
     const [form, setForm] = useState({
         name: '',
         code: '',
@@ -70,9 +84,12 @@ export default function ServiceWorkflows(props) {
                     ...(keyword?.trim() ? { search: keyword.trim() } : {}),
                 },
             });
-            setTopics(res.data?.data || []);
+            const rows = res.data?.data || [];
+            setTopics(rows);
+            return rows;
         } catch (error) {
             toast.error(error?.response?.data?.message || 'Không tải được danh sách barem.');
+            return [];
         } finally {
             setLoading(false);
         }
@@ -110,8 +127,13 @@ export default function ServiceWorkflows(props) {
     };
 
     const openCreate = () => {
-        resetForm();
-        setShowForm(true);
+        setTopicCreateForm({
+            name: '',
+            code: '',
+            description: '',
+            is_active: true,
+        });
+        setShowTopicCreateForm(true);
     };
 
     const openEdit = (topic) => {
@@ -150,6 +172,38 @@ export default function ServiceWorkflows(props) {
     const closeForm = () => {
         setShowForm(false);
         resetForm();
+    };
+
+    const selectedTopic = useMemo(
+        () => topics.find((topic) => Number(topic.id) === Number(selectedTopicId)) || null,
+        [topics, selectedTopicId]
+    );
+
+    const selectedTask = useMemo(
+        () => (selectedTopic?.tasks || []).find((task) => Number(task.id) === Number(selectedTaskId)) || null,
+        [selectedTopic, selectedTaskId]
+    );
+
+    const openTopicTasks = (topic) => {
+        setSelectedTopicId(Number(topic.id));
+        setSelectedTaskId(null);
+        setViewMode('tasks');
+    };
+
+    const openTaskItems = (task) => {
+        setSelectedTaskId(Number(task.id));
+        setViewMode('items');
+    };
+
+    const backToTopics = () => {
+        setViewMode('topics');
+        setSelectedTopicId(null);
+        setSelectedTaskId(null);
+    };
+
+    const backToTasks = () => {
+        setViewMode('tasks');
+        setSelectedTaskId(null);
     };
 
     const updateTaskField = (taskIndex, field, value) => {
@@ -231,6 +285,52 @@ export default function ServiceWorkflows(props) {
         })),
     });
 
+    const normalizeTaskForPayload = (task, taskIndex = 0) => ({
+        id: task.id || undefined,
+        title: String(task.title || '').trim(),
+        description: String(task.description || '').trim() || null,
+        priority: task.priority || 'medium',
+        status: task.status || 'todo',
+        weight_percent: Number(task.weight_percent || 1),
+        start_offset_days: Number(task.start_offset_days || 0),
+        duration_days: Number(task.duration_days || 1),
+        sort_order: Number(task.sort_order || taskIndex + 1),
+        items: (task.items || []).map((item, itemIndex) => ({
+            id: item.id || undefined,
+            title: String(item.title || '').trim(),
+            description: String(item.description || '').trim() || null,
+            priority: item.priority || 'medium',
+            status: item.status || 'todo',
+            weight_percent: Number(item.weight_percent || 1),
+            start_offset_days: Number(item.start_offset_days || 0),
+            duration_days: Number(item.duration_days || 1),
+            sort_order: Number(item.sort_order || itemIndex + 1),
+        })),
+    });
+
+    const updateTopicWithTasks = async (topic, nextTasks, successMessage) => {
+        if (!topic) return false;
+        const payload = {
+            name: topic.name || '',
+            code: topic.code || null,
+            description: topic.description || null,
+            is_active: !!topic.is_active,
+            tasks: (nextTasks || []).map((task, taskIndex) => normalizeTaskForPayload(task, taskIndex)),
+        };
+        await axios.put(`/api/v1/workflow-topics/${topic.id}`, payload);
+        toast.success(successMessage);
+        const rows = await fetchTopics(search);
+        const nextTopic = (rows || []).find((row) => Number(row.id) === Number(topic.id));
+        if (nextTopic) {
+            setSelectedTopicId(Number(nextTopic.id));
+            if (selectedTaskId) {
+                const stillExists = (nextTopic.tasks || []).some((task) => Number(task.id) === Number(selectedTaskId));
+                if (!stillExists) setSelectedTaskId(null);
+            }
+        }
+        return true;
+    };
+
     const saveTopic = async () => {
         if (!canEdit) {
             toast.error('Bạn không có quyền cập nhật barem.');
@@ -264,6 +364,95 @@ export default function ServiceWorkflows(props) {
             await fetchTopics();
         } catch (error) {
             toast.error(error?.response?.data?.message || 'Lưu topic barem thất bại.');
+        }
+    };
+
+    const saveCreateTopic = async () => {
+        if (!canEdit) {
+            toast.error('Bạn không có quyền tạo barem.');
+            return;
+        }
+        if (!topicCreateForm.name?.trim()) {
+            toast.error('Vui lòng nhập tên topic barem.');
+            return;
+        }
+        try {
+            const res = await axios.post('/api/v1/workflow-topics', {
+                name: topicCreateForm.name.trim(),
+                code: topicCreateForm.code?.trim() || null,
+                description: topicCreateForm.description?.trim() || null,
+                is_active: !!topicCreateForm.is_active,
+                tasks: [],
+            });
+            const created = res.data;
+            toast.success('Đã tạo topic barem mới.');
+            setShowTopicCreateForm(false);
+            const rows = await fetchTopics(search);
+            const createdTopic = (rows || []).find((topic) => Number(topic.id) === Number(created?.id));
+            if (createdTopic) {
+                openTopicTasks(createdTopic);
+            }
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Tạo topic barem thất bại.');
+        }
+    };
+
+    const saveTaskToTopic = async () => {
+        if (!selectedTopic) return;
+        if (!taskForm.title?.trim()) {
+            toast.error('Vui lòng nhập tiêu đề công việc mẫu.');
+            return;
+        }
+        const currentTasks = selectedTopic.tasks || [];
+        const nextTasks = [
+            ...currentTasks,
+            {
+                ...taskForm,
+                id: null,
+                sort_order: currentTasks.length + 1,
+                items: [],
+            },
+        ];
+        try {
+            const ok = await updateTopicWithTasks(selectedTopic, nextTasks, 'Đã thêm công việc mẫu.');
+            if (ok) {
+                setShowTaskForm(false);
+                setTaskForm(emptyTask(1));
+            }
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Không thêm được công việc mẫu.');
+        }
+    };
+
+    const saveItemToTask = async () => {
+        if (!selectedTopic || !selectedTask) return;
+        if (!itemForm.title?.trim()) {
+            toast.error('Vui lòng nhập tiêu đề đầu việc mẫu.');
+            return;
+        }
+        const nextTasks = (selectedTopic.tasks || []).map((task) => {
+            if (Number(task.id) !== Number(selectedTask.id)) return task;
+            const currentItems = task.items || [];
+            return {
+                ...task,
+                items: [
+                    ...currentItems,
+                    {
+                        ...itemForm,
+                        id: null,
+                        sort_order: currentItems.length + 1,
+                    },
+                ],
+            };
+        });
+        try {
+            const ok = await updateTopicWithTasks(selectedTopic, nextTasks, 'Đã thêm đầu việc mẫu.');
+            if (ok) {
+                setShowItemForm(false);
+                setItemForm(emptyItem(1));
+            }
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Không thêm được đầu việc mẫu.');
         }
     };
 
@@ -313,19 +502,77 @@ export default function ServiceWorkflows(props) {
                 <div className="rounded-3xl border border-slate-200 bg-white p-4 md:p-6">
                     <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                         <div>
-                            <h3 className="text-lg font-semibold text-slate-900">Danh sách topic barem</h3>
-                            <p className="text-sm text-text-muted">Mỗi topic chứa bộ công việc và đầu việc con để dùng khi tạo dự án.</p>
+                            {viewMode === 'topics' && (
+                                <>
+                                    <h3 className="text-lg font-semibold text-slate-900">Danh sách topic barem</h3>
+                                    <p className="text-sm text-text-muted">Bấm vào từng topic để mở danh sách công việc mẫu của topic đó.</p>
+                                </>
+                            )}
+                            {viewMode === 'tasks' && selectedTopic && (
+                                <>
+                                    <h3 className="text-lg font-semibold text-slate-900">Công việc mẫu • {selectedTopic.name}</h3>
+                                    <p className="text-sm text-text-muted">Bấm vào công việc để xem chi tiết danh sách đầu việc.</p>
+                                </>
+                            )}
+                            {viewMode === 'items' && selectedTask && (
+                                <>
+                                    <h3 className="text-lg font-semibold text-slate-900">Đầu việc mẫu • {selectedTask.title}</h3>
+                                    <p className="text-sm text-text-muted">Danh sách đầu việc thuộc công việc mẫu đã chọn.</p>
+                                </>
+                            )}
                         </div>
-                        <div className="flex w-full max-w-xl gap-2">
-                            <input
-                                className="h-11 flex-1 rounded-2xl border border-slate-200/80 bg-white px-4 text-sm"
-                                placeholder="Tìm theo topic, công việc mẫu hoặc đầu việc mẫu"
-                                value={search}
-                                onChange={(e) => setSearch(e.target.value)}
-                            />
-                            <button type="button" className="rounded-2xl border border-slate-200 px-4 text-sm font-semibold" onClick={() => fetchTopics(search)}>
-                                Lọc
-                            </button>
+                        <div className="flex w-full max-w-xl flex-wrap items-center justify-end gap-2">
+                            {viewMode === 'topics' && (
+                                <>
+                                    <input
+                                        className="h-11 flex-1 rounded-2xl border border-slate-200/80 bg-white px-4 text-sm"
+                                        placeholder="Tìm theo topic, công việc mẫu hoặc đầu việc mẫu"
+                                        value={search}
+                                        onChange={(e) => setSearch(e.target.value)}
+                                    />
+                                    <button type="button" className="rounded-2xl border border-slate-200 px-4 text-sm font-semibold" onClick={() => fetchTopics(search)}>
+                                        Lọc
+                                    </button>
+                                </>
+                            )}
+                            {viewMode === 'tasks' && (
+                                <>
+                                    <button type="button" className="rounded-2xl border border-slate-200 px-4 text-sm font-semibold" onClick={backToTopics}>
+                                        Quay lại topic
+                                    </button>
+                                    {canEdit && (
+                                        <button
+                                            type="button"
+                                            className="rounded-2xl bg-primary px-4 py-2 text-sm font-semibold text-white"
+                                            onClick={() => {
+                                                setTaskForm(emptyTask((selectedTopic?.tasks || []).length + 1));
+                                                setShowTaskForm(true);
+                                            }}
+                                        >
+                                            + Thêm công việc
+                                        </button>
+                                    )}
+                                </>
+                            )}
+                            {viewMode === 'items' && (
+                                <>
+                                    <button type="button" className="rounded-2xl border border-slate-200 px-4 text-sm font-semibold" onClick={backToTasks}>
+                                        Quay lại công việc
+                                    </button>
+                                    {canEdit && (
+                                        <button
+                                            type="button"
+                                            className="rounded-2xl bg-primary px-4 py-2 text-sm font-semibold text-white"
+                                            onClick={() => {
+                                                setItemForm(emptyItem((selectedTask?.items || []).length + 1));
+                                                setShowItemForm(true);
+                                            }}
+                                        >
+                                            + Thêm đầu việc
+                                        </button>
+                                    )}
+                                </>
+                            )}
                         </div>
                     </div>
 
@@ -333,14 +580,15 @@ export default function ServiceWorkflows(props) {
                         <div className="py-10 text-center text-sm text-text-muted">Đang tải barem...</div>
                     ) : (
                         <div className="space-y-4">
-                            {topics.map((topic) => (
+                            {viewMode === 'topics' && topics.map((topic) => (
                                 <div key={topic.id} className="rounded-2xl border border-slate-200/80 p-4">
                                     <div className="flex flex-wrap items-start justify-between gap-3">
-                                        <div>
+                                        <button type="button" className="text-left" onClick={() => openTopicTasks(topic)}>
                                             <div className="text-xs text-text-muted">#{topic.id} {topic.code ? `• ${topic.code}` : ''}</div>
-                                            <h4 className="text-base font-semibold text-slate-900">{topic.name}</h4>
+                                            <h4 className="text-base font-semibold text-slate-900 hover:text-primary">{topic.name}</h4>
                                             <p className="mt-1 text-sm text-text-muted">{topic.description || 'Không có mô tả.'}</p>
-                                        </div>
+                                            <p className="mt-2 text-xs text-text-muted">Công việc mẫu: {(topic.tasks || []).length}</p>
+                                        </button>
                                         <div className="flex items-center gap-2">
                                             <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${topic.is_active ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-100 text-slate-600'}`}>
                                                 {topic.is_active ? 'Đang dùng' : 'Đang tắt'}
@@ -357,31 +605,125 @@ export default function ServiceWorkflows(props) {
                                             )}
                                         </div>
                                     </div>
-
-                                    <div className="mt-3 grid gap-3 md:grid-cols-2">
-                                        {(topic.tasks || []).map((task) => (
-                                            <div key={task.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                                                <div className="flex items-center justify-between gap-2">
-                                                    <p className="font-semibold text-slate-900">{task.title}</p>
-                                                    <span className="text-xs text-text-muted">{task.weight_percent}%</span>
-                                                </div>
-                                                <p className="mt-1 text-xs text-text-muted">Bắt đầu +{task.start_offset_days} ngày • Thời lượng {task.duration_days} ngày</p>
-                                                <p className="mt-2 text-xs text-slate-700">{task.description || '—'}</p>
-                                                <p className="mt-2 text-xs text-text-muted">Đầu việc mẫu: {task.items?.length || 0}</p>
-                                            </div>
-                                        ))}
-                                    </div>
                                 </div>
                             ))}
-                            {topics.length === 0 && (
+
+                            {viewMode === 'tasks' && selectedTopic && (
+                                <div className="overflow-hidden rounded-2xl border border-slate-200/80">
+                                    <table className="min-w-full text-sm">
+                                        <thead className="bg-slate-50 text-xs uppercase tracking-[0.12em] text-text-subtle">
+                                            <tr>
+                                                <th className="px-4 py-3 text-left">Công việc</th>
+                                                <th className="px-4 py-3 text-left">Tỷ trọng</th>
+                                                <th className="px-4 py-3 text-left">Timeline</th>
+                                                <th className="px-4 py-3 text-left">Đầu việc mẫu</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {(selectedTopic.tasks || []).map((task) => (
+                                                <tr key={task.id} className="cursor-pointer border-t border-slate-100 hover:bg-slate-50" onClick={() => openTaskItems(task)}>
+                                                    <td className="px-4 py-3">
+                                                        <div className="font-semibold text-slate-900">{task.title}</div>
+                                                        <div className="text-xs text-text-muted">{task.description || '—'}</div>
+                                                    </td>
+                                                    <td className="px-4 py-3">{task.weight_percent || 0}%</td>
+                                                    <td className="px-4 py-3">+{task.start_offset_days || 0} ngày • {task.duration_days || 1} ngày</td>
+                                                    <td className="px-4 py-3">{task.items?.length || 0}</td>
+                                                </tr>
+                                            ))}
+                                            {(selectedTopic.tasks || []).length === 0 && (
+                                                <tr>
+                                                    <td colSpan={4} className="px-4 py-8 text-center text-sm text-text-muted">Topic này chưa có công việc mẫu.</td>
+                                                </tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+
+                            {viewMode === 'items' && selectedTask && (
+                                <div className="overflow-hidden rounded-2xl border border-slate-200/80">
+                                    <table className="min-w-full text-sm">
+                                        <thead className="bg-slate-50 text-xs uppercase tracking-[0.12em] text-text-subtle">
+                                            <tr>
+                                                <th className="px-4 py-3 text-left">Đầu việc</th>
+                                                <th className="px-4 py-3 text-left">Tỷ trọng</th>
+                                                <th className="px-4 py-3 text-left">Timeline</th>
+                                                <th className="px-4 py-3 text-left">Trạng thái</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {(selectedTask.items || []).map((item) => (
+                                                <tr key={item.id} className="border-t border-slate-100">
+                                                    <td className="px-4 py-3">
+                                                        <div className="font-semibold text-slate-900">{item.title}</div>
+                                                        <div className="text-xs text-text-muted">{item.description || '—'}</div>
+                                                    </td>
+                                                    <td className="px-4 py-3">{item.weight_percent || 0}%</td>
+                                                    <td className="px-4 py-3">+{item.start_offset_days || 0} ngày • {item.duration_days || 1} ngày</td>
+                                                    <td className="px-4 py-3">{item.status || 'todo'}</td>
+                                                </tr>
+                                            ))}
+                                            {(selectedTask.items || []).length === 0 && (
+                                                <tr>
+                                                    <td colSpan={4} className="px-4 py-8 text-center text-sm text-text-muted">Công việc này chưa có đầu việc mẫu.</td>
+                                                </tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+
+                            {viewMode === 'topics' && topics.length === 0 && (
                                 <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center text-sm text-text-muted">
                                     Chưa có topic barem nào.
+                                </div>
+                            )}
+                            {viewMode === 'tasks' && !selectedTopic && (
+                                <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center text-sm text-text-muted">
+                                    Không tìm thấy topic barem.
+                                </div>
+                            )}
+                            {viewMode === 'items' && !selectedTask && (
+                                <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center text-sm text-text-muted">
+                                    Không tìm thấy công việc mẫu.
                                 </div>
                             )}
                         </div>
                     )}
                 </div>
             </div>
+
+            <Modal
+                open={showTopicCreateForm}
+                onClose={() => setShowTopicCreateForm(false)}
+                title="Tạo topic barem mới"
+                description="Bước 1: tạo topic trước, sau đó vào topic để thêm công việc và đầu việc."
+                size="md"
+            >
+                <div className="space-y-4 text-sm">
+                    <div>
+                        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Tên topic</label>
+                        <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" value={topicCreateForm.name} onChange={(e) => setTopicCreateForm((prev) => ({ ...prev, name: e.target.value }))} placeholder="Ví dụ: Website Care chuẩn" />
+                    </div>
+                    <div>
+                        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Mã topic</label>
+                        <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" value={topicCreateForm.code} onChange={(e) => setTopicCreateForm((prev) => ({ ...prev, code: e.target.value }))} placeholder="WEBCARE_STD" />
+                    </div>
+                    <div>
+                        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Mô tả</label>
+                        <textarea className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" rows={3} value={topicCreateForm.description} onChange={(e) => setTopicCreateForm((prev) => ({ ...prev, description: e.target.value }))} placeholder="Mô tả ngắn về barem topic..." />
+                    </div>
+                    <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
+                        <input type="checkbox" checked={!!topicCreateForm.is_active} onChange={(e) => setTopicCreateForm((prev) => ({ ...prev, is_active: e.target.checked }))} />
+                        Đang hoạt động
+                    </label>
+                    <div className="grid grid-cols-2 gap-3">
+                        <button type="button" className="rounded-2xl bg-primary py-2.5 font-semibold text-white" onClick={saveCreateTopic}>Tạo topic</button>
+                        <button type="button" className="rounded-2xl border border-slate-200 py-2.5 font-semibold text-slate-700" onClick={() => setShowTopicCreateForm(false)}>Huỷ</button>
+                    </div>
+                </div>
+            </Modal>
 
             <Modal
                 open={showForm}
@@ -533,6 +875,108 @@ export default function ServiceWorkflows(props) {
                         <button type="button" className="rounded-2xl border border-slate-200 py-2.5 font-semibold text-slate-700" onClick={closeForm}>
                             Huỷ
                         </button>
+                    </div>
+                </div>
+            </Modal>
+
+            <Modal
+                open={showTaskForm}
+                onClose={() => setShowTaskForm(false)}
+                title="Thêm công việc mẫu"
+                description={selectedTopic ? `Topic: ${selectedTopic.name}` : 'Thêm công việc vào topic barem'}
+                size="md"
+            >
+                <div className="space-y-3 text-sm">
+                    <div>
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-text-subtle">Tiêu đề công việc</label>
+                        <input className="w-full rounded-xl border border-slate-200 px-3 py-2" value={taskForm.title} onChange={(e) => setTaskForm((prev) => ({ ...prev, title: e.target.value }))} />
+                    </div>
+                    <div>
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-text-subtle">Mô tả</label>
+                        <input className="w-full rounded-xl border border-slate-200 px-3 py-2" value={taskForm.description || ''} onChange={(e) => setTaskForm((prev) => ({ ...prev, description: e.target.value }))} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-text-subtle">Ưu tiên</label>
+                            <select className="w-full rounded-xl border border-slate-200 px-3 py-2" value={taskForm.priority} onChange={(e) => setTaskForm((prev) => ({ ...prev, priority: e.target.value }))}>
+                                {TASK_PRIORITY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-text-subtle">Trạng thái</label>
+                            <select className="w-full rounded-xl border border-slate-200 px-3 py-2" value={taskForm.status} onChange={(e) => setTaskForm((prev) => ({ ...prev, status: e.target.value }))}>
+                                {TASK_STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                            </select>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-text-subtle">Tỷ trọng (%)</label>
+                            <input type="number" min="1" max="100" className="w-full rounded-xl border border-slate-200 px-3 py-2" value={taskForm.weight_percent} onChange={(e) => setTaskForm((prev) => ({ ...prev, weight_percent: e.target.value }))} />
+                        </div>
+                        <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-text-subtle">Bắt đầu sau (ngày)</label>
+                            <input type="number" min="0" className="w-full rounded-xl border border-slate-200 px-3 py-2" value={taskForm.start_offset_days} onChange={(e) => setTaskForm((prev) => ({ ...prev, start_offset_days: e.target.value }))} />
+                        </div>
+                    </div>
+                    <div>
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-text-subtle">Thời lượng (ngày)</label>
+                        <input type="number" min="1" className="w-full rounded-xl border border-slate-200 px-3 py-2" value={taskForm.duration_days} onChange={(e) => setTaskForm((prev) => ({ ...prev, duration_days: e.target.value }))} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 pt-2">
+                        <button type="button" className="rounded-2xl bg-primary py-2.5 font-semibold text-white" onClick={saveTaskToTopic}>Thêm công việc</button>
+                        <button type="button" className="rounded-2xl border border-slate-200 py-2.5 font-semibold text-slate-700" onClick={() => setShowTaskForm(false)}>Huỷ</button>
+                    </div>
+                </div>
+            </Modal>
+
+            <Modal
+                open={showItemForm}
+                onClose={() => setShowItemForm(false)}
+                title="Thêm đầu việc mẫu"
+                description={selectedTask ? `Công việc: ${selectedTask.title}` : 'Thêm đầu việc'}
+                size="md"
+            >
+                <div className="space-y-3 text-sm">
+                    <div>
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-text-subtle">Tiêu đề đầu việc</label>
+                        <input className="w-full rounded-xl border border-slate-200 px-3 py-2" value={itemForm.title} onChange={(e) => setItemForm((prev) => ({ ...prev, title: e.target.value }))} />
+                    </div>
+                    <div>
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-text-subtle">Mô tả</label>
+                        <input className="w-full rounded-xl border border-slate-200 px-3 py-2" value={itemForm.description || ''} onChange={(e) => setItemForm((prev) => ({ ...prev, description: e.target.value }))} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-text-subtle">Ưu tiên</label>
+                            <select className="w-full rounded-xl border border-slate-200 px-3 py-2" value={itemForm.priority} onChange={(e) => setItemForm((prev) => ({ ...prev, priority: e.target.value }))}>
+                                {TASK_PRIORITY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-text-subtle">Trạng thái</label>
+                            <select className="w-full rounded-xl border border-slate-200 px-3 py-2" value={itemForm.status} onChange={(e) => setItemForm((prev) => ({ ...prev, status: e.target.value }))}>
+                                {TASK_STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                            </select>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-text-subtle">Tỷ trọng (%)</label>
+                            <input type="number" min="1" max="100" className="w-full rounded-xl border border-slate-200 px-3 py-2" value={itemForm.weight_percent} onChange={(e) => setItemForm((prev) => ({ ...prev, weight_percent: e.target.value }))} />
+                        </div>
+                        <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-text-subtle">Bắt đầu sau (ngày)</label>
+                            <input type="number" min="0" className="w-full rounded-xl border border-slate-200 px-3 py-2" value={itemForm.start_offset_days} onChange={(e) => setItemForm((prev) => ({ ...prev, start_offset_days: e.target.value }))} />
+                        </div>
+                    </div>
+                    <div>
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-text-subtle">Thời lượng (ngày)</label>
+                        <input type="number" min="1" className="w-full rounded-xl border border-slate-200 px-3 py-2" value={itemForm.duration_days} onChange={(e) => setItemForm((prev) => ({ ...prev, duration_days: e.target.value }))} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 pt-2">
+                        <button type="button" className="rounded-2xl bg-primary py-2.5 font-semibold text-white" onClick={saveItemToTask}>Thêm đầu việc</button>
+                        <button type="button" className="rounded-2xl border border-slate-200 py-2.5 font-semibold text-slate-700" onClick={() => setShowItemForm(false)}>Huỷ</button>
                     </div>
                 </div>
             </Modal>
