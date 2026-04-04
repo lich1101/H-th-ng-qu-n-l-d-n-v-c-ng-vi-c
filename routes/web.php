@@ -116,6 +116,26 @@ Route::middleware(['auth', 'verified'])->group(function () {
         return Inertia::render('ServiceWorkflows');
     })->name('services.workflows')->middleware('role:admin,administrator,quan_ly,nhan_vien');
 
+    Route::get('/quy-trinh-dich-vu/{workflowTopic}', function (App\Models\WorkflowTopic $workflowTopic) {
+        return Inertia::render('ServiceWorkflows', [
+            'topicId' => $workflowTopic->id,
+        ]);
+    })->name('services.workflows.tasks')->middleware('role:admin,administrator,quan_ly,nhan_vien');
+
+    Route::get('/quy-trinh-dich-vu/{workflowTopic}/cong-viec/{workflowTopicTask}', function (
+        App\Models\WorkflowTopic $workflowTopic,
+        App\Models\WorkflowTopicTask $workflowTopicTask
+    ) {
+        if ((int) $workflowTopicTask->workflow_topic_id !== (int) $workflowTopic->id) {
+            abort(404);
+        }
+
+        return Inertia::render('ServiceWorkflows', [
+            'topicId' => $workflowTopic->id,
+            'topicTaskId' => $workflowTopicTask->id,
+        ]);
+    })->name('services.workflows.items')->middleware('role:admin,administrator,quan_ly,nhan_vien');
+
     Route::get('/lich-hop', function () {
         return Inertia::render('Meetings');
     })->name('meetings.index')->middleware('role:admin,quan_ly');
