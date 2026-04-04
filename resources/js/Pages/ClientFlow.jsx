@@ -107,6 +107,7 @@ export default function ClientFlow({ auth, clientId }) {
     });
     const [careNoteForm, setCareNoteForm] = useState({ title: '', detail: '' });
     const [submittingCareNote, setSubmittingCareNote] = useState(false);
+    const [deletingCommentId, setDeletingCommentId] = useState('');
 
     const fetchFlow = async () => {
         setLoading(true);
@@ -239,6 +240,25 @@ export default function ClientFlow({ auth, clientId }) {
         }
     };
 
+    const deleteComment = async (commentId) => {
+        if (!flow?.client?.id || !commentId) return;
+        if (!window.confirm('Xóa bình luận này?')) return;
+
+        setDeletingCommentId(String(commentId));
+        try {
+            await axios.delete(`/api/v1/crm/clients/${flow.client.id}/comments/${commentId}`);
+            setFlow((prev) => ({
+                ...(prev || {}),
+                comments_history: (prev?.comments_history || []).filter((comment) => String(comment.id) !== String(commentId)),
+            }));
+            toast.success('Đã xóa bình luận.');
+        } catch (e) {
+            toast.error(e?.response?.data?.message || 'Không thể xóa bình luận.');
+        } finally {
+            setDeletingCommentId('');
+        }
+    };
+
     const opportunities = flow?.opportunities || [];
     const contracts = flow?.contracts || [];
     const projects = flow?.projects || [];
@@ -293,6 +313,8 @@ export default function ClientFlow({ auth, clientId }) {
         ];
     }, [summary]);
 
+    const commentsHistory = flow?.comments_history || [];
+
     const tabs = [
         { key: 'tong_quan', label: 'Tổng quan', icon: 'chart', count: null },
         { key: 'co_hoi', label: 'Cơ hội', icon: 'trend', count: opportunities.length },
@@ -300,14 +322,13 @@ export default function ClientFlow({ auth, clientId }) {
         { key: 'du_an', label: 'Dự án', icon: 'folder', count: projects.length },
         { key: 'cong_viec', label: 'Công việc', icon: 'tasks', count: tasks.length },
         { key: 'dau_viec', label: 'Đầu việc', icon: 'check', count: items.length },
-        { key: 'binh_luan', label: 'Bình luận', icon: 'chat', count: flow?.comments_history?.length || 0 },
     ];
 
     return (
         <PageContainer
             auth={auth}
             title="Thông tin khách hàng"
-            description="Theo dõi khách hàng theo dạng tab, thống kê tiến độ tổng hợp và bình luận trao đổi."
+            description="Theo dõi khách hàng theo tab nghiệp vụ, thống kê tiến độ tổng hợp và trao đổi nội bộ."
             stats={stats}
         >
             <div className="space-y-5">
@@ -358,6 +379,101 @@ export default function ClientFlow({ auth, clientId }) {
                             Tiến độ tổng = (Cơ hội thành công + Hợp đồng đã nhận bàn giao/active + Dự án hoàn thành + Công việc hoàn tất + Đầu việc hoàn tất)
                             / Tổng số bản ghi của 5 nhóm x 100.
                         </p>
+                    </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                            <h4 className="text-base font-semibold text-slate-900">Bình luận nội bộ</h4>
+                            <p className="mt-1 text-xs text-slate-500">
+                                Lịch sử bình luận hiển thị phía trên. Ô nhập bình luận đặt phía dưới để thao tác nhanh.
+                            </p>
+                        </div>
+                        <span className="inline-flex items-center rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
+                            {commentsHistory.length} bình luận
+                        </span>
+                    </div>
+
+                    <div className="mt-4 rounded-2xl border border-slate-200/80 bg-slate-50/70">
+                        <div className="max-h-[360px] overflow-y-auto p-3 sm:p-4">
+                            <div className="space-y-3">
+                                {commentsHistory.map((note) => (
+                                    <div key={note.id} className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 shadow-sm">
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div>
+                                                <div className="text-sm font-semibold text-slate-900">{note.title}</div>
+                                                <div className="mt-0.5 text-xs text-slate-500">{note.user?.name || 'Nhân sự'} • {note.user?.email || '—'}</div>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <div className="whitespace-nowrap text-xs text-slate-500">{formatDateTime(note.created_at)}</div>
+                                                {note?.can_delete && (
+                                                    <button
+                                                        type="button"
+                                                        className="rounded-lg border border-rose-200 px-2 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50"
+                                                        onClick={() => deleteComment(note.id)}
+                                                        disabled={deletingCommentId === String(note.id)}
+                                                    >
+                                                        {deletingCommentId === String(note.id) ? 'Đang xóa...' : 'Xóa'}
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{note.detail}</p>
+                                    </div>
+                                ))}
+                                {commentsHistory.length === 0 && (
+                                    <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-6 text-center text-sm text-slate-500">
+                                        Chưa có bình luận nào.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="mt-4 rounded-2xl border border-slate-200/80 bg-white p-4">
+                        {flow?.permissions?.can_add_comment ? (
+                            <form className="space-y-3" onSubmit={submitComment}>
+                                <div>
+                                    <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.14em] text-text-subtle">
+                                        Tiêu đề bình luận
+                                    </label>
+                                    <input
+                                        className="w-full rounded-xl border border-slate-200/80 bg-white px-3 py-2 text-sm"
+                                        placeholder="Ví dụ: Cập nhật sau buổi gọi sáng nay"
+                                        value={careNoteForm.title}
+                                        onChange={(e) => setCareNoteForm((prev) => ({ ...prev, title: e.target.value }))}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.14em] text-text-subtle">
+                                        Nội dung
+                                    </label>
+                                    <textarea
+                                        className="min-h-[120px] w-full rounded-xl border border-slate-200/80 bg-white px-3 py-2 text-sm"
+                                        placeholder="Nhập nội dung bình luận..."
+                                        value={careNoteForm.detail}
+                                        onChange={(e) => setCareNoteForm((prev) => ({ ...prev, detail: e.target.value }))}
+                                    />
+                                    <div className="mt-1 text-right text-xs text-slate-400">
+                                        {(careNoteForm.detail || '').length} ký tự
+                                    </div>
+                                </div>
+                                <div className="flex items-center justify-end">
+                                    <button
+                                        type="submit"
+                                        className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white"
+                                        disabled={submittingCareNote}
+                                    >
+                                        {submittingCareNote ? 'Đang gửi...' : 'Gửi bình luận'}
+                                    </button>
+                                </div>
+                            </form>
+                        ) : (
+                            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                                Bạn chỉ có quyền xem lịch sử bình luận của khách hàng này.
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -591,80 +707,6 @@ export default function ClientFlow({ auth, clientId }) {
                         </div>
                     )}
 
-                    {!loading && activeTab === 'binh_luan' && (
-                        <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
-                            <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
-                                <h4 className="font-semibold text-slate-900">Thêm bình luận</h4>
-                                <p className="mt-1 text-xs text-slate-500">Để lại trao đổi nội bộ cho khách hàng này. Bình luận mới sẽ hiển thị ngay trong lịch sử.</p>
-
-                                {flow?.permissions?.can_add_comment ? (
-                                    <form className="mt-4 space-y-3" onSubmit={submitComment}>
-                                        <div>
-                                            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.14em] text-text-subtle">
-                                                Tiêu đề bình luận
-                                            </label>
-                                            <input
-                                                className="w-full rounded-xl border border-slate-200/80 bg-white px-3 py-2 text-sm"
-                                                placeholder="Ví dụ: Cập nhật sau buổi gọi sáng nay"
-                                                value={careNoteForm.title}
-                                                onChange={(e) => setCareNoteForm((prev) => ({ ...prev, title: e.target.value }))}
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.14em] text-text-subtle">
-                                                Nội dung
-                                            </label>
-                                            <textarea
-                                                className="min-h-[140px] w-full rounded-xl border border-slate-200/80 bg-white px-3 py-2 text-sm"
-                                                placeholder="Nhập nội dung bình luận..."
-                                                value={careNoteForm.detail}
-                                                onChange={(e) => setCareNoteForm((prev) => ({ ...prev, detail: e.target.value }))}
-                                            />
-                                            <div className="mt-1 text-right text-xs text-slate-400">
-                                                {(careNoteForm.detail || '').length} ký tự
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center justify-end">
-                                            <button
-                                                type="submit"
-                                                className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white"
-                                                disabled={submittingCareNote}
-                                            >
-                                                {submittingCareNote ? 'Đang gửi...' : 'Gửi bình luận'}
-                                            </button>
-                                        </div>
-                                    </form>
-                                ) : (
-                                    <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                                        Bạn chỉ có quyền xem lịch sử bình luận của khách hàng này.
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="rounded-2xl border border-slate-200/80 bg-white p-4">
-                                <h4 className="font-semibold text-slate-900">Lịch sử bình luận</h4>
-                                <div className="mt-3 space-y-2">
-                                    {(flow?.comments_history || []).map((note) => (
-                                        <div key={note.id} className="rounded-xl border border-slate-200/80 bg-slate-50 px-3 py-3">
-                                            <div className="flex items-start justify-between gap-3">
-                                                <div>
-                                                    <div className="text-sm font-semibold text-slate-900">{note.title}</div>
-                                                    <div className="mt-0.5 text-xs text-slate-500">{note.user?.name || 'Nhân sự'} • {note.user?.email || '—'}</div>
-                                                </div>
-                                                <div className="whitespace-nowrap text-xs text-slate-500">{formatDateTime(note.created_at)}</div>
-                                            </div>
-                                            <p className="mt-2 text-sm text-slate-700 whitespace-pre-wrap">{note.detail}</p>
-                                        </div>
-                                    ))}
-                                    {(flow?.comments_history || []).length === 0 && (
-                                        <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-center text-sm text-slate-500">
-                                            Chưa có bình luận nào.
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    )}
                 </div>
             </div>
 

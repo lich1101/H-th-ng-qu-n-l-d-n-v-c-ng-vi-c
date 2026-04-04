@@ -197,11 +197,29 @@ class ClientFlowController extends Controller
                     return is_array($item)
                         && ! empty(trim((string) ($item['detail'] ?? '')));
                 })
+                ->map(function ($item) use ($user) {
+                    $comment = is_array($item) ? $item : [];
+                    return [
+                        'id' => (string) ($comment['id'] ?? Str::uuid()),
+                        'title' => trim((string) ($comment['title'] ?? 'Bình luận')),
+                        'detail' => trim((string) ($comment['detail'] ?? '')),
+                        'created_at' => $comment['created_at'] ?? null,
+                        'user' => is_array($comment['user'] ?? null)
+                            ? [
+                                'id' => (int) (($comment['user']['id'] ?? 0)),
+                                'name' => (string) ($comment['user']['name'] ?? 'Nhân sự'),
+                                'email' => (string) ($comment['user']['email'] ?? ''),
+                            ]
+                            : null,
+                        'can_delete' => $this->canDeleteComment($user, $comment),
+                    ];
+                })
                 ->values(),
             'permissions' => [
                 'can_add_care_note' => $this->canAddCareNote($user, $client),
                 'can_add_comment' => $this->canAddCareNote($user, $client),
                 'can_manage_client' => $this->canManageClient($user, $client),
+                'can_delete_any_comment' => in_array($user?->role, ['admin', 'administrator'], true),
             ],
         ]);
     }
@@ -231,6 +249,7 @@ class ClientFlowController extends Controller
                 'name' => $user->name,
                 'email' => $user->email,
             ],
+            'can_delete' => true,
         ];
 
         DB::transaction(function () use ($client, $comment) {
@@ -254,6 +273,68 @@ class ClientFlowController extends Controller
             'message' => 'Đã thêm bình luận.',
             'comment' => $comment,
         ], 201);
+    }
+
+    public function destroyComment(Client $client, string $commentId, Request $request): JsonResponse
+    {
+        $user = $request->user();
+        if (! $this->canAccessClient($user, $client)) {
+            return response()->json(['message' => 'Không có quyền xem luồng khách hàng.'], 403);
+        }
+
+        $targetId = trim((string) $commentId);
+        if ($targetId === '') {
+            return response()->json(['message' => 'Mã bình luận không hợp lệ.'], 422);
+        }
+
+        $result = DB::transaction(function () use ($client, $user, $targetId) {
+            /** @var Client|null $locked */
+            $locked = Client::query()->lockForUpdate()->find($client->id);
+            if (! $locked) {
+                return ['status' => 404, 'message' => 'Không tìm thấy khách hàng.'];
+            }
+
+            $history = $locked->comments_history_json;
+            if (! is_array($history)) {
+                $history = [];
+            }
+
+            $removeIndex = null;
+            $comment = null;
+            foreach ($history as $index => $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                if (trim((string) ($row['id'] ?? '')) === $targetId) {
+                    $removeIndex = $index;
+                    $comment = $row;
+                    break;
+                }
+            }
+
+            if ($removeIndex === null || ! is_array($comment)) {
+                return ['status' => 404, 'message' => 'Không tìm thấy bình luận.'];
+            }
+
+            if (! $this->canDeleteComment($user, $comment)) {
+                return ['status' => 403, 'message' => 'Bạn chỉ có thể xóa bình luận của chính mình.'];
+            }
+
+            unset($history[$removeIndex]);
+            $locked->comments_history_json = array_values($history);
+            $locked->save();
+
+            return ['status' => 200];
+        });
+
+        if (($result['status'] ?? 500) !== 200) {
+            return response()->json(['message' => $result['message'] ?? 'Không thể xóa bình luận.'], $result['status'] ?? 500);
+        }
+
+        return response()->json([
+            'message' => 'Đã xóa bình luận.',
+            'comment_id' => $targetId,
+        ]);
     }
 
     public function storeCareNote(Client $client, Request $request): JsonResponse
@@ -361,5 +442,19 @@ class ClientFlowController extends Controller
         }
 
         return (int) $client->assigned_staff_id === (int) $user->id;
+    }
+
+    private function canDeleteComment(?User $user, array $comment): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        if (in_array($user->role, ['admin', 'administrator'], true)) {
+            return true;
+        }
+
+        $commentUserId = (int) data_get($comment, 'user.id', 0);
+        return $commentUserId > 0 && $commentUserId === (int) $user->id;
     }
 }
