@@ -39,7 +39,8 @@ export function FilterActionGroup({ className = '', children }) {
 function TableSearchInput({ containerRef, searchValue, onSearchChange }) {
     const isControlled = onSearchChange !== undefined;
     const [localTerm, setLocalTerm] = useState('');
-    const term = isControlled ? (searchValue ?? '') : localTerm;
+    const [controlledTerm, setControlledTerm] = useState(searchValue ?? '');
+    const term = isControlled ? controlledTerm : localTerm;
     const [matchCount, setMatchCount] = useState(null);
     const debounceRef = useRef(null);
     const inputRef = useRef(null);
@@ -80,9 +81,8 @@ function TableSearchInput({ containerRef, searchValue, onSearchChange }) {
 
     const handleChange = useCallback((e) => {
         const value = e.target.value;
-        if (!isControlled) {
-            setLocalTerm(value);
-        }
+        if (isControlled) setControlledTerm(value);
+        else setLocalTerm(value);
         if (debounceRef.current) clearTimeout(debounceRef.current);
         debounceRef.current = setTimeout(() => {
             if (isControlled) {
@@ -95,6 +95,7 @@ function TableSearchInput({ containerRef, searchValue, onSearchChange }) {
 
     const clearSearch = useCallback(() => {
         if (isControlled) {
+            setControlledTerm('');
             onSearchChange('');
         } else {
             setLocalTerm('');
@@ -102,6 +103,11 @@ function TableSearchInput({ containerRef, searchValue, onSearchChange }) {
         }
         inputRef.current?.focus();
     }, [isControlled, applyFilter, onSearchChange]);
+
+    useEffect(() => {
+        if (!isControlled) return;
+        setControlledTerm(searchValue ?? '');
+    }, [isControlled, searchValue]);
 
     // Re-apply filter when table data changes (via MutationObserver)
     useEffect(() => {

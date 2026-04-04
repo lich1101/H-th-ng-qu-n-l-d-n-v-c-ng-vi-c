@@ -136,6 +136,10 @@ class ClientFlowController extends Controller
                 'email' => $client->email,
                 'phone' => $client->phone,
                 'notes' => $client->notes,
+                'lead_type_id' => $client->lead_type_id,
+                'assigned_department_id' => $client->assigned_department_id,
+                'assigned_staff_id' => $client->assigned_staff_id,
+                'sales_owner_id' => $client->sales_owner_id,
                 'lead_source' => $client->lead_source,
                 'lead_channel' => $client->lead_channel,
                 'total_revenue' => $client->total_revenue,
@@ -188,6 +192,7 @@ class ClientFlowController extends Controller
                 ->values(),
             'permissions' => [
                 'can_add_care_note' => $this->canAddCareNote($user, $client),
+                'can_manage_client' => $this->canManageClient($user, $client),
             ],
         ]);
     }
@@ -280,5 +285,22 @@ class ClientFlowController extends Controller
         return $client->careStaffUsers()
             ->where('users.id', $user->id)
             ->exists();
+    }
+
+    private function canManageClient(?User $user, Client $client): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        if ($user->role === 'admin') {
+            return true;
+        }
+
+        if ($user->role === 'quan_ly') {
+            return CrmScope::canManagerAccessClient($user, $client);
+        }
+
+        return (int) $client->assigned_staff_id === (int) $user->id;
     }
 }

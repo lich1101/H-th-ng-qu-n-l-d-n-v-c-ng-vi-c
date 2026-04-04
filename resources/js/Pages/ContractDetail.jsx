@@ -92,6 +92,17 @@ const handoverReceiveLabel = (status) => {
     return 'Chưa nhận bàn giao';
 };
 
+const toDateInputValue = (raw) => {
+    if (!raw) return '';
+    const text = String(raw);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+    const isoDate = text.slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return isoDate;
+    const parsed = new Date(text);
+    if (Number.isNaN(parsed.getTime())) return '';
+    return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
+};
+
 const readBoolean = (raw) => {
     if (typeof raw === 'boolean') return raw;
     if (typeof raw === 'number') return raw !== 0;
@@ -152,6 +163,22 @@ export default function ContractDetail(props) {
     const [projectOwners, setProjectOwners] = useState([]);
     const [meta, setMeta] = useState({});
     const [showProjectForm, setShowProjectForm] = useState(false);
+    const [showEditContractModal, setShowEditContractModal] = useState(false);
+    const [savingContract, setSavingContract] = useState(false);
+    const [clientsLookup, setClientsLookup] = useState([]);
+    const [collectorsLookup, setCollectorsLookup] = useState([]);
+    const [editForm, setEditForm] = useState({
+        title: '',
+        client_id: '',
+        status: 'draft',
+        collector_user_id: '',
+        value: '',
+        payment_times: '1',
+        signed_at: '',
+        start_date: '',
+        end_date: '',
+        notes: '',
+    });
     const [projectForm, setProjectForm] = useState({
         name: '',
         service_type: DEFAULT_SERVICES[0].value,
@@ -181,6 +208,26 @@ export default function ContractDetail(props) {
         () => projectOwners.filter((owner) => !['admin', 'administrator', 'ke_toan'].includes(String(owner?.role || '').toLowerCase())),
         [projectOwners]
     );
+    const collectorOptions = useMemo(
+        () => collectorsLookup.filter((owner) => !['admin', 'administrator', 'ke_toan'].includes(String(owner?.role || '').toLowerCase())),
+        [collectorsLookup]
+    );
+
+    const hydrateEditForm = (data) => {
+        if (!data) return;
+        setEditForm({
+            title: data.title || '',
+            client_id: data.client_id ? String(data.client_id) : '',
+            status: data.status || 'draft',
+            collector_user_id: data.collector_user_id ? String(data.collector_user_id) : '',
+            value: String(parseNumberInput(data.value || resolveContractValue(data) || 0)),
+            payment_times: String(data.payment_times || 1),
+            signed_at: toDateInputValue(data.signed_at),
+            start_date: toDateInputValue(data.start_date),
+            end_date: toDateInputValue(data.end_date),
+            notes: data.notes || '',
+        });
+    };
 
     const loadData = async () => {
         setLoading(true);
@@ -201,12 +248,15 @@ export default function ContractDetail(props) {
 
     const fetchMetaAndOwners = async () => {
         try {
-            const [metaRes, ownersRes] = await Promise.all([
+            const [metaRes, ownersRes, clientRes] = await Promise.all([
                 axios.get('/api/v1/meta').catch(() => ({ data: {} })),
                 axios.get('/api/v1/users/lookup', { params: { purpose: 'project_owner' } }).catch(() => ({ data: { data: [] } })),
+                axios.get('/api/v1/crm/clients', { params: { per_page: 200, page: 1, sort_by: 'last_activity_at', sort_dir: 'desc' } }).catch(() => ({ data: { data: [] } })),
             ]);
             setMeta(metaRes.data || {});
             setProjectOwners(ownersRes.data?.data || []);
+            setCollectorsLookup(ownersRes.data?.data || []);
+            setClientsLookup(clientRes.data?.data || []);
         } catch {
             // ignore
         }
@@ -264,6 +314,52 @@ export default function ContractDetail(props) {
         }
     };
 
+    const openEditContractModal = () => {
+        hydrateEditForm(contract);
+        setShowEditContractModal(true);
+    };
+
+    const submitContractUpdate = async (event) => {
+        event.preventDefault();
+        if (!contract?.id) return;
+        if (!(editForm.title || '').trim()) {
+            toast.error('Vui lòng nhập tên hợp đồng.');
+            return;
+        }
+        if (!editForm.client_id) {
+            toast.error('Vui lòng chọn khách hàng.');
+            return;
+        }
+        if (!editForm.status) {
+            toast.error('Vui lòng chọn trạng thái hợp đồng.');
+            return;
+        }
+
+        setSavingContract(true);
+        try {
+            const payload = {
+                title: (editForm.title || '').trim(),
+                client_id: Number(editForm.client_id),
+                status: editForm.status,
+                collector_user_id: editForm.collector_user_id ? Number(editForm.collector_user_id) : null,
+                value: parseNumberInput(editForm.value),
+                payment_times: Math.max(1, Number(editForm.payment_times || 1)),
+                signed_at: editForm.signed_at || null,
+                start_date: editForm.start_date || null,
+                end_date: editForm.end_date || null,
+                notes: (editForm.notes || '').trim() || null,
+            };
+            await axios.put(`/api/v1/contracts/${contract.id}`, payload);
+            toast.success('Đã cập nhật hợp đồng.');
+            setShowEditContractModal(false);
+            await loadData();
+        } catch (e) {
+            toast.error(e?.response?.data?.message || 'Không thể cập nhật hợp đồng.');
+        } finally {
+            setSavingContract(false);
+        }
+    };
+
     if (loading) {
         return (
             <PageContainer auth={props.auth} title="Chi tiết Hợp đồng" description="">
@@ -286,6 +382,7 @@ export default function ContractDetail(props) {
     const canCreateProject = userRole === 'admin'
         || Number(contract.collector_user_id || 0) === currentUserId
         || Number(contract.created_by || 0) === currentUserId;
+    const canManageContract = readBoolean(contract?.can_manage) === true;
 
     return (
         <PageContainer
@@ -323,6 +420,14 @@ export default function ContractDetail(props) {
                                     {handoverReceiveLabel(contract.handover_receive_status)}
                                 </span>
                             </div>
+                            {canManageContract && (
+                                <button
+                                    onClick={openEditContractModal}
+                                    className="rounded-xl border border-primary/30 bg-primary/10 px-4 py-2 text-xs font-semibold text-primary hover:bg-primary/15"
+                                >
+                                    Sửa hợp đồng
+                                </button>
+                            )}
                             {canCreateProject && contract.approval_status === 'approved' && !contract.project_id && (
                                 <button
                                     onClick={() => setShowProjectForm(true)}
@@ -718,6 +823,151 @@ export default function ContractDetail(props) {
                         </button>
                     </div>
                 </div>
+            </Modal>
+
+            <Modal
+                open={showEditContractModal}
+                onClose={() => setShowEditContractModal(false)}
+                title={`Sửa hợp đồng #${contract.id}`}
+                description="Cập nhật thông tin chính của hợp đồng."
+                size="lg"
+            >
+                <form className="mt-2 space-y-4 text-sm" onSubmit={submitContractUpdate}>
+                    <div className="grid gap-4 md:grid-cols-2">
+                        <div className="md:col-span-2">
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Tên hợp đồng *</label>
+                            <input
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                value={editForm.title}
+                                onChange={(e) => setEditForm((s) => ({ ...s, title: e.target.value }))}
+                            />
+                        </div>
+                        <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Khách hàng *</label>
+                            <select
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                value={editForm.client_id}
+                                onChange={(e) => setEditForm((s) => ({ ...s, client_id: e.target.value }))}
+                            >
+                                <option value="">Chọn khách hàng</option>
+                                {clientsLookup.map((client) => (
+                                    <option key={client.id} value={client.id}>
+                                        {client.name} {client.phone ? `• ${client.phone}` : ''}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Trạng thái *</label>
+                            <select
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                value={editForm.status}
+                                onChange={(e) => setEditForm((s) => ({ ...s, status: e.target.value }))}
+                            >
+                                {STATUS_OPTIONS.map((status) => (
+                                    <option key={status.value} value={status.value}>
+                                        {status.label}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                        <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Giá trị hợp đồng</label>
+                            <input
+                                type="number"
+                                min="0"
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                value={editForm.value}
+                                onChange={(e) => setEditForm((s) => ({ ...s, value: e.target.value }))}
+                            />
+                        </div>
+                        <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Số lần thanh toán</label>
+                            <input
+                                type="number"
+                                min="1"
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                value={editForm.payment_times}
+                                onChange={(e) => setEditForm((s) => ({ ...s, payment_times: e.target.value }))}
+                            />
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Nhân viên thu hợp đồng</label>
+                        <select
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            value={editForm.collector_user_id}
+                            onChange={(e) => setEditForm((s) => ({ ...s, collector_user_id: e.target.value }))}
+                        >
+                            <option value="">Chưa chọn</option>
+                            {collectorOptions.map((user) => (
+                                <option key={user.id} value={user.id}>
+                                    {user.name} ({user.role})
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-3">
+                        <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Ngày ký</label>
+                            <input
+                                type="date"
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                value={editForm.signed_at}
+                                onChange={(e) => setEditForm((s) => ({ ...s, signed_at: e.target.value }))}
+                            />
+                        </div>
+                        <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Ngày bắt đầu</label>
+                            <input
+                                type="date"
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                value={editForm.start_date}
+                                onChange={(e) => setEditForm((s) => ({ ...s, start_date: e.target.value }))}
+                            />
+                        </div>
+                        <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Ngày kết thúc</label>
+                            <input
+                                type="date"
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                value={editForm.end_date}
+                                onChange={(e) => setEditForm((s) => ({ ...s, end_date: e.target.value }))}
+                            />
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Ghi chú</label>
+                        <textarea
+                            className="min-h-[90px] w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            value={editForm.notes}
+                            onChange={(e) => setEditForm((s) => ({ ...s, notes: e.target.value }))}
+                        />
+                    </div>
+
+                    <div className="flex items-center justify-end gap-3 pt-2">
+                        <button
+                            type="button"
+                            onClick={() => setShowEditContractModal(false)}
+                            className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                        >
+                            Hủy
+                        </button>
+                        <button
+                            type="submit"
+                            disabled={savingContract}
+                            className="rounded-2xl bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90 disabled:opacity-60"
+                        >
+                            {savingContract ? 'Đang lưu...' : 'Lưu hợp đồng'}
+                        </button>
+                    </div>
+                </form>
             </Modal>
         </PageContainer>
     );

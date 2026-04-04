@@ -4,6 +4,7 @@ import { Link } from '@inertiajs/inertia-react';
 import AppIcon from '@/Components/AppIcon';
 import PageContainer from '@/Components/PageContainer';
 import TableSearch from '@/Components/TableSearch';
+import Modal from '@/Components/Modal';
 import { useToast } from '@/Contexts/ToastContext';
 import { formatVietnamDate, formatVietnamDateTime } from '@/lib/vietnamTime';
 
@@ -85,6 +86,25 @@ export default function ClientFlow({ auth, clientId }) {
     const [flow, setFlow] = useState(null);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('tong_quan');
+    const [showEditModal, setShowEditModal] = useState(false);
+    const [savingClient, setSavingClient] = useState(false);
+    const [loadingLookups, setLoadingLookups] = useState(false);
+    const [leadTypes, setLeadTypes] = useState([]);
+    const [departments, setDepartments] = useState([]);
+    const [staffUsers, setStaffUsers] = useState([]);
+    const [clientForm, setClientForm] = useState({
+        name: '',
+        company: '',
+        email: '',
+        phone: '',
+        notes: '',
+        lead_type_id: '',
+        lead_source: '',
+        lead_channel: '',
+        assigned_department_id: '',
+        assigned_staff_id: '',
+        sales_owner_id: '',
+    });
     const [careNoteForm, setCareNoteForm] = useState({ title: '', detail: '' });
     const [submittingCareNote, setSubmittingCareNote] = useState(false);
 
@@ -104,6 +124,85 @@ export default function ClientFlow({ auth, clientId }) {
         fetchFlow();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [clientId]);
+
+    const hydrateClientForm = (client) => {
+        if (!client) return;
+        setClientForm({
+            name: client.name || '',
+            company: client.company || '',
+            email: client.email || '',
+            phone: client.phone || '',
+            notes: client.notes || '',
+            lead_type_id: client.lead_type_id ? String(client.lead_type_id) : '',
+            lead_source: client.lead_source || '',
+            lead_channel: client.lead_channel || '',
+            assigned_department_id: client.assigned_department_id ? String(client.assigned_department_id) : '',
+            assigned_staff_id: client.assigned_staff_id ? String(client.assigned_staff_id) : '',
+            sales_owner_id: client.sales_owner_id ? String(client.sales_owner_id) : '',
+        });
+    };
+
+    const fetchLookups = async () => {
+        setLoadingLookups(true);
+        try {
+            const [leadRes, deptRes, userRes] = await Promise.all([
+                axios.get('/api/v1/lead-types').catch(() => ({ data: [] })),
+                axios.get('/api/v1/departments').catch(() => ({ data: [] })),
+                axios.get('/api/v1/users/lookup').catch(() => ({ data: { data: [] } })),
+            ]);
+            setLeadTypes(Array.isArray(leadRes.data) ? leadRes.data : []);
+            setDepartments(Array.isArray(deptRes.data) ? deptRes.data : []);
+            setStaffUsers(Array.isArray(userRes.data?.data) ? userRes.data.data : []);
+        } finally {
+            setLoadingLookups(false);
+        }
+    };
+
+    const openEditModal = async () => {
+        hydrateClientForm(flow?.client);
+        setShowEditModal(true);
+        if (leadTypes.length === 0 && departments.length === 0 && staffUsers.length === 0) {
+            await fetchLookups();
+        }
+    };
+
+    const submitClientUpdate = async (event) => {
+        event.preventDefault();
+        if (!flow?.client?.id) return;
+        if (!(clientForm.name || '').trim()) {
+            toast.error('Vui lòng nhập tên khách hàng.');
+            return;
+        }
+        setSavingClient(true);
+        try {
+            const payload = {
+                name: (clientForm.name || '').trim(),
+                company: (clientForm.company || '').trim() || null,
+                email: (clientForm.email || '').trim() || null,
+                phone: (clientForm.phone || '').trim() || null,
+                notes: (clientForm.notes || '').trim() || null,
+                lead_type_id: clientForm.lead_type_id ? Number(clientForm.lead_type_id) : null,
+                lead_source: (clientForm.lead_source || '').trim() || null,
+                lead_channel: (clientForm.lead_channel || '').trim() || null,
+                assigned_department_id: clientForm.assigned_department_id ? Number(clientForm.assigned_department_id) : null,
+                assigned_staff_id: clientForm.assigned_staff_id ? Number(clientForm.assigned_staff_id) : null,
+                sales_owner_id: clientForm.sales_owner_id ? Number(clientForm.sales_owner_id) : null,
+            };
+            await axios.put(`/api/v1/crm/clients/${flow.client.id}`, payload);
+            toast.success('Đã cập nhật khách hàng.');
+            setShowEditModal(false);
+            await fetchFlow();
+        } catch (e) {
+            toast.error(e?.response?.data?.message || 'Không thể cập nhật khách hàng.');
+        } finally {
+            setSavingClient(false);
+        }
+    };
+
+    const navigateTo = (url) => {
+        if (!url) return;
+        window.location.href = url;
+    };
 
     const submitCareNote = async (event) => {
         event.preventDefault();
@@ -226,6 +325,16 @@ export default function ClientFlow({ auth, clientId }) {
                             <AppIcon name="route" className="h-4 w-4" />
                             Quay lại khách hàng
                         </Link>
+                        {flow?.permissions?.can_manage_client && (
+                            <button
+                                type="button"
+                                onClick={openEditModal}
+                                className="inline-flex items-center gap-2 rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-white hover:bg-primary/90"
+                            >
+                                <AppIcon name="edit" className="h-4 w-4" />
+                                Sửa khách hàng
+                            </button>
+                        )}
                     </div>
 
                     <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
@@ -358,7 +467,11 @@ export default function ClientFlow({ auth, clientId }) {
                                 </thead>
                                 <tbody>
                                     {contracts.map((row) => (
-                                        <tr key={row.id} className="border-b border-slate-100">
+                                        <tr
+                                            key={row.id}
+                                            className="cursor-pointer border-b border-slate-100 hover:bg-slate-50/80"
+                                            onClick={() => navigateTo(`/hop-dong/${row.id}`)}
+                                        >
                                             <td className="py-2.5 text-xs text-slate-600">{row.code || `HD-${row.id}`}</td>
                                             <td className="py-2.5 font-medium text-slate-900">{row.title || '—'}</td>
                                             <td className="py-2.5 text-xs text-slate-600">{statusLabel(row.status)}</td>
@@ -388,7 +501,11 @@ export default function ClientFlow({ auth, clientId }) {
                                 </thead>
                                 <tbody>
                                     {projects.map((row) => (
-                                        <tr key={row.id} className="border-b border-slate-100">
+                                        <tr
+                                            key={row.id}
+                                            className="cursor-pointer border-b border-slate-100 hover:bg-slate-50/80"
+                                            onClick={() => navigateTo(`/du-an/${row.id}`)}
+                                        >
                                             <td className="py-2.5 font-medium text-slate-900">{row.name || '—'}</td>
                                             <td className="py-2.5 text-xs text-slate-600">{serviceLabel(row)}</td>
                                             <td className="py-2.5 text-xs text-slate-600">{statusLabel(row.status)}</td>
@@ -418,7 +535,11 @@ export default function ClientFlow({ auth, clientId }) {
                                 </thead>
                                 <tbody>
                                     {tasks.map((row) => (
-                                        <tr key={row.id} className="border-b border-slate-100">
+                                        <tr
+                                            key={row.id}
+                                            className="cursor-pointer border-b border-slate-100 hover:bg-slate-50/80"
+                                            onClick={() => navigateTo(`/cong-viec/${row.id}`)}
+                                        >
                                             <td className="py-2.5 font-medium text-slate-900">{row.title || '—'}</td>
                                             <td className="py-2.5 text-xs text-slate-600">{projectById.get(Number(row.project_id))?.name || '—'}</td>
                                             <td className="py-2.5 text-xs text-slate-600">{row.assignee?.name || '—'}</td>
@@ -450,7 +571,11 @@ export default function ClientFlow({ auth, clientId }) {
                                 </thead>
                                 <tbody>
                                     {items.map((row) => (
-                                        <tr key={row.id} className="border-b border-slate-100">
+                                        <tr
+                                            key={row.id}
+                                            className="cursor-pointer border-b border-slate-100 hover:bg-slate-50/80"
+                                            onClick={() => navigateTo(`/dau-viec/${row.id}`)}
+                                        >
                                             <td className="py-2.5 font-medium text-slate-900">{row.title || '—'}</td>
                                             <td className="py-2.5 text-xs text-slate-600">{taskById.get(Number(row.task_id))?.title || '—'}</td>
                                             <td className="py-2.5 text-xs text-slate-600">{row.assignee?.name || '—'}</td>
@@ -525,6 +650,170 @@ export default function ClientFlow({ auth, clientId }) {
                     )}
                 </div>
             </div>
+
+            <Modal
+                open={showEditModal}
+                onClose={() => setShowEditModal(false)}
+                title="Sửa khách hàng"
+                description="Cập nhật thông tin khách hàng từ trang chi tiết."
+                size="lg"
+            >
+                <form className="mt-2 space-y-4 text-sm" onSubmit={submitClientUpdate}>
+                    <div className="grid gap-4 md:grid-cols-2">
+                        <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Tên khách hàng *</label>
+                            <input
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                value={clientForm.name}
+                                onChange={(e) => setClientForm((prev) => ({ ...prev, name: e.target.value }))}
+                                placeholder="VD: Nguyễn Văn A"
+                            />
+                        </div>
+                        <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Công ty</label>
+                            <input
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                value={clientForm.company}
+                                onChange={(e) => setClientForm((prev) => ({ ...prev, company: e.target.value }))}
+                                placeholder="Tên công ty"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                        <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Email</label>
+                            <input
+                                type="email"
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                value={clientForm.email}
+                                onChange={(e) => setClientForm((prev) => ({ ...prev, email: e.target.value }))}
+                            />
+                        </div>
+                        <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Số điện thoại</label>
+                            <input
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                value={clientForm.phone}
+                                onChange={(e) => setClientForm((prev) => ({ ...prev, phone: e.target.value }))}
+                            />
+                        </div>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                        <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Loại lead</label>
+                            <select
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                value={clientForm.lead_type_id}
+                                onChange={(e) => setClientForm((prev) => ({ ...prev, lead_type_id: e.target.value }))}
+                            >
+                                <option value="">Chưa chọn</option>
+                                {leadTypes.map((lead) => (
+                                    <option key={lead.id} value={lead.id}>
+                                        {lead.name}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Phòng ban phụ trách</label>
+                            <select
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                value={clientForm.assigned_department_id}
+                                onChange={(e) => setClientForm((prev) => ({ ...prev, assigned_department_id: e.target.value }))}
+                            >
+                                <option value="">Chưa chọn</option>
+                                {departments.map((department) => (
+                                    <option key={department.id} value={department.id}>
+                                        {department.name}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                        <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Nhân sự phụ trách</label>
+                            <select
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                value={clientForm.assigned_staff_id}
+                                onChange={(e) => setClientForm((prev) => ({ ...prev, assigned_staff_id: e.target.value }))}
+                            >
+                                <option value="">Chưa chọn</option>
+                                {staffUsers.map((user) => (
+                                    <option key={user.id} value={user.id}>
+                                        {user.name} ({user.role})
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Sales owner</label>
+                            <select
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                value={clientForm.sales_owner_id}
+                                onChange={(e) => setClientForm((prev) => ({ ...prev, sales_owner_id: e.target.value }))}
+                            >
+                                <option value="">Chưa chọn</option>
+                                {staffUsers.map((user) => (
+                                    <option key={user.id} value={user.id}>
+                                        {user.name} ({user.role})
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                        <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Nguồn lead</label>
+                            <input
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                value={clientForm.lead_source}
+                                onChange={(e) => setClientForm((prev) => ({ ...prev, lead_source: e.target.value }))}
+                                placeholder="VD: facebook"
+                            />
+                        </div>
+                        <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Kênh lead</label>
+                            <input
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                value={clientForm.lead_channel}
+                                onChange={(e) => setClientForm((prev) => ({ ...prev, lead_channel: e.target.value }))}
+                                placeholder="VD: page_message"
+                            />
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Ghi chú</label>
+                        <textarea
+                            className="min-h-[90px] w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            value={clientForm.notes}
+                            onChange={(e) => setClientForm((prev) => ({ ...prev, notes: e.target.value }))}
+                        />
+                    </div>
+
+                    <div className="flex items-center justify-end gap-3 pt-2">
+                        <button
+                            type="button"
+                            onClick={() => setShowEditModal(false)}
+                            className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                        >
+                            Hủy
+                        </button>
+                        <button
+                            type="submit"
+                            disabled={savingClient || loadingLookups}
+                            className="rounded-2xl bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90 disabled:opacity-60"
+                        >
+                            {savingClient ? 'Đang lưu...' : 'Lưu khách hàng'}
+                        </button>
+                    </div>
+                </form>
+            </Modal>
         </PageContainer>
     );
 }
