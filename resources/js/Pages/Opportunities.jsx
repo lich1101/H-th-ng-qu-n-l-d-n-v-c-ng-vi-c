@@ -680,6 +680,7 @@ export default function Opportunities(props) {
                                 const status = statusMap[item.status] || item.status_config || null;
                                 const assignee = item.assignee?.name || item.creator?.name || '—';
                                 const client = item.client?.name || `KH #${item.client_id}`;
+                                const clientId = Number(item.client_id || item.client?.id || 0);
                                 const watcherNames = (item.watcher_ids || [])
                                     .map((id) => userMap[Number(id)]?.name)
                                     .filter(Boolean);
@@ -697,7 +698,21 @@ export default function Opportunities(props) {
                                                 </div>
                                             ) : null}
                                         </td>
-                                        <td className="py-3 text-xs text-slate-700">{client}</td>
+                                        <td className="py-3 text-xs text-slate-700">
+                                            {clientId > 0 ? (
+                                                <button
+                                                    type="button"
+                                                    className="font-semibold text-primary hover:underline"
+                                                    onClick={() => {
+                                                        window.location.href = route('crm.flow', clientId);
+                                                    }}
+                                                >
+                                                    {client}
+                                                </button>
+                                            ) : (
+                                                client
+                                            )}
+                                        </td>
                                         <td className="py-3">
                                             <span
                                                 className="inline-flex rounded-full border px-2 py-1 text-xs font-semibold"

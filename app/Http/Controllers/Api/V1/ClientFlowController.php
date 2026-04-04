@@ -13,6 +13,8 @@ use App\Models\TaskItem;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class ClientFlowController extends Controller
 {
@@ -190,11 +192,68 @@ class ClientFlowController extends Controller
                     ];
                 })
                 ->values(),
+            'comments_history' => collect($client->comments_history_json ?: [])
+                ->filter(function ($item) {
+                    return is_array($item)
+                        && ! empty(trim((string) ($item['detail'] ?? '')));
+                })
+                ->values(),
             'permissions' => [
                 'can_add_care_note' => $this->canAddCareNote($user, $client),
+                'can_add_comment' => $this->canAddCareNote($user, $client),
                 'can_manage_client' => $this->canManageClient($user, $client),
             ],
         ]);
+    }
+
+    public function storeComment(Client $client, Request $request): JsonResponse
+    {
+        $user = $request->user();
+        if (! $this->canAccessClient($user, $client)) {
+            return response()->json(['message' => 'Không có quyền xem luồng khách hàng.'], 403);
+        }
+        if (! $this->canAddCareNote($user, $client)) {
+            return response()->json(['message' => 'Không có quyền thêm bình luận khách hàng này.'], 403);
+        }
+
+        $validated = $request->validate([
+            'title' => ['required', 'string', 'max:255'],
+            'detail' => ['required', 'string', 'max:12000'],
+        ]);
+
+        $comment = [
+            'id' => (string) Str::uuid(),
+            'title' => trim((string) $validated['title']),
+            'detail' => trim((string) $validated['detail']),
+            'created_at' => now()->toIso8601String(),
+            'user' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+            ],
+        ];
+
+        DB::transaction(function () use ($client, $comment) {
+            /** @var Client|null $locked */
+            $locked = Client::query()->lockForUpdate()->find($client->id);
+            if (! $locked) {
+                return;
+            }
+
+            $history = $locked->comments_history_json;
+            if (! is_array($history)) {
+                $history = [];
+            }
+
+            array_unshift($history, $comment);
+            $locked->comments_history_json = $history;
+            $locked->save();
+        });
+
+        return response()->json([
+            'message' => 'Đã thêm bình luận.',
+            'comment' => $comment,
+        ], 201);
     }
 
     public function storeCareNote(Client $client, Request $request): JsonResponse

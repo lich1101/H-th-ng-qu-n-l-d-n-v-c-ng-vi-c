@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
-import { Link } from '@inertiajs/inertia-react';
 import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
@@ -1034,7 +1033,10 @@ export default function CRM(props) {
                                     {clients.map((client) => (
                                         <tr
                                             key={client.id}
-                                            className={`border-b border-slate-100 ${selectedClientSet.has(Number(client.id)) ? 'bg-primary/5' : ''}`}
+                                            className={`cursor-pointer border-b border-slate-100 hover:bg-slate-50 ${selectedClientSet.has(Number(client.id)) ? 'bg-primary/5' : ''}`}
+                                            onClick={() => {
+                                                window.location.href = route('crm.flow', client.id);
+                                            }}
                                         >
                                             {canBulkClientActions && (
                                                 <td className="py-2 pr-2 align-top">
@@ -1043,13 +1045,24 @@ export default function CRM(props) {
                                                         className="mt-1 rounded border-slate-300 text-primary focus:ring-primary/20"
                                                         checked={selectedClientSet.has(Number(client.id))}
                                                         onChange={() => toggleClientSelect(client.id)}
+                                                        onClick={(event) => event.stopPropagation()}
                                                         aria-label={`Chọn khách hàng ${client.name}`}
                                                     />
                                                 </td>
                                             )}
                                             <td className="py-2">
-                                                <div className="font-medium text-slate-900">{client.name}</div>
-                                                <div className="text-xs text-text-muted">{client.company || '—'}</div>
+                                                <button
+                                                    type="button"
+                                                    className="text-left"
+                                                    onClick={(event) => {
+                                                        event.stopPropagation();
+                                                        window.location.href = route('crm.flow', client.id);
+                                                    }}
+                                                    title="Mở chi tiết khách hàng"
+                                                >
+                                                    <div className="font-medium text-primary hover:underline">{client.name}</div>
+                                                    <div className="text-xs text-text-muted">{client.company || '—'}</div>
+                                                </button>
                                             </td>
                                             <td className="py-2 text-xs text-text-muted">{client.phone || '—'}</td>
                                             <td className="py-2">
@@ -1123,18 +1136,14 @@ export default function CRM(props) {
                                             </td>
                                             <td className="py-2 text-right">
                                                 <div className="flex items-center justify-end gap-2">
-                                                    <Link
-                                                        href={route('crm.flow', client.id)}
-                                                        className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                                                        title="Xem khách hàng"
-                                                    >
-                                                        <AppIcon name="eye" className="h-4 w-4" />
-                                                    </Link>
                                                     {canManageClients && (
                                                         <button
                                                             type="button"
                                                             className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-600 hover:bg-slate-50"
-                                                            onClick={() => editClient(client)}
+                                                            onClick={(event) => {
+                                                                event.stopPropagation();
+                                                                editClient(client);
+                                                            }}
                                                             title="Sửa khách hàng"
                                                         >
                                                             <AppIcon name="pencil" className="h-4 w-4" />
@@ -1144,7 +1153,10 @@ export default function CRM(props) {
                                                         <button
                                                             type="button"
                                                             className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-rose-200 text-rose-600 hover:bg-rose-50"
-                                                            onClick={() => deleteClient(client.id)}
+                                                            onClick={(event) => {
+                                                                event.stopPropagation();
+                                                                deleteClient(client.id);
+                                                            }}
                                                             title="Xóa khách hàng"
                                                         >
                                                             <AppIcon name="trash" className="h-4 w-4" />

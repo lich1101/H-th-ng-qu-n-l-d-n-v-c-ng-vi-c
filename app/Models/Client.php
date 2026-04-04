@@ -16,6 +16,7 @@ class Client extends Model
         'email',
         'phone',
         'notes',
+        'comments_history_json',
         'sales_owner_id',
         'assigned_department_id',
         'assigned_staff_id',
@@ -43,6 +44,7 @@ class Client extends Model
         'total_cash_flow' => 'float',
         'legacy_debt_amount' => 'float',
         'has_purchased' => 'boolean',
+        'comments_history_json' => 'array',
     ];
 
     public function leadType()
