@@ -72,21 +72,30 @@ class CRMController extends Controller
         if ($request->filled('revenue_tier_id')) {
             $query->where('revenue_tier_id', (int) $request->input('revenue_tier_id'));
         }
+        $viewer = $request->user();
         if ($request->filled('assigned_department_id')) {
             $departmentId = (int) $request->input('assigned_department_id');
-            $query->where(function ($builder) use ($departmentId) {
-                $builder->where('assigned_department_id', $departmentId)
-                    ->orWhereHas('assignedStaff', function ($staffQuery) use ($departmentId) {
-                        $staffQuery->where('department_id', $departmentId);
-                    });
-            });
+            if (! $this->canViewerFilterByDepartment($viewer, $departmentId)) {
+                $query->whereRaw('1 = 0');
+            } else {
+                $query->where(function ($builder) use ($departmentId) {
+                    $builder->where('assigned_department_id', $departmentId)
+                        ->orWhereHas('assignedStaff', function ($staffQuery) use ($departmentId) {
+                            $staffQuery->where('department_id', $departmentId);
+                        });
+                });
+            }
         }
         if ($request->filled('assigned_staff_id')) {
             $staffId = (int) $request->input('assigned_staff_id');
-            $query->where(function ($builder) use ($staffId) {
-                $builder->where('assigned_staff_id', $staffId)
-                    ->orWhere('sales_owner_id', $staffId);
-            });
+            if (! $this->canViewerFilterByStaff($viewer, $staffId)) {
+                $query->whereRaw('1 = 0');
+            } else {
+                $query->where(function ($builder) use ($staffId) {
+                    $builder->where('assigned_staff_id', $staffId)
+                        ->orWhere('sales_owner_id', $staffId);
+                });
+            }
         }
         if ($request->boolean('lead_only')) {
             $query->whereNotNull('lead_type_id');
@@ -443,6 +452,48 @@ class CRMController extends Controller
     private function canManageClient(User $user, Client $client): bool
     {
         return CrmScope::canManageClient($user, $client);
+    }
+
+    private function canViewerFilterByDepartment(User $viewer, int $departmentId): bool
+    {
+        if ($departmentId <= 0) {
+            return false;
+        }
+
+        if (CrmScope::hasGlobalScope($viewer)) {
+            return Department::query()->where('id', $departmentId)->exists();
+        }
+
+        if ($viewer->role === 'quan_ly') {
+            return CrmScope::managedDepartmentIds($viewer)->contains($departmentId);
+        }
+
+        if ($viewer->role === 'nhan_vien') {
+            return (int) ($viewer->department_id ?? 0) === $departmentId;
+        }
+
+        return false;
+    }
+
+    private function canViewerFilterByStaff(User $viewer, int $staffId): bool
+    {
+        if ($staffId <= 0) {
+            return false;
+        }
+
+        if (CrmScope::hasGlobalScope($viewer)) {
+            return User::query()->where('id', $staffId)->exists();
+        }
+
+        if ($viewer->role === 'quan_ly') {
+            return CrmScope::managerVisibleUserIds($viewer)->contains($staffId);
+        }
+
+        if ($viewer->role === 'nhan_vien') {
+            return (int) $viewer->id === $staffId;
+        }
+
+        return false;
     }
 
     private function resolveClientAssignment(User $user, array $validated, ?Client $client = null): array

@@ -335,6 +335,34 @@ class ReportController extends Controller
             ->orderBy('name')
             ->get($employeeUserColumns);
 
+        $visibleStaffIds = $employeeUsers
+            ->pluck('id')
+            ->map(function ($id) {
+                return (int) $id;
+            })
+            ->filter(function ($id) {
+                return $id > 0;
+            })
+            ->unique()
+            ->values();
+        $shouldLimitStaffMetrics = ! CrmScope::hasGlobalScope($viewer);
+        $scopeMetricsToVisibleStaff = function (array $metrics) use ($visibleStaffIds, $shouldLimitStaffMetrics): array {
+            if (! $shouldLimitStaffMetrics) {
+                return $metrics;
+            }
+
+            $allowed = array_flip($visibleStaffIds->all());
+            $filtered = [];
+            foreach ($metrics as $staffId => $metric) {
+                $staffKey = (int) $staffId;
+                if (isset($allowed[$staffKey])) {
+                    $filtered[$staffKey] = $metric;
+                }
+            }
+
+            return $filtered;
+        };
+
         $contractsForCurrentPeriod = (clone $contractBaseQuery)
             ->with($contractWithClientSelect)
             ->when($hasContractApprovalStatus, function ($query) {
@@ -508,13 +536,15 @@ class ReportController extends Controller
 
                 $amount = (float) ($cashflowRow->total_amount ?? 0);
                 $currentStaffMetrics[$staffId]['cashflow'] += $amount;
-                $periodCashflowTotal += $amount;
             }
-        } else {
-            $periodCashflowTotal = (float) collect($currentStaffMetrics)->sum('cashflow');
         }
 
+        $currentStaffMetrics = $scopeMetricsToVisibleStaff($currentStaffMetrics);
+        $previousStaffMetrics = $scopeMetricsToVisibleStaff($previousStaffMetrics);
+        $samePeriodLastYearMetrics = $scopeMetricsToVisibleStaff($samePeriodLastYearMetrics);
+
         $totalCurrentRevenue = collect($currentStaffMetrics)->sum('revenue');
+        $periodCashflowTotal = (float) collect($currentStaffMetrics)->sum('cashflow');
 
         $newClientsByStaff = collect();
         if ($hasClientAssignedStaffId && $hasClientCreatedAt) {

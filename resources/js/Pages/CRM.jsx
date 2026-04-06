@@ -55,8 +55,11 @@ export default function CRM(props) {
     const toast = useToast();
     const userRole = props?.auth?.user?.role || '';
     const userId = props?.auth?.user?.id;
+    const userName = props?.auth?.user?.name || 'Nhân sự';
+    const userDepartmentId = props?.auth?.user?.department_id || null;
     const isManager = userRole === 'quan_ly';
-    const isAdminRole = userRole === 'admin';
+    const isAdminRole = ['admin', 'administrator'].includes(userRole);
+    const canFilterByStaff = ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'].includes(userRole);
     const canManageClients = ['admin', 'quan_ly', 'nhan_vien'].includes(userRole);
     const canManagePayments = ['admin', 'ke_toan'].includes(userRole);
     const canDeleteClients = userRole === 'admin';
@@ -175,9 +178,11 @@ export default function CRM(props) {
     };
 
     const fetchStaffUsers = async () => {
-        if (!canManageClients) return;
+        if (!canFilterByStaff) return;
         try {
-            const res = await axios.get('/api/v1/users/lookup');
+            const res = await axios.get('/api/v1/users/lookup', {
+                params: { purpose: 'operational_assignee' },
+            });
             setStaffUsers(res.data?.data || []);
         } catch {
             setStaffUsers([]);
@@ -336,6 +341,19 @@ export default function CRM(props) {
             setClientForm((prev) => ({ ...prev, lead_type_id: leadTypes[0]?.id || '' }));
         }
     }, [leadTypes]);
+
+    useEffect(() => {
+        if (userRole !== 'nhan_vien' || !userId) return;
+        setClientFilters((prev) => {
+            if (String(prev.assigned_staff_id || '') === String(userId)) {
+                return prev;
+            }
+            return {
+                ...prev,
+                assigned_staff_id: String(userId),
+            };
+        });
+    }, [userRole, userId]);
 
     useEffect(() => {
         const table = clientTableRef.current;
@@ -757,8 +775,17 @@ export default function CRM(props) {
 
     const clientResponsibleStaffOptions = useMemo(() => {
         const departmentId = Number(clientFilters.assigned_department_id || 0);
+        const scopedUsers = staffUsers.length > 0
+            ? staffUsers
+            : (userRole === 'nhan_vien' && userId
+                ? [{
+                    id: Number(userId),
+                    name: userName,
+                    department_id: userDepartmentId,
+                }]
+                : []);
 
-        return staffUsers
+        return scopedUsers
             .filter((user) => {
                 if (!departmentId) return true;
                 return Number(user.department_id || 0) === departmentId;
@@ -771,7 +798,15 @@ export default function CRM(props) {
                     : '',
             }))
             .filter((user) => user.id > 0);
-    }, [clientFilters.assigned_department_id, staffUsers, visibleDepartmentOptions]);
+    }, [
+        clientFilters.assigned_department_id,
+        staffUsers,
+        visibleDepartmentOptions,
+        userRole,
+        userId,
+        userName,
+        userDepartmentId,
+    ]);
 
     return (
         <PageContainer
@@ -833,7 +868,7 @@ export default function CRM(props) {
                             searchValue={clientFilters.search}
                             onSearch={handleClientSearch}
                         >
-                            <div className={`grid gap-3 ${isAdminRole ? 'md:grid-cols-1 xl:grid-cols-6' : 'md:grid-cols-2 xl:grid-cols-3'}`}>
+                            <div className={`grid gap-3 ${isAdminRole ? 'md:grid-cols-2 xl:grid-cols-6' : 'md:grid-cols-2 xl:grid-cols-5'}`}>
                                 <FilterField label="Trạng thái lead">
                                     <select
                                         className={filterControlClass}
@@ -893,14 +928,16 @@ export default function CRM(props) {
                                         </select>
                                     </FilterField>
                                 )}
-                                {isAdminRole && (
+                                {canFilterByStaff && (
                                     <FilterField label="Nhân sự phụ trách">
                                         <select
                                             className={filterControlClass}
                                             value={clientFilters.assigned_staff_id}
                                             onChange={(e) => setClientFilters((s) => ({ ...s, assigned_staff_id: e.target.value }))}
                                         >
-                                            <option value="">Tất cả nhân sự phụ trách</option>
+                                            <option value="">
+                                                {userRole === 'nhan_vien' ? 'Chính tôi' : 'Tất cả nhân sự phụ trách'}
+                                            </option>
                                             {clientResponsibleStaffOptions.map((user) => (
                                                 <option key={user.id} value={user.id}>
                                                     {user.name}{user.departmentName ? ` • ${user.departmentName}` : ''}
