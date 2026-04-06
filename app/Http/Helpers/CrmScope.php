@@ -66,19 +66,36 @@ class CrmScope
 
         if ($user->role === 'quan_ly') {
             $deptIds = self::managedDepartmentIds($user);
-            return $query->where(function (Builder $builder) use ($deptIds, $user) {
+            $teamUserIds = self::managerVisibleUserIds($user);
+
+            return $query->where(function (Builder $builder) use ($deptIds, $teamUserIds, $user) {
                 $builder->where('assigned_staff_id', (int) $user->id);
+                $builder->orWhere('sales_owner_id', (int) $user->id);
+
+                if ($teamUserIds->isNotEmpty()) {
+                    $builder->orWhereIn('assigned_staff_id', $teamUserIds->all())
+                        ->orWhereIn('sales_owner_id', $teamUserIds->all());
+                }
 
                 if ($deptIds->isNotEmpty()) {
                     $builder->orWhereIn('assigned_department_id', $deptIds->all())
                         ->orWhereHas('assignedStaff', function (Builder $staffQuery) use ($deptIds) {
+                            $staffQuery->whereIn('department_id', $deptIds->all());
+                        })
+                        ->orWhereHas('salesOwner', function (Builder $staffQuery) use ($deptIds) {
                             $staffQuery->whereIn('department_id', $deptIds->all());
                         });
                 }
             });
         }
 
-        return $query->where('assigned_staff_id', (int) $user->id);
+        return $query->where(function (Builder $builder) use ($user) {
+            $builder->where('assigned_staff_id', (int) $user->id)
+                ->orWhere('sales_owner_id', (int) $user->id)
+                ->orWhereHas('careStaffUsers', function (Builder $careQuery) use ($user) {
+                    $careQuery->where('users.id', (int) $user->id);
+                });
+        });
     }
 
     public static function applyContractScope(Builder $query, User $user): Builder
@@ -148,15 +165,8 @@ class CrmScope
             $deptIds = self::managedDepartmentIds($user);
             $teamUserIds = self::managerVisibleUserIds($user);
 
-            return $query->where(function (Builder $builder) use ($deptIds, $teamUserIds) {
-                if ($teamUserIds->isNotEmpty()) {
-                    $builder->whereIn('created_by', $teamUserIds)
-                        ->orWhereIn('assigned_to', $teamUserIds);
-                }
-
-                $builder->orWhereHas('client', function (Builder $clientQuery) use ($deptIds, $teamUserIds) {
+            return $query->whereHas('client', function (Builder $clientQuery) use ($deptIds, $teamUserIds) {
                     self::applyManagerClientScope($clientQuery, $deptIds, $teamUserIds);
-                });
             });
         }
 
@@ -180,7 +190,16 @@ class CrmScope
         }
 
         $deptIds = self::managedDepartmentIds($user);
+        $teamUserIds = self::managerVisibleUserIds($user);
         if ((int) ($client->assigned_staff_id ?? 0) === (int) $user->id) {
+            return true;
+        }
+        if ((int) ($client->sales_owner_id ?? 0) === (int) $user->id) {
+            return true;
+        }
+
+        if ($teamUserIds->contains((int) ($client->assigned_staff_id ?? 0))
+            || $teamUserIds->contains((int) ($client->sales_owner_id ?? 0))) {
             return true;
         }
 
@@ -192,10 +211,22 @@ class CrmScope
             return false;
         }
 
-        $client->loadMissing('assignedStaff:id,department_id');
+        $client->loadMissing([
+            'assignedStaff:id,department_id',
+            'salesOwner:id,department_id',
+        ]);
 
-        return (int) optional($client->assignedStaff)->department_id > 0
-            && $deptIds->contains((int) $client->assignedStaff->department_id);
+        $assignedStaffDeptId = (int) optional($client->assignedStaff)->department_id;
+        if ($assignedStaffDeptId > 0 && $deptIds->contains($assignedStaffDeptId)) {
+            return true;
+        }
+
+        $salesOwnerDeptId = (int) optional($client->salesOwner)->department_id;
+        if ($salesOwnerDeptId > 0 && $deptIds->contains($salesOwnerDeptId)) {
+            return true;
+        }
+
+        return false;
     }
 
     public static function canAccessClient(User $user, Client $client): bool
@@ -208,7 +239,18 @@ class CrmScope
             return self::canManagerAccessClient($user, $client);
         }
 
-        return (int) ($client->assigned_staff_id ?? 0) === (int) $user->id;
+        if ((int) ($client->assigned_staff_id ?? 0) === (int) $user->id) {
+            return true;
+        }
+        if ((int) ($client->sales_owner_id ?? 0) === (int) $user->id) {
+            return true;
+        }
+
+        $client->loadMissing('careStaffUsers:id');
+
+        return $client->careStaffUsers->contains(function ($staff) use ($user) {
+            return (int) $staff->id === (int) $user->id;
+        });
     }
 
     public static function canManageClient(User $user, Client $client): bool
@@ -221,19 +263,14 @@ class CrmScope
             return self::canManagerAccessClient($user, $client);
         }
 
-        return (int) ($client->assigned_staff_id ?? 0) === (int) $user->id;
+        return (int) ($client->assigned_staff_id ?? 0) === (int) $user->id
+            || (int) ($client->sales_owner_id ?? 0) === (int) $user->id;
     }
 
     public static function canManagerAccessOpportunity(User $user, Opportunity $opportunity): bool
     {
         if ($user->role !== 'quan_ly') {
             return false;
-        }
-
-        $teamUserIds = self::managerVisibleUserIds($user);
-        if ($teamUserIds->contains((int) $opportunity->created_by)
-            || $teamUserIds->contains((int) $opportunity->assigned_to)) {
-            return true;
         }
 
         $opportunity->loadMissing('client');
@@ -286,11 +323,35 @@ class CrmScope
 
     private static function applyManagerClientScope(Builder $builder, Collection $deptIds, Collection $teamUserIds): void
     {
-        // Deprecated: keep method for backward compatibility.
-        if ($deptIds->isNotEmpty()) {
-            $builder->whereIn('assigned_department_id', $deptIds);
-        } else {
-            $builder->whereRaw('1 = 0');
-        }
+        $builder->where(function (Builder $clientQuery) use ($deptIds, $teamUserIds) {
+            $hasScope = false;
+
+            if ($teamUserIds->isNotEmpty()) {
+                $clientQuery->whereIn('assigned_staff_id', $teamUserIds->all())
+                    ->orWhereIn('sales_owner_id', $teamUserIds->all());
+                $hasScope = true;
+            }
+
+            if ($deptIds->isNotEmpty()) {
+                if (! $hasScope) {
+                    $clientQuery->whereIn('assigned_department_id', $deptIds->all());
+                } else {
+                    $clientQuery->orWhereIn('assigned_department_id', $deptIds->all());
+                }
+
+                $clientQuery->orWhereHas('assignedStaff', function (Builder $staffQuery) use ($deptIds) {
+                    $staffQuery->whereIn('department_id', $deptIds->all());
+                });
+                $clientQuery->orWhereHas('salesOwner', function (Builder $staffQuery) use ($deptIds) {
+                    $staffQuery->whereIn('department_id', $deptIds->all());
+                });
+
+                $hasScope = true;
+            }
+
+            if (! $hasScope) {
+                $clientQuery->whereRaw('1 = 0');
+            }
+        });
     }
 }

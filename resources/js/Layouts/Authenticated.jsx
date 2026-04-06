@@ -1285,7 +1285,7 @@ export default function Authenticated({ auth, header, children }) {
                                     <AppIcon name="x-mark" className="h-4 w-4" />
                                 </button>
                             </div>
-                            <div className="max-h-[76vh] overflow-y-auto bg-gradient-to-b from-slate-50/70 to-white p-2.5">
+                            <div className="h-[76vh] min-h-[520px] max-h-[820px] bg-gradient-to-b from-slate-50/70 to-white p-2.5">
                                 <ChatbotAssistantPanel
                                     auth={auth}
                                     embedded

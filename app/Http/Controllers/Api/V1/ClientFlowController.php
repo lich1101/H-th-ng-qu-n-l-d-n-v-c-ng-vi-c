@@ -11,9 +11,11 @@ use App\Models\Project;
 use App\Models\Task;
 use App\Models\TaskItem;
 use App\Models\User;
+use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class ClientFlowController extends Controller
@@ -269,6 +271,8 @@ class ClientFlowController extends Controller
             $locked->save();
         });
 
+        $this->notifyClientCommentCreated($client, $user, $comment);
+
         return response()->json([
             'message' => 'Đã thêm bình luận.',
             'comment' => $comment,
@@ -390,7 +394,7 @@ class ClientFlowController extends Controller
             return false;
         }
 
-        return CrmScope::canManageClient($user, $client);
+        return CrmScope::canAccessClient($user, $client);
     }
 
     private function canManageClient(?User $user, Client $client): bool
@@ -414,5 +418,80 @@ class ClientFlowController extends Controller
 
         $commentUserId = (int) data_get($comment, 'user.id', 0);
         return $commentUserId > 0 && $commentUserId === (int) $user->id;
+    }
+
+    /**
+     * @param  array<string, mixed>  $comment
+     */
+    private function notifyClientCommentCreated(Client $client, User $actor, array $comment): void
+    {
+        try {
+            $client->loadMissing([
+                'assignedStaff.departmentRelation',
+                'salesOwner.departmentRelation',
+                'careStaffUsers:id',
+            ]);
+
+            $assignedStaffId = (int) ($client->assigned_staff_id ?: $client->sales_owner_id);
+            $ownerUser = $client->assignedStaff ?: $client->salesOwner;
+            $managerId = (int) optional(optional($ownerUser)->departmentRelation)->manager_id;
+            $adminIds = User::query()
+                ->whereIn('role', ['admin', 'administrator'])
+                ->pluck('id')
+                ->all();
+            $careStaffIds = $client->careStaffUsers
+                ->pluck('id')
+                ->map(function ($id) {
+                    return (int) $id;
+                })
+                ->filter(function ($id) {
+                    return $id > 0;
+                })
+                ->values()
+                ->all();
+
+            $recipientIds = collect(array_merge(
+                $adminIds,
+                [$assignedStaffId > 0 ? $assignedStaffId : null],
+                [$managerId > 0 ? $managerId : null],
+                $careStaffIds
+            ))
+                ->map(function ($id) {
+                    return (int) $id;
+                })
+                ->filter(function ($id) use ($actor) {
+                    return $id > 0 && $id !== (int) $actor->id;
+                })
+                ->unique()
+                ->values()
+                ->all();
+
+            if (empty($recipientIds)) {
+                return;
+            }
+
+            $clientName = trim((string) ($client->name ?: 'Khách hàng'));
+            $commentTitle = trim((string) ($comment['title'] ?? 'Bình luận'));
+            $actorName = trim((string) ($actor->name ?: 'Nhân sự'));
+
+            app(NotificationService::class)->notifyUsersAfterResponse(
+                $recipientIds,
+                'Khách hàng có bình luận mới',
+                sprintf('%s vừa bình luận "%s" trên khách hàng %s.', $actorName, $commentTitle, $clientName),
+                [
+                    'type' => 'crm_client_comment_added',
+                    'category' => 'crm_realtime',
+                    'client_id' => (int) $client->id,
+                    'comment_id' => (string) ($comment['id'] ?? ''),
+                    'commented_by_user_id' => (int) $actor->id,
+                ]
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Notify client comment created failed', [
+                'client_id' => (int) $client->id,
+                'actor_id' => (int) $actor->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }

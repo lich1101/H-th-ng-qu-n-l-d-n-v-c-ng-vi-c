@@ -528,6 +528,7 @@ class CRMController extends Controller
         }
 
         if ($user->role === 'quan_ly') {
+            $managedDeptIds = $user->managedDepartments()->pluck('id');
             $allowedUsers = User::query()
                 ->where('is_active', true)
                 ->where(function ($builder) use ($user) {
@@ -536,6 +537,17 @@ class CRMController extends Controller
                 })
                 ->get(['id', 'department_id'])
                 ->keyBy('id');
+            $allowedCareStaffIds = User::query()
+                ->where('is_active', true)
+                ->whereIn('department_id', $managedDeptIds)
+                ->pluck('id')
+                ->map(function ($id) {
+                    return (int) $id;
+                })
+                ->filter(function ($id) {
+                    return $id > 0;
+                })
+                ->values();
 
             if (! $requestedStaffId || ! $allowedUsers->has($requestedStaffId)) {
                 $existingStaffId = $client ? (int) $client->assigned_staff_id : null;
@@ -550,14 +562,14 @@ class CRMController extends Controller
             $resolvedDepartmentId = optional($allowedUsers->get($requestedStaffId))->department_id;
             $validated['assigned_department_id'] = $resolvedDepartmentId ? (int) $resolvedDepartmentId : null;
             $careIds = collect($requestedCareStaffIds ?? [])
-                ->filter(function ($id) use ($allowedUsers) {
-                    return $allowedUsers->has((int) $id);
+                ->filter(function ($id) use ($allowedCareStaffIds) {
+                    return $allowedCareStaffIds->contains((int) $id);
                 })
                 ->map(function ($id) {
                     return (int) $id;
                 })
                 ->values();
-            if ($requestedStaffId) {
+            if ($requestedStaffId && $allowedCareStaffIds->contains((int) $requestedStaffId)) {
                 $careIds->push((int) $requestedStaffId);
             }
             $validated['care_staff_ids'] = $careIds->unique()->values()->all();

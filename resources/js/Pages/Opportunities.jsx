@@ -53,9 +53,9 @@ export default function Opportunities(props) {
     const toast = useToast();
     const userRole = props?.auth?.user?.role || '';
     const currentUserId = Number(props?.auth?.user?.id || 0) || null;
-    const canCreate = ['admin', 'quan_ly', 'nhan_vien'].includes(userRole);
-    const canManageStatuses = userRole === 'admin';
-    const canDelete = userRole === 'admin';
+    const canCreate = ['admin', 'administrator', 'quan_ly', 'nhan_vien'].includes(userRole);
+    const canManageStatuses = ['admin', 'administrator'].includes(userRole);
+    const canDelete = ['admin', 'administrator'].includes(userRole);
 
     const [opportunities, setOpportunities] = useState([]);
     const [opportunityMeta, setOpportunityMeta] = useState({ current_page: 1, last_page: 1, total: 0 });

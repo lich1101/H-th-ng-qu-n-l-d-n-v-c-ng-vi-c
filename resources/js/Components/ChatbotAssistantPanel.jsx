@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { useToast } from '@/Contexts/ToastContext';
 import { formatVietnamDateTime, formatVietnamTime } from '@/lib/vietnamTime';
@@ -683,53 +683,6 @@ export default function ChatbotAssistantPanel({
         }
     };
 
-    const queueDescription = useMemo(() => {
-        if (!isProcessing) return 'Không có phiên trả lời đang chạy.';
-        if (inputTrimmed.length > 0 || hasPendingAttachment) {
-            return 'Đang trả lời. Tin nhắn hoặc file bạn gửi lúc này sẽ vào hàng chờ.';
-        }
-        return 'Đang trả lời. Bạn có thể bấm Dừng để ngắt phản hồi hiện tại.';
-    }, [isProcessing, inputTrimmed.length, hasPendingAttachment]);
-    const headerDescription = useMemo(() => {
-        if (!embedded) return queueDescription;
-        if (!chatbotEnabled || !chatbotConfigured) return 'Cần hoàn tất cấu hình trước khi trò chuyện.';
-        if (isProcessing) return 'Đang xử lý hội thoại hiện tại...';
-        return queueCount > 0 ? `Có ${queueCount} tin trong hàng chờ.` : 'Chọn bot và gửi câu hỏi nhanh.';
-    }, [chatbotConfigured, chatbotEnabled, embedded, isProcessing, queueCount, queueDescription]);
-
-    const selectedBotSummary = useMemo(() => {
-        const description = String(selectedBot?.description || '').trim();
-        if (description) return description;
-        if (selectedBot?.is_default) return 'Trợ lý mặc định cho hội thoại nội bộ.';
-        return 'Trợ lý AI cho hội thoại nội bộ.';
-    }, [selectedBot]);
-
-    const topStatusPills = embedded
-        ? [
-            {
-                key: 'processing',
-                label: isProcessing ? 'Đang xử lý' : 'Sẵn sàng',
-                className: isProcessing ? 'border-indigo-200 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-slate-50 text-slate-600',
-            },
-        ]
-        : [
-            {
-                key: 'enabled',
-                label: chatbotEnabled ? 'Đang bật' : 'Đang tắt',
-                className: chatbotEnabled ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700',
-            },
-            {
-                key: 'configured',
-                label: chatbotConfigured ? 'Đủ cấu hình' : 'Thiếu cấu hình',
-                className: chatbotConfigured ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700',
-            },
-            {
-                key: 'processing',
-                label: isProcessing ? 'Đang trả lời tuần tự' : 'Sẵn sàng',
-                className: isProcessing ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600',
-            },
-        ];
-
     useEffect(() => {
         if (queueCount > 0) {
             setQueueOpen(true);
@@ -739,78 +692,53 @@ export default function ChatbotAssistantPanel({
     return (
         <div className={embedded ? '' : 'lg:col-span-2'}>
             <div className={`border border-slate-200/80 bg-white/95 shadow-[0_24px_60px_-32px_rgba(15,23,42,0.45)] ${embedded ? 'overflow-hidden rounded-[24px] bg-gradient-to-b from-white via-slate-50/40 to-white p-0' : 'rounded-[24px] p-3'}`}>
-                <div className={`grid ${embedded ? 'grid-cols-1 gap-4 p-3.5' : 'gap-5 xl:grid-cols-[minmax(0,1.85fr)_minmax(320px,1fr)]'}`}>
-                        <div className={`border border-slate-200/80 bg-white ${embedded ? 'overflow-hidden rounded-[22px] shadow-[0_18px_45px_-32px_rgba(15,23,42,0.45)]' : 'rounded-[20px] shadow-card'}`}>
-                            <div className={`border-b border-slate-200/80 bg-gradient-to-r from-white to-slate-50/80 ${embedded ? 'px-4 py-3.5' : 'px-5 py-4'}`}>
-                            <div className="flex flex-wrap items-start justify-between gap-3">
-                                <div>
-                                    <div className="flex items-center gap-2">
-                                        {embedded ? <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.14)]" /> : null}
-                                        <h3 className="text-base font-semibold text-slate-900">{embedded ? 'Hội thoại nhanh' : 'Hội thoại của bạn'}</h3>
-                                    </div>
-                                    <p className={`mt-1 ${embedded ? 'text-[12px] leading-5' : 'text-sm'} text-text-muted`}>{headerDescription}</p>
-                                </div>
-                                <div className="flex flex-wrap items-center gap-2">
-                                    {topStatusPills.map((pill) => (
-                                        <span key={pill.key} className={`${embedded ? 'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px]' : 'rounded-full px-3 py-1 text-xs'} font-semibold ${pill.className}`}>
-                                            {embedded ? <span className="h-1.5 w-1.5 rounded-full bg-current opacity-70" /> : null}
-                                            <span>{pill.label}</span>
+                <div className={`grid grid-cols-1 ${embedded ? 'p-3.5' : 'p-0'}`}>
+                    <div className={`flex flex-col border border-slate-200/80 bg-white ${embedded ? 'h-[72vh] min-h-[520px] max-h-[760px] overflow-hidden rounded-[22px] shadow-[0_18px_45px_-32px_rgba(15,23,42,0.45)]' : 'h-[78vh] min-h-[580px] max-h-[900px] overflow-hidden rounded-[20px] shadow-card'}`}>
+                        <div className={`border-b border-slate-200/80 bg-gradient-to-r from-white to-slate-50/80 ${embedded ? 'px-4 py-3' : 'px-5 py-3.5'}`}>
+                            <div className="flex min-w-0 items-center gap-3">
+                                <div className="relative flex-none">
+                                    {assistantAvatarUrl ? (
+                                        <img
+                                            src={assistantAvatarUrl}
+                                            alt={selectedBot?.name || 'Trợ lý AI'}
+                                            className="h-10 w-10 rounded-full border border-slate-200 object-cover"
+                                        />
+                                    ) : (
+                                        <span
+                                            className="inline-flex h-10 w-10 items-center justify-center rounded-full text-sm font-semibold"
+                                            style={{ backgroundColor: `${selectedBot?.accent_color || '#6366F1'}18`, color: selectedBot?.accent_color || '#6366F1' }}
+                                        >
+                                            {assistantAvatar}
                                         </span>
+                                    )}
+                                    <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white bg-emerald-400" />
+                                </div>
+                                <div className="min-w-0">
+                                    <div className="truncate text-sm font-semibold text-slate-900">
+                                        {selectedBot?.name || 'Chưa chọn chatbot'}
+                                    </div>
+                                </div>
+                            </div>
+                            <div className={`mt-2.5 ${embedded ? 'max-w-[220px]' : 'max-w-[280px]'}`}>
+                                <select
+                                    className="w-full rounded-xl border border-slate-200/80 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm focus:border-primary focus:outline-none"
+                                    value={selectedBot?.id || selectedBotId || ''}
+                                    onChange={(e) => {
+                                        const nextId = Number(e.target.value || 0);
+                                        setSelectedBotId(Number.isFinite(nextId) && nextId > 0 ? nextId : null);
+                                    }}
+                                >
+                                    {bots.length === 0 ? (
+                                        <option value="">Chưa có chatbot</option>
+                                    ) : null}
+                                    {bots.map((bot) => (
+                                        <option key={bot.id} value={bot.id}>
+                                            {bot.icon || '🤖'} {bot.name}
+                                            {bot.is_default ? ' (mặc định)' : ''}
+                                        </option>
                                     ))}
-                                </div>
+                                </select>
                             </div>
-
-                            <div className={`mt-3 flex flex-col gap-2.5 ${embedded ? 'lg:flex-row lg:items-center lg:justify-between' : 'lg:flex-row lg:items-center lg:justify-between'}`}>
-                                <div className={`flex min-w-0 items-center gap-3 rounded-2xl border border-slate-200/80 ${embedded ? 'bg-slate-50/80 px-3 py-2.5' : 'bg-slate-50/70 px-3 py-2.5'}`}>
-                                    <div className="relative flex-none">
-                                        {assistantAvatarUrl ? (
-                                            <img
-                                                src={assistantAvatarUrl}
-                                                alt={selectedBot?.name || 'Trợ lý AI'}
-                                                className="h-10 w-10 rounded-2xl border border-slate-200 object-cover"
-                                            />
-                                        ) : (
-                                            <span
-                                                className="inline-flex h-10 w-10 items-center justify-center rounded-2xl text-sm font-semibold"
-                                                style={{ backgroundColor: `${selectedBot?.accent_color || '#6366F1'}18`, color: selectedBot?.accent_color || '#6366F1' }}
-                                            >
-                                                {assistantAvatar}
-                                            </span>
-                                        )}
-                                        <span className="absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded-full border-2 border-white bg-emerald-400" />
-                                    </div>
-                                    <div className="min-w-0">
-                                        <div className="truncate text-sm font-semibold text-slate-800">
-                                            {selectedBot?.name || 'Chưa chọn bot'}
-                                        </div>
-                                        <div className="truncate text-xs leading-5 text-slate-500">
-                                            {selectedBotSummary}
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className={`w-full ${embedded ? 'max-w-full lg:max-w-[300px]' : 'max-w-[340px]'}`}>
-                                    <select
-                                        className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 shadow-sm focus:border-primary focus:outline-none"
-                                        value={selectedBot?.id || selectedBotId || ''}
-                                        onChange={(e) => {
-                                            const nextId = Number(e.target.value || 0);
-                                            setSelectedBotId(Number.isFinite(nextId) && nextId > 0 ? nextId : null);
-                                        }}
-                                    >
-                                        {bots.length === 0 ? (
-                                            <option value="">Chưa có chatbot</option>
-                                        ) : null}
-                                        {bots.map((bot) => (
-                                            <option key={bot.id} value={bot.id}>
-                                                {bot.icon || '🤖'} {bot.name}
-                                                {bot.is_default ? ' (mặc định)' : ''}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                            </div>
-
                             {!chatbotEnabled || !chatbotConfigured ? (
                                 <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
                                     Chatbot chưa sẵn sàng. Administrator vào <strong>Cài đặt hệ thống</strong> để hoàn tất cấu hình.
@@ -823,10 +751,109 @@ export default function ChatbotAssistantPanel({
                             ) : null}
                         </div>
 
-                            <div
-                                ref={scrollRef}
-                                className={`space-y-4 overflow-y-auto bg-gradient-to-b from-slate-50 via-white to-slate-100/70 ${embedded ? 'h-[40vh] min-h-[250px] max-h-[420px] px-4 py-4' : 'h-[56vh] min-h-[360px] max-h-[620px] px-5 py-5'}`}
-                            >
+                        <div
+                            ref={scrollRef}
+                            className={`flex-1 min-h-0 space-y-4 overflow-y-auto bg-gradient-to-b from-slate-50 via-white to-slate-100/70 ${embedded ? 'px-4 py-4' : 'px-5 py-5'}`}
+                        >
+                            <div className="rounded-2xl border border-slate-200/80 bg-white p-3 shadow-sm">
+                                <div className="flex items-center justify-between gap-2">
+                                    <div>
+                                        <h3 className="text-sm font-semibold text-slate-900">Hàng chờ xử lý</h3>
+                                        <p className="mt-1 text-xs leading-5 text-text-muted">
+                                            Bạn có thể sửa nội dung trước khi chatbot xử lý.
+                                        </p>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
+                                            {queueCount}
+                                        </span>
+                                        <button
+                                            type="button"
+                                            className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 hover:bg-slate-100"
+                                            onClick={() => setQueueOpen((prev) => !prev)}
+                                            title={queueOpen ? 'Thu gọn hàng chờ' : 'Mở rộng hàng chờ'}
+                                        >
+                                            <svg
+                                                viewBox="0 0 24 24"
+                                                className={`h-4 w-4 fill-none stroke-current transition-transform duration-300 ${queueOpen ? '' : '-rotate-90'}`}
+                                                strokeWidth="2"
+                                            >
+                                                <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className={`mt-3 grid overflow-hidden transition-[grid-template-rows,opacity] duration-300 ease-out ${queueOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0 pointer-events-none'}`}>
+                                    <div className="min-h-0 overflow-hidden">
+                                        <div className="space-y-3 overflow-y-auto pr-1">
+                                            {queueCount === 0 ? (
+                                                <div className="rounded-2xl border border-dashed border-slate-200/80 bg-white px-3 py-3 text-xs leading-5 text-slate-500">
+                                                    Không có tin nhắn trong hàng chờ.
+                                                </div>
+                                            ) : null}
+
+                                            {queue.map((item) => (
+                                                <div key={item.id} className="rounded-2xl border border-slate-200/80 bg-white p-3 shadow-sm">
+                                                    <div className="mb-2 flex items-center justify-between gap-2">
+                                                        <div className="text-[11px] font-semibold text-slate-600">#{item.id}</div>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-[11px] text-slate-500">
+                                                                {formatDateTime(item.created_at)}
+                                                            </span>
+                                                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusTone(item.status)}`}>
+                                                                {STATUS_LABELS[item.status] || item.status}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                    <textarea
+                                                        rows={3}
+                                                        className="w-full rounded-xl border border-slate-200/80 bg-white px-2.5 py-2 text-sm focus:border-primary focus:outline-none"
+                                                        value={queueDrafts[item.id] ?? item.content ?? ''}
+                                                        onChange={(e) => setQueueDrafts((prev) => ({
+                                                            ...prev,
+                                                            [item.id]: e.target.value,
+                                                        }))}
+                                                    />
+                                                    {item?.attachment?.name ? (
+                                                        <div className="mt-2 flex items-center gap-2 rounded-lg border border-slate-200/80 bg-white px-2.5 py-2 text-xs text-slate-700">
+                                                            <span>📎</span>
+                                                            <span className="min-w-0 flex-1 truncate">{item.attachment.name}</span>
+                                                            <span className="text-[10px] text-slate-500">{formatBytes(item.attachment.size)}</span>
+                                                        </div>
+                                                    ) : null}
+                                                    <div className="mt-2 flex items-center gap-2">
+                                                        <button
+                                                            type="button"
+                                                            className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary text-white hover:brightness-95"
+                                                            onClick={() => updateQueueItem(item.id)}
+                                                            title="Lưu nội dung hàng chờ"
+                                                        >
+                                                            <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="2">
+                                                                <path d="M5 12l4 4L19 6" strokeLinecap="round" strokeLinejoin="round" />
+                                                            </svg>
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100"
+                                                            onClick={() => deleteQueueItem(item.id)}
+                                                            title="Xóa khỏi hàng chờ"
+                                                        >
+                                                            <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="1.8">
+                                                                <path d="M5 7h14" strokeLinecap="round" />
+                                                                <path d="M9 7V5h6v2" strokeLinecap="round" />
+                                                                <path d="M8 7l1 12h6l1-12" strokeLinecap="round" strokeLinejoin="round" />
+                                                                <path d="M10 11v5M14 11v5" strokeLinecap="round" />
+                                                            </svg>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
                             {loading ? (
                                 <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm">
                                     Đang tải hội thoại...
@@ -845,7 +872,7 @@ export default function ChatbotAssistantPanel({
                                         <div>
                                             <div className="font-semibold text-slate-800">Chưa có hội thoại nào</div>
                                             <div className="mt-1 leading-6 text-slate-500">
-                                                Chọn đúng bot, nhập câu hỏi ngắn gọn rồi gửi. Tin đang xử lý sẽ tự đi vào hàng chờ ở cột bên phải.
+                                                Chọn bot rồi gửi câu hỏi. Tin nhắn khi bot đang xử lý sẽ nằm trong hàng chờ phía trên.
                                             </div>
                                         </div>
                                     </div>
@@ -1010,21 +1037,21 @@ export default function ChatbotAssistantPanel({
                             ) : null}
                         </div>
 
-                            <div className={`border-t border-slate-200/80 bg-gradient-to-b from-slate-50/70 to-white ${embedded ? 'px-4 py-3.5' : 'px-5 py-4'}`}>
-                                <div className="mb-2 flex items-center justify-between gap-2">
-                                    <label className="block text-xs font-medium uppercase tracking-[0.12em] text-text-subtle">
-                                        Soạn tin nhắn
-                                    </label>
-                                    <span className={`rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-600 ${embedded ? 'hidden sm:inline-flex' : ''}`}>
-                                        Enter gửi • Shift+Enter xuống dòng
-                                    </span>
-                                </div>
-                                <input
-                                    ref={fileInputRef}
-                                    type="file"
-                                    className="hidden"
-                                    onChange={handleAttachmentChange}
-                                />
+                        <div className={`sticky bottom-0 border-t border-slate-200/80 bg-gradient-to-b from-slate-50/85 to-white ${embedded ? 'px-4 py-3.5' : 'px-5 py-4'}`}>
+                            <div className="mb-2 flex items-center justify-between gap-2">
+                                <label className="block text-xs font-medium uppercase tracking-[0.12em] text-text-subtle">
+                                    Soạn tin nhắn
+                                </label>
+                                <span className={`rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-600 ${embedded ? 'hidden sm:inline-flex' : ''}`}>
+                                    Enter gửi • Shift+Enter xuống dòng
+                                </span>
+                            </div>
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                className="hidden"
+                                onChange={handleAttachmentChange}
+                            />
 
                             <div className="rounded-[22px] border border-slate-200/80 bg-white shadow-sm">
                                 {pendingAttachment ? (
@@ -1105,114 +1132,10 @@ export default function ChatbotAssistantPanel({
                                     </div>
                                 </div>
                             </div>
-                            </div>
-                        </div>
-
-                            <div className={`space-y-4 ${embedded ? '' : 'xl:sticky xl:top-4 xl:self-start'}`}>
-                            <div className={`border border-slate-200/80 ${embedded ? 'rounded-[22px] bg-gradient-to-b from-white to-slate-50/70 p-3.5 shadow-[0_18px_45px_-32px_rgba(15,23,42,0.45)]' : 'rounded-[20px] bg-white p-4 shadow-card'}`}>
-                                <div className="flex items-center justify-between gap-2">
-                                    <div>
-                                        <h3 className="text-sm font-semibold text-slate-900">Hàng chờ xử lý</h3>
-                                        {embedded ? (
-                                            <p className="mt-1 text-[11px] text-slate-500">Tin gửi lúc bot đang bận sẽ nằm ở đây để sửa và duyệt lại.</p>
-                                        ) : null}
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
-                                            {queueCount}
-                                        </span>
-                                        <button
-                                            type="button"
-                                            className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 hover:bg-slate-100"
-                                            onClick={() => setQueueOpen((prev) => !prev)}
-                                            title={queueOpen ? 'Thu gọn hàng chờ' : 'Mở rộng hàng chờ'}
-                                        >
-                                            <svg
-                                                viewBox="0 0 24 24"
-                                                className={`h-4 w-4 fill-none stroke-current transition-transform duration-300 ${queueOpen ? '' : '-rotate-90'}`}
-                                                strokeWidth="2"
-                                            >
-                                                <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
-                                            </svg>
-                                        </button>
-                                    </div>
-                                </div>
-                                <p className="mt-1 text-xs leading-5 text-text-muted">
-                                    Bạn có thể sửa nội dung trước khi chatbot xử lý.
-                                </p>
-
-                                <div className={`mt-3 grid overflow-hidden transition-[grid-template-rows,opacity] duration-300 ease-out ${queueOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0 pointer-events-none'}`}>
-                                    <div className="min-h-0 overflow-hidden">
-                                    <div className={`space-y-3 overflow-y-auto pr-1 ${embedded ? 'max-h-[230px]' : 'max-h-[420px]'}`}>
-                                        {queueCount === 0 ? (
-                                            <div className="rounded-2xl border border-dashed border-slate-200/80 bg-white px-3 py-3 text-xs leading-5 text-slate-500">
-                                                Không có tin nhắn trong hàng chờ.
-                                            </div>
-                                        ) : null}
-
-                                        {queue.map((item) => (
-                                            <div key={item.id} className="rounded-2xl border border-slate-200/80 bg-white p-3 shadow-sm">
-                                            <div className="mb-2 flex items-center justify-between gap-2">
-                                                <div className="text-[11px] font-semibold text-slate-600">#{item.id}</div>
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-[11px] text-slate-500">
-                                                        {formatDateTime(item.created_at)}
-                                                    </span>
-                                                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusTone(item.status)}`}>
-                                                        {STATUS_LABELS[item.status] || item.status}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                            <textarea
-                                                rows={3}
-                                                className="w-full rounded-xl border border-slate-200/80 bg-white px-2.5 py-2 text-sm focus:border-primary focus:outline-none"
-                                                value={queueDrafts[item.id] ?? item.content ?? ''}
-                                                onChange={(e) => setQueueDrafts((prev) => ({
-                                                    ...prev,
-                                                    [item.id]: e.target.value,
-                                                }))}
-                                            />
-                                            {item?.attachment?.name ? (
-                                                <div className="mt-2 flex items-center gap-2 rounded-lg border border-slate-200/80 bg-white px-2.5 py-2 text-xs text-slate-700">
-                                                    <span>📎</span>
-                                                    <span className="min-w-0 flex-1 truncate">{item.attachment.name}</span>
-                                                    <span className="text-[10px] text-slate-500">{formatBytes(item.attachment.size)}</span>
-                                                </div>
-                                            ) : null}
-                                            <div className="mt-2 flex items-center gap-2">
-                                                <button
-                                                    type="button"
-                                                    className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary text-white hover:brightness-95"
-                                                    onClick={() => updateQueueItem(item.id)}
-                                                    title="Lưu nội dung hàng chờ"
-                                                >
-                                                    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="2">
-                                                        <path d="M5 12l4 4L19 6" strokeLinecap="round" strokeLinejoin="round" />
-                                                    </svg>
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100"
-                                                    onClick={() => deleteQueueItem(item.id)}
-                                                    title="Xóa khỏi hàng chờ"
-                                                >
-                                                    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="1.8">
-                                                        <path d="M5 7h14" strokeLinecap="round" />
-                                                        <path d="M9 7V5h6v2" strokeLinecap="round" />
-                                                        <path d="M8 7l1 12h6l1-12" strokeLinecap="round" strokeLinejoin="round" />
-                                                        <path d="M10 11v5M14 11v5" strokeLinecap="round" />
-                                                    </svg>
-                                                </button>
-                                            </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                    </div>
-                                </div>
-                            </div>
                         </div>
                     </div>
                 </div>
             </div>
+        </div>
     );
 }

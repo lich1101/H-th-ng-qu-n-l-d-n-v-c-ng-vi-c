@@ -7,6 +7,8 @@ use App\Http\Helpers\CrmScope;
 use App\Models\Opportunity;
 use App\Models\OpportunityStatus;
 use App\Models\User;
+use App\Services\NotificationService;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -87,59 +89,94 @@ class OpportunityController extends Controller
             'statusConfig:id,code,name,color_hex,sort_order',
         ]);
 
-        if ($request->user()->role === 'nhan_vien') {
-            $this->notifyNewOpportunityFromStaff($opportunity, $request->user());
-        }
+        $this->notifyOpportunityCreated($opportunity, $request->user());
 
         return response()->json($opportunity, 201);
     }
 
-    private function notifyNewOpportunityFromStaff(Opportunity $opportunity, User $creator): void
+    private function notifyOpportunityCreated(Opportunity $opportunity, User $creator): void
     {
         try {
+            $opportunity->loadMissing([
+                'client.assignedStaff.departmentRelation',
+                'client.salesOwner.departmentRelation',
+                'client.careStaffUsers:id',
+            ]);
+
+            $client = $opportunity->client;
+            if (! $client) {
+                return;
+            }
+
             $adminIds = User::query()
                 ->whereIn('role', ['admin', 'administrator'])
                 ->pluck('id')
                 ->all();
-            
-            $managerId = null;
-            if ($creator->department_id) {
-                // Fetch the manager of the department
-                $managerId = \App\Models\Department::query()
-                    ->where('id', $creator->department_id)
-                    ->value('manager_id');
-            }
 
-            $targetIds = array_merge($adminIds, array_filter([$managerId]));
-            $targetIds = array_values(array_filter(array_unique(array_map('intval', $targetIds)), function($id) use ($creator) {
-                return $id > 0 && $id !== (int) $creator->id;
-            }));
+            $clientAssignee = $client->assignedStaff ?: $client->salesOwner;
+            $assigneeId = (int) optional($clientAssignee)->id;
+            $managerId = (int) optional(optional($clientAssignee)->departmentRelation)->manager_id;
+
+            $careStaffIds = $client->careStaffUsers
+                ->pluck('id')
+                ->map(function ($id) {
+                    return (int) $id;
+                })
+                ->filter(function ($id) {
+                    return $id > 0;
+                })
+                ->values()
+                ->all();
+
+            $targetIds = collect(array_merge(
+                $adminIds,
+                [$assigneeId > 0 ? $assigneeId : null],
+                [$managerId > 0 ? $managerId : null],
+                $careStaffIds
+            ))
+                ->map(function ($id) {
+                    return (int) $id;
+                })
+                ->filter(function ($id) use ($creator) {
+                    return $id > 0 && $id !== (int) $creator->id;
+                })
+                ->unique()
+                ->values()
+                ->all();
 
             if (empty($targetIds)) {
                 return;
             }
 
-            $clientName = $opportunity->client ? ($opportunity->client->name ?: 'Không tên') : 'Không rõ';
-            $startDate = $opportunity->created_at ? $opportunity->created_at->format('d/m/Y') : now()->format('d/m/Y');
-            $endDate = $opportunity->expected_close_date 
-                ? \Carbon\Carbon::parse($opportunity->expected_close_date)->format('d/m/Y') 
-                : 'không xác định';
+            $clientName = trim((string) ($client->name ?: 'Khách hàng'));
+            $opportunityTitle = trim((string) ($opportunity->title ?: 'Cơ hội mới'));
+            $creatorName = trim((string) ($creator->name ?: 'Nhân sự'));
+            $title = 'Khách hàng có cơ hội mới';
+            $body = sprintf(
+                '%s vừa thêm cơ hội "%s" cho khách hàng %s.',
+                $creatorName,
+                $opportunityTitle,
+                $clientName
+            );
 
-            $title = 'Cơ hội mới từ nhân viên';
-            $body = "Khách hàng {$clientName} có thêm cơ hội {$opportunity->title} có thời hạn từ {$startDate} đến {$endDate}";
-
-            app(\App\Services\NotificationService::class)->notifyUsersAfterResponse(
+            app(NotificationService::class)->notifyUsersAfterResponse(
                 $targetIds,
                 $title,
                 $body,
                 [
-                    'type' => 'crm_notification',
+                    'type' => 'crm_client_opportunity_created',
+                    'category' => 'crm_realtime',
+                    'client_id' => (int) $client->id,
                     'opportunity_id' => $opportunity->id,
                     'creator_id' => $creator->id,
                 ]
             );
         } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::error('Notify new opportunity from staff failed: ' . $e->getMessage());
+            Log::warning('Notify opportunity created failed', [
+                'opportunity_id' => (int) $opportunity->id,
+                'creator_id' => (int) $creator->id,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 
@@ -226,6 +263,9 @@ class OpportunityController extends Controller
             || (int) $opportunity->client->sales_owner_id === (int) $user->id
             || (int) $opportunity->created_by === (int) $user->id
             || (int) $opportunity->assigned_to === (int) $user->id
+            || $opportunity->client->careStaffUsers()
+                ->where('users.id', (int) $user->id)
+                ->exists()
         )) || $watchers->contains((int) $user->id);
     }
 

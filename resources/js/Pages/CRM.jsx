@@ -60,11 +60,11 @@ export default function CRM(props) {
     const isManager = userRole === 'quan_ly';
     const isAdminRole = ['admin', 'administrator'].includes(userRole);
     const canFilterByStaff = ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'].includes(userRole);
-    const canManageClients = ['admin', 'quan_ly', 'nhan_vien'].includes(userRole);
-    const canManagePayments = ['admin', 'ke_toan'].includes(userRole);
-    const canDeleteClients = userRole === 'admin';
-    const canDeletePayments = userRole === 'admin';
-    const canAssignClientOwner = ['admin', 'quan_ly'].includes(userRole);
+    const canManageClients = ['admin', 'administrator', 'quan_ly', 'nhan_vien'].includes(userRole);
+    const canManagePayments = ['admin', 'administrator', 'ke_toan'].includes(userRole);
+    const canDeleteClients = ['admin', 'administrator'].includes(userRole);
+    const canDeletePayments = ['admin', 'administrator'].includes(userRole);
+    const canAssignClientOwner = ['admin', 'administrator', 'quan_ly'].includes(userRole);
     const canBulkClientActions = canManageClients || canDeleteClients;
 
     const [activeTab, setActiveTab] = useState('clients');
