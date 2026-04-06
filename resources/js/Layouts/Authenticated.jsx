@@ -3,10 +3,12 @@ import axios from 'axios';
 import AppIcon from '@/Components/AppIcon';
 import ChatbotAssistantPanel from '@/Components/ChatbotAssistantPanel';
 import Dropdown from '@/Components/Dropdown';
+import { useToast } from '@/Contexts/ToastContext';
 import { formatVietnamDate } from '@/lib/vietnamTime';
 import { Link, usePage } from '@inertiajs/inertia-react';
 
 export default function Authenticated({ auth, header, children }) {
+    const toast = useToast();
     const { settings, chatbotQuickOpen = false, chatbotInitialBotId = null } = usePage().props;
     const [showSidebar, setShowSidebar] = useState(false);
     const currentRole = auth?.user?.role || '';
@@ -437,6 +439,31 @@ export default function Authenticated({ auth, header, children }) {
 
     const isChatItem = (item) => CHAT_NOTIFICATION_TYPES.has(item?.notification_type || '');
 
+    const toPositiveInt = (value) => {
+        const parsed = Number(value);
+        if (!Number.isFinite(parsed)) return null;
+        const normalized = Math.trunc(parsed);
+        return normalized > 0 ? normalized : null;
+    };
+
+    const extractEntityId = (item, key) => {
+        const payload = item?.data && typeof item.data === 'object' ? item.data : {};
+        return toPositiveInt(item?.[key] ?? payload?.[key]);
+    };
+
+    const checkEntityExists = async (url, validator = null) => {
+        try {
+            const response = await axios.get(url);
+            if (response.status !== 200) return false;
+            if (typeof validator === 'function') {
+                return !!validator(response?.data);
+            }
+            return true;
+        } catch (_) {
+            return false;
+        }
+    };
+
     const extractTaskId = (item) => {
         const directTaskId = Number(item?.task_id || 0);
         if (Number.isFinite(directTaskId) && directTaskId > 0) return directTaskId;
@@ -447,20 +474,171 @@ export default function Authenticated({ auth, header, children }) {
     };
 
     const openTaskChatFromItem = (item) => {
-        closeQuickPanels();
         const taskId = extractTaskId(item);
         if (taskId) {
+            closeQuickPanels();
             window.location.href = `/cong-viec?chat_task_id=${taskId}`;
             return;
         }
+        closeQuickPanels();
         window.location.href = '/cong-viec';
     };
 
-    const handleNotificationItemClick = async (item) => {
-        const shouldNavigateChat = isChatItem(item);
-        await markSingleNotificationRead(item, { refresh: !shouldNavigateChat });
-        if (shouldNavigateChat) {
+    const openNotificationTarget = async (item) => {
+        const type = String(item?.notification_type || '').toLowerCase();
+        const clientId = extractEntityId(item, 'client_id');
+        const contractId = extractEntityId(item, 'contract_id');
+        const projectId = extractEntityId(item, 'project_id');
+        const taskItemId = extractEntityId(item, 'task_item_id');
+        const taskId = extractTaskId(item);
+        const opportunityId = extractEntityId(item, 'opportunity_id');
+        const meetingId = extractEntityId(item, 'meeting_id');
+
+        const isClientNotification = type === 'facebook_lead'
+            || type === 'new_client'
+            || type === 'client_form_lead'
+            || type === 'crm_new_lead'
+            || type.startsWith('crm_client_');
+
+        if (isClientNotification) {
+            if (!clientId) {
+                toast.error('Khách hàng không tồn tại.');
+                return false;
+            }
+            const exists = await checkEntityExists(
+                `/api/v1/crm/clients/${clientId}/flow`,
+                (payload) => Number(payload?.client?.id || 0) === clientId
+            );
+            if (!exists) {
+                toast.error('Khách hàng không tồn tại.');
+                return false;
+            }
+            closeQuickPanels();
+            window.location.href = route('crm.flow', clientId);
+            return true;
+        }
+
+        if (isChatItem(item)) {
+            if (!taskId) {
+                toast.error('Công việc không tồn tại.');
+                return false;
+            }
+            const exists = await checkEntityExists(`/api/v1/tasks/${taskId}`);
+            if (!exists) {
+                toast.error('Công việc không tồn tại.');
+                return false;
+            }
             openTaskChatFromItem(item);
+            return true;
+        }
+
+        if (type === 'task_item_update_pending'
+            || type === 'task_item_update_feedback'
+            || type === 'task_item_assigned'
+            || type === 'task_item_progress_late') {
+            if (taskItemId) {
+                const itemExists = await checkEntityExists(`/api/v1/task-items/${taskItemId}`);
+                if (itemExists) {
+                    closeQuickPanels();
+                    window.location.href = route('task-items.detail', taskItemId);
+                    return true;
+                }
+            }
+            if (taskId) {
+                const taskExists = await checkEntityExists(`/api/v1/tasks/${taskId}`);
+                if (taskExists) {
+                    closeQuickPanels();
+                    window.location.href = route('tasks.detail', taskId);
+                    return true;
+                }
+            }
+            toast.error('Đầu việc không tồn tại.');
+            return false;
+        }
+
+        if (type === 'task_assigned'
+            || type === 'task_update_pending'
+            || type === 'task_update_feedback'
+            || type === 'deadline_reminder') {
+            if (!taskId) {
+                toast.error('Công việc không tồn tại.');
+                return false;
+            }
+            const exists = await checkEntityExists(`/api/v1/tasks/${taskId}`);
+            if (!exists) {
+                toast.error('Công việc không tồn tại.');
+                return false;
+            }
+            closeQuickPanels();
+            window.location.href = route('tasks.detail', taskId);
+            return true;
+        }
+
+        if (type.includes('contract')) {
+            if (!contractId) {
+                closeQuickPanels();
+                window.location.href = route('contracts.index');
+                return true;
+            }
+            const exists = await checkEntityExists(`/api/v1/contracts/${contractId}`);
+            if (!exists) {
+                toast.error('Hợp đồng không tồn tại.');
+                return false;
+            }
+            closeQuickPanels();
+            window.location.href = route('contracts.detail', contractId);
+            return true;
+        }
+
+        if (type.includes('project') || type.includes('handover')) {
+            if (!projectId) {
+                closeQuickPanels();
+                window.location.href = route('projects.kanban');
+                return true;
+            }
+            const exists = await checkEntityExists(`/api/v1/projects/${projectId}`);
+            if (!exists) {
+                toast.error('Dự án không tồn tại.');
+                return false;
+            }
+            closeQuickPanels();
+            window.location.href = route('projects.detail', projectId);
+            return true;
+        }
+
+        if (type === 'crm_notification' || type.includes('opportunity')) {
+            if (opportunityId) {
+                const exists = await checkEntityExists(`/api/v1/opportunities/${opportunityId}`);
+                if (!exists) {
+                    toast.error('Cơ hội không tồn tại.');
+                    return false;
+                }
+            }
+            closeQuickPanels();
+            window.location.href = route('opportunities.index');
+            return true;
+        }
+
+        if (type.startsWith('meeting_') || meetingId) {
+            closeQuickPanels();
+            window.location.href = route('meetings.index');
+            return true;
+        }
+
+        if (type.includes('attendance')) {
+            closeQuickPanels();
+            window.location.href = route('attendance.index');
+            return true;
+        }
+
+        return false;
+    };
+
+    const handleNotificationItemClick = async (item) => {
+        await markSingleNotificationRead(item, { refresh: false });
+        const opened = await openNotificationTarget(item);
+        if (!opened) {
+            await fetchNotifications({ silent: true });
         }
     };
 
