@@ -92,7 +92,7 @@ export default function CRM(props) {
         type: '',
         revenue_tier_id: '',
         assigned_department_id: '',
-        assigned_staff_id: '',
+        assigned_staff_ids: [],
         sort_by: 'last_activity_at',
         sort_dir: 'desc',
     });
@@ -345,12 +345,15 @@ export default function CRM(props) {
     useEffect(() => {
         if (userRole !== 'nhan_vien' || !userId) return;
         setClientFilters((prev) => {
-            if (String(prev.assigned_staff_id || '') === String(userId)) {
+            const normalized = Array.isArray(prev.assigned_staff_ids)
+                ? prev.assigned_staff_ids.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)
+                : [];
+            if (normalized.length === 1 && normalized[0] === Number(userId)) {
                 return prev;
             }
             return {
                 ...prev,
-                assigned_staff_id: String(userId),
+                assigned_staff_ids: [Number(userId)],
             };
         });
     }, [userRole, userId]);
@@ -808,6 +811,14 @@ export default function CRM(props) {
         userDepartmentId,
     ]);
 
+    const clientResponsibleStaffTagOptions = useMemo(() => (
+        clientResponsibleStaffOptions.map((user) => ({
+            id: Number(user.id || 0),
+            label: user.name || 'Nhân sự',
+            meta: user.departmentName || '',
+        }))
+    ), [clientResponsibleStaffOptions]);
+
     return (
         <PageContainer
             auth={props.auth}
@@ -913,12 +924,12 @@ export default function CRM(props) {
                                         <select
                                             className={filterControlClass}
                                             value={clientFilters.assigned_department_id}
-                                            onChange={(e) => setClientFilters((s) => ({
-                                                ...s,
-                                                assigned_department_id: e.target.value,
-                                                assigned_staff_id: '',
-                                            }))}
-                                        >
+                                        onChange={(e) => setClientFilters((s) => ({
+                                            ...s,
+                                            assigned_department_id: e.target.value,
+                                            assigned_staff_ids: [],
+                                        }))}
+                                    >
                                             <option value="">Tất cả phòng ban</option>
                                             {visibleDepartmentOptions.map((dept) => (
                                                 <option key={dept.id} value={dept.id}>
@@ -930,20 +941,13 @@ export default function CRM(props) {
                                 )}
                                 {canFilterByStaff && (
                                     <FilterField label="Nhân sự phụ trách">
-                                        <select
-                                            className={filterControlClass}
-                                            value={clientFilters.assigned_staff_id}
-                                            onChange={(e) => setClientFilters((s) => ({ ...s, assigned_staff_id: e.target.value }))}
-                                        >
-                                            <option value="">
-                                                {userRole === 'nhan_vien' ? 'Chính tôi' : 'Tất cả nhân sự phụ trách'}
-                                            </option>
-                                            {clientResponsibleStaffOptions.map((user) => (
-                                                <option key={user.id} value={user.id}>
-                                                    {user.name}{user.departmentName ? ` • ${user.departmentName}` : ''}
-                                                </option>
-                                            ))}
-                                        </select>
+                                        <TagMultiSelect
+                                            options={clientResponsibleStaffTagOptions}
+                                            selectedIds={clientFilters.assigned_staff_ids}
+                                            onChange={(selectedIds) => setClientFilters((s) => ({ ...s, assigned_staff_ids: selectedIds }))}
+                                            addPlaceholder={userRole === 'nhan_vien' ? 'Chọn chính tôi' : 'Tìm và thêm nhân sự phụ trách'}
+                                            emptyLabel={userRole === 'nhan_vien' ? 'Mặc định lọc chính tôi.' : 'Để trống để xem tất cả nhân sự trong phạm vi.'}
+                                        />
                                     </FilterField>
                                 )}
                                 <FilterActionGroup className="md:col-span-2 xl:col-span-1 xl:self-end xl:justify-end">

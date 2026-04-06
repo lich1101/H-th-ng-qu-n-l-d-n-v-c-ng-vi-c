@@ -89,6 +89,10 @@ class ReportController extends Controller
         $hasContractCashFlow = Schema::hasColumn('contracts', 'cash_flow');
         $hasContractPaymentsTable = Schema::hasTable('contract_payments');
         $hasContractPaymentsPaidAt = $hasContractPaymentsTable && Schema::hasColumn('contract_payments', 'paid_at');
+        $hasContractFinanceRequestsTable = Schema::hasTable('contract_finance_requests');
+        $hasContractFinanceRequestStatus = $hasContractFinanceRequestsTable && Schema::hasColumn('contract_finance_requests', 'status');
+        $hasContractFinanceRequestReviewedAt = $hasContractFinanceRequestsTable && Schema::hasColumn('contract_finance_requests', 'reviewed_at');
+        $hasContractFinanceRequestPaymentId = $hasContractFinanceRequestsTable && Schema::hasColumn('contract_finance_requests', 'contract_payment_id');
         $hasClientAssignedStaffId = Schema::hasColumn('clients', 'assigned_staff_id');
         $hasClientCreatedAt = Schema::hasColumn('clients', 'created_at');
         $hasOpportunityAssignedTo = Schema::hasColumn('opportunities', 'assigned_to');
@@ -483,15 +487,36 @@ class ReportController extends Controller
         $periodCashflowTotal = 0.0;
 
         if ($hasContractPaymentsPaidAt) {
-            $cashflowRows = ContractPayment::query()
+            $cashflowQuery = ContractPayment::query()
                 ->whereNotNull('paid_at')
-                ->whereBetween(DB::raw('DATE(paid_at)'), [
+                ->whereIn('contract_id', (clone $approvedContractsBaseQuery)->select('contracts.id'));
+
+            $paymentDateExpr = 'DATE(contract_payments.paid_at)';
+            if ($hasContractFinanceRequestPaymentId) {
+                $approvedPaymentReviews = DB::table('contract_finance_requests')
+                    ->selectRaw('contract_payment_id, MAX(reviewed_at) as reviewed_at')
+                    ->whereNotNull('contract_payment_id')
+                    ->when($hasContractFinanceRequestStatus, function ($query) {
+                        $query->where('status', 'approved');
+                    })
+                    ->when($hasContractFinanceRequestReviewedAt, function ($query) {
+                        $query->whereNotNull('reviewed_at');
+                    })
+                    ->groupBy('contract_payment_id');
+
+                $cashflowQuery->leftJoinSub($approvedPaymentReviews, 'payment_review_dates', function ($join) {
+                    $join->on('payment_review_dates.contract_payment_id', '=', 'contract_payments.id');
+                });
+                $paymentDateExpr = 'DATE(COALESCE(payment_review_dates.reviewed_at, contract_payments.paid_at))';
+            }
+
+            $cashflowRows = $cashflowQuery
+                ->whereBetween(DB::raw($paymentDateExpr), [
                     $currentPeriodStart->toDateString(),
                     $currentPeriodEnd->toDateString(),
                 ])
-                ->whereIn('contract_id', (clone $approvedContractsBaseQuery)->select('contracts.id'))
-                ->selectRaw('contract_id, SUM(amount) as total_amount')
-                ->groupBy('contract_id')
+                ->selectRaw("contract_id, $paymentDateExpr as paid_date, SUM(amount) as total_amount")
+                ->groupBy('contract_id', DB::raw($paymentDateExpr))
                 ->get();
 
             $cashflowContractLookup = collect();
@@ -1053,6 +1078,11 @@ class ReportController extends Controller
             $hasPaymentsPaidAt = $hasPaymentsTable && Schema::hasColumn($contractPaymentsTable, 'paid_at');
             $hasCostsTable = Schema::hasTable($contractCostsTable);
             $hasCostsDate = $hasCostsTable && Schema::hasColumn($contractCostsTable, 'cost_date');
+            $hasFinanceRequestsTable = Schema::hasTable('contract_finance_requests');
+            $hasFinanceRequestStatus = $hasFinanceRequestsTable && Schema::hasColumn('contract_finance_requests', 'status');
+            $hasFinanceRequestReviewedAt = $hasFinanceRequestsTable && Schema::hasColumn('contract_finance_requests', 'reviewed_at');
+            $hasFinanceRequestPaymentId = $hasFinanceRequestsTable && Schema::hasColumn('contract_finance_requests', 'contract_payment_id');
+            $hasFinanceRequestCostId = $hasFinanceRequestsTable && Schema::hasColumn('contract_finance_requests', 'contract_cost_id');
             $hasItemsTable = Schema::hasTable($contractItemsTable);
             $hasItemTotalPrice = $hasItemsTable && Schema::hasColumn($contractItemsTable, 'total_price');
             $hasItemProductName = $hasItemsTable && Schema::hasColumn($contractItemsTable, 'product_name');
@@ -1061,14 +1091,15 @@ class ReportController extends Controller
             $hasUserAvatar = Schema::hasColumn($usersTable, 'avatar_url');
 
             $dateParts = [];
-            if ($hasContractSignedAt) {
-                $dateParts[] = 'contracts.signed_at';
-            }
             if ($hasContractApprovedAt) {
                 $dateParts[] = 'contracts.approved_at';
             }
-            $dateParts[] = 'contracts.created_at';
-            $contractDateExpr = 'DATE(COALESCE(' . implode(', ', $dateParts) . '))';
+            if ($hasContractSignedAt) {
+                $dateParts[] = 'contracts.signed_at';
+            }
+            $contractDateExpr = ! empty($dateParts)
+                ? ('DATE(COALESCE(' . implode(', ', $dateParts) . '))')
+                : 'DATE(contracts.created_at)';
 
             $approvedContractsQuery = Contract::query();
             if ($hasContractApprovalStatus) {
@@ -1081,24 +1112,71 @@ class ReportController extends Controller
             $latestContractDate = (clone $approvedContractsQuery)
                 ->selectRaw("MAX($contractDateExpr) as aggregate_date")
                 ->value('aggregate_date');
-            $latestPaymentDate = ($hasPaymentsTable && $hasPaymentsPaidAt)
-                ? ContractPayment::query()
+            $paymentDateExpr = 'DATE(contract_payments.paid_at)';
+            $latestPaymentDate = null;
+            if ($hasPaymentsTable && $hasPaymentsPaidAt) {
+                $latestPaymentQuery = ContractPayment::query()
                     ->join('contracts', 'contract_payments.contract_id', '=', 'contracts.id')
                     ->when($hasContractApprovalStatus, function ($query) {
                         $query->where('contracts.approval_status', 'approved');
                     })
-                    ->whereNotNull('contract_payments.paid_at')
-                    ->max('contract_payments.paid_at')
-                : null;
-            $latestCostDate = ($hasCostsTable && $hasCostsDate)
-                ? ContractCost::query()
+                    ->whereNotNull('contract_payments.paid_at');
+
+                if ($hasFinanceRequestPaymentId) {
+                    $approvedPaymentReviews = DB::table('contract_finance_requests')
+                        ->selectRaw('contract_payment_id, MAX(reviewed_at) as reviewed_at')
+                        ->whereNotNull('contract_payment_id')
+                        ->when($hasFinanceRequestStatus, function ($query) {
+                            $query->where('status', 'approved');
+                        })
+                        ->when($hasFinanceRequestReviewedAt, function ($query) {
+                            $query->whereNotNull('reviewed_at');
+                        })
+                        ->groupBy('contract_payment_id');
+
+                    $latestPaymentQuery->leftJoinSub($approvedPaymentReviews, 'payment_review_dates', function ($join) {
+                        $join->on('payment_review_dates.contract_payment_id', '=', 'contract_payments.id');
+                    });
+                    $paymentDateExpr = 'DATE(COALESCE(payment_review_dates.reviewed_at, contract_payments.paid_at))';
+                }
+
+                $latestPaymentDate = $latestPaymentQuery
+                    ->selectRaw("MAX($paymentDateExpr) as aggregate_date")
+                    ->value('aggregate_date');
+            }
+
+            $costDateExpr = 'DATE(contract_costs.cost_date)';
+            $latestCostDate = null;
+            if ($hasCostsTable && $hasCostsDate) {
+                $latestCostQuery = ContractCost::query()
                     ->join('contracts', 'contract_costs.contract_id', '=', 'contracts.id')
                     ->when($hasContractApprovalStatus, function ($query) {
                         $query->where('contracts.approval_status', 'approved');
                     })
-                    ->whereNotNull('contract_costs.cost_date')
-                    ->max('contract_costs.cost_date')
-                : null;
+                    ->whereNotNull('contract_costs.cost_date');
+
+                if ($hasFinanceRequestCostId) {
+                    $approvedCostReviews = DB::table('contract_finance_requests')
+                        ->selectRaw('contract_cost_id, MAX(reviewed_at) as reviewed_at')
+                        ->whereNotNull('contract_cost_id')
+                        ->when($hasFinanceRequestStatus, function ($query) {
+                            $query->where('status', 'approved');
+                        })
+                        ->when($hasFinanceRequestReviewedAt, function ($query) {
+                            $query->whereNotNull('reviewed_at');
+                        })
+                        ->groupBy('contract_cost_id');
+
+                    $latestCostQuery->leftJoinSub($approvedCostReviews, 'cost_review_dates', function ($join) {
+                        $join->on('cost_review_dates.contract_cost_id', '=', 'contract_costs.id');
+                    });
+                    $costDateExpr = 'DATE(COALESCE(cost_review_dates.reviewed_at, contract_costs.cost_date))';
+                }
+
+                $latestCostDate = $latestCostQuery
+                    ->selectRaw("MAX($costDateExpr) as aggregate_date")
+                    ->value('aggregate_date');
+            }
 
             $availableStart = $earliestContractDate
                 ? Carbon::parse($earliestContractDate)
@@ -1181,15 +1259,35 @@ class ReportController extends Controller
             $periodCashflowByDate = [];
             $periodPaymentRows = collect();
             if ($hasPaymentsTable && $hasPaymentsPaidAt) {
-                $periodPaymentRows = ContractPayment::query()
+                $periodPaymentQuery = ContractPayment::query()
                     ->join('contracts', 'contract_payments.contract_id', '=', 'contracts.id')
                     ->when($hasContractApprovalStatus, function ($query) {
                         $query->where('contracts.approval_status', 'approved');
                     })
-                    ->whereNotNull('contract_payments.paid_at')
-                    ->whereBetween(DB::raw('DATE(contract_payments.paid_at)'), [$startDate, $endDate])
-                    ->selectRaw('contract_payments.contract_id, DATE(contract_payments.paid_at) as paid_date, SUM(contract_payments.amount) as amount')
-                    ->groupBy('contract_payments.contract_id', DB::raw('DATE(contract_payments.paid_at)'))
+                    ->whereNotNull('contract_payments.paid_at');
+
+                if ($hasFinanceRequestPaymentId) {
+                    $approvedPaymentReviews = DB::table('contract_finance_requests')
+                        ->selectRaw('contract_payment_id, MAX(reviewed_at) as reviewed_at')
+                        ->whereNotNull('contract_payment_id')
+                        ->when($hasFinanceRequestStatus, function ($query) {
+                            $query->where('status', 'approved');
+                        })
+                        ->when($hasFinanceRequestReviewedAt, function ($query) {
+                            $query->whereNotNull('reviewed_at');
+                        })
+                        ->groupBy('contract_payment_id');
+
+                    $periodPaymentQuery->leftJoinSub($approvedPaymentReviews, 'payment_review_dates', function ($join) {
+                        $join->on('payment_review_dates.contract_payment_id', '=', 'contract_payments.id');
+                    });
+                    $paymentDateExpr = 'DATE(COALESCE(payment_review_dates.reviewed_at, contract_payments.paid_at))';
+                }
+
+                $periodPaymentRows = $periodPaymentQuery
+                    ->whereBetween(DB::raw($paymentDateExpr), [$startDate, $endDate])
+                    ->selectRaw("contract_payments.contract_id, $paymentDateExpr as paid_date, SUM(contract_payments.amount) as amount")
+                    ->groupBy('contract_payments.contract_id', DB::raw($paymentDateExpr))
                     ->get();
 
                 $periodCashflowTotal = 0.0;
@@ -1206,6 +1304,54 @@ class ReportController extends Controller
                 $periodTotals['cashflow'] = $periodCashflowTotal;
             }
 
+            $periodCostsByDate = [];
+            $periodCostRows = collect();
+            if ($hasCostsTable && $hasCostsDate) {
+                $periodCostQuery = ContractCost::query()
+                    ->join('contracts', 'contract_costs.contract_id', '=', 'contracts.id')
+                    ->when($hasContractApprovalStatus, function ($query) {
+                        $query->where('contracts.approval_status', 'approved');
+                    })
+                    ->whereNotNull('contract_costs.cost_date');
+
+                if ($hasFinanceRequestCostId) {
+                    $approvedCostReviews = DB::table('contract_finance_requests')
+                        ->selectRaw('contract_cost_id, MAX(reviewed_at) as reviewed_at')
+                        ->whereNotNull('contract_cost_id')
+                        ->when($hasFinanceRequestStatus, function ($query) {
+                            $query->where('status', 'approved');
+                        })
+                        ->when($hasFinanceRequestReviewedAt, function ($query) {
+                            $query->whereNotNull('reviewed_at');
+                        })
+                        ->groupBy('contract_cost_id');
+
+                    $periodCostQuery->leftJoinSub($approvedCostReviews, 'cost_review_dates', function ($join) {
+                        $join->on('cost_review_dates.contract_cost_id', '=', 'contract_costs.id');
+                    });
+                    $costDateExpr = 'DATE(COALESCE(cost_review_dates.reviewed_at, contract_costs.cost_date))';
+                }
+
+                $periodCostRows = $periodCostQuery
+                    ->whereBetween(DB::raw($costDateExpr), [$startDate, $endDate])
+                    ->selectRaw("contract_costs.contract_id, $costDateExpr as cost_approved_date, SUM(contract_costs.amount) as amount")
+                    ->groupBy('contract_costs.contract_id', DB::raw($costDateExpr))
+                    ->get();
+
+                $periodCostsTotal = 0.0;
+                foreach ($periodCostRows as $costRow) {
+                    $costDate = (string) ($costRow->cost_approved_date ?? '');
+                    $amount = (float) ($costRow->amount ?? 0);
+                    if ($costDate === '') {
+                        continue;
+                    }
+                    $periodCostsByDate[$costDate] = (float) ($periodCostsByDate[$costDate] ?? 0) + $amount;
+                    $periodCostsTotal += $amount;
+                }
+
+                $periodTotals['costs'] = $periodCostsTotal;
+            }
+
             $dailyMetrics = [];
             foreach ($filteredContracts as $contract) {
                 $dateKey = (string) $contract->contract_date;
@@ -1220,10 +1366,7 @@ class ReportController extends Controller
 
                 $contractValue = (float) $contract->contract_value;
                 $paymentsTotal = (float) $contract->payments_total;
-                $costsTotal = (float) $contract->costs_total;
-
                 $dailyMetrics[$dateKey]['revenue'] += $contractValue;
-                $dailyMetrics[$dateKey]['costs'] += $costsTotal;
                 $dailyMetrics[$dateKey]['debt'] += max(0, $contractValue - $paymentsTotal);
             }
 
@@ -1237,6 +1380,18 @@ class ReportController extends Controller
                     ];
                 }
                 $dailyMetrics[$paidDate]['cashflow'] += (float) $amount;
+            }
+
+            foreach ($periodCostsByDate as $costDate => $amount) {
+                if (! isset($dailyMetrics[$costDate])) {
+                    $dailyMetrics[$costDate] = [
+                        'revenue' => 0.0,
+                        'cashflow' => 0.0,
+                        'debt' => 0.0,
+                        'costs' => 0.0,
+                    ];
+                }
+                $dailyMetrics[$costDate]['costs'] += (float) $amount;
             }
 
             $dailyRows = [];
@@ -1347,10 +1502,8 @@ class ReportController extends Controller
 
                 $contractValue = (float) $contract->contract_value;
                 $paymentsTotal = (float) $contract->payments_total;
-                $costsTotal = (float) $contract->costs_total;
 
                 $staffMetrics[$staffId]['revenue'] += $contractValue;
-                $staffMetrics[$staffId]['costs'] += $costsTotal;
                 $staffMetrics[$staffId]['debt'] += max(0, $contractValue - $paymentsTotal);
                 $staffMetrics[$staffId]['contracts_count'] += 1;
             }
@@ -1368,6 +1521,21 @@ class ReportController extends Controller
                     ];
                 }
                 $staffMetrics[$staffId]['cashflow'] += (float) ($paymentRow->amount ?? 0);
+            }
+
+            foreach ($periodCostRows as $costRow) {
+                $contractId = (int) ($costRow->contract_id ?? 0);
+                $staffId = (int) ($contractStaffMap[$contractId] ?? 0);
+                if (! isset($staffMetrics[$staffId])) {
+                    $staffMetrics[$staffId] = [
+                        'revenue' => 0.0,
+                        'cashflow' => 0.0,
+                        'debt' => 0.0,
+                        'costs' => 0.0,
+                        'contracts_count' => 0,
+                    ];
+                }
+                $staffMetrics[$staffId]['costs'] += (float) ($costRow->amount ?? 0);
             }
 
             $staffBreakdown = [];

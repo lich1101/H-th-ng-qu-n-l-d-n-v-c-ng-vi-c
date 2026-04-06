@@ -59,7 +59,14 @@ export default function Opportunities(props) {
 
     const [opportunities, setOpportunities] = useState([]);
     const [opportunityMeta, setOpportunityMeta] = useState({ current_page: 1, last_page: 1, total: 0 });
-    const [filters, setFilters] = useState({ search: '', status: '', client_id: '', per_page: 20, page: 1 });
+    const [filters, setFilters] = useState({
+        search: '',
+        status: '',
+        client_id: '',
+        staff_ids: [],
+        per_page: 20,
+        page: 1,
+    });
 
     const [statuses, setStatuses] = useState([]);
     const [clients, setClients] = useState([]);
@@ -90,6 +97,14 @@ export default function Opportunities(props) {
             return acc;
         }, {});
     }, [users]);
+
+    const staffFilterOptions = useMemo(() => (
+        users.map((user) => ({
+            id: Number(user.id || 0),
+            label: user.name || `Nhân sự #${user.id}`,
+            meta: user.email || '',
+        })).filter((user) => user.id > 0)
+    ), [users]);
 
     const defaultStatusCode = useMemo(() => {
         return statuses.length > 0 ? String(statuses[0].code) : '';
@@ -178,6 +193,7 @@ export default function Opportunities(props) {
                     ...(nextFilters.search ? { search: nextFilters.search } : {}),
                     ...(nextFilters.status ? { status: nextFilters.status } : {}),
                     ...(nextFilters.client_id ? { client_id: nextFilters.client_id } : {}),
+                    ...(Array.isArray(nextFilters.staff_ids) && nextFilters.staff_ids.length > 0 ? { staff_ids: nextFilters.staff_ids } : {}),
                 },
             });
 
@@ -418,7 +434,7 @@ export default function Opportunities(props) {
                     </FilterActionGroup>
                 )}
             >
-                <div className="grid gap-3 lg:grid-cols-2">
+                <div className="grid gap-3 lg:grid-cols-3">
                     <FilterField label="Trạng thái cơ hội">
                         <select
                             className={filterControlClass}
@@ -446,6 +462,15 @@ export default function Opportunities(props) {
                                 </option>
                             ))}
                         </select>
+                    </FilterField>
+                    <FilterField label="Nhân sự phụ trách">
+                        <TagMultiSelect
+                            options={staffFilterOptions}
+                            selectedIds={filters.staff_ids}
+                            onChange={(selectedIds) => setFilters((prev) => ({ ...prev, staff_ids: selectedIds }))}
+                            addPlaceholder="Tìm và thêm nhân sự"
+                            emptyLabel="Để trống để xem toàn bộ nhân sự trong phạm vi."
+                        />
                     </FilterField>
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">

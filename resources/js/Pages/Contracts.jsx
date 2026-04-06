@@ -161,6 +161,7 @@ export default function Contracts(props) {
         approval_status: '',
         handover_receive_status: '',
         has_project: '',
+        staff_ids: [],
         per_page: 20,
         page: 1,
         sort_by: 'signed_at',
@@ -275,6 +276,14 @@ export default function Contracts(props) {
 
         return canManageContract(contract);
     };
+
+    const collectorFilterOptions = useMemo(() => (
+        collectors.map((collector) => ({
+            id: Number(collector.id || 0),
+            label: collector.name || `Nhân sự #${collector.id}`,
+            meta: collector.email || '',
+        })).filter((collector) => collector.id > 0)
+    ), [collectors]);
 
     const normalizeCareStaffIds = (values) => {
         return Array.from(new Set((values || [])
@@ -393,6 +402,7 @@ export default function Contracts(props) {
                     ...(nextFilters.approval_status ? { approval_status: nextFilters.approval_status } : {}),
                     ...(nextFilters.handover_receive_status ? { handover_receive_status: nextFilters.handover_receive_status } : {}),
                     ...(nextFilters.has_project ? { has_project: nextFilters.has_project } : {}),
+                    ...(Array.isArray(nextFilters.staff_ids) && nextFilters.staff_ids.length > 0 ? { staff_ids: nextFilters.staff_ids } : {}),
                     sort_by: nextFilters.sort_by || 'signed_at',
                     sort_dir: nextFilters.sort_dir || 'desc',
                 },
@@ -1036,7 +1046,7 @@ export default function Contracts(props) {
                     searchValue={filters.search}
                     onSearch={handleContractSearch}
                 >
-                    <div className="grid gap-3 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,1fr)_minmax(0,0.8fr)_auto]">
+                    <div className="grid gap-3 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.8fr)_auto]">
                         <FilterField label="Trạng thái">
                             <select className={filterControlClass} value={filters.status} onChange={(e) => setFilters((s) => ({ ...s, status: e.target.value }))}>
                                 <option value="">Tất cả trạng thái</option>
@@ -1066,6 +1076,15 @@ export default function Contracts(props) {
                                 <option value="yes">Đã liên kết</option>
                                 <option value="no">Chưa liên kết</option>
                             </select>
+                        </FilterField>
+                        <FilterField label="Nhân sự phụ trách">
+                            <TagMultiSelect
+                                options={collectorFilterOptions}
+                                selectedIds={filters.staff_ids}
+                                onChange={(selectedIds) => setFilters((s) => ({ ...s, staff_ids: selectedIds }))}
+                                addPlaceholder="Tìm và thêm nhân sự"
+                                emptyLabel="Để trống để xem toàn bộ nhân sự trong phạm vi."
+                            />
                         </FilterField>
                         <FilterActionGroup className="xl:self-end xl:justify-end">
                             <button type="button" className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-semibold text-slate-700" onClick={applyFilters}>Lọc</button>
