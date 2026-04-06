@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\V1\ChatbotController;
 use App\Http\Controllers\Api\V1\ContractController;
 use App\Http\Controllers\Api\V1\ContractCostController;
 use App\Http\Controllers\Api\V1\ContractPaymentController;
+use App\Http\Controllers\Api\V1\ContractFinanceRequestController;
 use App\Http\Controllers\Api\V1\CRMController;
 use App\Http\Controllers\Api\V1\ClientFlowController;
 use App\Http\Controllers\Api\V1\DepartmentAssignmentController;
@@ -315,7 +316,7 @@ Route::prefix('v1')->group(function () {
         Route::get('/contracts/{contract}/payments', [ContractPaymentController::class, 'index'])
             ->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
         Route::post('/contracts/{contract}/payments', [ContractPaymentController::class, 'store'])
-            ->middleware('role:admin,ke_toan');
+            ->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
         Route::put('/contracts/{contract}/payments/{payment}', [ContractPaymentController::class, 'update'])
             ->middleware('role:admin,ke_toan');
         Route::delete('/contracts/{contract}/payments/{payment}', [ContractPaymentController::class, 'destroy'])
@@ -324,10 +325,16 @@ Route::prefix('v1')->group(function () {
         Route::get('/contracts/{contract}/costs', [ContractCostController::class, 'index'])
             ->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
         Route::post('/contracts/{contract}/costs', [ContractCostController::class, 'store'])
-            ->middleware('role:admin,ke_toan');
+            ->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
         Route::put('/contracts/{contract}/costs/{cost}', [ContractCostController::class, 'update'])
             ->middleware('role:admin,ke_toan');
         Route::delete('/contracts/{contract}/costs/{cost}', [ContractCostController::class, 'destroy'])
+            ->middleware('role:admin,ke_toan');
+        Route::get('/contracts/{contract}/finance-requests', [ContractFinanceRequestController::class, 'index'])
+            ->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
+        Route::post('/contracts/{contract}/finance-requests/{financeRequest}/approve', [ContractFinanceRequestController::class, 'approve'])
+            ->middleware('role:admin,ke_toan');
+        Route::post('/contracts/{contract}/finance-requests/{financeRequest}/reject', [ContractFinanceRequestController::class, 'reject'])
             ->middleware('role:admin,ke_toan');
 
         Route::get('/opportunities', [OpportunityController::class, 'index'])

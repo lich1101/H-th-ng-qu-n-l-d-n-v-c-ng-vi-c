@@ -87,6 +87,8 @@ class ReportController extends Controller
         $hasContractValue = Schema::hasColumn('contracts', 'value');
         $hasContractRevenue = Schema::hasColumn('contracts', 'revenue');
         $hasContractCashFlow = Schema::hasColumn('contracts', 'cash_flow');
+        $hasContractPaymentsTable = Schema::hasTable('contract_payments');
+        $hasContractPaymentsPaidAt = $hasContractPaymentsTable && Schema::hasColumn('contract_payments', 'paid_at');
         $hasClientAssignedStaffId = Schema::hasColumn('clients', 'assigned_staff_id');
         $hasClientCreatedAt = Schema::hasColumn('clients', 'created_at');
         $hasOpportunityAssignedTo = Schema::hasColumn('opportunities', 'assigned_to');
@@ -416,7 +418,8 @@ class ReportController extends Controller
             $resolveStaffId,
             $hasContractValue,
             $hasContractRevenue,
-            $hasContractCashFlow
+            $hasContractCashFlow,
+            $hasContractPaymentsPaidAt
         ): array {
             $totals = [];
             foreach ($contracts as $contract) {
@@ -430,9 +433,12 @@ class ReportController extends Controller
                 }
 
                 $contractRevenue = $hasContractValue ? (float) ($contract->getRawOriginal('value') ?? 0) : 0.0;
-                $contractCashflow = $hasContractRevenue
-                    ? (float) ($contract->getRawOriginal('revenue') ?? 0)
-                    : ($hasContractCashFlow ? (float) ($contract->getRawOriginal('cash_flow') ?? 0) : 0.0);
+                $contractCashflow = 0.0;
+                if (! $hasContractPaymentsPaidAt) {
+                    $contractCashflow = $hasContractRevenue
+                        ? (float) ($contract->getRawOriginal('revenue') ?? 0)
+                        : ($hasContractCashFlow ? (float) ($contract->getRawOriginal('cash_flow') ?? 0) : 0.0);
+                }
 
                 $totals[$staffId]['revenue'] += $contractRevenue;
                 $totals[$staffId]['cashflow'] += $contractCashflow;
@@ -445,6 +451,69 @@ class ReportController extends Controller
         $currentStaffMetrics = $aggregateRevenueByStaff($contractsForCurrentPeriod);
         $previousStaffMetrics = $aggregateRevenueByStaff($contractsForPreviousPeriod);
         $samePeriodLastYearMetrics = $aggregateRevenueByStaff($contractsForSamePeriodLastYear);
+        $periodCashflowTotal = 0.0;
+
+        if ($hasContractPaymentsPaidAt) {
+            $cashflowRows = ContractPayment::query()
+                ->whereNotNull('paid_at')
+                ->whereBetween(DB::raw('DATE(paid_at)'), [
+                    $currentPeriodStart->toDateString(),
+                    $currentPeriodEnd->toDateString(),
+                ])
+                ->whereIn('contract_id', (clone $approvedContractsBaseQuery)->select('contracts.id'))
+                ->selectRaw('contract_id, SUM(amount) as total_amount')
+                ->groupBy('contract_id')
+                ->get();
+
+            $cashflowContractLookup = collect();
+            $cashflowContractIds = $cashflowRows
+                ->pluck('contract_id')
+                ->map(function ($id) {
+                    return (int) $id;
+                })
+                ->filter(function ($id) {
+                    return $id > 0;
+                })
+                ->unique()
+                ->values()
+                ->all();
+
+            if (! empty($cashflowContractIds)) {
+                $cashflowContractLookup = (clone $approvedContractsBaseQuery)
+                    ->with($contractWithClientSelect)
+                    ->whereIn('contracts.id', $cashflowContractIds)
+                    ->get(['id', 'client_id', 'collector_user_id', 'created_by'])
+                    ->keyBy('id');
+            }
+
+            foreach ($cashflowRows as $cashflowRow) {
+                $contractId = (int) ($cashflowRow->contract_id ?? 0);
+                if ($contractId <= 0) {
+                    continue;
+                }
+
+                $contractModel = $cashflowContractLookup->get($contractId);
+                if (! $contractModel instanceof Contract) {
+                    continue;
+                }
+
+                $staffId = $resolveStaffId($contractModel);
+                if (! isset($currentStaffMetrics[$staffId])) {
+                    $currentStaffMetrics[$staffId] = [
+                        'revenue' => 0.0,
+                        'cashflow' => 0.0,
+                        'contracts_count' => 0,
+                    ];
+                }
+
+                $amount = (float) ($cashflowRow->total_amount ?? 0);
+                $currentStaffMetrics[$staffId]['cashflow'] += $amount;
+                $periodCashflowTotal += $amount;
+            }
+        } else {
+            $periodCashflowTotal = (float) collect($currentStaffMetrics)->sum('cashflow');
+        }
+
         $totalCurrentRevenue = collect($currentStaffMetrics)->sum('revenue');
 
         $newClientsByStaff = collect();
@@ -738,7 +807,7 @@ class ReportController extends Controller
             'recent_links' => $recentLinks,
             'staff_sales_breakdown' => $staffSalesBreakdown,
             'period_revenue_total' => round((float) $totalCurrentRevenue, 2),
-            'period_cashflow_total' => round((float) collect($currentStaffMetrics)->sum('cashflow'), 2),
+            'period_cashflow_total' => round((float) $periodCashflowTotal, 2),
             'period_contracts_total' => (int) collect($currentStaffMetrics)->sum('contracts_count'),
             'customer_growth' => $customerGrowth,
             'employee_stats' => $employeeStats,

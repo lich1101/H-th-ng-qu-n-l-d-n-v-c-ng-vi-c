@@ -15,22 +15,27 @@ use App\Services\NotificationService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class CRMController extends Controller
 {
     public function clients(Request $request): JsonResponse
     {
+        $clientRelations = [
+            'leadType',
+            'salesOwner',
+            'revenueTier',
+            'assignedDepartment',
+            'assignedStaff',
+            'facebookPage',
+        ];
+        if ($this->supportsClientCareStaff()) {
+            $clientRelations[] = 'careStaffUsers:id,name,email';
+        }
+
         $query = Client::query()
-            ->with([
-                'leadType',
-                'salesOwner',
-                'revenueTier',
-                'assignedDepartment',
-                'assignedStaff',
-                'facebookPage',
-                'careStaffUsers:id,name,email',
-            ])
+            ->with($clientRelations)
             ->withCount(['opportunities', 'contracts']);
         CrmScope::applyClientScope($query, $request->user());
         if ($request->filled('search')) {
@@ -162,6 +167,15 @@ class CRMController extends Controller
         $user = $request->user();
         $validated = $this->resolveClientAssignment($user, $validated);
 
+        // Always keep a concrete assignee on create to avoid orphan/invalid rows
+        // in environments where assigned_staff_id might be constrained.
+        if (empty($validated['assigned_staff_id']) && $user && $user->id) {
+            $validated['assigned_staff_id'] = (int) $user->id;
+            if (empty($validated['assigned_department_id']) && $user->department_id) {
+                $validated['assigned_department_id'] = (int) $user->department_id;
+            }
+        }
+
         if (! empty($validated['assigned_staff_id']) && empty($validated['sales_owner_id'])) {
             $validated['sales_owner_id'] = $validated['assigned_staff_id'];
         }
@@ -172,19 +186,19 @@ class CRMController extends Controller
             $validated['care_staff_ids'] ?? [],
             (int) $user->id
         );
-        app(LeadNotificationService::class)->notifyNewLead(
-            $client,
-            $this->resolveSourceLabel($client)
-        );
+        try {
+            app(LeadNotificationService::class)->notifyNewLead(
+                $client,
+                $this->resolveSourceLabel($client)
+            );
+        } catch (\Throwable $e) {
+            Log::warning('CRM lead notification failed on storeClient', [
+                'client_id' => (int) $client->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
-        return response()->json($client->load([
-            'leadType',
-            'salesOwner',
-            'revenueTier',
-            'assignedDepartment',
-            'assignedStaff',
-            'careStaffUsers:id,name,email',
-        ]), 201);
+        return response()->json($client->load($this->clientDetailRelations()), 201);
     }
 
     public function updateClient(Request $request, Client $client): JsonResponse
@@ -228,14 +242,7 @@ class CRMController extends Controller
 
         $this->notifyClientReassignment($client, $oldAssignedStaffId, $user);
 
-        return response()->json($client->load([
-            'leadType',
-            'salesOwner',
-            'revenueTier',
-            'assignedDepartment',
-            'assignedStaff',
-            'careStaffUsers:id,name,email',
-        ]));
+        return response()->json($client->load($this->clientDetailRelations()));
     }
 
     public function destroyClient(Client $client): JsonResponse
@@ -429,6 +436,10 @@ class CRMController extends Controller
             return true;
         }
 
+        if (! $this->supportsClientCareStaff()) {
+            return false;
+        }
+
         return $client->careStaffUsers()
             ->where('users.id', $user->id)
             ->exists();
@@ -546,6 +557,10 @@ class CRMController extends Controller
 
     private function syncClientCareStaff(Client $client, array $careStaffIds, int $assignedBy): void
     {
+        if (! $this->supportsClientCareStaff()) {
+            return;
+        }
+
         $ids = collect($careStaffIds)
             ->map(function ($id) {
                 return (int) $id;
@@ -564,7 +579,38 @@ class CRMController extends Controller
             })
             ->all();
 
-        $client->careStaffUsers()->sync($syncPayload);
+        try {
+            $client->careStaffUsers()->sync($syncPayload);
+        } catch (\Throwable $e) {
+            Log::warning('Client care staff sync failed', [
+                'client_id' => (int) $client->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    private function clientDetailRelations(): array
+    {
+        $relations = [
+            'leadType',
+            'salesOwner',
+            'revenueTier',
+            'assignedDepartment',
+            'assignedStaff',
+        ];
+
+        if ($this->supportsClientCareStaff()) {
+            $relations[] = 'careStaffUsers:id,name,email';
+        }
+
+        return $relations;
+    }
+
+    private function supportsClientCareStaff(): bool
+    {
+        return Schema::hasTable('client_care_staff')
+            && Schema::hasColumn('client_care_staff', 'client_id')
+            && Schema::hasColumn('client_care_staff', 'user_id');
     }
 
     private function resolveSourceLabel(Client $client): string

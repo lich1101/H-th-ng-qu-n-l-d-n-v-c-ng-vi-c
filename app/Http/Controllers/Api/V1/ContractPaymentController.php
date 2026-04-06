@@ -6,8 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Http\Helpers\CrmScope;
 use App\Models\Client;
 use App\Models\Contract;
+use App\Models\ContractFinanceRequest;
 use App\Models\ContractPayment;
 use App\Models\User;
+use App\Services\DataTransfers\ClientFinancialSyncService;
+use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -26,9 +29,6 @@ class ContractPaymentController extends Controller
 
     public function store(Request $request, Contract $contract): JsonResponse
     {
-        if (! $this->canManage($request->user())) {
-            return response()->json(['message' => 'Không có quyền tạo thanh toán hợp đồng.'], 403);
-        }
         if (! $this->canAccessContract($request->user(), $contract)) {
             return response()->json(['message' => 'Không có quyền thao tác hợp đồng.'], 403);
         }
@@ -45,8 +45,31 @@ class ContractPaymentController extends Controller
             return response()->json(['message' => $error], 422);
         }
 
+        if (! $this->canManage($request->user())) {
+            $financeRequest = ContractFinanceRequest::query()->create([
+                'contract_id' => $contract->id,
+                'request_type' => 'payment',
+                'request_action' => 'create',
+                'amount' => (float) $validated['amount'],
+                'transaction_date' => $validated['paid_at'] ?? null,
+                'method' => $validated['method'] ?? null,
+                'note' => $validated['note'] ?? null,
+                'status' => 'pending',
+                'submitted_by' => $request->user()->id,
+            ]);
+
+            $this->notifyFinanceApprovers($contract, $request->user(), $financeRequest);
+
+            return response()->json([
+                'message' => 'Đã gửi phiếu duyệt thanh toán. Admin/Kế toán cần duyệt trước khi ghi nhận vào hợp đồng.',
+                'requires_approval' => true,
+                'request' => $financeRequest,
+            ], 202);
+        }
+
         $payment = $contract->payments()->create($validated);
         $contract->refreshFinancials();
+        $this->syncClientFinancials($contract);
 
         return response()->json($payment, 201);
     }
@@ -76,6 +99,7 @@ class ContractPaymentController extends Controller
 
         $payment->update($validated);
         $contract->refreshFinancials();
+        $this->syncClientFinancials($contract);
 
         return response()->json($payment);
     }
@@ -94,6 +118,7 @@ class ContractPaymentController extends Controller
 
         $payment->delete();
         $contract->refreshFinancials();
+        $this->syncClientFinancials($contract);
 
         return response()->json(['message' => 'Đã xóa thanh toán hợp đồng.']);
     }
@@ -196,5 +221,49 @@ class ContractPaymentController extends Controller
         return 'Số tiền thanh toán vượt giá trị hợp đồng. Chỉ còn có thể thu tối đa '
             .number_format($remaining, 0, ',', '.')
             .' VNĐ.';
+    }
+
+    private function notifyFinanceApprovers(Contract $contract, User $actor, ContractFinanceRequest $financeRequest): void
+    {
+        $targetIds = User::query()
+            ->whereIn('role', ['admin', 'ke_toan'])
+            ->pluck('id')
+            ->map(function ($id) use ($actor) {
+                return (int) $id;
+            })
+            ->filter(function ($id) use ($actor) {
+                return $id > 0 && $id !== (int) $actor->id;
+            })
+            ->unique()
+            ->values()
+            ->all();
+
+        if (empty($targetIds)) {
+            return;
+        }
+
+        try {
+            app(NotificationService::class)->notifyUsersAfterResponse(
+                $targetIds,
+                'Có phiếu duyệt thanh toán hợp đồng mới',
+                $actor->name.' vừa gửi yêu cầu thêm thanh toán cho hợp đồng: '.$contract->title,
+                [
+                    'type' => 'contract_finance_request_pending',
+                    'contract_id' => (int) $contract->id,
+                    'contract_finance_request_id' => (int) $financeRequest->id,
+                    'request_type' => 'payment',
+                ]
+            );
+        } catch (\Throwable $e) {
+            report($e);
+        }
+    }
+
+    private function syncClientFinancials(Contract $contract): void
+    {
+        $contract->loadMissing('client');
+        if ($contract->client) {
+            app(ClientFinancialSyncService::class)->sync($contract->client);
+        }
     }
 }

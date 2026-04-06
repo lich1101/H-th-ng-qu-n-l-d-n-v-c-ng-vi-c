@@ -129,6 +129,11 @@ class Contract extends Model
         return $this->hasMany(ContractCost::class);
     }
 
+    public function financeRequests()
+    {
+        return $this->hasMany(ContractFinanceRequest::class)->latest();
+    }
+
     public function getItemsTotalValueAttribute(): float
     {
         $value = $this->attributes['items_total_value'] ?? null;

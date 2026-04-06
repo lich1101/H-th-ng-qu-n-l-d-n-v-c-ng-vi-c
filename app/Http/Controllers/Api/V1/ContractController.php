@@ -738,6 +738,9 @@ class ContractController extends Controller
         $contract->setAttribute('can_manage', $this->canManageContract($user, $contract));
         $contract->setAttribute('can_delete', $this->canManageContract($user, $contract));
         $contract->setAttribute('can_add_care_note', $this->canAddCareNote($user, $contract));
+        $contract->setAttribute('can_review_finance_request', $this->canApprove($user));
+        $contract->setAttribute('can_manage_finance', $this->canApprove($user));
+        $contract->setAttribute('can_submit_finance_request', $this->canViewContract($user, $contract));
         
         $canCreateProject = $user->role === 'admin' 
             || (int) ($contract->collector_user_id ?? 0) === (int) $user->id 
@@ -902,6 +905,8 @@ class ContractController extends Controller
             'items',
             'payments',
             'costs',
+            'financeRequests.submitter:id,name,email,avatar_url',
+            'financeRequests.reviewer:id,name,email,avatar_url',
             'careStaffUsers:id,name,email,avatar_url,department_id',
             'careNotes.user:id,name,email,avatar_url',
         ]);
