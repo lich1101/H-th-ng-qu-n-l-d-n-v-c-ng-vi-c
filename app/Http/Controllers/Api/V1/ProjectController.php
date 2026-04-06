@@ -35,8 +35,9 @@ class ProjectController extends Controller
             $query->where('service_type', $request->input('service_type'));
         }
 
-        if ($request->filled('owner_id')) {
-            $query->where('owner_id', (int) $request->input('owner_id'));
+        $ownerFilterIds = $this->resolveOwnerFilterIds($request);
+        if (! empty($ownerFilterIds)) {
+            $query->whereIn('owner_id', $ownerFilterIds);
         }
 
         if ($request->filled('search')) {
@@ -70,10 +71,18 @@ class ProjectController extends Controller
                             ->orWhere('title', 'like', "%{$search}%")
                             ->orWhere('notes', 'like', "%{$search}%");
                     })
+                    ->orWhereHas('contract.collector', function ($collectorQuery) use ($search) {
+                        $collectorQuery->where('name', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%");
+                    })
                     ->orWhereHas('linkedContract', function ($contractQuery) use ($search) {
                         $contractQuery->where('code', 'like', "%{$search}%")
                             ->orWhere('title', 'like', "%{$search}%")
                             ->orWhere('notes', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('linkedContract.collector', function ($collectorQuery) use ($search) {
+                        $collectorQuery->where('name', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%");
                     })
                     ->orWhereHas('workflowTopic', function ($topicQuery) use ($search) {
                         $topicQuery->where('name', 'like', "%{$search}%")
@@ -743,6 +752,32 @@ class ProjectController extends Controller
         return array_values(array_filter(array_unique($targetIds), function ($id) use ($excludeUserId) {
             return (int) $id > 0 && (int) $id !== $excludeUserId;
         }));
+    }
+
+    private function resolveOwnerFilterIds(Request $request): array
+    {
+        $raw = $request->input('owner_ids', []);
+        if (is_string($raw)) {
+            $raw = preg_split('/[\s,;|]+/', $raw) ?: [];
+        }
+        if (! is_array($raw)) {
+            $raw = [];
+        }
+
+        if ($request->filled('owner_id')) {
+            $raw[] = $request->input('owner_id');
+        }
+
+        return collect($raw)
+            ->map(function ($id) {
+                return (int) $id;
+            })
+            ->filter(function ($id) {
+                return $id > 0;
+            })
+            ->unique()
+            ->values()
+            ->all();
     }
 
     private function notifyHandoverSubmitted(Project $project, Request $request): void

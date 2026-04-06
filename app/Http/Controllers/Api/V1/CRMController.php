@@ -86,14 +86,20 @@ class CRMController extends Controller
                 });
             }
         }
-        if ($request->filled('assigned_staff_id')) {
-            $staffId = (int) $request->input('assigned_staff_id');
-            if (! $this->canViewerFilterByStaff($viewer, $staffId)) {
+        $staffFilterIds = $this->resolveAssignedStaffFilterIds($request);
+        if (! empty($staffFilterIds)) {
+            $canUseStaffFilter = collect($staffFilterIds)->every(function (int $staffId) use ($viewer) {
+                return $this->canViewerFilterByStaff($viewer, $staffId);
+            });
+            if (! $canUseStaffFilter) {
                 $query->whereRaw('1 = 0');
             } else {
-                $query->where(function ($builder) use ($staffId) {
-                    $builder->where('assigned_staff_id', $staffId)
-                        ->orWhere('sales_owner_id', $staffId);
+                $query->where(function ($builder) use ($staffFilterIds) {
+                    $builder->whereIn('assigned_staff_id', $staffFilterIds)
+                        ->orWhereIn('sales_owner_id', $staffFilterIds)
+                        ->orWhereHas('careStaffUsers', function ($careQuery) use ($staffFilterIds) {
+                            $careQuery->whereIn('users.id', $staffFilterIds);
+                        });
                 });
             }
         }
@@ -494,6 +500,32 @@ class CRMController extends Controller
         }
 
         return false;
+    }
+
+    private function resolveAssignedStaffFilterIds(Request $request): array
+    {
+        $raw = $request->input('assigned_staff_ids', []);
+        if (is_string($raw)) {
+            $raw = preg_split('/[\s,;|]+/', $raw) ?: [];
+        }
+        if (! is_array($raw)) {
+            $raw = [];
+        }
+
+        if ($request->filled('assigned_staff_id')) {
+            $raw[] = $request->input('assigned_staff_id');
+        }
+
+        return collect($raw)
+            ->map(function ($id) {
+                return (int) $id;
+            })
+            ->filter(function ($id) {
+                return $id > 0;
+            })
+            ->unique()
+            ->values()
+            ->all();
     }
 
     private function resolveClientAssignment(User $user, array $validated, ?Client $client = null): array

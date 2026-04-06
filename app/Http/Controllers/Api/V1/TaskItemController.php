@@ -43,8 +43,9 @@ class TaskItemController extends Controller
             $query->where('task_id', (int) $request->input('task_id'));
         }
 
-        if ($request->filled('assignee_id')) {
-            $query->where('assignee_id', (int) $request->input('assignee_id'));
+        $assigneeFilterIds = $this->resolveAssigneeFilterIds($request);
+        if (! empty($assigneeFilterIds)) {
+            $query->whereIn('assignee_id', $assigneeFilterIds);
         }
 
         if ($request->filled('status')) {
@@ -343,6 +344,32 @@ class TaskItemController extends Controller
         }
 
         return true;
+    }
+
+    private function resolveAssigneeFilterIds(Request $request): array
+    {
+        $raw = $request->input('assignee_ids', []);
+        if (is_string($raw)) {
+            $raw = preg_split('/[\s,;|]+/', $raw) ?: [];
+        }
+        if (! is_array($raw)) {
+            $raw = [];
+        }
+
+        if ($request->filled('assignee_id')) {
+            $raw[] = $request->input('assignee_id');
+        }
+
+        return collect($raw)
+            ->map(function ($id) {
+                return (int) $id;
+            })
+            ->filter(function ($id) {
+                return $id > 0;
+            })
+            ->unique()
+            ->values()
+            ->all();
     }
 
 }

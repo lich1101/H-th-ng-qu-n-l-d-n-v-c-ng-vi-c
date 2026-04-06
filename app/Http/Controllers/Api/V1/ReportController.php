@@ -110,11 +110,11 @@ class ReportController extends Controller
         $hasProductName = $hasProductsTable && Schema::hasColumn('products', 'name');
 
         $contractTimelineColumns = ['client_id', 'created_at'];
-        if ($hasContractSignedAt) {
-            $contractTimelineColumns[] = 'signed_at';
-        }
         if ($hasContractApprovedAt) {
             $contractTimelineColumns[] = 'approved_at';
+        }
+        if ($hasContractSignedAt) {
+            $contractTimelineColumns[] = 'signed_at';
         }
 
         $employeeUserColumns = ['id', 'name', 'role'];
@@ -133,14 +133,15 @@ class ReportController extends Controller
 
         $contractWithClientSelect = $hasClientAssignedStaffId ? 'client:id,assigned_staff_id' : 'client:id';
         $contractDateParts = [];
-        if ($hasContractSignedAt) {
-            $contractDateParts[] = 'contracts.signed_at';
-        }
         if ($hasContractApprovedAt) {
             $contractDateParts[] = 'contracts.approved_at';
         }
-        $contractDateParts[] = 'contracts.created_at';
-        $contractDateExpr = 'DATE(COALESCE(' . implode(', ', $contractDateParts) . '))';
+        if ($hasContractSignedAt) {
+            $contractDateParts[] = 'contracts.signed_at';
+        }
+        $contractDateExpr = ! empty($contractDateParts)
+            ? ('DATE(COALESCE(' . implode(', ', $contractDateParts) . '))')
+            : 'DATE(contracts.created_at)';
 
         $approvedContractsBaseQuery = (clone $contractBaseQuery)
             ->when($hasContractApprovalStatus, function ($query) {
@@ -745,8 +746,8 @@ class ReportController extends Controller
 
         $seenClientFirstContract = [];
         foreach ($approvedContractsTimeline as $contract) {
-            $contractAt = $contract->signed_at
-                ?: $contract->approved_at
+            $contractAt = $contract->approved_at
+                ?: $contract->signed_at
                 ?: $contract->created_at;
             $key = optional($contractAt)->format('Y-m');
             if (! $key || ! isset($customerGrowthSeed[$key])) {

@@ -52,6 +52,24 @@ class ContractController extends Controller
         if ($request->filled('client_id')) {
             $query->where('client_id', (int) $request->input('client_id'));
         }
+        $staffFilterIds = $this->resolveStaffFilterIds($request);
+        if (! empty($staffFilterIds)) {
+            $query->where(function (Builder $builder) use ($staffFilterIds) {
+                $builder->whereIn('collector_user_id', $staffFilterIds)
+                    ->orWhereIn('created_by', $staffFilterIds)
+                    ->orWhereIn('handover_received_by', $staffFilterIds)
+                    ->orWhereHas('careStaffUsers', function (Builder $careStaffQuery) use ($staffFilterIds) {
+                        $careStaffQuery->whereIn('users.id', $staffFilterIds);
+                    })
+                    ->orWhereHas('client', function (Builder $clientQuery) use ($staffFilterIds) {
+                        $clientQuery->whereIn('assigned_staff_id', $staffFilterIds)
+                            ->orWhereIn('sales_owner_id', $staffFilterIds)
+                            ->orWhereHas('careStaffUsers', function (Builder $careStaffQuery) use ($staffFilterIds) {
+                                $careStaffQuery->whereIn('users.id', $staffFilterIds);
+                            });
+                    });
+            });
+        }
         if ($request->filled('approval_status')) {
             $query->where('approval_status', (string) $request->input('approval_status'));
         }
@@ -730,6 +748,40 @@ class ContractController extends Controller
         }
 
         return 'CTR-' . $date . '-' . strtoupper(Str::random(6));
+    }
+
+    private function resolveStaffFilterIds(Request $request): array
+    {
+        $raw = $request->input('staff_ids', []);
+        if (is_string($raw)) {
+            $raw = preg_split('/[\s,;|]+/', $raw) ?: [];
+        }
+        if (! is_array($raw)) {
+            $raw = [];
+        }
+
+        $legacyRaw = $request->input('collector_user_ids', []);
+        if (is_string($legacyRaw)) {
+            $legacyRaw = preg_split('/[\s,;|]+/', $legacyRaw) ?: [];
+        }
+        if (is_array($legacyRaw)) {
+            $raw = array_merge($raw, $legacyRaw);
+        }
+
+        if ($request->filled('collector_user_id')) {
+            $raw[] = $request->input('collector_user_id');
+        }
+
+        return collect($raw)
+            ->map(function ($id) {
+                return (int) $id;
+            })
+            ->filter(function ($id) {
+                return $id > 0;
+            })
+            ->unique()
+            ->values()
+            ->all();
     }
 
     private function appendContractPermissions(Contract $contract, User $user): Contract

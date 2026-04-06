@@ -17,6 +17,7 @@ class OpportunityController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
+        $viewer = $request->user();
         $query = Opportunity::query()->with([
             'client:id,name,company,email,phone',
             'assignee:id,name,email,role',
@@ -24,13 +25,34 @@ class OpportunityController extends Controller
             'product:id,name,code',
             'statusConfig:id,code,name,color_hex,sort_order',
         ]);
-        CrmScope::applyOpportunityScope($query, $request->user());
+        CrmScope::applyOpportunityScope($query, $viewer);
 
         if ($request->filled('client_id')) {
             $query->where('client_id', (int) $request->input('client_id'));
         }
         if ($request->filled('status')) {
             $query->where('status', (string) $request->input('status'));
+        }
+        $staffFilterIds = $this->resolveStaffFilterIds($request);
+        if (! empty($staffFilterIds)) {
+            $canUseStaffFilter = collect($staffFilterIds)->every(function (int $staffId) use ($viewer) {
+                return $this->canViewerFilterByStaff($viewer, $staffId);
+            });
+            if (! $canUseStaffFilter) {
+                $query->whereRaw('1 = 0');
+            } else {
+                $query->where(function ($builder) use ($staffFilterIds) {
+                    $builder->whereIn('assigned_to', $staffFilterIds)
+                        ->orWhereIn('created_by', $staffFilterIds)
+                        ->orWhereHas('client', function ($clientQuery) use ($staffFilterIds) {
+                            $clientQuery->whereIn('assigned_staff_id', $staffFilterIds)
+                                ->orWhereIn('sales_owner_id', $staffFilterIds)
+                                ->orWhereHas('careStaffUsers', function ($careQuery) use ($staffFilterIds) {
+                                    $careQuery->whereIn('users.id', $staffFilterIds);
+                                });
+                        });
+                });
+            }
         }
         if ($request->filled('search')) {
             $search = (string) $request->input('search');
@@ -277,6 +299,67 @@ class OpportunityController extends Controller
             ->value('code');
 
         return $default ?: 'open';
+    }
+
+    private function canViewerFilterByStaff(User $viewer, int $staffId): bool
+    {
+        if ($staffId <= 0) {
+            return false;
+        }
+
+        if (CrmScope::hasGlobalScope($viewer)) {
+            return User::query()->where('id', $staffId)->exists();
+        }
+
+        if ($viewer->role === 'quan_ly') {
+            return CrmScope::managerVisibleUserIds($viewer)->contains($staffId);
+        }
+
+        if ($viewer->role === 'nhan_vien') {
+            return (int) $viewer->id === $staffId;
+        }
+
+        return false;
+    }
+
+    private function resolveStaffFilterIds(Request $request): array
+    {
+        $raw = $request->input('staff_ids', []);
+        if (is_string($raw)) {
+            $raw = preg_split('/[\s,;|]+/', $raw) ?: [];
+        }
+        if (! is_array($raw)) {
+            $raw = [];
+        }
+
+        $legacyFilters = [
+            $request->input('assigned_to_ids', []),
+            $request->input('assigned_staff_ids', []),
+        ];
+
+        foreach ($legacyFilters as $legacy) {
+            if (is_string($legacy)) {
+                $legacy = preg_split('/[\s,;|]+/', $legacy) ?: [];
+            }
+            if (is_array($legacy)) {
+                $raw = array_merge($raw, $legacy);
+            }
+        }
+
+        if ($request->filled('assigned_to')) {
+            $raw[] = $request->input('assigned_to');
+        }
+
+        return collect($raw)
+            ->map(function ($id) {
+                return (int) $id;
+            })
+            ->filter(function ($id) {
+                return $id > 0;
+            })
+            ->unique()
+            ->values()
+            ->all();
     }
 
     /**
