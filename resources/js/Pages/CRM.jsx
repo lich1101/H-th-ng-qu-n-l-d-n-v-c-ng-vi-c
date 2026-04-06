@@ -98,6 +98,8 @@ export default function CRM(props) {
     const [editingPaymentId, setEditingPaymentId] = useState(null);
     const [showClientForm, setShowClientForm] = useState(false);
     const [showPaymentForm, setShowPaymentForm] = useState(false);
+    const [submittingClient, setSubmittingClient] = useState(false);
+    const [submittingPayment, setSubmittingPayment] = useState(false);
     const [showClientImport, setShowClientImport] = useState(false);
     const [clientImportFile, setClientImportFile] = useState(null);
     const [importingClients, setImportingClients] = useState(false);
@@ -361,10 +363,14 @@ export default function CRM(props) {
 
     const submitClient = async (e) => {
         e.preventDefault();
+        if (submittingClient) {
+            return;
+        }
         if (!canManageClients) {
             toast.error('Bạn không có quyền quản lý khách hàng.');
             return;
         }
+        setSubmittingClient(true);
         try {
             const resolvedAssignedStaff = clientForm.assigned_staff_id
                 ? Number(clientForm.assigned_staff_id)
@@ -398,6 +404,8 @@ export default function CRM(props) {
             toast.success(editingClientId ? 'Cập nhật khách hàng thành công.' : 'Tạo khách hàng thành công.');
         } catch (error) {
             toast.error(getErrorMessage(error, 'Lưu khách hàng thất bại.'));
+        } finally {
+            setSubmittingClient(false);
         }
     };
 
@@ -444,6 +452,7 @@ export default function CRM(props) {
     const closeClientForm = () => {
         setShowClientForm(false);
         setEditingClientId(null);
+        setSubmittingClient(false);
     };
 
     const deleteClient = async (id) => {
@@ -618,7 +627,11 @@ export default function CRM(props) {
 
     const submitPayment = async (e) => {
         e.preventDefault();
+        if (submittingPayment) {
+            return;
+        }
         if (!canManagePayments) return toast.error('Bạn không có quyền quản lý thanh toán.');
+        setSubmittingPayment(true);
         const payload = {
             ...paymentForm,
             client_id: Number(paymentForm.client_id),
@@ -636,6 +649,8 @@ export default function CRM(props) {
             toast.success(editingPaymentId ? 'Cập nhật thanh toán thành công.' : 'Tạo thanh toán thành công.');
         } catch (error) {
             toast.error(getErrorMessage(error, 'Lưu thanh toán thất bại.'));
+        } finally {
+            setSubmittingPayment(false);
         }
     };
 
@@ -668,6 +683,7 @@ export default function CRM(props) {
     const closePaymentForm = () => {
         setShowPaymentForm(false);
         setEditingPaymentId(null);
+        setSubmittingPayment(false);
     };
 
     const deletePayment = async (id) => {
@@ -1398,13 +1414,17 @@ export default function CRM(props) {
                                 <button
                                     type="submit"
                                     className="flex-1 rounded-2xl px-3 py-2.5 bg-primary text-white text-sm font-semibold"
+                                    disabled={submittingClient}
                                 >
-                                    {editingClientId ? 'Cập nhật khách hàng' : 'Tạo khách hàng'}
+                                    {submittingClient
+                                        ? (editingClientId ? 'Đang cập nhật...' : 'Đang tạo...')
+                                        : (editingClientId ? 'Cập nhật khách hàng' : 'Tạo khách hàng')}
                                 </button>
                                 <button
                                     type="button"
                                     className="flex-1 rounded-2xl px-3 py-2.5 border border-slate-200 text-sm font-semibold"
                                     onClick={closeClientForm}
+                                    disabled={submittingClient}
                                 >
                                     Hủy
                                 </button>
@@ -1614,13 +1634,17 @@ export default function CRM(props) {
                                 <button
                                     type="submit"
                                     className="flex-1 rounded-2xl px-3 py-2.5 bg-primary text-white text-sm font-semibold"
+                                    disabled={submittingPayment}
                                 >
-                                    {editingPaymentId ? 'Cập nhật thanh toán' : 'Tạo thanh toán'}
+                                    {submittingPayment
+                                        ? (editingPaymentId ? 'Đang cập nhật...' : 'Đang tạo...')
+                                        : (editingPaymentId ? 'Cập nhật thanh toán' : 'Tạo thanh toán')}
                                 </button>
                                 <button
                                     type="button"
                                     className="flex-1 rounded-2xl px-3 py-2.5 border border-slate-200 text-sm font-semibold"
                                     onClick={closePaymentForm}
+                                    disabled={submittingPayment}
                                 >
                                     Hủy
                                 </button>

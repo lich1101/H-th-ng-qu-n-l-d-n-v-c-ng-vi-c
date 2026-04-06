@@ -117,7 +117,47 @@ class AuthController extends Controller
 
     public function me(Request $request): JsonResponse
     {
-        return response()->json($request->user());
+        $user = $request->user('sanctum') ?? $request->user();
+        if (! $user) {
+            return response()->json([
+                'message' => 'Unauthenticated.',
+            ], 401);
+        }
+
+        if (! $user->is_active) {
+            $token = $request->user()?->currentAccessToken();
+            if ($token) {
+                $token->delete();
+            }
+
+            return response()->json([
+                'message' => 'Account is disabled.',
+            ], 403);
+        }
+
+        try {
+            return response()->json(
+                $this->normalizeUtf8Payload($user->fresh()->toArray())
+            );
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json($this->normalizeUtf8Payload([
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'role' => $user->role,
+                'department' => $user->department,
+                'department_id' => $user->department_id,
+                'phone' => $user->phone,
+                'avatar_url' => $user->avatar_url,
+                'workload_capacity' => $user->workload_capacity,
+                'is_active' => (bool) $user->is_active,
+                'attendance_employment_type' => $user->attendance_employment_type,
+                'created_at' => $user->created_at,
+                'updated_at' => $user->updated_at,
+            ]));
+        }
     }
 
     public function logout(Request $request): JsonResponse
@@ -197,5 +237,28 @@ class AuthController extends Controller
         if ($app->resolved('mailer')) {
             $app->forgetInstance('mailer');
         }
+    }
+
+    private function normalizeUtf8Payload(mixed $payload): mixed
+    {
+        if (is_array($payload)) {
+            foreach ($payload as $key => $value) {
+                $payload[$key] = $this->normalizeUtf8Payload($value);
+            }
+
+            return $payload;
+        }
+
+        if (is_string($payload)) {
+            if (mb_check_encoding($payload, 'UTF-8')) {
+                return $payload;
+            }
+
+            $converted = @iconv('UTF-8', 'UTF-8//IGNORE', $payload);
+
+            return $converted === false ? '' : $converted;
+        }
+
+        return $payload;
     }
 }

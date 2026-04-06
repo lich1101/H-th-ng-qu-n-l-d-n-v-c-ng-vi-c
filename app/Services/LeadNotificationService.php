@@ -22,10 +22,11 @@ class LeadNotificationService
             return;
         }
 
-        $client->loadMissing(['assignedStaff']);
+        $client->loadMissing(['assignedStaff.departmentRelation.manager']);
         $responsible = $client->assignedStaff;
+        $manager = optional(optional($responsible)->departmentRelation)->manager;
         $adminIds = User::query()
-            ->where('role', 'admin')
+            ->whereIn('role', ['admin', 'administrator'])
             ->where('is_active', true)
             ->pluck('id')
             ->map(function ($id) {
@@ -36,6 +37,9 @@ class LeadNotificationService
         $userIds = $adminIds;
         if ($responsible && $responsible->id) {
             $userIds[] = (int) $responsible->id;
+        }
+        if ($manager && $manager->id && $manager->is_active) {
+            $userIds[] = (int) $manager->id;
         }
         $userIds = array_values(array_unique(array_filter($userIds)));
         if (empty($userIds)) {

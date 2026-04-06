@@ -180,7 +180,24 @@ class CRMController extends Controller
             $validated['sales_owner_id'] = $validated['assigned_staff_id'];
         }
 
-        $client = Client::create($validated);
+        try {
+            $client = Client::create($validated);
+        } catch (\Throwable $e) {
+            Log::error('CRM create client failed', [
+                'user_id' => (int) optional($user)->id,
+                'payload' => [
+                    'name' => $validated['name'] ?? null,
+                    'assigned_department_id' => $validated['assigned_department_id'] ?? null,
+                    'assigned_staff_id' => $validated['assigned_staff_id'] ?? null,
+                    'sales_owner_id' => $validated['sales_owner_id'] ?? null,
+                ],
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'message' => 'Không thể tạo khách hàng. Vui lòng kiểm tra lại thông tin phụ trách và thử lại.',
+            ], 422);
+        }
         $this->syncClientCareStaff(
             $client,
             $validated['care_staff_ids'] ?? [],
@@ -420,42 +437,12 @@ class CRMController extends Controller
 
     private function canAccessClient(User $user, Client $client): bool
     {
-        if (CrmScope::hasGlobalScope($user)) {
-            return true;
-        }
-
-        if ($user->role === 'quan_ly') {
-            return CrmScope::canManagerAccessClient($user, $client);
-        }
-
-        if ((int) $client->assigned_staff_id === (int) $user->id) {
-            return true;
-        }
-
-        if ((int) $client->sales_owner_id === (int) $user->id) {
-            return true;
-        }
-
-        if (! $this->supportsClientCareStaff()) {
-            return false;
-        }
-
-        return $client->careStaffUsers()
-            ->where('users.id', $user->id)
-            ->exists();
+        return CrmScope::canAccessClient($user, $client);
     }
 
     private function canManageClient(User $user, Client $client): bool
     {
-        if (in_array($user->role, ['admin'], true)) {
-            return true;
-        }
-
-        if ($user->role === 'quan_ly') {
-            return CrmScope::canManagerAccessClient($user, $client);
-        }
-
-        return (int) $client->assigned_staff_id === (int) $user->id;
+        return CrmScope::canManageClient($user, $client);
     }
 
     private function resolveClientAssignment(User $user, array $validated, ?Client $client = null): array
@@ -526,12 +513,15 @@ class CRMController extends Controller
             return $validated;
         }
 
-        if ($user->role === 'admin') {
+        if (in_array((string) $user->role, ['admin', 'administrator'], true)) {
             if ($requestedStaffId) {
                 $validated['assigned_staff_id'] = $requestedStaffId;
-                $validated['assigned_department_id'] = (int) User::query()
+                $resolvedDepartmentId = User::query()
                     ->where('id', $requestedStaffId)
                     ->value('department_id');
+                $validated['assigned_department_id'] = $resolvedDepartmentId
+                    ? (int) $resolvedDepartmentId
+                    : null;
             } else {
                 $validated['assigned_staff_id'] = null;
                 $validated['assigned_department_id'] = $requestedDepartmentId;

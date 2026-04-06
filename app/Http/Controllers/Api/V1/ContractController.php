@@ -249,7 +249,7 @@ class ContractController extends Controller
 
         if (($contract->approval_status ?? '') === 'pending') {
             $accountantIds = User::query()
-                ->whereIn('role', ['admin', 'ke_toan'])
+                ->whereIn('role', ['admin', 'administrator', 'ke_toan'])
                 ->pluck('id')
                 ->reject(function ($id) use ($request) {
                     return (int) $id === (int) $request->user()->id;
@@ -444,7 +444,7 @@ class ContractController extends Controller
 
     private function canApprove($user): bool
     {
-        return $user && in_array($user->role, ['admin', 'ke_toan'], true);
+        return $user && in_array($user->role, ['admin', 'administrator', 'ke_toan'], true);
     }
 
     private function resolveApproval(Request $request): array
@@ -494,7 +494,7 @@ class ContractController extends Controller
             return (int) $user->id;
         }
 
-        if (in_array($user->role, ['admin', 'ke_toan'], true)) {
+        if (in_array($user->role, ['admin', 'administrator', 'ke_toan'], true)) {
             $allowedIds = $this->allowedCollectorIdsForAdminAndAccounting();
 
             if ($requestedCollectorId && in_array($requestedCollectorId, $allowedIds, true)) {
@@ -592,7 +592,7 @@ class ContractController extends Controller
 
         if ($user->role === 'quan_ly') {
             $allowedIds = $this->allowedCareStaffIdsForManager($user);
-        } elseif (in_array($user->role, ['admin', 'ke_toan'], true)) {
+        } elseif (in_array($user->role, ['admin', 'administrator', 'ke_toan'], true)) {
             $allowedIds = $this->allowedCareStaffIdsForAdminAndAccounting();
         } else {
             return 'Không có quyền gán nhân viên chăm sóc cho hợp đồng.';
@@ -742,7 +742,7 @@ class ContractController extends Controller
         $contract->setAttribute('can_manage_finance', $this->canApprove($user));
         $contract->setAttribute('can_submit_finance_request', $this->canViewContract($user, $contract));
         
-        $canCreateProject = $user->role === 'admin' 
+        $canCreateProject = in_array((string) $user->role, ['admin', 'administrator'], true)
             || (int) ($contract->collector_user_id ?? 0) === (int) $user->id 
             || (int) ($contract->created_by ?? 0) === (int) $user->id;
         $contract->setAttribute('can_create_project', $canCreateProject);
@@ -752,7 +752,7 @@ class ContractController extends Controller
 
     private function canViewContract(User $user, Contract $contract): bool
     {
-        if (in_array($user->role, ['admin', 'ke_toan'], true)) {
+        if (in_array($user->role, ['admin', 'administrator', 'ke_toan'], true)) {
             return true;
         }
 
@@ -769,7 +769,7 @@ class ContractController extends Controller
 
     private function canManageContract(User $user, Contract $contract): bool
     {
-        if (in_array($user->role, ['admin', 'ke_toan'], true)) {
+        if (in_array($user->role, ['admin', 'administrator', 'ke_toan'], true)) {
             return true;
         }
 

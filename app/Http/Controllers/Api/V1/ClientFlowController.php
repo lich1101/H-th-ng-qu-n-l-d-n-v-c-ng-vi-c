@@ -380,24 +380,8 @@ class ClientFlowController extends Controller
         if (! $user) {
             return false;
         }
-        if (CrmScope::hasGlobalScope($user)) {
-            return true;
-        }
-        if ($user->role === 'quan_ly') {
-            return CrmScope::canManagerAccessClient($user, $client);
-        }
 
-        if ((int) $client->assigned_staff_id === (int) $user->id) {
-            return true;
-        }
-
-        if ((int) $client->sales_owner_id === (int) $user->id) {
-            return true;
-        }
-
-        return $client->careStaffUsers()
-            ->where('users.id', $user->id)
-            ->exists();
+        return CrmScope::canAccessClient($user, $client);
     }
 
     private function canAddCareNote(?User $user, Client $client): bool
@@ -406,25 +390,7 @@ class ClientFlowController extends Controller
             return false;
         }
 
-        if (in_array($user->role, ['admin'], true)) {
-            return true;
-        }
-
-        if ($user->role === 'quan_ly') {
-            return CrmScope::canManagerAccessClient($user, $client);
-        }
-
-        if ((int) $client->assigned_staff_id === (int) $user->id) {
-            return true;
-        }
-
-        if ((int) $client->sales_owner_id === (int) $user->id) {
-            return true;
-        }
-
-        return $client->careStaffUsers()
-            ->where('users.id', $user->id)
-            ->exists();
+        return CrmScope::canManageClient($user, $client);
     }
 
     private function canManageClient(?User $user, Client $client): bool
@@ -433,15 +399,7 @@ class ClientFlowController extends Controller
             return false;
         }
 
-        if ($user->role === 'admin') {
-            return true;
-        }
-
-        if ($user->role === 'quan_ly') {
-            return CrmScope::canManagerAccessClient($user, $client);
-        }
-
-        return (int) $client->assigned_staff_id === (int) $user->id;
+        return CrmScope::canManageClient($user, $client);
     }
 
     private function canDeleteComment(?User $user, array $comment): bool

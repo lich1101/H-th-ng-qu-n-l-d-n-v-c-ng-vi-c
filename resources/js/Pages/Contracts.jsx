@@ -143,6 +143,9 @@ export default function Contracts(props) {
     const [collectors, setCollectors] = useState([]);
     const [careStaffUsers, setCareStaffUsers] = useState([]);
     const [loading, setLoading] = useState(false);
+    const [savingContract, setSavingContract] = useState(false);
+    const [savingPayment, setSavingPayment] = useState(false);
+    const [savingCost, setSavingCost] = useState(false);
     const [editingId, setEditingId] = useState(null);
     const [showForm, setShowForm] = useState(false);
     const [showDetail, setShowDetail] = useState(false);
@@ -617,6 +620,7 @@ export default function Contracts(props) {
     };
 
     const closeForm = () => {
+        if (savingContract) return;
         setShowForm(false);
         resetForm();
     };
@@ -694,11 +698,13 @@ export default function Contracts(props) {
 
     const submitPayment = async (e) => {
         e.preventDefault();
+        if (savingPayment) return;
         if (!editingId) return;
         if (paymentProjectedTotal > contractValueTotal + 0.0001) {
             toast.error(`Số tiền thanh toán vượt giá trị hợp đồng. Chỉ còn tối đa ${formatCurrency(paymentRemaining)} VNĐ.`);
             return;
         }
+        setSavingPayment(true);
         try {
             const payload = {
                 amount: parseNumberInput(paymentForm.amount),
@@ -719,6 +725,8 @@ export default function Contracts(props) {
             await fetchContracts(filters);
         } catch (e) {
             toast.error(e?.response?.data?.message || 'Lưu thanh toán thất bại.');
+        } finally {
+            setSavingPayment(false);
         }
     };
 
@@ -762,7 +770,9 @@ export default function Contracts(props) {
 
     const submitCost = async (e) => {
         e.preventDefault();
+        if (savingCost) return;
         if (!editingId) return;
+        setSavingCost(true);
         try {
             const payload = {
                 amount: parseNumberInput(costForm.amount),
@@ -783,6 +793,8 @@ export default function Contracts(props) {
             await fetchContracts(filters);
         } catch (e) {
             toast.error(e?.response?.data?.message || 'Lưu chi phí thất bại.');
+        } finally {
+            setSavingCost(false);
         }
     };
 
@@ -875,6 +887,7 @@ export default function Contracts(props) {
     }, [showImport, importJob?.id]);
 
     const save = async (createAndApprove = false) => {
+        if (savingContract) return;
         if (!editingId && !canCreate) return toast.error('Bạn không có quyền tạo hợp đồng.');
         if (editingId && !canManage) return toast.error('Bạn không có quyền quản lý hợp đồng.');
         if (editingId && !editingCanManage) {
@@ -904,6 +917,7 @@ export default function Contracts(props) {
                 note: item.note || null,
             })),
         };
+        setSavingContract(true);
         try {
             if (editingId) {
                 await axios.put(`/api/v1/contracts/${editingId}`, payload);
@@ -915,10 +929,13 @@ export default function Contracts(props) {
                 });
                 toast.success(createAndApprove ? 'Đã tạo và duyệt hợp đồng.' : 'Đã tạo hợp đồng.');
             }
-            closeForm();
+            setShowForm(false);
+            resetForm();
             await fetchContracts();
         } catch (e) {
             toast.error(e?.response?.data?.message || 'Lưu hợp đồng thất bại.');
+        } finally {
+            setSavingContract(false);
         }
     };
 
@@ -1271,7 +1288,10 @@ export default function Contracts(props) {
 
             <Modal
                 open={showForm}
-                onClose={closeForm}
+                onClose={() => {
+                    if (savingContract) return;
+                    closeForm();
+                }}
                 title={editingId ? `Sửa hợp đồng #${editingId}` : 'Tạo hợp đồng'}
                 description="Mã hợp đồng sẽ tự sinh. Bạn chỉ cần nhập nghiệp vụ, người phụ trách và danh sách sản phẩm."
                 size="xl"
@@ -1666,19 +1686,32 @@ export default function Contracts(props) {
                     </div>
 
                     <div className="flex flex-col gap-3 md:flex-row">
-                        <button type="button" className="flex-1 rounded-2xl px-3 py-2.5 bg-primary text-white text-sm font-semibold" onClick={() => save(false)}>
-                            {editingId ? 'Cập nhật hợp đồng' : 'Tạo hợp đồng'}
+                        <button
+                            type="button"
+                            className="flex-1 rounded-2xl px-3 py-2.5 bg-primary text-white text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+                            onClick={() => save(false)}
+                            disabled={savingContract}
+                        >
+                            {savingContract
+                                ? (editingId ? 'Đang cập nhật...' : 'Đang tạo...')
+                                : (editingId ? 'Cập nhật hợp đồng' : 'Tạo hợp đồng')}
                         </button>
                         {!editingId && canApprove && (
                             <button
                                 type="button"
-                                className="flex-1 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm font-semibold text-emerald-700"
+                                className="flex-1 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm font-semibold text-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
                                 onClick={() => save(true)}
+                                disabled={savingContract}
                             >
-                                Tạo và duyệt
+                                {savingContract ? 'Đang tạo...' : 'Tạo và duyệt'}
                             </button>
                         )}
-                        <button type="button" className="flex-1 rounded-2xl px-3 py-2.5 border border-slate-200 text-sm font-semibold" onClick={closeForm}>
+                        <button
+                            type="button"
+                            className="flex-1 rounded-2xl px-3 py-2.5 border border-slate-200 text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+                            onClick={closeForm}
+                            disabled={savingContract}
+                        >
                             Hủy
                         </button>
                     </div>
@@ -1687,7 +1720,10 @@ export default function Contracts(props) {
 
             <Modal
                 open={showPaymentForm}
-                onClose={() => setShowPaymentForm(false)}
+                onClose={() => {
+                    if (savingPayment) return;
+                    setShowPaymentForm(false);
+                }}
                 title={editingPaymentId ? 'Sửa thanh toán' : 'Thêm thanh toán'}
                 size="md"
             >
@@ -1742,10 +1778,19 @@ export default function Contracts(props) {
                         />
                     </LabeledField>
                     <div className="flex items-center gap-2">
-                        <button type="submit" className="flex-1 rounded-2xl px-3 py-2.5 bg-primary text-white text-sm font-semibold">
-                            Lưu
+                        <button
+                            type="submit"
+                            className="flex-1 rounded-2xl px-3 py-2.5 bg-primary text-white text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+                            disabled={savingPayment}
+                        >
+                            {savingPayment ? 'Đang lưu...' : 'Lưu'}
                         </button>
-                        <button type="button" className="flex-1 rounded-2xl px-3 py-2.5 border border-slate-200 text-sm font-semibold" onClick={() => setShowPaymentForm(false)}>
+                        <button
+                            type="button"
+                            className="flex-1 rounded-2xl px-3 py-2.5 border border-slate-200 text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+                            onClick={() => setShowPaymentForm(false)}
+                            disabled={savingPayment}
+                        >
                             Hủy
                         </button>
                     </div>
@@ -1754,7 +1799,10 @@ export default function Contracts(props) {
 
             <Modal
                 open={showCostForm}
-                onClose={() => setShowCostForm(false)}
+                onClose={() => {
+                    if (savingCost) return;
+                    setShowCostForm(false);
+                }}
                 title={editingCostId ? 'Sửa chi phí' : 'Thêm chi phí'}
                 size="md"
             >
@@ -1794,10 +1842,19 @@ export default function Contracts(props) {
                         />
                     </LabeledField>
                     <div className="flex items-center gap-2">
-                        <button type="submit" className="flex-1 rounded-2xl px-3 py-2.5 bg-primary text-white text-sm font-semibold">
-                            Lưu
+                        <button
+                            type="submit"
+                            className="flex-1 rounded-2xl px-3 py-2.5 bg-primary text-white text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+                            disabled={savingCost}
+                        >
+                            {savingCost ? 'Đang lưu...' : 'Lưu'}
                         </button>
-                        <button type="button" className="flex-1 rounded-2xl px-3 py-2.5 border border-slate-200 text-sm font-semibold" onClick={() => setShowCostForm(false)}>
+                        <button
+                            type="button"
+                            className="flex-1 rounded-2xl px-3 py-2.5 border border-slate-200 text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+                            onClick={() => setShowCostForm(false)}
+                            disabled={savingCost}
+                        >
                             Hủy
                         </button>
                     </div>

@@ -97,7 +97,10 @@ class OpportunityController extends Controller
     private function notifyNewOpportunityFromStaff(Opportunity $opportunity, User $creator): void
     {
         try {
-            $adminIds = User::query()->where('role', 'admin')->pluck('id')->all();
+            $adminIds = User::query()
+                ->whereIn('role', ['admin', 'administrator'])
+                ->pluck('id')
+                ->all();
             
             $managerId = null;
             if ($creator->department_id) {

@@ -66,20 +66,19 @@ class CrmScope
 
         if ($user->role === 'quan_ly') {
             $deptIds = self::managedDepartmentIds($user);
-            $teamUserIds = self::managerVisibleUserIds($user);
+            return $query->where(function (Builder $builder) use ($deptIds, $user) {
+                $builder->where('assigned_staff_id', (int) $user->id);
 
-            return $query->where(function (Builder $builder) use ($deptIds, $teamUserIds) {
-                self::applyManagerClientScope($builder, $deptIds, $teamUserIds);
+                if ($deptIds->isNotEmpty()) {
+                    $builder->orWhereIn('assigned_department_id', $deptIds->all())
+                        ->orWhereHas('assignedStaff', function (Builder $staffQuery) use ($deptIds) {
+                            $staffQuery->whereIn('department_id', $deptIds->all());
+                        });
+                }
             });
         }
 
-        return $query->where(function (Builder $builder) use ($user) {
-            $builder->where('assigned_staff_id', $user->id)
-                ->orWhere('sales_owner_id', $user->id)
-                ->orWhereHas('careStaffUsers', function (Builder $careQuery) use ($user) {
-                    $careQuery->where('users.id', $user->id);
-                });
-        });
+        return $query->where('assigned_staff_id', (int) $user->id);
     }
 
     public static function applyContractScope(Builder $query, User $user): Builder
@@ -181,20 +180,48 @@ class CrmScope
         }
 
         $deptIds = self::managedDepartmentIds($user);
-        $teamUserIds = self::managerVisibleUserIds($user);
+        if ((int) ($client->assigned_staff_id ?? 0) === (int) $user->id) {
+            return true;
+        }
 
         if ($client->assigned_department_id && $deptIds->contains((int) $client->assigned_department_id)) {
             return true;
         }
 
-        if ($teamUserIds->contains((int) $client->assigned_staff_id)
-            || $teamUserIds->contains((int) $client->sales_owner_id)) {
+        if ($deptIds->isEmpty()) {
+            return false;
+        }
+
+        $client->loadMissing('assignedStaff:id,department_id');
+
+        return (int) optional($client->assignedStaff)->department_id > 0
+            && $deptIds->contains((int) $client->assignedStaff->department_id);
+    }
+
+    public static function canAccessClient(User $user, Client $client): bool
+    {
+        if (self::hasGlobalScope($user)) {
             return true;
         }
 
-        return $client->careStaffUsers()
-            ->whereIn('users.id', $teamUserIds->all())
-            ->exists();
+        if ($user->role === 'quan_ly') {
+            return self::canManagerAccessClient($user, $client);
+        }
+
+        return (int) ($client->assigned_staff_id ?? 0) === (int) $user->id;
+    }
+
+    public static function canManageClient(User $user, Client $client): bool
+    {
+        if ($user->role === 'admin') {
+            return true;
+        }
+
+        if ($user->role === 'quan_ly') {
+            return self::canManagerAccessClient($user, $client);
+        }
+
+        return (int) ($client->assigned_staff_id ?? 0) === (int) $user->id;
     }
 
     public static function canManagerAccessOpportunity(User $user, Opportunity $opportunity): bool
@@ -259,16 +286,11 @@ class CrmScope
 
     private static function applyManagerClientScope(Builder $builder, Collection $deptIds, Collection $teamUserIds): void
     {
+        // Deprecated: keep method for backward compatibility.
         if ($deptIds->isNotEmpty()) {
             $builder->whereIn('assigned_department_id', $deptIds);
-        }
-
-        if ($teamUserIds->isNotEmpty()) {
-            $builder->orWhereIn('assigned_staff_id', $teamUserIds)
-                ->orWhereIn('sales_owner_id', $teamUserIds)
-                ->orWhereHas('careStaffUsers', function (Builder $careQuery) use ($teamUserIds) {
-                    $careQuery->whereIn('users.id', $teamUserIds);
-                });
+        } else {
+            $builder->whereRaw('1 = 0');
         }
     }
 }

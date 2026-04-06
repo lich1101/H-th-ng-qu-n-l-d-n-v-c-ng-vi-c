@@ -164,7 +164,7 @@ class SendContractReminders extends Command
     private function reminderTargets(Contract $contract): array
     {
         $adminIds = User::query()
-            ->where('role', 'admin')
+            ->whereIn('role', ['admin', 'administrator'])
             ->where('is_active', true)
             ->pluck('id')
             ->map(function ($id) {

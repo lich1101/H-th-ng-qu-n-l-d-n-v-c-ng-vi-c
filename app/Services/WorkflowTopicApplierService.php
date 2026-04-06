@@ -23,8 +23,10 @@ class WorkflowTopicApplierService
 
         $projectStart = $this->resolveProjectStart($project);
         $projectEnd = $this->resolveProjectEnd($project, $projectStart);
+        $projectOwnerId = (int) ($project->owner_id ?? 0);
+        $defaultTaskAssigneeId = $projectOwnerId > 0 ? $projectOwnerId : null;
 
-        DB::transaction(function () use ($project, $topic, $actorId, $projectStart, $projectEnd) {
+        DB::transaction(function () use ($project, $topic, $actorId, $projectStart, $projectEnd, $defaultTaskAssigneeId) {
             foreach ($topic->tasks as $taskTemplate) {
                 [$taskStart, $taskEnd] = $this->resolveRangeByOffset(
                     $projectStart,
@@ -47,7 +49,7 @@ class WorkflowTopicApplierService
                     'weight_percent' => max(1, min(100, (int) ($taskTemplate->weight_percent ?? 1))),
                     'created_by' => $actorId,
                     'assigned_by' => $actorId,
-                    'assignee_id' => null,
+                    'assignee_id' => $defaultTaskAssigneeId,
                     'reviewer_id' => null,
                     'require_acknowledgement' => false,
                     'acknowledged_at' => null,
@@ -134,4 +136,3 @@ class WorkflowTopicApplierService
         return [$start, $end];
     }
 }
-

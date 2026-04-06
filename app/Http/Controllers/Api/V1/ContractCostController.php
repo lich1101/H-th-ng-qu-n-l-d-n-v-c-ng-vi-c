@@ -116,12 +116,12 @@ class ContractCostController extends Controller
 
     private function canManage(?User $user): bool
     {
-        return $user && in_array($user->role, ['admin', 'ke_toan'], true);
+        return $user && in_array($user->role, ['admin', 'administrator', 'ke_toan'], true);
     }
 
     private function canAccessContract(User $user, Contract $contract): bool
     {
-        if (in_array($user->role, ['admin', 'ke_toan'], true)) {
+        if (in_array($user->role, ['admin', 'administrator', 'ke_toan'], true)) {
             return true;
         }
 
@@ -196,7 +196,7 @@ class ContractCostController extends Controller
     private function notifyFinanceApprovers(Contract $contract, User $actor, ContractFinanceRequest $financeRequest): void
     {
         $targetIds = User::query()
-            ->whereIn('role', ['admin', 'ke_toan'])
+            ->whereIn('role', ['admin', 'administrator', 'ke_toan'])
             ->pluck('id')
             ->map(function ($id) use ($actor) {
                 return (int) $id;
