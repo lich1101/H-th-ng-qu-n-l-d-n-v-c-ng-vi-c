@@ -38,6 +38,70 @@ const formatDate = (raw) => {
 };
 const formatNumber = (v) => Number(v || 0).toLocaleString('vi-VN');
 
+const DEFAULT_PROJECT_STATUSES = [
+    { value: 'moi_tao', label: 'Mới tạo' },
+    { value: 'dang_trien_khai', label: 'Đang triển khai' },
+    { value: 'cho_duyet', label: 'Chờ duyệt' },
+    { value: 'hoan_thanh', label: 'Hoàn thành' },
+    { value: 'tam_dung', label: 'Tạm dừng' },
+];
+const DEFAULT_PROJECT_SERVICES = [
+    { value: 'backlinks', label: 'Backlinks' },
+    { value: 'viet_content', label: 'Content' },
+    { value: 'audit_content', label: 'Audit Content' },
+    { value: 'cham_soc_website_tong_the', label: 'Website Care' },
+    { value: 'noi_bo', label: 'Dự án Nội bộ' },
+    { value: 'khac', label: 'Khác' },
+];
+const PROJECT_LABELS = {
+    moi_tao: 'Mới tạo',
+    dang_trien_khai: 'Đang triển khai',
+    cho_duyet: 'Chờ duyệt',
+    hoan_thanh: 'Hoàn thành',
+    tam_dung: 'Tạm dừng',
+    backlinks: 'Backlinks',
+    viet_content: 'Content',
+    audit_content: 'Audit Content',
+    cham_soc_website_tong_the: 'Website Care',
+    noi_bo: 'Dự án Nội bộ',
+    khac: 'Khác',
+};
+const BLOCKED_OWNER_ROLES = ['admin', 'administrator', 'ke_toan'];
+
+const toDateInputValue = (raw) => {
+    if (!raw) return '';
+    const value = String(raw).trim();
+    const directMatch = value.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (directMatch?.[1]) return directMatch[1];
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return '';
+    const yyyy = parsed.getFullYear();
+    const mm = String(parsed.getMonth() + 1).padStart(2, '0');
+    const dd = String(parsed.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+};
+
+const injectCurrentProjectContract = (rows, project) => {
+    const contractId = Number(
+        project?.contract_id
+        || project?.contract?.id
+        || project?.linked_contract?.id
+        || 0,
+    );
+    if (contractId <= 0) return rows;
+    if (rows.some((item) => Number(item?.id || 0) === contractId)) {
+        return rows;
+    }
+    return [
+        {
+            id: contractId,
+            code: project?.contract?.code || `HĐ #${contractId}`,
+            title: project?.contract?.title || `Hợp đồng liên kết của dự án #${project?.id || ''}`,
+        },
+        ...rows,
+    ];
+};
+
 export default function ProjectDetail(props) {
     const toast = useToast();
     const projectId = props.projectId;
@@ -63,9 +127,56 @@ export default function ProjectDetail(props) {
         department_id: '', assignee_id: '',
     });
 
+    const [meta, setMeta] = useState({});
+    const [contracts, setContracts] = useState([]);
+    const [workflowTopics, setWorkflowTopics] = useState([]);
+    const [owners, setOwners] = useState([]);
+    const [showProjectForm, setShowProjectForm] = useState(false);
+    const [savingProject, setSavingProject] = useState(false);
+    const [editingOriginalWorkflowTopicId, setEditingOriginalWorkflowTopicId] = useState(0);
+    const [projectForm, setProjectForm] = useState({
+        code: '',
+        name: '',
+        client_id: '',
+        contract_id: '',
+        service_type: DEFAULT_PROJECT_SERVICES[0].value,
+        service_type_other: '',
+        start_date: '',
+        deadline: '',
+        budget: '',
+        status: DEFAULT_PROJECT_STATUSES[0].value,
+        customer_requirement: '',
+        owner_id: '',
+        repo_url: '',
+        website_url: '',
+        workflow_topic_id: '',
+    });
+
     const canManageTasks = useMemo(
         () => !!project?.permissions?.can_edit || ['admin', 'administrator', 'quan_ly'].includes(currentRole),
         [project, currentRole]
+    );
+
+    const canEditProject = useMemo(
+        () => !!project?.permissions?.can_edit,
+        [project]
+    );
+
+    const statusOptions = useMemo(() => {
+        const values = meta.project_statuses || [];
+        if (!values.length) return DEFAULT_PROJECT_STATUSES;
+        return values.map((value) => ({ value, label: PROJECT_LABELS[value] || value }));
+    }, [meta]);
+
+    const serviceOptions = useMemo(() => {
+        const values = meta.service_types || [];
+        if (!values.length) return DEFAULT_PROJECT_SERVICES;
+        return values.map((value) => ({ value, label: PROJECT_LABELS[value] || value }));
+    }, [meta]);
+
+    const ownerOptions = useMemo(
+        () => owners.filter((o) => !BLOCKED_OWNER_ROLES.includes(String(o?.role || '').toLowerCase())),
+        [owners]
     );
 
     const fetchGsc = async () => {
@@ -99,13 +210,109 @@ export default function ProjectDetail(props) {
 
     const fetchLookups = async () => {
         try {
-            const [dRes, uRes] = await Promise.all([
+            const [dRes, uRes, metaRes, wfRes, ownRes] = await Promise.all([
                 axios.get('/api/v1/departments'),
                 axios.get('/api/v1/users/lookup'),
+                axios.get('/api/v1/meta'),
+                axios.get('/api/v1/workflow-topics', { params: { per_page: 200, is_active: true } }),
+                axios.get('/api/v1/users/lookup', { params: { purpose: 'project_owner' } }),
             ]);
             setDepartments(dRes.data?.data || dRes.data || []);
             setUsers(uRes.data?.data || uRes.data || []);
+            setMeta(metaRes.data || {});
+            setWorkflowTopics(wfRes.data?.data || []);
+            setOwners(ownRes.data?.data || []);
         } catch { /* ignore */ }
+    };
+
+    const fetchContractsForEdit = async (currentProject) => {
+        try {
+            const res = await axios.get('/api/v1/contracts', {
+                params: {
+                    per_page: 200,
+                    project_id: projectId,
+                },
+            });
+            const rows = injectCurrentProjectContract(res.data?.data || [], currentProject);
+            setContracts(rows);
+        } catch {
+            setContracts(injectCurrentProjectContract([], currentProject));
+        }
+    };
+
+    const openProjectEdit = async () => {
+        if (!project) return;
+        setEditingOriginalWorkflowTopicId(Number(project.workflow_topic_id || project.workflow_topic?.id || 0));
+        const resolvedContractId = project.contract_id || project.contract?.id || project.linked_contract?.id || '';
+        setProjectForm({
+            code: project.code || '',
+            name: project.name || '',
+            client_id: project.client_id ? String(project.client_id) : '',
+            contract_id: resolvedContractId ? String(resolvedContractId) : '',
+            service_type: project.service_type || DEFAULT_PROJECT_SERVICES[0].value,
+            service_type_other: project.service_type_other || '',
+            start_date: toDateInputValue(project.start_date),
+            deadline: toDateInputValue(project.deadline),
+            budget: project.budget ?? '',
+            status: project.status || DEFAULT_PROJECT_STATUSES[0].value,
+            customer_requirement: project.customer_requirement || '',
+            owner_id: String(project.owner_id || project.owner?.id || ''),
+            repo_url: project.repo_url || '',
+            website_url: project.website_url || '',
+            workflow_topic_id: String(project.workflow_topic_id || project.workflow_topic?.id || ''),
+        });
+        setShowProjectForm(true);
+        await fetchContractsForEdit(project);
+    };
+
+    const saveProject = async () => {
+        if (!canEditProject || !projectForm.name?.trim()) {
+            toast.error('Vui lòng nhập tên dự án.');
+            return;
+        }
+        setSavingProject(true);
+        try {
+            const payload = {
+                ...projectForm,
+                client_id: projectForm.client_id ? Number(projectForm.client_id) : null,
+                contract_id: projectForm.contract_id ? Number(projectForm.contract_id) : null,
+                budget: projectForm.budget === '' ? null : Number(projectForm.budget),
+                start_date: projectForm.start_date || null,
+                deadline: projectForm.deadline || null,
+                service_type_other: projectForm.service_type === 'khac' ? projectForm.service_type_other : null,
+                owner_id: projectForm.owner_id ? Number(projectForm.owner_id) : null,
+                repo_url: projectForm.repo_url?.trim() ? projectForm.repo_url.trim() : null,
+                website_url: projectForm.website_url?.trim() ? projectForm.website_url.trim() : null,
+                workflow_topic_id: projectForm.workflow_topic_id ? Number(projectForm.workflow_topic_id) : null,
+            };
+            const previousTopicId = Number(editingOriginalWorkflowTopicId || 0);
+            const nextTopicId = Number(payload.workflow_topic_id || 0);
+            const isChangingBetweenTopics = previousTopicId > 0 && nextTopicId > 0 && previousTopicId !== nextTopicId;
+            if (isChangingBetweenTopics) {
+                const oldTopic = workflowTopics.find((t) => Number(t.id) === previousTopicId);
+                const newTopic = workflowTopics.find((t) => Number(t.id) === nextTopicId);
+                const oldTopicName = oldTopic?.name || `#${previousTopicId}`;
+                const newTopicName = newTopic?.name || `#${nextTopicId}`;
+                const confirmed = window.confirm(
+                    `Bạn đang đổi Topic Barem từ "${oldTopicName}" sang "${newTopicName}".\n\n`
+                    + 'Hệ thống sẽ xóa toàn bộ công việc/đầu việc hiện tại của dự án và tạo lại theo barem mới.\n'
+                    + 'Bạn có chắc chắn muốn tiếp tục không?',
+                );
+                if (!confirmed) {
+                    setSavingProject(false);
+                    return;
+                }
+                payload.confirm_reapply_workflow = true;
+            }
+            await axios.put(`/api/v1/projects/${projectId}`, payload);
+            toast.success('Đã cập nhật dự án.');
+            setShowProjectForm(false);
+            await fetchData();
+        } catch (e) {
+            toast.error(e?.response?.data?.message || 'Cập nhật dự án thất bại.');
+        } finally {
+            setSavingProject(false);
+        }
     };
 
     useEffect(() => { fetchData(); fetchLookups(); }, [projectId]);
@@ -319,12 +526,21 @@ export default function ProjectDetail(props) {
                                 <h3 className="text-lg font-semibold text-slate-900">{project.name}</h3>
                                 <p className="text-xs text-text-muted">{project.code || '—'}</p>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex flex-wrap items-center gap-2">
                                 <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${PROJECT_STATUS_STYLES[project.status] || 'bg-slate-100 text-slate-700 border-slate-200'}`}>
                                     {PROJECT_STATUS[project.status] || project.status}
                                 </span>
                                 <a className="text-sm text-primary font-semibold" href={`/du-an/${project.id}/luong`}>Luồng</a>
                                 <a className="text-sm text-slate-600 font-semibold" href={`/du-an/${project.id}/kho`}>Kho</a>
+                                {canEditProject && (
+                                    <button
+                                        type="button"
+                                        onClick={openProjectEdit}
+                                        className="rounded-xl border border-slate-200/80 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-primary/40 hover:text-primary"
+                                    >
+                                        Sửa dự án
+                                    </button>
+                                )}
                             </div>
                         </div>
                         <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-4 text-sm">
@@ -368,6 +584,46 @@ export default function ProjectDetail(props) {
                                 <div className="mt-1">{project.website_url ? <a className="text-primary font-semibold text-xs" href={project.website_url} target="_blank" rel="noreferrer">Mở website</a> : <span className="text-text-muted">—</span>}</div>
                             </div>
                         </div>
+                    </div>
+
+                    {/* Topic barem */}
+                    <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
+                        <h4 className="font-semibold text-slate-900">Topic barem</h4>
+                        <p className="mt-1 text-xs text-text-muted">
+                            Barem công việc mẫu gắn với dự án (quy trình dịch vụ). Dùng khi tạo công việc/đầu việc theo khung chuẩn.
+                        </p>
+                        {project.workflow_topic_id ? (
+                            <div className="mt-4 rounded-2xl border border-slate-200/80 bg-slate-50/80 px-4 py-4">
+                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                    <div>
+                                        <p className="text-base font-semibold text-slate-900">
+                                            {project.workflow_topic?.name || `Topic #${project.workflow_topic_id}`}
+                                        </p>
+                                        {project.workflow_topic?.code && (
+                                            <p className="mt-1 text-sm text-text-muted">Mã: <span className="font-medium text-slate-700">{project.workflow_topic.code}</span></p>
+                                        )}
+                                        {project.workflow_topic && (
+                                            <p className="mt-2 text-xs text-text-muted">
+                                                Trạng thái topic:{' '}
+                                                <span className={`font-semibold ${project.workflow_topic.is_active ? 'text-emerald-700' : 'text-slate-500'}`}>
+                                                    {project.workflow_topic.is_active ? 'Đang bật' : 'Đang tắt'}
+                                                </span>
+                                            </p>
+                                        )}
+                                    </div>
+                                    <a
+                                        href={`/quy-trinh-dich-vu/${project.workflow_topic_id}`}
+                                        className="shrink-0 rounded-xl bg-primary/10 px-3 py-2 text-sm font-semibold text-primary hover:bg-primary/15"
+                                    >
+                                        Xem quy trình barem
+                                    </a>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-text-muted">
+                                Dự án chưa gán topic barem. {canEditProject ? 'Bấm « Sửa dự án » để chọn barem (hoặc để trống nếu tự tạo công việc).' : ''}
+                            </div>
+                        )}
                     </div>
 
                     {/* GSC Section */}
@@ -655,6 +911,162 @@ export default function ProjectDetail(props) {
                             {savingTask ? 'Đang lưu...' : editingTaskId ? 'Cập nhật' : 'Tạo công việc'}
                         </button>
                         <button type="button" className="flex-1 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700" onClick={() => setShowTaskForm(false)}>Hủy</button>
+                    </div>
+                </div>
+            </Modal>
+
+            <Modal
+                open={showProjectForm}
+                onClose={() => setShowProjectForm(false)}
+                title="Sửa dự án"
+                description={project ? `Dự án: ${project.name}` : ''}
+                size="lg"
+            >
+                <div className="space-y-5 text-sm">
+                    <div>
+                        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Mã dự án</label>
+                        <input
+                            className="w-full rounded-2xl border border-slate-200/80 bg-slate-50 px-3 py-2 text-slate-600"
+                            value={projectForm.code || ''}
+                            readOnly
+                        />
+                    </div>
+                    <div>
+                        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Tên dự án *</label>
+                        <input
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            placeholder="Tên dự án hiển thị với đội triển khai"
+                            value={projectForm.name}
+                            onChange={(e) => setProjectForm((s) => ({ ...s, name: e.target.value }))}
+                        />
+                    </div>
+                    <div>
+                        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Loại dịch vụ</label>
+                        <select
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            value={projectForm.service_type}
+                            onChange={(e) => setProjectForm((s) => ({ ...s, service_type: e.target.value }))}
+                        >
+                            {serviceOptions.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Barem công việc theo Topic</label>
+                        <select
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            value={projectForm.workflow_topic_id}
+                            onChange={(e) => setProjectForm((s) => ({ ...s, workflow_topic_id: e.target.value }))}
+                        >
+                            <option value="">Không dùng barem</option>
+                            {workflowTopics.map((topic) => (
+                                <option key={topic.id} value={String(topic.id)}>
+                                    {topic.name} {topic.code ? `• ${topic.code}` : ''} ({topic.tasks?.length || 0} công việc mẫu)
+                                </option>
+                            ))}
+                        </select>
+                        <p className="mt-1 text-xs text-text-muted">
+                            Đổi topic khác topic hiện tại sẽ xóa công việc/đầu việc và tạo lại theo barem mới (cần xác nhận).
+                        </p>
+                    </div>
+                    {projectForm.service_type === 'khac' && (
+                        <div>
+                            <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Tên dịch vụ khác</label>
+                            <input
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                placeholder="Nhập đúng tên dịch vụ cần triển khai"
+                                value={projectForm.service_type_other}
+                                onChange={(e) => setProjectForm((s) => ({ ...s, service_type_other: e.target.value }))}
+                            />
+                        </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Hợp đồng liên kết</label>
+                            <select
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                value={projectForm.contract_id}
+                                onChange={(e) => setProjectForm((s) => ({ ...s, contract_id: e.target.value }))}
+                            >
+                                <option value="">Chọn hợp đồng (tuỳ chọn)</option>
+                                {contracts.map((c) => (
+                                    <option key={c.id} value={String(c.id)}>
+                                        {c.code} • {c.title}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Người phụ trách triển khai</label>
+                            <select
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                value={projectForm.owner_id}
+                                onChange={(e) => setProjectForm((s) => ({ ...s, owner_id: e.target.value }))}
+                            >
+                                <option value="">Chọn người phụ trách dự án</option>
+                                {ownerOptions.map((u) => (
+                                    <option key={u.id} value={u.id}>
+                                        {u.name} ({u.role})
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Ngày bắt đầu</label>
+                            <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" type="date" value={projectForm.start_date} onChange={(e) => setProjectForm((s) => ({ ...s, start_date: e.target.value }))} />
+                        </div>
+                        <div>
+                            <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Hạn chót</label>
+                            <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" type="date" value={projectForm.deadline} onChange={(e) => setProjectForm((s) => ({ ...s, deadline: e.target.value }))} />
+                        </div>
+                    </div>
+                    <div>
+                        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Ngân sách (tuỳ chọn)</label>
+                        <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            value={projectForm.budget}
+                            onChange={(e) => setProjectForm((s) => ({ ...s, budget: e.target.value }))}
+                        />
+                    </div>
+                    <div>
+                        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Link kho / tài liệu</label>
+                        <input
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            placeholder="URL repo hoặc kho tài liệu"
+                            value={projectForm.repo_url}
+                            onChange={(e) => setProjectForm((s) => ({ ...s, repo_url: e.target.value }))}
+                        />
+                    </div>
+                    <div>
+                        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Website dự án (Google Search Console)</label>
+                        <input
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            placeholder="VD: https://example.com/"
+                            value={projectForm.website_url}
+                            onChange={(e) => setProjectForm((s) => ({ ...s, website_url: e.target.value }))}
+                        />
+                    </div>
+                    <div>
+                        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Trạng thái dự án</label>
+                        <select className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" value={projectForm.status} onChange={(e) => setProjectForm((s) => ({ ...s, status: e.target.value }))}>
+                            {statusOptions.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Yêu cầu khách hàng</label>
+                        <textarea className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" rows={3} placeholder="Mô tả yêu cầu, phạm vi triển khai" value={projectForm.customer_requirement} onChange={(e) => setProjectForm((s) => ({ ...s, customer_requirement: e.target.value }))} />
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <button className="flex-1 rounded-2xl bg-primary py-2.5 font-semibold text-white disabled:opacity-60" onClick={saveProject} type="button" disabled={savingProject}>
+                            {savingProject ? 'Đang lưu...' : 'Cập nhật dự án'}
+                        </button>
+                        <button className="flex-1 rounded-2xl border border-slate-200 py-2.5 font-semibold" onClick={() => setShowProjectForm(false)} type="button" disabled={savingProject}>
+                            Hủy
+                        </button>
                     </div>
                 </div>
             </Modal>
