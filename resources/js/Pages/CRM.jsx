@@ -14,7 +14,7 @@ import ClientSelect from '@/Components/ClientSelect';
 import PaginationControls from '@/Components/PaginationControls';
 import TagMultiSelect from '@/Components/TagMultiSelect';
 import { useToast } from '@/Contexts/ToastContext';
-import { formatVietnamDate } from '@/lib/vietnamTime';
+import { formatVietnamDate, toDateInputValue } from '@/lib/vietnamTime';
 
 const badgeStyle = (hex) => ({
     borderColor: hex,
@@ -100,6 +100,8 @@ export default function CRM(props) {
         revenue_tier_id: '',
         assigned_department_id: '',
         assigned_staff_ids: [],
+        created_from: '',
+        created_to: '',
         sort_by: 'last_activity_at',
         sort_dir: 'desc',
     });
@@ -452,24 +454,37 @@ export default function CRM(props) {
         }
     };
 
-    const editClient = (client) => {
-        setEditingClientId(client.id);
+    const applyClientRowToForm = (client) => {
         setClientForm({
             name: client.name || '',
             company: client.company || '',
             email: client.email || '',
             phone: client.phone || '',
             notes: client.notes || '',
-            sales_owner_id: client.sales_owner_id || '',
-            assigned_department_id: client.assigned_department_id || '',
-            assigned_staff_id: client.assigned_staff_id || '',
+            sales_owner_id: client.sales_owner_id ? String(client.sales_owner_id) : '',
+            assigned_department_id: client.assigned_department_id ? String(client.assigned_department_id) : '',
+            assigned_staff_id: client.assigned_staff_id ? String(client.assigned_staff_id) : '',
             care_staff_ids: normalizeCareStaffIds(client.care_staff_users || []),
-            lead_type_id: client.lead_type_id || '',
+            lead_type_id: client.lead_type_id ? String(client.lead_type_id) : '',
             lead_source: client.lead_source || '',
             lead_channel: client.lead_channel || '',
             lead_message: client.lead_message || '',
         });
+    };
+
+    const editClient = async (client) => {
+        if (!client?.id) return;
+        setEditingClientId(client.id);
+        applyClientRowToForm(client);
         setShowClientForm(true);
+        try {
+            const res = await axios.get(`/api/v1/crm/clients/${client.id}`);
+            if (res.data?.id) {
+                applyClientRowToForm(res.data);
+            }
+        } catch {
+            // giữ dữ liệu từ dòng bảng
+        }
     };
 
     const openClientCreate = () => {
@@ -704,7 +719,7 @@ export default function CRM(props) {
             client_id: String(payment.client_id || ''),
             amount: String(payment.amount || ''),
             status: payment.status || 'pending',
-            due_date: payment.due_date ? payment.due_date.slice(0, 10) : '',
+            due_date: toDateInputValue(payment.due_date),
             invoice_no: payment.invoice_no || '',
             note: payment.note || '',
         });
@@ -914,7 +929,7 @@ export default function CRM(props) {
                             onSearch={handleClientSearch}
                             onSubmitFilters={applyClientFilters}
                         >
-                            <div className={`grid gap-3 ${isAdminRole ? 'md:grid-cols-2 xl:grid-cols-6' : 'md:grid-cols-2 xl:grid-cols-5'}`}>
+                            <div className={`grid gap-3 ${isAdminRole ? 'md:grid-cols-2 xl:grid-cols-8' : 'md:grid-cols-2 xl:grid-cols-7'}`}>
                                 <FilterField label="Trạng thái lead">
                                     <select
                                         className={filterControlClass}
@@ -985,6 +1000,22 @@ export default function CRM(props) {
                                         />
                                     </FilterField>
                                 )}
+                                <FilterField label="Ngày tạo từ">
+                                    <input
+                                        type="date"
+                                        className={filterControlClass}
+                                        value={clientFilters.created_from}
+                                        onChange={(e) => setClientFilters((s) => ({ ...s, created_from: e.target.value }))}
+                                    />
+                                </FilterField>
+                                <FilterField label="Ngày tạo đến">
+                                    <input
+                                        type="date"
+                                        className={filterControlClass}
+                                        value={clientFilters.created_to}
+                                        onChange={(e) => setClientFilters((s) => ({ ...s, created_to: e.target.value }))}
+                                    />
+                                </FilterField>
                                 <FilterActionGroup className="md:col-span-2 xl:col-span-1 xl:self-end xl:justify-end">
                                     <button type="submit" className={FILTER_SUBMIT_BUTTON_CLASS}>
                                         Lọc
@@ -1586,7 +1617,7 @@ export default function CRM(props) {
                                                 {Number(payment.amount || 0).toLocaleString('vi-VN')}
                                             </td>
                                             <td className="py-2 text-xs text-text-muted">
-                                                {payment.due_date ? payment.due_date.slice(0, 10) : '—'}
+                                                {payment.due_date ? formatVietnamDate(payment.due_date) : '—'}
                                             </td>
                                             <td className="py-2">
                                                 <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">

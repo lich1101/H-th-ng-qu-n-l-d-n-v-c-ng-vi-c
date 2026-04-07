@@ -9,6 +9,7 @@ import PageContainer from '@/Components/PageContainer';
 import PaginationControls from '@/Components/PaginationControls';
 import TagMultiSelect from '@/Components/TagMultiSelect';
 import { useToast } from '@/Contexts/ToastContext';
+import { formatVietnamDate } from '@/lib/vietnamTime';
 
 const LABELS = {
     todo: 'Cần làm',
@@ -24,7 +25,7 @@ const STATUS_STYLES = {
     blocked: 'bg-rose-50 text-rose-700 border-rose-200',
 };
 
-const formatDate = (raw) => (raw ? String(raw).slice(0, 10) : '—');
+const formatDate = (raw) => formatVietnamDate(raw, '—');
 const parseMultiIds = (raw) => {
     if (!raw) return [];
     return String(raw)

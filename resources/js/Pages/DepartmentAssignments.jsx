@@ -12,6 +12,7 @@ import Modal from '@/Components/Modal';
 import ClientSelect from '@/Components/ClientSelect';
 import PaginationControls from '@/Components/PaginationControls';
 import { useToast } from '@/Contexts/ToastContext';
+import { formatVietnamDate } from '@/lib/vietnamTime';
 
 const statusLabels = {
     new: 'Mới',
@@ -299,7 +300,7 @@ export default function DepartmentAssignments(props) {
                                     </div>
                                     <div className="mt-3 grid gap-3 md:grid-cols-2">
                                         <div className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                                            <p>Hạn chót: {assignment.deadline ? assignment.deadline.slice(0, 10) : '—'}</p>
+                                            <p>Hạn chót: {assignment.deadline ? formatVietnamDate(assignment.deadline) : '—'}</p>
                                             <p>Giá trị phân bổ: {assignment.allocated_value ? Number(assignment.allocated_value).toLocaleString('vi-VN') : '—'}</p>
                                         </div>
                                         <div className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">

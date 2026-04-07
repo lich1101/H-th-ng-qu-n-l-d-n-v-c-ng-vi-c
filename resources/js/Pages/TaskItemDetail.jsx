@@ -3,7 +3,7 @@ import axios from 'axios';
 import Modal from '@/Components/Modal';
 import PageContainer from '@/Components/PageContainer';
 import { useToast } from '@/Contexts/ToastContext';
-import { formatVietnamDate, formatVietnamDateTime } from '@/lib/vietnamTime';
+import { formatVietnamDate, formatVietnamDateTime, toDateInputValue } from '@/lib/vietnamTime';
 
 const LABELS = { todo: 'Cần làm', doing: 'Đang làm', done: 'Hoàn tất', blocked: 'Bị chặn' };
 const STATUS_STYLES = {
@@ -19,7 +19,7 @@ const REVIEW_STYLES = {
     rejected: 'bg-rose-50 text-rose-700 border-rose-200',
 };
 
-const formatDate = (raw) => formatVietnamDate(raw, raw ? String(raw).slice(0, 10) : '—');
+const formatDate = (raw) => formatVietnamDate(raw, '—');
 const formatDateTime = (raw) => formatVietnamDateTime(raw, raw ? String(raw) : '—');
 
 /** Chỉ giữ chữ số, giới hạn 0–100 (dùng cho ô tiến độ phiếu / duyệt). */
@@ -137,8 +137,8 @@ export default function TaskItemDetail(props) {
                 priority: item.priority || 'medium',
                 progress_percent: item.progress_percent ?? '',
                 weight_percent: item.weight_percent ?? '',
-                start_date: item.start_date ? String(item.start_date).slice(0, 10) : '',
-                deadline: item.deadline ? String(item.deadline).slice(0, 10) : '',
+                start_date: toDateInputValue(item.start_date),
+                deadline: toDateInputValue(item.deadline),
                 assignee_id: item.assignee_id || '',
             });
         }

@@ -121,6 +121,12 @@ class CRMController extends Controller
         if ($request->boolean('lead_only')) {
             $query->whereNotNull('lead_type_id');
         }
+        if ($request->filled('created_from')) {
+            $query->whereDate('clients.created_at', '>=', (string) $request->input('created_from'));
+        }
+        if ($request->filled('created_to')) {
+            $query->whereDate('clients.created_at', '<=', (string) $request->input('created_to'));
+        }
         $lastActivitySources = ['clients.updated_at'];
         if (
             Schema::hasTable('client_care_notes')
@@ -161,6 +167,33 @@ class CRMController extends Controller
             $query
                 ->paginate((int) $request->input('per_page', 10))
         );
+    }
+
+    /**
+     * Chi tiết 1 khách (cùng cấu trúc quan hệ như danh sách) — dùng khi mở form sửa để không thiếu trường.
+     */
+    public function showClient(Request $request, Client $client): JsonResponse
+    {
+        if (! $this->canAccessClient($request->user(), $client)) {
+            return response()->json(['message' => 'Không có quyền xem khách hàng.'], 403);
+        }
+
+        $clientRelations = [
+            'leadType',
+            'salesOwner',
+            'revenueTier',
+            'assignedDepartment',
+            'assignedStaff',
+            'facebookPage',
+        ];
+        if ($this->supportsClientCareStaff()) {
+            $clientRelations[] = 'careStaffUsers:id,name,email';
+        }
+
+        $client->load($clientRelations);
+        $client->loadCount(['opportunities', 'contracts']);
+
+        return response()->json($client);
     }
 
     public function storeClient(Request $request): JsonResponse

@@ -6,6 +6,7 @@ import { filterControlClass } from '@/Components/FilterToolbar';
 import ClientSelect from '@/Components/ClientSelect';
 import TagMultiSelect from '@/Components/TagMultiSelect';
 import { useToast } from '@/Contexts/ToastContext';
+import { formatVietnamDate, toDateInputValue } from '@/lib/vietnamTime';
 
 const toColorStyle = (hex) => {
     const color = hex || '#64748B';
@@ -49,7 +50,7 @@ function Field({ label, required = false, children, hint = '' }) {
     );
 }
 
-const formatDate = (value) => (value ? String(value).slice(0, 10) : '—');
+const formatDate = (value) => formatVietnamDate(value, '—');
 const formatCurrency = (value) => `${Number(value || 0).toLocaleString('vi-VN')} VNĐ`;
 
 export default function OpportunityDetail({ auth, opportunityId }) {
@@ -97,12 +98,12 @@ export default function OpportunityDetail({ auth, opportunityId }) {
             success_probability: item.success_probability != null && item.success_probability !== ''
                 ? String(item.success_probability)
                 : '',
-            product_id: item.product_id ? String(item.product_id) : '',
+            product_id: (item.product_id ?? item.product?.id) ? String(item.product_id ?? item.product?.id) : '',
             assigned_to: item.assigned_to ? String(item.assigned_to) : '',
             watcher_ids: Array.isArray(item.watcher_ids)
                 ? item.watcher_ids.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)
                 : [],
-            expected_close_date: item.expected_close_date ? String(item.expected_close_date).slice(0, 10) : '',
+            expected_close_date: toDateInputValue(item.expected_close_date),
             notes: item.notes || '',
         });
     };

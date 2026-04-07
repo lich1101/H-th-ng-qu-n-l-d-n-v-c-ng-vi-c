@@ -43,6 +43,38 @@ const formatParts = (value) => {
     return map;
 };
 
+/**
+ * Giá trị cho input type="date" (yyyy-MM-DD) — theo lịch Việt Nam.
+ * Không dùng String(...).slice(0,10) với ISO có Z (sẽ lệch 1 ngày).
+ */
+export const toDateInputValue = (value) => {
+    if (value === null || value === undefined) return '';
+    const raw = String(value).trim();
+    if (!raw) return '';
+
+    if (DATE_ONLY_PATTERN.test(raw)) {
+        return raw.slice(0, 10);
+    }
+
+    const date = normalizeVietnamDateInput(raw);
+    if (!date) return '';
+
+    const parts = {};
+    for (const part of getFormatter({
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    }).formatToParts(date)) {
+        if (part.type !== 'literal') {
+            parts[part.type] = part.value;
+        }
+    }
+    if (!parts.year || !parts.month || !parts.day) {
+        return '';
+    }
+    return `${parts.year}-${parts.month}-${parts.day}`;
+};
+
 export const todayIsoVietnam = () => {
     const parts = formatParts(new Date());
     if (!parts) return '';

@@ -13,6 +13,7 @@ import Modal from '@/Components/Modal';
 import ClientSelect from '@/Components/ClientSelect';
 import TagMultiSelect from '@/Components/TagMultiSelect';
 import { useToast } from '@/Contexts/ToastContext';
+import { formatVietnamDate, toDateInputValue } from '@/lib/vietnamTime';
 
 const toColorStyle = (hex) => {
     const color = hex || '#64748B';
@@ -72,6 +73,8 @@ export default function Opportunities(props) {
         status: '',
         client_id: '',
         staff_ids: [],
+        expected_close_from: '',
+        expected_close_to: '',
         per_page: 20,
         page: 1,
     });
@@ -218,6 +221,8 @@ export default function Opportunities(props) {
                     ...(nextFilters.status ? { status: nextFilters.status } : {}),
                     ...(nextFilters.client_id ? { client_id: nextFilters.client_id } : {}),
                     ...(Array.isArray(nextFilters.staff_ids) && nextFilters.staff_ids.length > 0 ? { staff_ids: nextFilters.staff_ids } : {}),
+                    ...(nextFilters.expected_close_from ? { expected_close_from: nextFilters.expected_close_from } : {}),
+                    ...(nextFilters.expected_close_to ? { expected_close_to: nextFilters.expected_close_to } : {}),
                 },
             });
 
@@ -258,27 +263,38 @@ export default function Opportunities(props) {
         setShowForm(true);
     };
 
+    const mapApiToOpportunityForm = (row, statusFallback = '') => ({
+        title: row.title || '',
+        opportunity_type: row.opportunity_type || '',
+        client_id: row.client_id ? String(row.client_id) : '',
+        source: row.source || '',
+        amount: row.amount !== null && row.amount !== undefined && row.amount !== ''
+            ? String(row.amount)
+            : '',
+        status: row.status || statusFallback,
+        success_probability: row.success_probability != null && row.success_probability !== ''
+            ? String(row.success_probability)
+            : '',
+        product_id: (row.product_id ?? row.product?.id) ? String(row.product_id ?? row.product?.id) : '',
+        assigned_to: row.assigned_to ? String(row.assigned_to) : '',
+        watcher_ids: Array.isArray(row.watcher_ids)
+            ? row.watcher_ids.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)
+            : [],
+        expected_close_date: toDateInputValue(row.expected_close_date),
+        notes: row.notes || '',
+    });
+
     const openEditForm = (item) => {
         setEditingId(item.id);
-        setForm({
-            title: item.title || '',
-            opportunity_type: item.opportunity_type || '',
-            client_id: item.client_id ? String(item.client_id) : '',
-            source: item.source || '',
-            amount: item.amount ?? '',
-            status: item.status || defaultStatusCode,
-            success_probability: item.success_probability != null && item.success_probability !== ''
-                ? String(item.success_probability)
-                : '',
-            product_id: item.product_id ? String(item.product_id) : '',
-            assigned_to: item.assigned_to ? String(item.assigned_to) : '',
-            watcher_ids: Array.isArray(item.watcher_ids)
-                ? item.watcher_ids.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)
-                : [],
-            expected_close_date: item.expected_close_date || '',
-            notes: item.notes || '',
-        });
+        setForm(mapApiToOpportunityForm(item, defaultStatusCode));
         setShowForm(true);
+        axios.get(`/api/v1/opportunities/${item.id}`)
+            .then((res) => {
+                if (res.data?.id) {
+                    setForm(mapApiToOpportunityForm(res.data, defaultStatusCode));
+                }
+            })
+            .catch(() => {});
     };
 
     const submitOpportunity = async () => {
@@ -492,6 +508,22 @@ export default function Opportunities(props) {
                             onChange={(selectedIds) => setFilters((prev) => ({ ...prev, staff_ids: selectedIds }))}
                             addPlaceholder="Tìm và thêm nhân sự"
                             emptyLabel="Để trống để xem toàn bộ nhân sự trong phạm vi."
+                        />
+                    </FilterField>
+                    <FilterField label="Dự kiến chốt từ">
+                        <input
+                            type="date"
+                            className={filterControlClass}
+                            value={filters.expected_close_from}
+                            onChange={(event) => setFilters((prev) => ({ ...prev, expected_close_from: event.target.value }))}
+                        />
+                    </FilterField>
+                    <FilterField label="Dự kiến chốt đến">
+                        <input
+                            type="date"
+                            className={filterControlClass}
+                            value={filters.expected_close_to}
+                            onChange={(event) => setFilters((prev) => ({ ...prev, expected_close_to: event.target.value }))}
                         />
                     </FilterField>
                     <FilterActionGroup className="xl:self-end xl:justify-end">
@@ -798,7 +830,9 @@ export default function Opportunities(props) {
                                                 : ''}
                                         </td>
                                         <td className="py-3 text-xs text-slate-700">{assignee}</td>
-                                        <td className="py-3 text-xs text-slate-700">{item.expected_close_date || '—'}</td>
+                                        <td className="py-3 text-xs text-slate-700">
+                                            {item.expected_close_date ? formatVietnamDate(item.expected_close_date) : '—'}
+                                        </td>
                                         <td className="py-3">
                                             <div className="flex justify-end gap-2 text-xs">
                                                 {canCreate ? (

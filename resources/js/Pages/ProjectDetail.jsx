@@ -3,6 +3,7 @@ import axios from 'axios';
 import Modal from '@/Components/Modal';
 import PageContainer from '@/Components/PageContainer';
 import { useToast } from '@/Contexts/ToastContext';
+import { formatVietnamDate, toDateInputValue } from '@/lib/vietnamTime';
 
 const PROJECT_STATUS = {
     moi_tao: 'Mới tạo', dang_trien_khai: 'Đang triển khai',
@@ -30,11 +31,7 @@ const PRIORITY_STYLES = {
     urgent: 'bg-rose-50 text-rose-700 border-rose-200',
 };
 
-const formatDate = (raw) => {
-    if (!raw) return '—';
-    try { const d = new Date(raw); return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`; }
-    catch { return String(raw).slice(0, 10); }
-};
+const formatDate = (raw) => formatVietnamDate(raw, '—');
 const formatNumber = (v) => Number(v || 0).toLocaleString('vi-VN');
 
 const DEFAULT_PROJECT_STATUSES = [
@@ -66,19 +63,6 @@ const PROJECT_LABELS = {
     khac: 'Khác',
 };
 const BLOCKED_OWNER_ROLES = ['admin', 'administrator', 'ke_toan'];
-
-const toDateInputValue = (raw) => {
-    if (!raw) return '';
-    const value = String(raw).trim();
-    const directMatch = value.match(/^(\d{4}-\d{2}-\d{2})/);
-    if (directMatch?.[1]) return directMatch[1];
-    const parsed = new Date(value);
-    if (Number.isNaN(parsed.getTime())) return '';
-    const yyyy = parsed.getFullYear();
-    const mm = String(parsed.getMonth() + 1).padStart(2, '0');
-    const dd = String(parsed.getDate()).padStart(2, '0');
-    return `${yyyy}-${mm}-${dd}`;
-};
 
 const injectCurrentProjectContract = (rows, project) => {
     const contractId = Number(
@@ -375,11 +359,11 @@ export default function ProjectDetail(props) {
             priority: task?.priority || 'medium',
             weight_percent: task?.weight_percent ?? '',
             start_date: task?.start_at
-                ? String(task.start_at).slice(0, 10)
-                : (!task && project?.start_date ? String(project.start_date).slice(0, 10) : ''),
+                ? toDateInputValue(task.start_at)
+                : (!task && project?.start_date ? toDateInputValue(project.start_date) : ''),
             deadline: task?.deadline
-                ? String(task.deadline).slice(0, 10)
-                : (!task && project?.deadline ? String(project.deadline).slice(0, 10) : ''),
+                ? toDateInputValue(task.deadline)
+                : (!task && project?.deadline ? toDateInputValue(project.deadline) : ''),
             department_id: task?.department_id || project?.owner?.department_id || '',
             assignee_id: task?.assignee_id || project?.owner_id || '',
         });

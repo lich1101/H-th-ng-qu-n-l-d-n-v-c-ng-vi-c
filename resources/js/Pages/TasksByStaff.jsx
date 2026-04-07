@@ -8,6 +8,7 @@ import FilterToolbar, {
 import PageContainer from '@/Components/PageContainer';
 import PaginationControls from '@/Components/PaginationControls';
 import { useToast } from '@/Contexts/ToastContext';
+import { formatVietnamDate } from '@/lib/vietnamTime';
 
 const LABELS = {
     todo: 'Cần làm',
@@ -31,10 +32,7 @@ const PRIORITY_STYLES = {
     urgent: 'bg-rose-50 text-rose-700 border-rose-200',
 };
 
-const formatDate = (raw) => {
-    if (!raw) return '—';
-    return String(raw).slice(0, 10);
-};
+const formatDate = (raw) => formatVietnamDate(raw, '—');
 
 export default function TasksByStaff(props) {
     const toast = useToast();

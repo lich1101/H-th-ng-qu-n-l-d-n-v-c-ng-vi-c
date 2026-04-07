@@ -3,7 +3,7 @@ import axios from 'axios';
 import Modal from '@/Components/Modal';
 import PageContainer from '@/Components/PageContainer';
 import { useToast } from '@/Contexts/ToastContext';
-import { formatVietnamDate } from '@/lib/vietnamTime';
+import { formatVietnamDate, toDateInputValue } from '@/lib/vietnamTime';
 
 const TASK_STATUS = { todo: 'Cần làm', doing: 'Đang làm', done: 'Hoàn tất', blocked: 'Bị chặn' };
 const TASK_STATUS_STYLES = {
@@ -20,7 +20,7 @@ const PRIORITY_STYLES = {
     urgent: 'bg-rose-50 text-rose-700 border-rose-200',
 };
 
-const formatDate = (raw) => formatVietnamDate(raw, raw ? String(raw).slice(0, 10) : '—');
+const formatDate = (raw) => formatVietnamDate(raw, '—');
 
 export default function TaskDetail(props) {
     const toast = useToast();
@@ -104,11 +104,11 @@ export default function TaskDetail(props) {
             progress_percent: item?.progress_percent ?? '',
             weight_percent: item?.weight_percent ?? '',
             start_date: item?.start_date
-                ? String(item.start_date).slice(0, 10)
-                : (task?.start_at ? String(task.start_at).slice(0, 10) : ''),
+                ? toDateInputValue(item.start_date)
+                : (task?.start_at ? toDateInputValue(task.start_at) : ''),
             deadline: item?.deadline
-                ? String(item.deadline).slice(0, 10)
-                : (task?.deadline ? String(task.deadline).slice(0, 10) : ''),
+                ? toDateInputValue(item.deadline)
+                : (task?.deadline ? toDateInputValue(task.deadline) : ''),
             assignee_id: item?.assignee_id || task?.assignee_id || '',
         });
         setShowItemForm(true);

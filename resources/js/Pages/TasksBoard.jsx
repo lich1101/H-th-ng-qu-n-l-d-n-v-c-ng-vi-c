@@ -12,7 +12,7 @@ import Modal from '@/Components/Modal';
 import PaginationControls from '@/Components/PaginationControls';
 import TagMultiSelect from '@/Components/TagMultiSelect';
 import { useToast } from '@/Contexts/ToastContext';
-import { formatVietnamDateTime } from '@/lib/vietnamTime';
+import { formatVietnamDate, formatVietnamDateTime, toDateInputValue } from '@/lib/vietnamTime';
 
 const DEFAULT_PRIORITIES = [
     { value: 'low', label: 'Thấp' },
@@ -970,8 +970,8 @@ export default function TasksBoard(props) {
             status: taskRecord?.status || statusOptions[0] || 'todo',
             progress_percent: '',
             weight_percent: 100,
-            start_date: taskRecord?.start_at ? String(taskRecord.start_at).slice(0, 10) : '',
-            deadline: taskRecord?.deadline ? String(taskRecord.deadline).slice(0, 10) : '',
+            start_date: taskRecord?.start_at ? toDateInputValue(taskRecord.start_at) : '',
+            deadline: taskRecord?.deadline ? toDateInputValue(taskRecord.deadline) : '',
             assignee_id: taskRecord?.assignee_id || '',
         });
     };
@@ -992,8 +992,8 @@ export default function TasksBoard(props) {
             status: item.status || statusOptions[0] || 'todo',
             progress_percent: item.progress_percent ?? '',
             weight_percent: item.weight_percent ?? 100,
-            start_date: item.start_date ? String(item.start_date).slice(0, 10) : '',
-            deadline: item.deadline ? String(item.deadline).slice(0, 10) : '',
+            start_date: item.start_date ? toDateInputValue(item.start_date) : '',
+            deadline: item.deadline ? toDateInputValue(item.deadline) : '',
             assignee_id: item.assignee_id || '',
         });
     };
@@ -1395,7 +1395,7 @@ export default function TasksBoard(props) {
                     project_id: String(proj.id),
                     department_id: proj.department_id ? String(proj.department_id) : prev.department_id,
                     assignee_id: proj.owner_id ? String(proj.owner_id) : prev.assignee_id,
-                    deadline: proj.deadline ? String(proj.deadline).slice(0, 10) : prev.deadline,
+                    deadline: proj.deadline ? toDateInputValue(proj.deadline) : prev.deadline,
                     description: prev.description || proj.customer_requirement || '',
                 }));
             }
@@ -1544,7 +1544,7 @@ export default function TasksBoard(props) {
             description: t.description || '',
             priority: t.priority || 'medium',
             status: t.status || statusOptions[0] || 'todo',
-            deadline: t.deadline ? String(t.deadline).slice(0, 10) : '',
+            deadline: t.deadline ? toDateInputValue(t.deadline) : '',
             weight_percent: t.weight_percent ?? 100,
             assignee_id: t.assignee_id || '',
         });
@@ -1616,12 +1616,10 @@ export default function TasksBoard(props) {
 
     const formatDate = (raw) => {
         if (!raw) return '';
-        try {
-            const d = new Date(raw);
-            return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
-        } catch {
-            return String(raw).slice(0, 10);
-        }
+        const full = formatVietnamDate(raw, '');
+        if (!full) return '';
+        const parts = full.split('/');
+        return parts.length >= 2 ? `${parts[0]}/${parts[1]}` : full;
     };
 
     const sortedByDeadline = useMemo(() => (
@@ -1901,7 +1899,7 @@ export default function TasksBoard(props) {
                                                         </span>
                                                     </td>
                                                     <td className="py-3 text-xs text-text-muted">
-                                                        {t.deadline ? String(t.deadline).slice(0, 10) : '—'}
+                                                        {t.deadline ? formatVietnamDate(t.deadline) : '—'}
                                                     </td>
                                                     <td className="py-3 text-xs text-text-muted">{t.progress_percent ?? 0}%</td>
                                                     <td className="py-3 text-xs text-text-muted">{Number(t.weight_percent ?? 0)}%</td>
@@ -1989,7 +1987,7 @@ export default function TasksBoard(props) {
                                                     <h3 className="mt-3 font-semibold text-slate-900">{t.title}</h3>
                                                     <p className="text-xs text-text-muted mt-1">{t.project?.name || 'Chưa gán dự án'}</p>
                                                     <div className="mt-3 flex items-center justify-between text-xs text-text-muted">
-                                                        <span>{t.deadline ? `Hạn chót ${String(t.deadline).slice(0, 10)}` : 'Chưa có hạn chót'}</span>
+                                                        <span>{t.deadline ? `Hạn chót ${formatVietnamDate(t.deadline)}` : 'Chưa có hạn chót'}</span>
                                                         <span>{t.progress_percent ?? 0}%</span>
                                                     </div>
                                                     <div className="mt-1 text-xs text-text-muted">
@@ -2546,8 +2544,8 @@ export default function TasksBoard(props) {
                                     <span>Trạng thái: {LABELS[item.status] || item.status}</span>
                                     <span>Tiến độ: {item.progress_percent ?? 0}%</span>
                                     <span>Tỷ trọng: {Number(item.weight_percent ?? 0)}%</span>
-                                    <span>Bắt đầu: {item.start_date ? String(item.start_date).slice(0, 10) : '—'}</span>
-                                    <span>Hạn: {item.deadline ? String(item.deadline).slice(0, 10) : '—'}</span>
+                                    <span>Bắt đầu: {item.start_date ? formatVietnamDate(item.start_date) : '—'}</span>
+                                    <span>Hạn: {item.deadline ? formatVietnamDate(item.deadline) : '—'}</span>
                                 </div>
                                 <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
                                     <div className="text-xs font-semibold text-primary">

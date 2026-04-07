@@ -11,6 +11,7 @@ import Modal from '@/Components/Modal';
 import PaginationControls from '@/Components/PaginationControls';
 import TagMultiSelect from '@/Components/TagMultiSelect';
 import { useToast } from '@/Contexts/ToastContext';
+import { formatVietnamDate, toDateInputValue } from '@/lib/vietnamTime';
 
 const DEFAULT_STATUSES = [
     { value: 'moi_tao', label: 'Mới tạo' },
@@ -117,21 +118,6 @@ export default function ProjectsKanban(props) {
     });
     const [selectedProjectIds, setSelectedProjectIds] = useState([]);
     const [bulkLoading, setBulkLoading] = useState(false);
-
-    const toDateInputValue = (raw) => {
-        if (!raw) return '';
-        const value = String(raw).trim();
-        const directMatch = value.match(/^(\d{4}-\d{2}-\d{2})/);
-        if (directMatch?.[1]) return directMatch[1];
-
-        const parsed = new Date(value);
-        if (Number.isNaN(parsed.getTime())) return '';
-
-        const yyyy = parsed.getFullYear();
-        const mm = String(parsed.getMonth() + 1).padStart(2, '0');
-        const dd = String(parsed.getDate()).padStart(2, '0');
-        return `${yyyy}-${mm}-${dd}`;
-    };
 
     const injectCurrentProjectContract = (rows, project) => {
         const contractId = Number(
@@ -311,12 +297,10 @@ export default function ProjectsKanban(props) {
 
     const formatDate = (raw) => {
         if (!raw) return '';
-        try {
-            const d = new Date(raw);
-            return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
-        } catch {
-            return String(raw).slice(0, 10);
-        }
+        const full = formatVietnamDate(raw, '');
+        if (!full) return '';
+        const parts = full.split('/');
+        return parts.length >= 2 ? `${parts[0]}/${parts[1]}` : full;
     };
 
     const serviceLabel = (project) => {
@@ -940,7 +924,7 @@ export default function ProjectsKanban(props) {
                                                     </div>
                                                 </td>
                                                 <td className="py-3 text-xs text-text-muted">
-                                                    {p.deadline ? String(p.deadline).slice(0, 10) : '—'}
+                                                    {p.deadline ? formatVietnamDate(p.deadline) : '—'}
                                                 </td>
                                                 <td className="py-3 text-xs text-text-muted">
                                                     {p.budget ? Number(p.budget).toLocaleString('vi-VN') : '—'}
@@ -1025,7 +1009,7 @@ export default function ProjectsKanban(props) {
                                                     </div>
                                                 </div>
                                                 <h3 className="mt-3 font-semibold text-slate-900">{p.name}</h3>
-                                                <p className="text-xs text-text-muted mt-1">{p.code} • {p.deadline ? `Hạn chót ${String(p.deadline).slice(0, 10)}` : 'Chưa có hạn chót'}</p>
+                                                <p className="text-xs text-text-muted mt-1">{p.code} • {p.deadline ? `Hạn chót ${formatVietnamDate(p.deadline)}` : 'Chưa có hạn chót'}</p>
                                                 <p className={`text-xs mt-1 ${p.contract ? 'text-text-muted' : 'text-warning'}`}>
                                                     Hợp đồng: {p.contract?.code || 'Chưa có hợp đồng'}
                                                 </p>

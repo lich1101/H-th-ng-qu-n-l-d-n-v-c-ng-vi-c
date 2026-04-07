@@ -90,6 +90,12 @@ class OpportunityController extends Controller
                     });
             });
         }
+        if ($request->filled('expected_close_from')) {
+            $query->whereDate('expected_close_date', '>=', (string) $request->input('expected_close_from'));
+        }
+        if ($request->filled('expected_close_to')) {
+            $query->whereDate('expected_close_date', '<=', (string) $request->input('expected_close_to'));
+        }
 
         return $query;
     }

@@ -9,7 +9,7 @@ import FilterToolbar, {
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import { useToast } from '@/Contexts/ToastContext';
-import { VIETNAM_TIME_ZONE, formatVietnamDate, formatVietnamDateTime } from '@/lib/vietnamTime';
+import { VIETNAM_TIME_ZONE, formatVietnamDate, formatVietnamDateTime, toDateInputValue } from '@/lib/vietnamTime';
 
 const WEEK_DAYS = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
 
@@ -20,14 +20,7 @@ const vietnamMonthFormatter = new Intl.DateTimeFormat('vi-VN', {
     timeZone: VIETNAM_TIME_ZONE,
 });
 
-const toDateKey = (raw) => {
-    if (!raw) return '';
-    const date = new Date(raw);
-    if (Number.isNaN(date.getTime())) {
-        return String(raw).slice(0, 10);
-    }
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-};
+const toDateKey = (raw) => toDateInputValue(raw);
 
 const toDateTimeLocal = (raw) => {
     if (!raw) return '';

@@ -6,6 +6,7 @@ import Modal from '@/Components/Modal';
 import AppIcon from '@/Components/AppIcon';
 import TagMultiSelect from '@/Components/TagMultiSelect';
 import { useToast } from '@/Contexts/ToastContext';
+import { formatVietnamDate, toDateInputValue } from '@/lib/vietnamTime';
 import { Link } from '@inertiajs/inertia-react';
 
 // Common badges and formatters (copied from Contracts.jsx / ProjectsKanban)
@@ -67,15 +68,7 @@ const formatCurrency = (amount) => {
     return parseNumberInput(amount).toLocaleString('vi-VN');
 };
 
-const formatDateDisplay = (dateString) => {
-    if (!dateString) return '—';
-    try {
-        const d = new Date(dateString);
-        return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
-    } catch {
-        return '—';
-    }
-};
+const formatDateDisplay = (dateString) => formatVietnamDate(dateString, '—');
 
 const resolveContractValue = (contract) => {
     if ((contract?.items || []).length > 0) return contract.items_total_value || 0;
@@ -115,17 +108,6 @@ const handoverReceiveBadgeClass = (status) => {
 const handoverReceiveLabel = (status) => {
     if (status === 'da_nhan_ban_giao') return 'Đã nhận bàn giao';
     return 'Chưa nhận bàn giao';
-};
-
-const toDateInputValue = (raw) => {
-    if (!raw) return '';
-    const text = String(raw);
-    if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
-    const isoDate = text.slice(0, 10);
-    if (/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return isoDate;
-    const parsed = new Date(text);
-    if (Number.isNaN(parsed.getTime())) return '';
-    return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
 };
 
 const readBoolean = (raw) => {
@@ -549,7 +531,7 @@ export default function ContractDetail(props) {
         setEditingPaymentId(payment.id);
         setPaymentForm({
             amount: payment.amount ?? '',
-            paid_at: payment.paid_at ? String(payment.paid_at).slice(0, 10) : '',
+            paid_at: toDateInputValue(payment.paid_at),
             method: payment.method || '',
             note: payment.note || '',
         });
@@ -616,7 +598,7 @@ export default function ContractDetail(props) {
         setEditingCostId(cost.id);
         setCostForm({
             amount: cost.amount ?? '',
-            cost_date: cost.cost_date ? String(cost.cost_date).slice(0, 10) : '',
+            cost_date: toDateInputValue(cost.cost_date),
             cost_type: cost.cost_type || '',
             note: cost.note || '',
         });

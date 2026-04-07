@@ -14,7 +14,7 @@ import PaginationControls from '@/Components/PaginationControls';
 import ClientSelect from '@/Components/ClientSelect';
 import TagMultiSelect from '@/Components/TagMultiSelect';
 import { useToast } from '@/Contexts/ToastContext';
-import { formatVietnamDate } from '@/lib/vietnamTime';
+import { formatVietnamDate, toDateInputValue } from '@/lib/vietnamTime';
 
 const STATUS_OPTIONS = [
     { value: 'draft', label: 'Nháp' },
@@ -626,9 +626,9 @@ export default function Contracts(props) {
                 value: String(resolveContractValue(detail)),
                 payment_times: String(detail.payment_times ?? 1),
                 status: detail.status || 'draft',
-                signed_at: detail.signed_at ? String(detail.signed_at).slice(0, 10) : '',
-                start_date: detail.start_date ? String(detail.start_date).slice(0, 10) : '',
-                end_date: detail.end_date ? String(detail.end_date).slice(0, 10) : '',
+                signed_at: toDateInputValue(detail.signed_at),
+                start_date: toDateInputValue(detail.start_date),
+                end_date: toDateInputValue(detail.end_date),
                 notes: detail.notes || '',
             });
             setItems(
@@ -726,7 +726,7 @@ export default function Contracts(props) {
         setEditingPaymentId(payment.id);
         setPaymentForm({
             amount: payment.amount ?? '',
-            paid_at: payment.paid_at ? String(payment.paid_at).slice(0, 10) : '',
+            paid_at: toDateInputValue(payment.paid_at),
             method: payment.method || '',
             note: payment.note || '',
         });
@@ -798,7 +798,7 @@ export default function Contracts(props) {
         setEditingCostId(cost.id);
         setCostForm({
             amount: cost.amount ?? '',
-            cost_date: cost.cost_date ? String(cost.cost_date).slice(0, 10) : '',
+                cost_date: toDateInputValue(cost.cost_date),
             cost_type: cost.cost_type || '',
             note: cost.note || '',
         });
@@ -1672,7 +1672,7 @@ export default function Contracts(props) {
                                 <tbody>
                                     {payments.map((p) => (
                                         <tr key={p.id} className="border-b border-slate-100">
-                                            <td className="py-2">{p.paid_at ? String(p.paid_at).slice(0, 10) : '—'}</td>
+                                            <td className="py-2">{p.paid_at ? formatVietnamDate(p.paid_at) : '—'}</td>
                                             <td className="py-2">{formatCurrency(p.amount || 0)}</td>
                                             <td className="py-2">{p.method || '—'}</td>
                                             <td className="py-2">{p.note || '—'}</td>
@@ -1742,7 +1742,7 @@ export default function Contracts(props) {
                                 <tbody>
                                     {costs.map((c) => (
                                         <tr key={c.id} className="border-b border-slate-100">
-                                            <td className="py-2">{c.cost_date ? String(c.cost_date).slice(0, 10) : '—'}</td>
+                                            <td className="py-2">{c.cost_date ? formatVietnamDate(c.cost_date) : '—'}</td>
                                             <td className="py-2">{c.cost_type || '—'}</td>
                                             <td className="py-2">{formatCurrency(c.amount || 0)}</td>
                                             <td className="py-2">{c.note || '—'}</td>

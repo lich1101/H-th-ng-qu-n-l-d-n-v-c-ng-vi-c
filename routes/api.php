@@ -280,6 +280,7 @@ Route::prefix('v1')->group(function () {
 
         Route::get('/crm/clients', [CRMController::class, 'clients']);
         Route::get('/crm/clients/{client}/flow', [ClientFlowController::class, 'show']);
+        Route::get('/crm/clients/{client}', [CRMController::class, 'showClient']);
         Route::post('/crm/clients/{client}/comments', [ClientFlowController::class, 'storeComment'])
             ->middleware('role:admin,quan_ly,nhan_vien');
         Route::delete('/crm/clients/{client}/comments/{commentId}', [ClientFlowController::class, 'destroyComment'])

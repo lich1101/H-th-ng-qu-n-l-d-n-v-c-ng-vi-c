@@ -7,7 +7,7 @@ import TagMultiSelect from '@/Components/TagMultiSelect';
 import { filterControlClass } from '@/Components/FilterToolbar';
 import { useToast } from '@/Contexts/ToastContext';
 import { formatClientOptionLabel } from '@/utils/clientOptionLabel';
-import { formatVietnamDate, formatVietnamDateTime } from '@/lib/vietnamTime';
+import { formatVietnamDate, formatVietnamDateTime, toDateInputValue } from '@/lib/vietnamTime';
 
 const STATUS_LABELS = {
     open: 'Đang mở',
@@ -50,6 +50,14 @@ const numberOrNull = (value) => {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : null;
 };
+
+const normalizeCareStaffIds = (rawValue) => (
+    Array.isArray(rawValue)
+        ? rawValue
+            .map((item) => Number(item?.id ?? item))
+            .filter((id) => Number.isInteger(id) && id > 0)
+        : []
+);
 
 const serviceLabel = (project) => {
     if (!project) return '—';
@@ -124,9 +132,11 @@ export default function ClientFlow({ auth, clientId }) {
         lead_type_id: '',
         lead_source: '',
         lead_channel: '',
+        lead_message: '',
         assigned_department_id: '',
         assigned_staff_id: '',
         sales_owner_id: '',
+        care_staff_ids: [],
     });
     const [careNoteForm, setCareNoteForm] = useState({ title: '', detail: '' });
     const [submittingCareNote, setSubmittingCareNote] = useState(false);
@@ -179,9 +189,11 @@ export default function ClientFlow({ auth, clientId }) {
             lead_type_id: client.lead_type_id ? String(client.lead_type_id) : '',
             lead_source: client.lead_source || '',
             lead_channel: client.lead_channel || '',
+            lead_message: client.lead_message || '',
             assigned_department_id: client.assigned_department_id ? String(client.assigned_department_id) : '',
             assigned_staff_id: client.assigned_staff_id ? String(client.assigned_staff_id) : '',
             sales_owner_id: client.sales_owner_id ? String(client.sales_owner_id) : '',
+            care_staff_ids: normalizeCareStaffIds(client.care_staff_users || []),
         });
     };
 
@@ -216,10 +228,20 @@ export default function ClientFlow({ auth, clientId }) {
     };
 
     const openEditModal = async () => {
+        const cid = flow?.client?.id;
+        if (!cid) return;
         hydrateClientForm(flow?.client);
         setShowEditModal(true);
         if (leadTypes.length === 0 && departments.length === 0 && staffUsers.length === 0) {
             await fetchLookups();
+        }
+        try {
+            const res = await axios.get(`/api/v1/crm/clients/${cid}`);
+            if (res.data?.id) {
+                hydrateClientForm(res.data);
+            }
+        } catch {
+            // giữ dữ liệu từ flow
         }
     };
 
@@ -241,9 +263,11 @@ export default function ClientFlow({ auth, clientId }) {
                 lead_type_id: clientForm.lead_type_id ? Number(clientForm.lead_type_id) : null,
                 lead_source: (clientForm.lead_source || '').trim() || null,
                 lead_channel: (clientForm.lead_channel || '').trim() || null,
+                lead_message: (clientForm.lead_message || '').trim() || null,
                 assigned_department_id: clientForm.assigned_department_id ? Number(clientForm.assigned_department_id) : null,
                 assigned_staff_id: clientForm.assigned_staff_id ? Number(clientForm.assigned_staff_id) : null,
                 sales_owner_id: clientForm.sales_owner_id ? Number(clientForm.sales_owner_id) : null,
+                care_staff_ids: normalizeCareStaffIds(clientForm.care_staff_ids),
             };
             await axios.put(`/api/v1/crm/clients/${flow.client.id}`, payload);
             toast.success('Đã cập nhật khách hàng.');
@@ -338,16 +362,9 @@ export default function ClientFlow({ auth, clientId }) {
         setShowOpportunityModal(true);
     };
 
-    const openEditOpportunityModal = async (row) => {
-        if (!row?.id || loadingLookups) return;
-        let nextStatuses = opportunityStatuses;
-        if (!opportunityStatuses.length || !staffUsers.length) {
-            const loaded = await fetchLookups();
-            if (loaded?.statuses) nextStatuses = loaded.statuses;
-        }
-        const statusCode = String((row.status || nextStatuses[0]?.code || '').trim());
-        setEditingOpportunityId(row.id);
-        setOpportunityForm({
+    const mapRowToOpportunityForm = (row, nextStatuses) => {
+        const statusCode = String((row?.status || nextStatuses[0]?.code || '').trim());
+        return {
             title: row.title || '',
             opportunity_type: row.opportunity_type || '',
             source: row.source || '',
@@ -356,15 +373,34 @@ export default function ClientFlow({ auth, clientId }) {
             success_probability: row.success_probability != null && row.success_probability !== ''
                 ? String(row.success_probability)
                 : '',
-            expected_close_date: row.expected_close_date ? String(row.expected_close_date).slice(0, 10) : '',
-            product_id: row.product_id ? String(row.product_id) : '',
+            expected_close_date: toDateInputValue(row.expected_close_date),
+            product_id: (row.product_id ?? row.product?.id) ? String(row.product_id ?? row.product?.id) : '',
             assigned_to: row.assigned_to ? String(row.assigned_to) : '',
             watcher_ids: Array.isArray(row.watcher_ids)
                 ? row.watcher_ids.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)
                 : [],
             notes: row.notes || '',
-        });
+        };
+    };
+
+    const openEditOpportunityModal = async (row) => {
+        if (!row?.id || loadingLookups) return;
+        let nextStatuses = opportunityStatuses;
+        if (!opportunityStatuses.length || !staffUsers.length) {
+            const loaded = await fetchLookups();
+            if (loaded?.statuses) nextStatuses = loaded.statuses;
+        }
+        setEditingOpportunityId(row.id);
+        setOpportunityForm(mapRowToOpportunityForm(row, nextStatuses));
         setShowOpportunityModal(true);
+        try {
+            const res = await axios.get(`/api/v1/opportunities/${row.id}`);
+            if (res.data?.id) {
+                setOpportunityForm(mapRowToOpportunityForm(res.data, nextStatuses));
+            }
+        } catch {
+            // giữ dữ liệu từ tab
+        }
     };
 
     const deleteOpportunity = async (row) => {
@@ -1078,6 +1114,31 @@ export default function ClientFlow({ auth, clientId }) {
                                 placeholder="VD: page_message"
                             />
                         </div>
+                    </div>
+
+                    <div>
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Tóm tắt nhu cầu / tin nhắn lead</label>
+                        <textarea
+                            className="min-h-[72px] w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            value={clientForm.lead_message}
+                            onChange={(e) => setClientForm((prev) => ({ ...prev, lead_message: e.target.value }))}
+                            placeholder="Nội dung lead, nhu cầu khách…"
+                        />
+                    </div>
+
+                    <div>
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Nhân sự chăm sóc</label>
+                        <TagMultiSelect
+                            options={staffUsers.map((user) => ({
+                                id: user.id,
+                                label: user.name || `Nhân sự #${user.id}`,
+                                meta: [user.role, user.email].filter(Boolean).join(' • '),
+                            }))}
+                            selectedIds={clientForm.care_staff_ids}
+                            onChange={(selectedIds) => setClientForm((prev) => ({ ...prev, care_staff_ids: selectedIds }))}
+                            addPlaceholder="Tìm và thêm nhân sự chăm sóc"
+                            emptyLabel="Chưa gán nhân sự chăm sóc."
+                        />
                     </div>
 
                     <div>
