@@ -15,7 +15,7 @@ import ClientSelect from '@/Components/ClientSelect';
 import PaginationControls from '@/Components/PaginationControls';
 import TagMultiSelect from '@/Components/TagMultiSelect';
 import { useToast } from '@/Contexts/ToastContext';
-import { formatVietnamDate, toDateInputValue } from '@/lib/vietnamTime';
+import { formatVietnamDate } from '@/lib/vietnamTime';
 
 const badgeStyle = (hex) => ({
     borderColor: hex,
@@ -69,23 +69,17 @@ export default function CRM(props) {
     const isAdminRole = ['admin', 'administrator'].includes(userRole);
     const canFilterByStaff = ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'].includes(userRole);
     const canManageClients = ['admin', 'administrator', 'quan_ly', 'nhan_vien'].includes(userRole);
-    const canManagePayments = ['admin', 'administrator', 'ke_toan'].includes(userRole);
     const canDeleteClients = ['admin', 'administrator'].includes(userRole);
-    const canDeletePayments = ['admin', 'administrator'].includes(userRole);
     const canAssignClientOwner = ['admin', 'administrator', 'quan_ly'].includes(userRole);
     const canBulkClientActions = canManageClients || canDeleteClients;
 
-    const [activeTab, setActiveTab] = useState('clients');
     const [clients, setClients] = useState([]);
-    const [payments, setPayments] = useState([]);
     const [leadTypes, setLeadTypes] = useState([]);
     const [revenueTiers, setRevenueTiers] = useState([]);
     const [staffUsers, setStaffUsers] = useState([]);
     const [departments, setDepartments] = useState([]);
     const [clientMeta, setClientMeta] = useState({ current_page: 1, last_page: 1, total: 0 });
-    const [paymentMeta, setPaymentMeta] = useState({ current_page: 1, last_page: 1, total: 0 });
     const [clientPage, setClientPage] = useState(1);
-    const [paymentPage, setPaymentPage] = useState(1);
     const [selectedClientIds, setSelectedClientIds] = useState([]);
     const [bulkLoading, setBulkLoading] = useState(false);
     const clientTableRef = useRef(null);
@@ -106,14 +100,9 @@ export default function CRM(props) {
         sort_by: 'last_activity_at',
         sort_dir: 'desc',
     });
-    const [paymentFilters, setPaymentFilters] = useState({ status: '', per_page: 10 });
     const [editingClientId, setEditingClientId] = useState(null);
-    const [editingPaymentId, setEditingPaymentId] = useState(null);
-    const [paymentClientPreview, setPaymentClientPreview] = useState(null);
     const [showClientForm, setShowClientForm] = useState(false);
-    const [showPaymentForm, setShowPaymentForm] = useState(false);
     const [submittingClient, setSubmittingClient] = useState(false);
-    const [submittingPayment, setSubmittingPayment] = useState(false);
     const [showClientImport, setShowClientImport] = useState(false);
     const [clientImportFile, setClientImportFile] = useState(null);
     const [importingClients, setImportingClients] = useState(false);
@@ -133,14 +122,6 @@ export default function CRM(props) {
         lead_source: '',
         lead_channel: '',
         lead_message: '',
-    });
-    const [paymentForm, setPaymentForm] = useState({
-        client_id: '',
-        amount: '',
-        status: 'pending',
-        due_date: '',
-        invoice_no: '',
-        note: '',
     });
 
     const extractValidationMessages = (error) => {
@@ -242,37 +223,9 @@ export default function CRM(props) {
         setClientFilters(next);
     };
 
-    const fetchPayments = async (page = 1, filtersArg = paymentFilters) => {
-        try {
-            const paymentsRes = await axios.get('/api/v1/crm/payments', {
-                params: {
-                    ...filtersArg,
-                    page,
-                },
-            });
-            const resolvedPage = paymentsRes.data.current_page || 1;
-            setPayments(paymentsRes.data.data || []);
-            setPaymentMeta({
-                current_page: resolvedPage,
-                last_page: paymentsRes.data.last_page || 1,
-                total: paymentsRes.data.total || 0,
-            });
-            setPaymentPage(resolvedPage);
-        } catch (error) {
-            toast.error(getErrorMessage(error, 'Không tải được danh sách thanh toán.'));
-        }
-    };
-
     const applyClientFilters = () => {
         setClientFilters((prev) => {
             fetchClients(1, prev);
-            return prev;
-        });
-    };
-
-    const applyPaymentFilters = () => {
-        setPaymentFilters((prev) => {
-            fetchPayments(1, prev);
             return prev;
         });
     };
@@ -357,7 +310,6 @@ export default function CRM(props) {
         fetchStaffUsers();
         fetchDepartments();
         fetchClients(1, clientFilters);
-        fetchPayments(1, paymentFilters);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -418,6 +370,8 @@ export default function CRM(props) {
         }
         setSubmittingClient(true);
         try {
+            const includeAssignment =
+                !editingClientId || canAssignClientOwner;
             const resolvedAssignedStaff = clientForm.assigned_staff_id
                 ? Number(clientForm.assigned_staff_id)
                 : null;
@@ -427,19 +381,23 @@ export default function CRM(props) {
                 email: clientForm.email || null,
                 phone: clientForm.phone || null,
                 notes: clientForm.notes || null,
-                sales_owner_id: clientForm.sales_owner_id
-                    ? Number(clientForm.sales_owner_id)
-                    : resolvedAssignedStaff || userId || null,
-                assigned_department_id: clientForm.assigned_department_id
-                    ? Number(clientForm.assigned_department_id)
-                    : null,
-                assigned_staff_id: resolvedAssignedStaff,
                 lead_type_id: clientForm.lead_type_id ? Number(clientForm.lead_type_id) : null,
                 lead_source: clientForm.lead_source || null,
                 lead_channel: clientForm.lead_channel || null,
                 lead_message: clientForm.lead_message || null,
-                care_staff_ids: normalizeCareStaffIds(clientForm.care_staff_ids),
             };
+            if (includeAssignment) {
+                Object.assign(payload, {
+                    sales_owner_id: clientForm.sales_owner_id
+                        ? Number(clientForm.sales_owner_id)
+                        : resolvedAssignedStaff || userId || null,
+                    assigned_department_id: clientForm.assigned_department_id
+                        ? Number(clientForm.assigned_department_id)
+                        : null,
+                    assigned_staff_id: resolvedAssignedStaff,
+                    care_staff_ids: normalizeCareStaffIds(clientForm.care_staff_ids),
+                });
+            }
             if (editingClientId) {
                 await axios.put(`/api/v1/crm/clients/${editingClientId}`, payload);
             } else {
@@ -684,84 +642,6 @@ export default function CRM(props) {
         }
     };
 
-    const submitPayment = async (e) => {
-        e.preventDefault();
-        if (submittingPayment) {
-            return;
-        }
-        if (!canManagePayments) return toast.error('Bạn không có quyền quản lý thanh toán.');
-        setSubmittingPayment(true);
-        const payload = {
-            ...paymentForm,
-            client_id: Number(paymentForm.client_id),
-            amount: Number(paymentForm.amount || 0),
-            due_date: paymentForm.due_date || null,
-        };
-        try {
-            if (editingPaymentId) {
-                await axios.put(`/api/v1/crm/payments/${editingPaymentId}`, payload);
-            } else {
-                await axios.post('/api/v1/crm/payments', payload);
-            }
-            closePaymentForm();
-            await fetchPayments(paymentPage);
-            toast.success(editingPaymentId ? 'Cập nhật thanh toán thành công.' : 'Tạo thanh toán thành công.');
-        } catch (error) {
-            toast.error(getErrorMessage(error, 'Lưu thanh toán thất bại.'));
-        } finally {
-            setSubmittingPayment(false);
-        }
-    };
-
-    const editPayment = (payment) => {
-        setEditingPaymentId(payment.id);
-        setPaymentClientPreview(payment.client || null);
-        setPaymentForm({
-            client_id: String(payment.client_id || ''),
-            amount: String(payment.amount || ''),
-            status: payment.status || 'pending',
-            due_date: toDateInputValue(payment.due_date),
-            invoice_no: payment.invoice_no || '',
-            note: payment.note || '',
-        });
-        setShowPaymentForm(true);
-    };
-
-    const openPaymentCreate = () => {
-        setEditingPaymentId(null);
-        setPaymentClientPreview(null);
-        setPaymentForm({
-            client_id: '',
-            amount: '',
-            status: 'pending',
-            due_date: '',
-            invoice_no: '',
-            note: '',
-        });
-        setShowPaymentForm(true);
-    };
-
-    const closePaymentForm = () => {
-        setShowPaymentForm(false);
-        setEditingPaymentId(null);
-        setPaymentClientPreview(null);
-        setSubmittingPayment(false);
-    };
-
-    const deletePayment = async (id) => {
-        if (!canDeletePayments) return toast.error('Bạn không có quyền xóa thanh toán.');
-        try {
-            await axios.delete(`/api/v1/crm/payments/${id}`);
-            if (editingPaymentId === id) {
-                closePaymentForm();
-            }
-            await fetchPayments(paymentPage);
-            toast.success('Xóa thanh toán thành công.');
-        } catch (error) {
-            toast.error(getErrorMessage(error, 'Xóa thanh toán thất bại.'));
-        }
-    };
-
     const clientStats = useMemo(() => {
         const total = clientMeta.total || clients.length;
         const leadCount = clients.filter((c) => c.lead_type_id).length;
@@ -773,18 +653,6 @@ export default function CRM(props) {
             { label: 'Doanh thu', value: clients.reduce((acc, c) => acc + Number(c.total_revenue || 0), 0).toLocaleString('vi-VN') + ' VNĐ' },
         ];
     }, [clients, clientMeta]);
-
-    const paymentStats = useMemo(() => {
-        const total = paymentMeta.total || payments.length;
-        const pending = payments.filter((p) => p.status === 'pending').length;
-        const paid = payments.filter((p) => p.status === 'paid').length;
-        return [
-            { label: 'Giao dịch', value: String(total) },
-            { label: 'Đang chờ', value: String(pending) },
-            { label: 'Đã thanh toán', value: String(paid) },
-            { label: 'Vai trò', value: userRole || '—' },
-        ];
-    }, [payments, paymentMeta, userRole]);
 
     const visibleDepartmentOptions = useMemo(() => {
         if (isAdminRole) {
@@ -860,45 +728,23 @@ export default function CRM(props) {
         }))
     ), [clientResponsibleStaffOptions]);
 
-    /** Form thêm/sửa khách (admin): khi đã chọn phòng ban thì chỉ list nhân sự thuộc phòng đó. */
+    /** Khi đã chọn phòng ban: lọc nhân sự theo phòng. Admin: toàn hệ thống khi chưa chọn phòng; quản lý: danh sách đã được API giới hạn phạm vi. */
     const clientFormAssignedStaffOptions = useMemo(() => {
         const deptId = Number(clientForm.assigned_department_id || 0);
-        if (!isAdminRole || deptId <= 0) {
+        if (deptId <= 0) {
             return staffUsers;
         }
         return staffUsers.filter((u) => Number(u.department_id || 0) === deptId);
-    }, [staffUsers, clientForm.assigned_department_id, isAdminRole]);
+    }, [staffUsers, clientForm.assigned_department_id]);
 
     return (
         <PageContainer
             auth={props.auth}
             title="Quản lý khách hàng"
-            description="Quản lý khách hàng, trạng thái tiềm năng, thanh toán và phân quyền chăm sóc."
-            stats={activeTab === 'clients' ? clientStats : paymentStats}
+            description="Quản lý khách hàng, trạng thái tiềm năng và phân quyền chăm sóc."
+            stats={clientStats}
         >
-            <div className="flex flex-wrap gap-2 mb-6">
-                <button
-                    type="button"
-                    className={`rounded-full px-4 py-2 text-sm font-semibold ${
-                        activeTab === 'clients' ? 'bg-primary text-white' : 'bg-white border border-slate-200 text-slate-600'
-                    }`}
-                    onClick={() => setActiveTab('clients')}
-                >
-                    Khách hàng
-                </button>
-                <button
-                    type="button"
-                    className={`rounded-full px-4 py-2 text-sm font-semibold ${
-                        activeTab === 'payments' ? 'bg-primary text-white' : 'bg-white border border-slate-200 text-slate-600'
-                    }`}
-                    onClick={() => setActiveTab('payments')}
-                >
-                    Thanh toán
-                </button>
-            </div>
-
-            {activeTab === 'clients' && (
-                <>
+            <>
                     <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card p-5">
                         {(canManageClients) && (
                             <div className="mb-4 flex flex-wrap items-center justify-end gap-3">
@@ -1557,219 +1403,6 @@ export default function CRM(props) {
                         </form>
                     </Modal>
                 </>
-            )}
-
-            {activeTab === 'payments' && (
-                <>
-                    <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card p-5">
-                        {canManagePayments && (
-                            <div className="mb-4 flex flex-wrap items-center justify-end gap-3">
-                                <button
-                                    type="button"
-                                    className="rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-sm"
-                                    onClick={openPaymentCreate}
-                                >
-                                    Thêm mới
-                                </button>
-                            </div>
-                        )}
-                        <FilterToolbar
-                            className="mb-4 border-0 p-0 shadow-none"
-                            title="Danh sách thanh toán"
-                            description="Lọc nhanh trạng thái thanh toán để theo dõi công nợ và nhắc hạn dễ hơn."
-                            onSubmitFilters={applyPaymentFilters}
-                        >
-                            <div className={FILTER_GRID_WITH_SUBMIT}>
-                                <FilterField label="Trạng thái thanh toán">
-                                    <select
-                                        className={filterControlClass}
-                                        value={paymentFilters.status}
-                                        onChange={(e) => setPaymentFilters((s) => ({ ...s, status: e.target.value }))}
-                                    >
-                                        <option value="">Tất cả trạng thái</option>
-                                        <option value="pending">Đang chờ</option>
-                                        <option value="paid">Đã thanh toán</option>
-                                        <option value="overdue">Quá hạn</option>
-                                    </select>
-                                </FilterField>
-                                <FilterActionGroup className={FILTER_GRID_SUBMIT_ROW}>
-                                    <button type="submit" className={FILTER_SUBMIT_BUTTON_CLASS}>
-                                        Lọc
-                                    </button>
-                                </FilterActionGroup>
-                            </div>
-                        </FilterToolbar>
-                        <div className="overflow-x-auto">
-                            <table className="table-spacious min-w-full text-sm">
-                                <thead>
-                                    <tr className="text-left text-xs uppercase tracking-wider text-text-subtle border-b border-slate-200">
-                                        <th className="py-2">Khách hàng</th>
-                                        <th className="py-2">Số tiền</th>
-                                        <th className="py-2">Hạn</th>
-                                        <th className="py-2">Trạng thái</th>
-                                        <th className="py-2"></th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {payments.map((payment) => (
-                                        <tr key={payment.id} className="border-b border-slate-100">
-                                            <td className="py-2 font-medium text-slate-900">{payment.client?.name || '—'}</td>
-                                            <td className="py-2 text-slate-700">
-                                                {Number(payment.amount || 0).toLocaleString('vi-VN')}
-                                            </td>
-                                            <td className="py-2 text-xs text-text-muted">
-                                                {payment.due_date ? formatVietnamDate(payment.due_date) : '—'}
-                                            </td>
-                                            <td className="py-2">
-                                                <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">
-                                                    {payment.status}
-                                                </span>
-                                            </td>
-                                            <td className="py-2 text-right">
-                                                {(canManagePayments || canDeletePayments) ? (
-                                                    <div className="flex items-center justify-end gap-2">
-                                                        {canManagePayments && (
-                                                            <button
-                                                                type="button"
-                                                                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-600 hover:bg-slate-50"
-                                                                onClick={() => editPayment(payment)}
-                                                                title="Sửa thanh toán"
-                                                            >
-                                                                <AppIcon name="pencil" className="h-4 w-4" />
-                                                            </button>
-                                                        )}
-                                                        {canDeletePayments && (
-                                                            <button
-                                                                type="button"
-                                                                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-rose-200 text-rose-600 hover:bg-rose-50"
-                                                                onClick={() => deletePayment(payment.id)}
-                                                                title="Xóa thanh toán"
-                                                            >
-                                                                <AppIcon name="trash" className="h-4 w-4" />
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                ) : (
-                                                    <span className="text-xs text-text-muted">—</span>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                    {payments.length === 0 && (
-                                        <tr>
-                                            <td className="py-6 text-center text-sm text-text-muted" colSpan={5}>
-                                                Chưa có thanh toán nào.
-                                            </td>
-                                        </tr>
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
-                        <PaginationControls
-                            page={paymentMeta.current_page}
-                            lastPage={paymentMeta.last_page}
-                            total={paymentMeta.total}
-                            perPage={paymentFilters.per_page}
-                            label="thanh toán"
-                            onPageChange={(page) => fetchPayments(page, paymentFilters)}
-                            onPerPageChange={(perPage) => {
-                                const next = { ...paymentFilters, per_page: perPage };
-                                setPaymentFilters(next);
-                                fetchPayments(1, next);
-                            }}
-                        />
-                    </div>
-
-                    <Modal
-                        open={showPaymentForm}
-                        onClose={closePaymentForm}
-                        title={editingPaymentId ? `Sửa thanh toán #${editingPaymentId}` : 'Tạo thanh toán'}
-                        description="Ghi nhận thanh toán và trạng thái công nợ."
-                        size="md"
-                    >
-                        <form className="space-y-3 text-sm" onSubmit={submitPayment}>
-                            <LabeledField label="Khách hàng" required>
-                                <ClientSelect
-                                    className="bg-white"
-                                    value={paymentForm.client_id}
-                                    onChange={(id) => setPaymentForm((s) => ({ ...s, client_id: id }))}
-                                    placeholder="Chọn khách hàng *"
-                                    clientPreview={paymentClientPreview}
-                                />
-                            </LabeledField>
-                            <LabeledField label="Số tiền" required>
-                                <input
-                                    className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                                    type="number"
-                                    placeholder="Nhập số tiền cần ghi nhận"
-                                    value={paymentForm.amount}
-                                    onChange={(e) => setPaymentForm((s) => ({ ...s, amount: e.target.value }))}
-                                />
-                            </LabeledField>
-                            <LabeledField label="Trạng thái thanh toán">
-                                <select
-                                    className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                                    value={paymentForm.status}
-                                    onChange={(e) => setPaymentForm((s) => ({ ...s, status: e.target.value }))}
-                                >
-                                    <option value="pending">Đang chờ</option>
-                                    <option value="paid">Đã thanh toán</option>
-                                    <option value="overdue">Quá hạn</option>
-                                </select>
-                            </LabeledField>
-                            <LabeledField label="Hạn thanh toán">
-                                <input
-                                    className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                                    type="date"
-                                    value={paymentForm.due_date}
-                                    onChange={(e) => setPaymentForm((s) => ({ ...s, due_date: e.target.value }))}
-                                />
-                            </LabeledField>
-                            <LabeledField label="Số hóa đơn">
-                                <input
-                                    className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                                    placeholder="Điền nếu có xuất hóa đơn"
-                                    value={paymentForm.invoice_no}
-                                    onChange={(e) => setPaymentForm((s) => ({ ...s, invoice_no: e.target.value }))}
-                                />
-                            </LabeledField>
-                            <LabeledField label="Ghi chú">
-                                <textarea
-                                    className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                                    rows={3}
-                                    placeholder="Thêm ghi chú thu tiền, chứng từ hoặc lưu ý nội bộ"
-                                    value={paymentForm.note}
-                                    onChange={(e) => setPaymentForm((s) => ({ ...s, note: e.target.value }))}
-                                />
-                            </LabeledField>
-                            {!canManagePayments && (
-                                <p className="text-xs text-text-muted">
-                                    Chỉ Admin/Kế toán được quản lý thanh toán.
-                                </p>
-                            )}
-                            <div className="flex items-center gap-3">
-                                <button
-                                    type="submit"
-                                    className="flex-1 rounded-2xl px-3 py-2.5 bg-primary text-white text-sm font-semibold"
-                                    disabled={submittingPayment}
-                                >
-                                    {submittingPayment
-                                        ? (editingPaymentId ? 'Đang cập nhật...' : 'Đang tạo...')
-                                        : (editingPaymentId ? 'Cập nhật thanh toán' : 'Tạo thanh toán')}
-                                </button>
-                                <button
-                                    type="button"
-                                    className="flex-1 rounded-2xl px-3 py-2.5 border border-slate-200 text-sm font-semibold"
-                                    onClick={closePaymentForm}
-                                    disabled={submittingPayment}
-                                >
-                                    Hủy
-                                </button>
-                            </div>
-                        </form>
-                    </Modal>
-                </>
-            )}
 
             <Modal
                 open={showClientImport}

@@ -14,11 +14,22 @@ class FacebookPageController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $pages = FacebookPage::query()
-            ->with('assignedStaff:id,name,email,department_id')
-            ->where('user_id', $request->user()->id)
-            ->orderBy('id')
-            ->get();
+        $user = $request->user();
+        $query = FacebookPage::query()
+            ->with(['assignedStaff:id,name,email,department_id', 'user:id,name,email']);
+
+        if (in_array((string) ($user->role ?? ''), ['admin', 'administrator'], true)) {
+            $pages = $query->orderBy('id')->get();
+        } else {
+            $uid = (int) $user->id;
+            $pages = $query
+                ->where(function ($q) use ($uid) {
+                    $q->where('assigned_staff_id', $uid)
+                        ->orWhere('user_id', $uid);
+                })
+                ->orderBy('id')
+                ->get();
+        }
 
         return response()->json($pages);
     }
@@ -98,7 +109,9 @@ class FacebookPageController extends Controller
 
     public function subscribe(Request $request, FacebookPage $page): JsonResponse
     {
-        if ((int) $page->user_id !== (int) $request->user()->id) {
+        $uid = (int) $request->user()->id;
+        $isAdmin = in_array((string) ($request->user()->role ?? ''), ['admin', 'administrator'], true);
+        if ((int) $page->user_id !== $uid && ! $isAdmin) {
             return response()->json(['message' => 'Không có quyền thao tác Page này.'], 403);
         }
 
@@ -125,7 +138,9 @@ class FacebookPageController extends Controller
 
     public function unsubscribe(Request $request, FacebookPage $page): JsonResponse
     {
-        if ((int) $page->user_id !== (int) $request->user()->id) {
+        $uid = (int) $request->user()->id;
+        $isAdmin = in_array((string) ($request->user()->role ?? ''), ['admin', 'administrator'], true);
+        if ((int) $page->user_id !== $uid && ! $isAdmin) {
             return response()->json(['message' => 'Không có quyền thao tác Page này.'], 403);
         }
 

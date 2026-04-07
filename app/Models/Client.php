@@ -108,4 +108,9 @@ class Client extends Model
     {
         return $this->belongsTo(FacebookPage::class, 'facebook_page_id', 'page_id');
     }
+
+    public function staffTransferRequests()
+    {
+        return $this->hasMany(ClientStaffTransferRequest::class)->orderByDesc('id');
+    }
 }

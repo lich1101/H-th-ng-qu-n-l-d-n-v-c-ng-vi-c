@@ -15,6 +15,8 @@ import CustomerGrowthChart from '@/Components/CustomerGrowthChart';
 import EmployeeRevenueBars from '@/Components/EmployeeRevenueBars';
 
 const cardClass = 'rounded-[26px] border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/35 p-5 md:p-6 shadow-[0_26px_60px_-40px_rgba(15,23,42,0.5)]';
+/** Vùng bảng cố định: cuộn ngang + dọc trong khung */
+const tableScrollPanelClass = 'h-[min(70vh,520px)] w-full max-w-full overflow-auto rounded-[22px] border border-slate-200/80 bg-white';
 const sectionChipClass = 'inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1 text-[11px] font-semibold tracking-[0.08em]';
 
 const serviceLabels = {
@@ -150,8 +152,6 @@ export default function Dashboard(props) {
             color: palette[index % palette.length],
         }));
     }, [report.employee_role_breakdown]);
-    const activities = summary.recent_activities || [];
-    const overloadList = summary.workload_overload || [];
     const periodRevenueTotal = Number(report.period_revenue_total || 0);
 
     const currentRevenue = useMemo(() => {
@@ -226,7 +226,7 @@ export default function Dashboard(props) {
             <div className="mb-5 flex flex-wrap items-center gap-2">
                 <SectionChip tone="violet">Dashboard điều hành</SectionChip>
                 <SectionChip tone="cyan">{report.period?.current_label || 'Kỳ hiện tại'}</SectionChip>
-                <SectionChip tone="emerald">{staffSales.length} nhân sự có doanh số</SectionChip>
+                <SectionChip tone="emerald">{employeeSummary.total ?? 0} nhân sự trong báo cáo</SectionChip>
                 {loading ? <SectionChip tone="amber">Đang đồng bộ dữ liệu</SectionChip> : null}
             </div>
 
@@ -290,7 +290,7 @@ export default function Dashboard(props) {
                         chip="Dữ liệu theo người"
                         tone="cyan"
                     />
-                    <div className="mt-5 rounded-2xl border border-slate-200/80 bg-slate-50/70 p-2.5">
+                    <div className="mt-5 rounded-2xl border border-slate-200/80 bg-slate-50/70 p-3">
                         <EmployeeRevenueBars data={staffSales} />
                     </div>
                 </section>
@@ -364,9 +364,9 @@ export default function Dashboard(props) {
                         chip="So sánh theo tháng"
                         tone="amber"
                     />
-                    <div className="mt-5 overflow-x-auto rounded-[22px] border border-slate-200/80 bg-white">
-                        <table className="min-w-[980px] divide-y divide-slate-200 text-sm">
-                            <thead className="bg-slate-900">
+                    <div className={`${tableScrollPanelClass} mt-5`}>
+                        <table className="min-w-[980px] w-full divide-y divide-slate-200 text-sm">
+                            <thead className="sticky top-0 z-10 bg-slate-900 shadow-[0_1px_0_0_rgba(15,23,42,0.35)]">
                                 <tr>
                                     <th className="px-4 py-3 text-left font-semibold text-slate-100">Nhân viên</th>
                                     <th className="px-4 py-3 text-right font-semibold text-slate-100">Doanh thu</th>
@@ -408,53 +408,6 @@ export default function Dashboard(props) {
                                 ))}
                             </tbody>
                         </table>
-                    </div>
-                </section>
-            </div>
-
-            <div className="mt-5 grid grid-cols-1 items-start gap-5 lg:grid-cols-2">
-                <section className={cardClass}>
-                    <div className="flex items-center justify-between gap-3">
-                        <h3 className="text-lg font-semibold text-slate-900">Hoạt động gần đây</h3>
-                        <SectionChip tone="slate">Log hệ thống</SectionChip>
-                    </div>
-                    <div className="mt-4 space-y-4">
-                        {activities.length === 0 ? (
-                            <p className="text-sm text-text-muted">Chưa có hoạt động mới.</p>
-                        ) : activities.map((item, index) => (
-                            <div key={`${item.time}-${index}`} className="flex items-start gap-3 rounded-xl border border-slate-200/70 bg-white px-3.5 py-3">
-                                <div className="mt-1 h-2.5 w-2.5 rounded-full bg-primary" />
-                                <div>
-                                    <p className="text-sm text-slate-800"><span className="font-semibold">{item.user}</span> {item.content}</p>
-                                    <p className="mt-1 text-xs text-text-muted">{item.time}</p>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </section>
-
-                <section className={cardClass}>
-                    <div className="flex items-center justify-between gap-3">
-                        <h3 className="text-lg font-semibold text-slate-900">Nhân sự đang quá tải</h3>
-                        <SectionChip tone="amber">Theo công việc xử lý</SectionChip>
-                    </div>
-                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                        {overloadList.length === 0 ? (
-                            <p className="text-sm text-text-muted sm:col-span-2">Chưa có nhân sự quá tải.</p>
-                        ) : overloadList.map((item) => (
-                            <div key={item.user_id} className="rounded-2xl border border-slate-200/80 bg-slate-50/70 p-4">
-                                <div className="font-semibold text-slate-900">{item.name}</div>
-                                <div className="mt-1 text-xs text-slate-500">{item.role}</div>
-                                <div className="mt-3 flex items-center justify-between text-xs text-slate-600">
-                                    <span>Công việc đang xử lý</span>
-                                    <span className="font-semibold text-amber-600">{item.active_tasks}</span>
-                                </div>
-                                <div className="mt-1 flex items-center justify-between text-xs text-slate-600">
-                                    <span>Công việc quá hạn</span>
-                                    <span className="font-semibold text-rose-600">{item.overdue_tasks}</span>
-                                </div>
-                            </div>
-                        ))}
                     </div>
                 </section>
             </div>

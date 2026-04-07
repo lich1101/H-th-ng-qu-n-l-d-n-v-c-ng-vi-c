@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\V1\ContractPaymentController;
 use App\Http\Controllers\Api\V1\ContractFinanceRequestController;
 use App\Http\Controllers\Api\V1\CRMController;
 use App\Http\Controllers\Api\V1\ClientFlowController;
+use App\Http\Controllers\Api\V1\ClientStaffTransferController;
 use App\Http\Controllers\Api\V1\DepartmentAssignmentController;
 use App\Http\Controllers\Api\V1\DepartmentController;
 use App\Http\Controllers\Api\V1\LeadCaptureController;
@@ -279,6 +280,17 @@ Route::prefix('v1')->group(function () {
             ->middleware('role:admin');
 
         Route::get('/crm/clients', [CRMController::class, 'clients']);
+        Route::get('/crm/staff-transfer-requests', [ClientStaffTransferController::class, 'index']);
+        Route::get('/crm/staff-transfer-requests/{transfer}', [ClientStaffTransferController::class, 'show']);
+        Route::post('/crm/staff-transfer-requests/{transfer}/accept', [ClientStaffTransferController::class, 'accept'])
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien');
+        Route::post('/crm/staff-transfer-requests/{transfer}/reject', [ClientStaffTransferController::class, 'reject'])
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien');
+        Route::post('/crm/staff-transfer-requests/{transfer}/cancel', [ClientStaffTransferController::class, 'cancel'])
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien');
+        Route::get('/crm/clients/{client}/staff-transfer/eligible-users', [ClientStaffTransferController::class, 'eligibleTargets']);
+        Route::post('/crm/clients/{client}/staff-transfer-requests', [ClientStaffTransferController::class, 'store'])
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien');
         Route::get('/crm/clients/{client}/flow', [ClientFlowController::class, 'show']);
         Route::get('/crm/clients/{client}', [CRMController::class, 'showClient']);
         Route::post('/crm/clients/{client}/comments', [ClientFlowController::class, 'storeComment'])
@@ -388,15 +400,15 @@ Route::prefix('v1')->group(function () {
         Route::delete('/revenue-tiers/{revenueTier}', [RevenueTierController::class, 'destroy'])->middleware('role:admin');
 
         Route::get('/lead-forms', [LeadFormController::class, 'index'])
-            ->middleware('role:admin');
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
         Route::post('/lead-forms', [LeadFormController::class, 'store'])
-            ->middleware('role:admin');
+            ->middleware('role:admin,administrator');
         Route::put('/lead-forms/{leadForm}', [LeadFormController::class, 'update'])
-            ->middleware('role:admin');
+            ->middleware('role:admin,administrator');
         Route::delete('/lead-forms/{leadForm}', [LeadFormController::class, 'destroy'])
-            ->middleware('role:admin');
+            ->middleware('role:admin,administrator');
         Route::post('/lead-forms/{leadForm}/duplicate', [LeadFormController::class, 'duplicate'])
-            ->middleware('role:admin');
+            ->middleware('role:admin,administrator');
 
         Route::post('/imports/clients', [ImportController::class, 'importClients'])
             ->middleware('role:admin,quan_ly,nhan_vien');
@@ -418,18 +430,18 @@ Route::prefix('v1')->group(function () {
             ->middleware('role:admin');
 
         Route::get('/facebook/pages', [FacebookPageController::class, 'index'])
-            ->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
         Route::post('/facebook/pages/sync', [FacebookPageController::class, 'sync'])
-            ->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
+            ->middleware('role:admin,administrator');
         Route::put('/facebook/pages/{page}', [FacebookPageController::class, 'update'])
-            ->middleware('role:admin,quan_ly,nhan_vien,ke_toan,administrator');
+            ->middleware('role:admin,administrator');
         Route::post('/facebook/pages/{page}/subscribe', [FacebookPageController::class, 'subscribe'])
-            ->middleware('role:admin,quan_ly');
+            ->middleware('role:admin,administrator');
         Route::post('/facebook/pages/{page}/unsubscribe', [FacebookPageController::class, 'unsubscribe'])
-            ->middleware('role:admin,quan_ly');
+            ->middleware('role:admin,administrator');
 
         Route::get('/departments', [DepartmentController::class, 'index'])
-            ->middleware('role:admin,quan_ly');
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
         Route::post('/departments', [DepartmentController::class, 'store'])
             ->middleware('role:admin');
         Route::put('/departments/{department}', [DepartmentController::class, 'update'])

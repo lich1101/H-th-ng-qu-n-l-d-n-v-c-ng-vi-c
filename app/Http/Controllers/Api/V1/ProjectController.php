@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Helpers\ProjectScope;
+use App\Support\ExternalUrl;
 use App\Models\AppSetting;
 use App\Models\Contract;
 use App\Models\Project;
@@ -231,6 +232,8 @@ class ProjectController extends Controller
             'website_url' => ['nullable', 'string', 'max:255'],
         ]);
 
+        $this->normalizeProjectUrlFields($validated);
+
         if (! empty($validated['owner_id'])) {
             if ($error = $this->validateProjectOwner($validated['owner_id'])) {
                 return response()->json(['message' => $error], 422);
@@ -316,6 +319,7 @@ class ProjectController extends Controller
         }
 
         $validated = $request->validate($this->rules($project->id));
+        $this->normalizeProjectUrlFields($validated);
         if (array_key_exists('owner_id', $validated)) {
             if ($error = $this->validateProjectOwner($validated['owner_id'])) {
                 return response()->json(['message' => $error], 422);
@@ -559,6 +563,19 @@ class ProjectController extends Controller
         $this->notifyHandoverReviewed($project, $request, $decision, $reason !== '' ? $reason : null);
 
         return response()->json($this->transformProject($project, $request->user()));
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     */
+    private function normalizeProjectUrlFields(array &$validated): void
+    {
+        foreach (['repo_url', 'website_url'] as $key) {
+            if (! array_key_exists($key, $validated)) {
+                continue;
+            }
+            $validated[$key] = ExternalUrl::toAbsoluteHref($validated[$key] ?? null);
+        }
     }
 
     private function rules(?int $projectId = null): array

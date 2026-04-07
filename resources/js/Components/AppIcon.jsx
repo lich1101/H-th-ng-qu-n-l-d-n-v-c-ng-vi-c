@@ -203,6 +203,14 @@ const iconNodes = {
     ),
     'chevron-down': () => <path d="m6.75 9 5.25 5.25L17.25 9" />,
     'x-mark': () => <path d="M6 6l12 12M18 6 6 18" />,
+    /** Menu / toggle sidebar (3 gạch) */
+    'bars-3': () => (
+        <>
+            <path d="M4.5 7.5h15" />
+            <path d="M4.5 12h15" />
+            <path d="M4.5 16.5h15" />
+        </>
+    ),
 };
 
 export default function AppIcon({

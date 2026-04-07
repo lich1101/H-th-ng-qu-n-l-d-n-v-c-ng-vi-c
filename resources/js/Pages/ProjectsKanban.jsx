@@ -13,6 +13,7 @@ import Modal from '@/Components/Modal';
 import PaginationControls from '@/Components/PaginationControls';
 import TagMultiSelect from '@/Components/TagMultiSelect';
 import { useToast } from '@/Contexts/ToastContext';
+import { absoluteHttpUrl } from '@/lib/externalUrl';
 import { formatVietnamDate, toDateInputValue } from '@/lib/vietnamTime';
 
 const DEFAULT_STATUSES = [
@@ -858,12 +859,12 @@ export default function ProjectsKanban(props) {
                                                 <td className="py-3">
                                                     {p.website_url ? (
                                                         <a
-                                                            href={p.website_url}
+                                                            href={absoluteHttpUrl(p.website_url)}
                                                             target="_blank"
                                                             rel="noreferrer"
                                                             className="inline-block max-w-[220px] truncate text-xs font-semibold text-primary hover:underline"
                                                             onClick={(e) => e.stopPropagation()}
-                                                            title={p.website_url}
+                                                            title={absoluteHttpUrl(p.website_url)}
                                                         >
                                                             {p.website_url}
                                                         </a>
@@ -918,12 +919,12 @@ export default function ProjectsKanban(props) {
                                                 <td className="py-3">
                                                     {p.repo_url ? (
                                                         <a
-                                                            href={p.repo_url}
+                                                            href={absoluteHttpUrl(p.repo_url)}
                                                             target="_blank"
                                                             rel="noreferrer"
                                                             className="inline-block max-w-[220px] truncate text-xs font-semibold text-primary hover:underline"
                                                             onClick={(e) => e.stopPropagation()}
-                                                            title={p.repo_url}
+                                                            title={absoluteHttpUrl(p.repo_url)}
                                                         >
                                                             {p.repo_url}
                                                         </a>

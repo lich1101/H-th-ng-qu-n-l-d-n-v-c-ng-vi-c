@@ -109,7 +109,10 @@ function Field({ label, required = false, children, hint = '' }) {
 
 export default function ClientFlow({ auth, clientId }) {
     const toast = useToast();
+    const myUserId = Number(auth?.user?.id || 0);
     const userRole = String(auth?.user?.role || '').toLowerCase();
+    /** Đổi phụ trách trực tiếp trên form sửa — chỉ admin & quản lý; nhân viên dùng phiếu chuyển phụ trách. */
+    const canAssignClientOwner = ['admin', 'administrator', 'quan_ly'].includes(userRole);
     const canCreateOpportunity = ['admin', 'administrator', 'quan_ly', 'nhan_vien'].includes(userRole);
     /** Sửa / xóa: cùng nhóm có quyền tạo; API kiểm tra canAccessOpportunity. */
     const canEditOpportunity = canCreateOpportunity;
@@ -160,6 +163,70 @@ export default function ClientFlow({ auth, clientId }) {
         watcher_ids: [],
         notes: '',
     });
+    const [showTransferModal, setShowTransferModal] = useState(false);
+    const [transferEligible, setTransferEligible] = useState([]);
+    const [transferForm, setTransferForm] = useState({ to_staff_id: '', note: '' });
+    const [transferSubmitting, setTransferSubmitting] = useState(false);
+    const [transferActionLoading, setTransferActionLoading] = useState(false);
+
+    const fetchTransferEligible = async () => {
+        try {
+            const res = await axios.get(`/api/v1/crm/clients/${clientId}/staff-transfer/eligible-users`);
+            setTransferEligible(Array.isArray(res.data?.users) ? res.data.users : []);
+        } catch {
+            setTransferEligible([]);
+        }
+    };
+
+    const openTransferModal = async () => {
+        setShowTransferModal(true);
+        setTransferForm({ to_staff_id: '', note: '' });
+        await fetchTransferEligible();
+    };
+
+    const submitTransferRequest = async (event) => {
+        event.preventDefault();
+        if (!transferForm.to_staff_id) {
+            toast.error('Chọn nhân sự nhận phụ trách.');
+            return;
+        }
+        setTransferSubmitting(true);
+        try {
+            await axios.post(`/api/v1/crm/clients/${clientId}/staff-transfer-requests`, {
+                to_staff_id: Number(transferForm.to_staff_id),
+                note: (transferForm.note || '').trim() || null,
+            });
+            toast.success('Đã gửi phiếu chuyển phụ trách.');
+            setShowTransferModal(false);
+            await fetchFlow();
+        } catch (e) {
+            toast.error(e?.response?.data?.message || 'Không gửi được phiếu.');
+        } finally {
+            setTransferSubmitting(false);
+        }
+    };
+
+    const actOnPendingTransfer = async (action) => {
+        const pt = flow?.pending_staff_transfer;
+        if (!pt?.id || pt.status !== 'pending') return;
+        let rejectionNote = null;
+        if (action === 'reject') {
+            rejectionNote = window.prompt('Lý do từ chối (tuỳ chọn):') || null;
+        }
+        if (action === 'cancel' && !window.confirm('Hủy phiếu chuyển phụ trách này?')) return;
+        setTransferActionLoading(true);
+        try {
+            if (action === 'accept') await axios.post(`/api/v1/crm/staff-transfer-requests/${pt.id}/accept`);
+            if (action === 'reject') await axios.post(`/api/v1/crm/staff-transfer-requests/${pt.id}/reject`, { rejection_note: rejectionNote });
+            if (action === 'cancel') await axios.post(`/api/v1/crm/staff-transfer-requests/${pt.id}/cancel`);
+            toast.success('Đã cập nhật phiếu chuyển phụ trách.');
+            await fetchFlow();
+        } catch (e) {
+            toast.error(e?.response?.data?.message || 'Không thực hiện được.');
+        } finally {
+            setTransferActionLoading(false);
+        }
+    };
 
     const fetchFlow = async () => {
         setLoading(true);
@@ -264,11 +331,15 @@ export default function ClientFlow({ auth, clientId }) {
                 lead_source: (clientForm.lead_source || '').trim() || null,
                 lead_channel: (clientForm.lead_channel || '').trim() || null,
                 lead_message: (clientForm.lead_message || '').trim() || null,
-                assigned_department_id: clientForm.assigned_department_id ? Number(clientForm.assigned_department_id) : null,
-                assigned_staff_id: clientForm.assigned_staff_id ? Number(clientForm.assigned_staff_id) : null,
-                sales_owner_id: clientForm.sales_owner_id ? Number(clientForm.sales_owner_id) : null,
-                care_staff_ids: normalizeCareStaffIds(clientForm.care_staff_ids),
             };
+            if (canAssignClientOwner) {
+                Object.assign(payload, {
+                    assigned_department_id: clientForm.assigned_department_id ? Number(clientForm.assigned_department_id) : null,
+                    assigned_staff_id: clientForm.assigned_staff_id ? Number(clientForm.assigned_staff_id) : null,
+                    sales_owner_id: clientForm.sales_owner_id ? Number(clientForm.sales_owner_id) : null,
+                    care_staff_ids: normalizeCareStaffIds(clientForm.care_staff_ids),
+                });
+            }
             await axios.put(`/api/v1/crm/clients/${flow.client.id}`, payload);
             toast.success('Đã cập nhật khách hàng.');
             setShowEditModal(false);
@@ -327,6 +398,14 @@ export default function ClientFlow({ auth, clientId }) {
             meta: [user?.role, user?.email].filter(Boolean).join(' • '),
         })).filter((user) => user.id > 0)
     ), [staffUsers]);
+
+    const editModalAssignedStaffOptions = useMemo(() => {
+        const deptId = Number(clientForm.assigned_department_id || 0);
+        if (deptId <= 0) {
+            return staffUsers;
+        }
+        return staffUsers.filter((u) => Number(u.department_id || 0) === deptId);
+    }, [staffUsers, clientForm.assigned_department_id]);
 
     const closeOpportunityModal = () => {
         setShowOpportunityModal(false);
@@ -549,6 +628,15 @@ export default function ClientFlow({ auth, clientId }) {
 
     const commentsHistory = flow?.comments_history || [];
 
+    const pt = flow?.pending_staff_transfer;
+    const transferPending = pt && pt.status === 'pending';
+    const iAmReceiver = transferPending && Number(pt?.to_staff?.id) === myUserId;
+    const iAmRequesterSide = transferPending && (Number(pt?.requested_by?.id) === myUserId || Number(pt?.from_staff?.id) === myUserId);
+    const iAmAdmin = ['admin', 'administrator'].includes(userRole);
+    const iAmManager = userRole === 'quan_ly';
+    const canCancelTransfer = transferPending && (iAmRequesterSide || iAmAdmin || iAmManager);
+    const canAcceptOrRejectTransfer = transferPending && (iAmReceiver || iAmAdmin || iAmManager);
+
     const tabs = [
         { key: 'tong_quan', label: 'Tổng quan', icon: 'chart', count: null },
         { key: 'co_hoi', label: 'Cơ hội', icon: 'trend', count: opportunities.length },
@@ -566,6 +654,82 @@ export default function ClientFlow({ auth, clientId }) {
             stats={stats}
         >
             <div className="space-y-5">
+                {flow?.crm_access_mode === 'transfer_receiver_pending' && transferPending && (
+                    <div className="rounded-2xl border border-amber-300 bg-amber-50 p-5 text-amber-950 shadow-card">
+                        <p className="font-semibold">Phiếu chuyển phụ trách đang chờ bạn xác nhận</p>
+                        <p className="mt-1 text-sm">
+                            Từ <span className="font-semibold">{pt?.from_staff?.name || '—'}</span>
+                            {' → '}
+                            <span className="font-semibold">{pt?.to_staff?.name || '—'}</span>
+                            {pt?.note ? <span className="block mt-2 text-amber-900/90">Ghi chú: {pt.note}</span> : null}
+                        </p>
+                        <div className="mt-4 flex flex-wrap gap-2">
+                            <button
+                                type="button"
+                                disabled={transferActionLoading}
+                                onClick={() => actOnPendingTransfer('accept')}
+                                className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+                            >
+                                Chấp nhận phụ trách
+                            </button>
+                            <button
+                                type="button"
+                                disabled={transferActionLoading}
+                                onClick={() => actOnPendingTransfer('reject')}
+                                className="rounded-xl border border-amber-400 bg-white px-4 py-2 text-sm font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-60"
+                            >
+                                Từ chối
+                            </button>
+                        </div>
+                        <p className="mt-3 text-xs text-amber-900/80">
+                            Trước khi chấp nhận, bạn chưa thể thao tác đầy đủ trên khách hàng này (chỉ xử lý phiếu).
+                        </p>
+                    </div>
+                )}
+
+                {flow?.crm_access_mode === 'full' && transferPending && (
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4 text-sm text-amber-950">
+                        <p className="font-semibold">Đang có phiếu chuyển phụ trách chờ xử lý</p>
+                        <p className="mt-1">
+                            Đề xuất: <span className="font-medium">{pt?.from_staff?.name || '—'}</span>
+                            {' → '}
+                            <span className="font-medium">{pt?.to_staff?.name || '—'}</span>
+                        </p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                            {canAcceptOrRejectTransfer && (
+                                <>
+                                    <button
+                                        type="button"
+                                        disabled={transferActionLoading}
+                                        onClick={() => actOnPendingTransfer('accept')}
+                                        className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+                                    >
+                                        Chấp nhận (thay mặt)
+                                    </button>
+                                    <button
+                                        type="button"
+                                        disabled={transferActionLoading}
+                                        onClick={() => actOnPendingTransfer('reject')}
+                                        className="rounded-lg border border-amber-400 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-60"
+                                    >
+                                        Từ chối
+                                    </button>
+                                </>
+                            )}
+                            {canCancelTransfer && (
+                                <button
+                                    type="button"
+                                    disabled={transferActionLoading}
+                                    onClick={() => actOnPendingTransfer('cancel')}
+                                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                                >
+                                    Hủy phiếu
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                )}
+
                 <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
@@ -573,7 +737,18 @@ export default function ClientFlow({ auth, clientId }) {
                             <h3 className="mt-1 text-xl font-semibold text-slate-900">{flow?.client?.name || '—'}</h3>
                             <p className="mt-1 text-sm text-slate-500">{flow?.client?.company || 'Chưa có công ty'} • {flow?.client?.phone || 'Chưa có số điện thoại'}</p>
                         </div>
-                        {flow?.permissions?.can_manage_client && (
+                        <div className="flex flex-wrap gap-2">
+                            {flow?.crm_access_mode === 'full' && !transferPending && flow?.permissions?.can_manage_client && (
+                                <button
+                                    type="button"
+                                    onClick={openTransferModal}
+                                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+                                >
+                                    <AppIcon name="handover" className="h-4 w-4" />
+                                    Chuyển phụ trách
+                                </button>
+                            )}
+                            {flow?.permissions?.can_manage_client && flow?.crm_access_mode === 'full' && (
                             <button
                                 type="button"
                                 onClick={openEditModal}
@@ -582,7 +757,8 @@ export default function ClientFlow({ auth, clientId }) {
                                 <AppIcon name="edit" className="h-4 w-4" />
                                 Sửa khách hàng
                             </button>
-                        )}
+                            )}
+                        </div>
                     </div>
 
                     <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
@@ -981,6 +1157,59 @@ export default function ClientFlow({ auth, clientId }) {
             </div>
 
             <Modal
+                open={showTransferModal}
+                onClose={() => setShowTransferModal(false)}
+                title="Chuyển phụ trách khách hàng"
+                description="Chọn nhân sự cùng phòng ban (không gồm admin / kế toán). Người nhận phải xác nhận trước khi trở thành phụ trách chính thức."
+                size="md"
+            >
+                <form className="mt-2 space-y-4 text-sm" onSubmit={submitTransferRequest}>
+                    <div>
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Nhân sự nhận *</label>
+                        <select
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            value={transferForm.to_staff_id}
+                            onChange={(e) => setTransferForm((s) => ({ ...s, to_staff_id: e.target.value }))}
+                            required
+                        >
+                            <option value="">Chọn nhân sự</option>
+                            {transferEligible.map((u) => (
+                                <option key={u.id} value={u.id}>
+                                    {u.name} ({u.role})
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Ghi chú</label>
+                        <textarea
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            rows={3}
+                            value={transferForm.note}
+                            onChange={(e) => setTransferForm((s) => ({ ...s, note: e.target.value }))}
+                            placeholder="Lý do chuyển giao (tuỳ chọn)"
+                        />
+                    </div>
+                    <div className="flex justify-end gap-2">
+                        <button
+                            type="button"
+                            onClick={() => setShowTransferModal(false)}
+                            className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                        >
+                            Đóng
+                        </button>
+                        <button
+                            type="submit"
+                            disabled={transferSubmitting}
+                            className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90 disabled:opacity-60"
+                        >
+                            {transferSubmitting ? 'Đang gửi...' : 'Gửi phiếu'}
+                        </button>
+                    </div>
+                </form>
+            </Modal>
+
+            <Modal
                 open={showEditModal}
                 onClose={() => setShowEditModal(false)}
                 title="Sửa khách hàng"
@@ -1029,7 +1258,7 @@ export default function ClientFlow({ auth, clientId }) {
                         </div>
                     </div>
 
-                    <div className="grid gap-4 md:grid-cols-2">
+                    <div className={`grid gap-4 ${canAssignClientOwner ? 'md:grid-cols-2' : ''}`}>
                         <div>
                             <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Loại lead</label>
                             <select
@@ -1045,55 +1274,88 @@ export default function ClientFlow({ auth, clientId }) {
                                 ))}
                             </select>
                         </div>
-                        <div>
-                            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Phòng ban phụ trách</label>
-                            <select
-                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                                value={clientForm.assigned_department_id}
-                                onChange={(e) => setClientForm((prev) => ({ ...prev, assigned_department_id: e.target.value }))}
-                            >
-                                <option value="">Chưa chọn</option>
-                                {departments.map((department) => (
-                                    <option key={department.id} value={department.id}>
-                                        {department.name}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
+                        {canAssignClientOwner ? (
+                            <div>
+                                <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Phòng ban phụ trách</label>
+                                <select
+                                    className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                    value={clientForm.assigned_department_id}
+                                    onChange={(e) => setClientForm((prev) => ({ ...prev, assigned_department_id: e.target.value }))}
+                                >
+                                    <option value="">Chưa chọn</option>
+                                    {departments.map((department) => (
+                                        <option key={department.id} value={department.id}>
+                                            {department.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        ) : null}
                     </div>
 
-                    <div className="grid gap-4 md:grid-cols-2">
-                        <div>
-                            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Nhân sự phụ trách</label>
-                            <select
-                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                                value={clientForm.assigned_staff_id}
-                                onChange={(e) => setClientForm((prev) => ({ ...prev, assigned_staff_id: e.target.value }))}
-                            >
-                                <option value="">Chưa chọn</option>
-                                {staffUsers.map((user) => (
-                                    <option key={user.id} value={user.id}>
-                                        {user.name} ({user.role})
-                                    </option>
-                                ))}
-                            </select>
+                    {canAssignClientOwner ? (
+                        <div className="grid gap-4 md:grid-cols-2">
+                            <div>
+                                <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Nhân sự phụ trách</label>
+                                <select
+                                    className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                    value={clientForm.assigned_staff_id}
+                                    onChange={(e) => setClientForm((prev) => ({ ...prev, assigned_staff_id: e.target.value }))}
+                                >
+                                    <option value="">Chưa chọn</option>
+                                    {editModalAssignedStaffOptions.map((user) => (
+                                        <option key={user.id} value={user.id}>
+                                            {user.name} ({user.role})
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Sales owner</label>
+                                <select
+                                    className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                    value={clientForm.sales_owner_id}
+                                    onChange={(e) => setClientForm((prev) => ({ ...prev, sales_owner_id: e.target.value }))}
+                                >
+                                    <option value="">Chưa chọn</option>
+                                    {editModalAssignedStaffOptions.map((user) => (
+                                        <option key={user.id} value={user.id}>
+                                            {user.name} ({user.role})
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
                         </div>
-                        <div>
-                            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Sales owner</label>
-                            <select
-                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                                value={clientForm.sales_owner_id}
-                                onChange={(e) => setClientForm((prev) => ({ ...prev, sales_owner_id: e.target.value }))}
-                            >
-                                <option value="">Chưa chọn</option>
-                                {staffUsers.map((user) => (
-                                    <option key={user.id} value={user.id}>
-                                        {user.name} ({user.role})
-                                    </option>
-                                ))}
-                            </select>
+                    ) : (
+                        <div className="rounded-2xl border border-amber-100 bg-amber-50/90 px-4 py-3 text-sm text-amber-950">
+                            <p className="font-semibold text-amber-950">Phân công &amp; nhóm chăm sóc</p>
+                            <p className="mt-1 text-xs leading-relaxed text-amber-900/90">
+                                Nhân viên không đổi phụ trách trực tiếp trên form này. Vui lòng dùng chức năng
+                                {' '}
+                                <span className="font-semibold">Chuyển phụ trách khách hàng</span>
+                                {' '}
+                                (phiếu chuyển trong cùng phòng ban) ở tab tổng quan.
+                            </p>
+                            <dl className="mt-3 space-y-1.5 text-xs text-amber-950/95">
+                                <div className="flex justify-between gap-2">
+                                    <dt className="text-amber-800/90">Phòng ban phụ trách</dt>
+                                    <dd className="max-w-[60%] text-right font-medium">{flow?.client?.assigned_department?.name || '—'}</dd>
+                                </div>
+                                <div className="flex justify-between gap-2">
+                                    <dt className="text-amber-800/90">Nhân sự phụ trách</dt>
+                                    <dd className="max-w-[60%] text-right font-medium">{flow?.client?.assigned_staff?.name || flow?.client?.sales_owner?.name || '—'}</dd>
+                                </div>
+                                <div className="flex flex-col gap-1 border-t border-amber-200/80 pt-2">
+                                    <dt className="text-amber-800/90">Nhân sự chăm sóc</dt>
+                                    <dd className="text-right font-medium leading-snug">
+                                        {Array.isArray(flow?.client?.care_staff_users) && flow.client.care_staff_users.length
+                                            ? flow.client.care_staff_users.map((u) => u?.name).filter(Boolean).join(', ')
+                                            : '—'}
+                                    </dd>
+                                </div>
+                            </dl>
                         </div>
-                    </div>
+                    )}
 
                     <div className="grid gap-4 md:grid-cols-2">
                         <div>
@@ -1126,20 +1388,22 @@ export default function ClientFlow({ auth, clientId }) {
                         />
                     </div>
 
-                    <div>
-                        <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Nhân sự chăm sóc</label>
-                        <TagMultiSelect
-                            options={staffUsers.map((user) => ({
-                                id: user.id,
-                                label: user.name || `Nhân sự #${user.id}`,
-                                meta: [user.role, user.email].filter(Boolean).join(' • '),
-                            }))}
-                            selectedIds={clientForm.care_staff_ids}
-                            onChange={(selectedIds) => setClientForm((prev) => ({ ...prev, care_staff_ids: selectedIds }))}
-                            addPlaceholder="Tìm và thêm nhân sự chăm sóc"
-                            emptyLabel="Chưa gán nhân sự chăm sóc."
-                        />
-                    </div>
+                    {canAssignClientOwner ? (
+                        <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Nhân sự chăm sóc</label>
+                            <TagMultiSelect
+                                options={staffUsers.map((user) => ({
+                                    id: user.id,
+                                    label: user.name || `Nhân sự #${user.id}`,
+                                    meta: [user.role, user.email].filter(Boolean).join(' • '),
+                                }))}
+                                selectedIds={clientForm.care_staff_ids}
+                                onChange={(selectedIds) => setClientForm((prev) => ({ ...prev, care_staff_ids: selectedIds }))}
+                                addPlaceholder="Tìm và thêm nhân sự chăm sóc"
+                                emptyLabel="Chưa gán nhân sự chăm sóc."
+                            />
+                        </div>
+                    ) : null}
 
                     <div>
                         <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Ghi chú</label>

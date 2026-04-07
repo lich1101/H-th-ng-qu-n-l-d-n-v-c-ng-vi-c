@@ -3,6 +3,7 @@ import axios from 'axios';
 import Modal from '@/Components/Modal';
 import PageContainer from '@/Components/PageContainer';
 import { useToast } from '@/Contexts/ToastContext';
+import { absoluteHttpUrl } from '@/lib/externalUrl';
 import { formatVietnamDate, toDateInputValue } from '@/lib/vietnamTime';
 
 const PROJECT_STATUS = {
@@ -560,11 +561,11 @@ export default function ProjectDetail(props) {
                             </div>
                             <div className="rounded-2xl bg-slate-50 px-4 py-3">
                                 <div className="text-xs text-text-muted">Link kho</div>
-                                <div className="mt-1">{project.repo_url ? <a className="text-primary font-semibold text-xs" href={project.repo_url} target="_blank" rel="noreferrer">Mở kho</a> : <span className="text-text-muted">—</span>}</div>
+                                <div className="mt-1">{project.repo_url ? <a className="text-primary font-semibold text-xs" href={absoluteHttpUrl(project.repo_url)} target="_blank" rel="noreferrer">Mở kho</a> : <span className="text-text-muted">—</span>}</div>
                             </div>
                             <div className="rounded-2xl bg-slate-50 px-4 py-3">
                                 <div className="text-xs text-text-muted">Website</div>
-                                <div className="mt-1">{project.website_url ? <a className="text-primary font-semibold text-xs" href={project.website_url} target="_blank" rel="noreferrer">Mở website</a> : <span className="text-text-muted">—</span>}</div>
+                                <div className="mt-1">{project.website_url ? <a className="text-primary font-semibold text-xs" href={absoluteHttpUrl(project.website_url)} target="_blank" rel="noreferrer">Mở website</a> : <span className="text-text-muted">—</span>}</div>
                             </div>
                         </div>
                     </div>

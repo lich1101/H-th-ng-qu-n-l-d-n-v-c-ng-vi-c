@@ -11,6 +11,27 @@ export default function Authenticated({ auth, header, children }) {
     const toast = useToast();
     const { settings, chatbotQuickOpen = false, chatbotInitialBotId = null } = usePage().props;
     const [showSidebar, setShowSidebar] = useState(false);
+    /** Desktop (lg+): ẩn sidebar để nội dung rộng hơn; lưu theo phiên trình duyệt */
+    const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
+
+    useEffect(() => {
+        try {
+            const saved = localStorage.getItem('layout-desktop-sidebar-open');
+            if (saved === '0' || saved === 'false') {
+                setDesktopSidebarOpen(false);
+            }
+        } catch {
+            // ignore
+        }
+    }, []);
+
+    useEffect(() => {
+        try {
+            localStorage.setItem('layout-desktop-sidebar-open', desktopSidebarOpen ? '1' : '0');
+        } catch {
+            // ignore
+        }
+    }, [desktopSidebarOpen]);
     const currentRole = auth?.user?.role || '';
     const canUseChatbot = ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'].includes(currentRole);
     const brandName = settings?.brand_name || 'Jobs ClickOn';
@@ -305,10 +326,10 @@ export default function Authenticated({ auth, header, children }) {
             {
                 label: 'CRM',
                 items: [
-                    { label: 'Khách hàng', icon: 'users', routeName: 'crm.index', href: route('crm.index'), roles: ['admin', 'quan_ly', 'nhan_vien', 'ke_toan'] },
+                    { label: 'Khách hàng', icon: 'users', routeName: 'crm.index', href: route('crm.index'), roles: ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'] },
                     { label: 'Cơ hội', icon: 'trend', routeName: 'opportunities.index', href: route('opportunities.index'), roles: ['admin', 'quan_ly', 'nhan_vien'] },
-                    { label: 'Form tư vấn', icon: 'form', routeName: 'lead-forms.index', href: route('lead-forms.index'), roles: ['admin'] },
-                    { label: 'Facebook Pages', icon: 'facebook', routeName: 'facebook.pages', href: route('facebook.pages'), roles: ['admin', 'quan_ly'] },
+                    { label: 'Form tư vấn', icon: 'form', routeName: 'lead-forms.index', href: route('lead-forms.index'), roles: ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'] },
+                    { label: 'Facebook Pages', icon: 'facebook', routeName: 'facebook.pages', href: route('facebook.pages'), roles: ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'] },
                 ],
             },
             {
@@ -708,9 +729,9 @@ export default function Authenticated({ auth, header, children }) {
             <div className="min-h-screen overflow-x-hidden bg-app-bg text-slate-900">
             <div className="flex min-h-screen min-w-0">
                 <aside
-                    className={`fixed inset-y-0 left-0 z-40 w-72 bg-white border-r border-slate-200/80 transform transition-transform duration-200 group ${
+                    className={`fixed inset-y-0 left-0 z-40 w-72 bg-white border-r border-slate-200/80 transform transition-transform duration-200 ease-out group ${
                         showSidebar ? 'translate-x-0' : '-translate-x-full'
-                    } lg:translate-x-0`}
+                    } ${desktopSidebarOpen ? 'lg:translate-x-0' : 'lg:-translate-x-full'}`}
                 >
                     <div className="h-full flex flex-col">
                         <div className="px-6 py-6 border-slate-200">
@@ -811,7 +832,11 @@ export default function Authenticated({ auth, header, children }) {
                     </div>
                 </aside>
 
-                <div className="min-w-0 flex-1 lg:ml-72">
+                <div
+                    className={`min-w-0 flex-1 transition-[margin] duration-200 ease-out ${
+                        desktopSidebarOpen ? 'lg:ml-72' : 'lg:ml-0'
+                    }`}
+                >
                     <header className="bg-white/80 backdrop-blur border-b border-slate-200 sticky top-0 z-30">
                         <div className="px-4 md:px-8 py-3 flex items-center justify-between">
                             <div className="flex items-center gap-3">
@@ -821,6 +846,16 @@ export default function Authenticated({ auth, header, children }) {
                                     className="lg:hidden inline-flex items-center justify-center rounded-md border border-slate-300 px-2 py-1 text-slate-700"
                                 >
                                     Menu
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setDesktopSidebarOpen((prev) => !prev)}
+                                    className="hidden lg:inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50"
+                                    title={desktopSidebarOpen ? 'Ẩn menu bên trái (nội dung rộng hơn)' : 'Hiện menu bên trái'}
+                                    aria-expanded={desktopSidebarOpen}
+                                    aria-label={desktopSidebarOpen ? 'Ẩn menu điều hướng' : 'Hiện menu điều hướng'}
+                                >
+                                    <AppIcon name="bars-3" className="h-5 w-5" />
                                 </button>
                                 <div>
                                     <p className="text-xs text-text-subtle">Hệ thống quản lý dự án</p>

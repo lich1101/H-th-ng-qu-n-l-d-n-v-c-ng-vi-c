@@ -26,6 +26,15 @@ class LeadFormController extends Controller
     {
         $query = LeadForm::query()->with(['leadType', 'department', 'creator']);
 
+        $user = $request->user();
+        if (! in_array((string) ($user->role ?? ''), ['admin', 'administrator'], true)) {
+            $userId = (int) $user->id;
+            $query->where(function ($q) use ($userId) {
+                $q->where('created_by', $userId)
+                    ->orWhere('submission_mapping->assigned_staff_id', $userId);
+            });
+        }
+
         if ($request->filled('search')) {
             $search = (string) $request->input('search');
             $query->where(function ($q) use ($search) {

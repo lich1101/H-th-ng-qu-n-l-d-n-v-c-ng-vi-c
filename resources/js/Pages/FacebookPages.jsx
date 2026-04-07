@@ -4,6 +4,7 @@ import PageContainer from '@/Components/PageContainer';
 import { formatVietnamDateTime } from '@/lib/vietnamTime';
 
 export default function FacebookPages(props) {
+    const canManage = props.canManageFacebookPages === true;
     const connected = Boolean(props.facebookConnected);
     const expiresAt = props.facebookTokenExpiresAt;
     const [pages, setPages] = useState([]);
@@ -48,7 +49,7 @@ export default function FacebookPages(props) {
     };
 
     const autoSyncPages = async () => {
-        if (!connected) return;
+        if (!canManage || !connected) return;
         setSyncing(true);
         setMessage('');
         try {
@@ -67,13 +68,14 @@ export default function FacebookPages(props) {
     useEffect(() => {
         fetchStaffUsers();
         fetchPages();
-        if (connected) {
+        if (canManage && connected) {
             autoSyncPages();
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [connected]);
+    }, [connected, canManage]);
 
     const saveAssignedStaff = async (pageId) => {
+        if (!canManage) return;
         setSavingPageId(pageId);
         setMessage('');
         try {
@@ -95,6 +97,7 @@ export default function FacebookPages(props) {
     };
 
     const subscribePage = async (pageId) => {
+        if (!canManage) return;
         setMessage('');
         try {
             const res = await axios.post(`/api/v1/facebook/pages/${pageId}/subscribe`);
@@ -110,6 +113,7 @@ export default function FacebookPages(props) {
     };
 
     const unsubscribePage = async (pageId) => {
+        if (!canManage) return;
         if (!window.confirm('Bạn có chắc muốn hủy kích hoạt Page này?')) {
             return;
         }
@@ -137,6 +141,7 @@ export default function FacebookPages(props) {
     }, [pages]);
 
     const handleConnect = () => {
+        if (!canManage) return;
         window.location.href = route('facebook.login');
     };
 
@@ -147,43 +152,50 @@ export default function FacebookPages(props) {
             description="Kết nối Page Facebook để tự động tạo khách hàng tiềm năng từ tin nhắn."
             stats={stats}
         >
+            {!canManage && (
+                <div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    Bạn chỉ xem Page được giao phụ trách (hoặc Page bạn đã kết nối). Chỉ Admin / Administrator mới đăng nhập Facebook, đồng bộ, gán phụ trách và bật webhook.
+                </div>
+            )}
             <div className="grid gap-5 lg:grid-cols-3">
-                <div className="lg:col-span-1 bg-white rounded-2xl border border-slate-200/80 p-6 shadow-card">
-                    <h3 className="font-semibold text-slate-900">Kết nối Page</h3>
-                    <p className="text-sm text-text-muted mt-1">
-                        Sau khi đăng nhập Facebook, hệ thống tự động đồng bộ danh sách Page.
-                    </p>
-                    <div className="mt-4 space-y-3">
-                        <div className="rounded-2xl border border-slate-200/80 p-4">
-                            <p className="text-xs text-text-muted">Trạng thái</p>
-                            <p className="mt-1 text-sm font-semibold text-slate-900">
-                                {connected ? 'Đã kết nối Facebook Login' : 'Chưa kết nối'}
-                            </p>
-                            {connected && expiresAt && (
-                                <p className="text-xs text-text-muted mt-1">
-                                    Hết hạn: {formatVietnamDateTime(expiresAt, String(expiresAt))}
+                {canManage && (
+                    <div className="lg:col-span-1 bg-white rounded-2xl border border-slate-200/80 p-6 shadow-card">
+                        <h3 className="font-semibold text-slate-900">Kết nối Page</h3>
+                        <p className="text-sm text-text-muted mt-1">
+                            Sau khi đăng nhập Facebook, hệ thống tự động đồng bộ danh sách Page.
+                        </p>
+                        <div className="mt-4 space-y-3">
+                            <div className="rounded-2xl border border-slate-200/80 p-4">
+                                <p className="text-xs text-text-muted">Trạng thái</p>
+                                <p className="mt-1 text-sm font-semibold text-slate-900">
+                                    {connected ? 'Đã kết nối Facebook Login' : 'Chưa kết nối'}
                                 </p>
-                            )}
-                            {syncing && (
-                                <p className="text-xs text-primary mt-2">
-                                    Đang tự động đồng bộ danh sách Page...
-                                </p>
+                                {connected && expiresAt && (
+                                    <p className="text-xs text-text-muted mt-1">
+                                        Hết hạn: {formatVietnamDateTime(expiresAt, String(expiresAt))}
+                                    </p>
+                                )}
+                                {syncing && (
+                                    <p className="text-xs text-primary mt-2">
+                                        Đang tự động đồng bộ danh sách Page...
+                                    </p>
+                                )}
+                            </div>
+                            <button
+                                type="button"
+                                onClick={handleConnect}
+                                className="w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-600 transition"
+                            >
+                                Đăng nhập Facebook
+                            </button>
+                            {message && (
+                                <p className="text-sm text-emerald-600">{message}</p>
                             )}
                         </div>
-                        <button
-                            type="button"
-                            onClick={handleConnect}
-                            className="w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-600 transition"
-                        >
-                            Đăng nhập Facebook
-                        </button>
-                        {message && (
-                            <p className="text-sm text-emerald-600">{message}</p>
-                        )}
                     </div>
-                </div>
+                )}
 
-                <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200/80 p-6 shadow-card">
+                <div className={`bg-white rounded-2xl border border-slate-200/80 p-6 shadow-card ${canManage ? 'lg:col-span-2' : 'lg:col-span-3'}`}>
                     <div className="flex items-center justify-between mb-4">
                         <h3 className="font-semibold text-slate-900">Danh sách Page</h3>
                     </div>
@@ -205,40 +217,48 @@ export default function FacebookPages(props) {
                                             <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-text-subtle">
                                                 Nhân viên phụ trách khách từ Page này
                                             </label>
-                                            <div className="flex flex-col gap-2 md:flex-row">
-                                                <select
-                                                    className="flex-1 rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                                                    value={assignedStaffDraft[page.id] || ''}
-                                                    onChange={(e) =>
-                                                        setAssignedStaffDraft((current) => ({
-                                                            ...current,
-                                                            [page.id]: e.target.value,
-                                                        }))
-                                                    }
-                                                >
-                                                    <option value="">-- Chưa chỉ định nhân viên phụ trách --</option>
-                                                    {staffUsers.map((user) => (
-                                                        <option key={user.id} value={user.id}>
-                                                            {user.name}{user.email ? ` • ${user.email}` : ''}
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                                <button
-                                                    type="button"
-                                                    className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700"
-                                                    onClick={() => saveAssignedStaff(page.id)}
-                                                    disabled={savingPageId === page.id}
-                                                >
-                                                    {savingPageId === page.id ? 'Đang lưu...' : 'Lưu phụ trách'}
-                                                </button>
-                                            </div>
+                                            {canManage ? (
+                                                <div className="flex flex-col gap-2 md:flex-row">
+                                                    <select
+                                                        className="flex-1 rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                                        value={assignedStaffDraft[page.id] || ''}
+                                                        onChange={(e) =>
+                                                            setAssignedStaffDraft((current) => ({
+                                                                ...current,
+                                                                [page.id]: e.target.value,
+                                                            }))
+                                                        }
+                                                    >
+                                                        <option value="">-- Chưa chỉ định nhân viên phụ trách --</option>
+                                                        {staffUsers.map((user) => (
+                                                            <option key={user.id} value={user.id}>
+                                                                {user.name}{user.email ? ` • ${user.email}` : ''}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                    <button
+                                                        type="button"
+                                                        className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700"
+                                                        onClick={() => saveAssignedStaff(page.id)}
+                                                        disabled={savingPageId === page.id}
+                                                    >
+                                                        {savingPageId === page.id ? 'Đang lưu...' : 'Lưu phụ trách'}
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <p className="text-sm text-slate-700">
+                                                    {page.assigned_staff_id
+                                                        ? (page.assignedStaff?.name || `Nhân sự #${page.assigned_staff_id}`)
+                                                        : 'Chưa chỉ định'}
+                                                </p>
+                                            )}
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-3">
                                         <span className={`text-xs font-semibold px-3 py-1 rounded-full ${page.is_subscribed ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
                                             {page.is_subscribed ? 'Webhook hoạt động' : 'Chưa subscribe'}
                                         </span>
-                                        {!page.is_subscribed && (
+                                        {canManage && !page.is_subscribed && (
                                             <button
                                                 type="button"
                                                 onClick={() => subscribePage(page.id)}
@@ -247,7 +267,7 @@ export default function FacebookPages(props) {
                                                 Kích hoạt
                                             </button>
                                         )}
-                                        {page.is_subscribed && (
+                                        {canManage && page.is_subscribed && (
                                             <button
                                                 type="button"
                                                 onClick={() => unsubscribePage(page.id)}

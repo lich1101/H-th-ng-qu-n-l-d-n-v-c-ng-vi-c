@@ -11,6 +11,7 @@ use App\Models\LeadType;
 use App\Models\RevenueTier;
 use App\Models\User;
 use App\Services\ClientPhoneDuplicateService;
+use App\Services\ClientStaffTransferService;
 use App\Services\LeadNotificationService;
 use App\Services\NotificationService;
 use Illuminate\Database\Eloquent\Builder;
@@ -174,26 +175,54 @@ class CRMController extends Controller
      */
     public function showClient(Request $request, Client $client): JsonResponse
     {
-        if (! $this->canAccessClient($request->user(), $client)) {
-            return response()->json(['message' => 'Không có quyền xem khách hàng.'], 403);
+        $user = $request->user();
+        $transferService = app(ClientStaffTransferService::class);
+        $pending = $transferService->pendingForClient((int) $client->id);
+
+        if ($this->canAccessClient($user, $client)) {
+            $clientRelations = [
+                'leadType',
+                'salesOwner',
+                'revenueTier',
+                'assignedDepartment',
+                'assignedStaff',
+                'facebookPage',
+            ];
+            if ($this->supportsClientCareStaff()) {
+                $clientRelations[] = 'careStaffUsers:id,name,email';
+            }
+
+            $client->load($clientRelations);
+            $client->loadCount(['opportunities', 'contracts']);
+
+            $payload = $client->toArray();
+            $payload['crm_access_mode'] = 'full';
+            if ($pending) {
+                $payload['pending_staff_transfer'] = $transferService->transferToArray($pending);
+            }
+            if ($pending && $transferService->viewerMustOnlyRespondTransfer($user, $client)) {
+                $payload['crm_access_mode'] = 'transfer_receiver_pending';
+            }
+
+            return response()->json($payload);
         }
 
-        $clientRelations = [
-            'leadType',
-            'salesOwner',
-            'revenueTier',
-            'assignedDepartment',
-            'assignedStaff',
-            'facebookPage',
-        ];
-        if ($this->supportsClientCareStaff()) {
-            $clientRelations[] = 'careStaffUsers:id,name,email';
+        if ($pending && (int) $pending->to_staff_id === (int) $user->id) {
+            return response()->json([
+                'id' => $client->id,
+                'name' => $client->name,
+                'company' => $client->company,
+                'phone' => $client->phone,
+                'email' => $client->email,
+                'assigned_staff_id' => $client->assigned_staff_id,
+                'assigned_department_id' => $client->assigned_department_id,
+                'sales_owner_id' => $client->sales_owner_id,
+                'crm_access_mode' => 'transfer_receiver_pending',
+                'pending_staff_transfer' => $transferService->transferToArray($pending),
+            ]);
         }
 
-        $client->load($clientRelations);
-        $client->loadCount(['opportunities', 'contracts']);
-
-        return response()->json($client);
+        return response()->json(['message' => 'Không có quyền xem khách hàng.'], 403);
     }
 
     public function storeClient(Request $request): JsonResponse
@@ -299,6 +328,12 @@ class CRMController extends Controller
         if (! $this->canManageClient($request->user(), $client)) {
             return response()->json(['message' => 'Không có quyền cập nhật khách hàng.'], 403);
         }
+        if (app(ClientStaffTransferService::class)->viewerMustOnlyRespondTransfer($request->user(), $client)) {
+            return response()->json([
+                'message' => 'Bạn đang chờ xác nhận phiếu chuyển phụ trách — chưa thể chỉnh sửa khách hàng cho đến khi phiếu được xử lý.',
+                'code' => 'client_transfer_receiver_pending',
+            ], 403);
+        }
         $oldAssignedStaffId = (int) ($client->assigned_staff_id ?? 0);
 
         $validated = $request->validate([
@@ -318,6 +353,20 @@ class CRMController extends Controller
             'care_staff_ids.*' => ['integer', 'exists:users,id'],
         ]);
         $user = $request->user();
+
+        if ($user->role === 'nhan_vien') {
+            if ($this->employeeAttemptedDirectAssignmentChange($validated, $client)) {
+                return response()->json([
+                    'message' => 'Nhân viên không được đổi phụ trách / phòng ban / nhóm chăm sóc trực tiếp trên form sửa. Vui lòng dùng chức năng «Chuyển phụ trách khách hàng» (phiếu chuyển giao).',
+                    'code' => 'client_reassign_requires_transfer',
+                ], 422);
+            }
+            $validated['assigned_staff_id'] = $client->assigned_staff_id;
+            $validated['assigned_department_id'] = $client->assigned_department_id;
+            $validated['sales_owner_id'] = $client->sales_owner_id;
+            unset($validated['care_staff_ids']);
+        }
+
         $validated = $this->resolveClientAssignment($user, $validated, $client);
 
         if (! empty($validated['assigned_staff_id']) && empty($validated['sales_owner_id'])) {
@@ -631,9 +680,14 @@ class CRMController extends Controller
         }
 
         if ($user->role === 'nhan_vien') {
-            $validated['assigned_staff_id'] = (int) $user->id;
-            $validated['assigned_department_id'] = (int) ($user->department_id ?: $requestedDepartmentId);
-            $validated['care_staff_ids'] = [(int) $user->id];
+            if ($client === null) {
+                $validated['assigned_staff_id'] = (int) $user->id;
+                $validated['assigned_department_id'] = (int) ($user->department_id ?: $requestedDepartmentId);
+                $validated['care_staff_ids'] = [(int) $user->id];
+
+                return $validated;
+            }
+
             return $validated;
         }
 
@@ -716,6 +770,61 @@ class CRMController extends Controller
         }
 
         return $validated;
+    }
+
+    /**
+     * Nhân viên chỉ được đổi phụ trách qua phiếu chuyển giao — không qua PUT sửa khách.
+     */
+    private function employeeAttemptedDirectAssignmentChange(array $validated, Client $client): bool
+    {
+        $norm = static function ($v): int {
+            return (int) ($v ?? 0);
+        };
+
+        if (array_key_exists('assigned_staff_id', $validated)) {
+            if ($norm($validated['assigned_staff_id'] ?? null) !== $norm($client->assigned_staff_id)) {
+                return true;
+            }
+        }
+        if (array_key_exists('sales_owner_id', $validated)) {
+            if ($norm($validated['sales_owner_id'] ?? null) !== $norm($client->sales_owner_id)) {
+                return true;
+            }
+        }
+        if (array_key_exists('assigned_department_id', $validated)) {
+            if ($norm($validated['assigned_department_id'] ?? null) !== $norm($client->assigned_department_id)) {
+                return true;
+            }
+        }
+        if (array_key_exists('care_staff_ids', $validated) && $this->supportsClientCareStaff()) {
+            $incoming = collect((array) ($validated['care_staff_ids'] ?? []))
+                ->map(function ($id) {
+                    return (int) $id;
+                })
+                ->filter(function (int $id) {
+                    return $id > 0;
+                })
+                ->unique()
+                ->sort()
+                ->values()
+                ->all();
+            $existing = $client->careStaffUsers()
+                ->pluck('id')
+                ->map(function ($id) {
+                    return (int) $id;
+                })
+                ->filter(function (int $id) {
+                    return $id > 0;
+                })
+                ->unique()
+                ->sort()
+                ->values()
+                ->all();
+
+            return $incoming !== $existing;
+        }
+
+        return false;
     }
 
     private function syncClientCareStaff(Client $client, array $careStaffIds, int $assignedBy): void

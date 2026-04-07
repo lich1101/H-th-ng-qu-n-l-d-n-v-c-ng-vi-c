@@ -11,6 +11,7 @@ use App\Models\Project;
 use App\Models\Task;
 use App\Models\TaskItem;
 use App\Models\User;
+use App\Services\ClientStaffTransferService;
 use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -23,6 +24,49 @@ class ClientFlowController extends Controller
     public function show(Client $client, Request $request): JsonResponse
     {
         $user = $request->user();
+        $transferService = app(ClientStaffTransferService::class);
+
+        if ($transferService->viewerMustOnlyRespondTransfer($user, $client)) {
+            $pending = $transferService->pendingForClient((int) $client->id);
+
+            return response()->json([
+                'client' => [
+                    'id' => $client->id,
+                    'name' => $client->name,
+                    'company' => $client->company,
+                    'email' => $client->email,
+                    'phone' => $client->phone,
+                    'notes' => null,
+                    'lead_type_id' => $client->lead_type_id,
+                    'assigned_department_id' => $client->assigned_department_id,
+                    'assigned_staff_id' => $client->assigned_staff_id,
+                    'sales_owner_id' => $client->sales_owner_id,
+                    'lead_source' => $client->lead_source,
+                    'lead_channel' => $client->lead_channel,
+                    'total_revenue' => $client->total_revenue,
+                    'has_purchased' => $client->has_purchased,
+                    'assigned_staff' => null,
+                    'sales_owner' => null,
+                    'care_staff_users' => [],
+                ],
+                'opportunities' => [],
+                'contracts' => [],
+                'projects' => [],
+                'tasks' => [],
+                'items' => [],
+                'care_notes' => [],
+                'comments_history' => [],
+                'crm_access_mode' => 'transfer_receiver_pending',
+                'pending_staff_transfer' => $pending ? $transferService->transferToArray($pending) : null,
+                'permissions' => [
+                    'can_add_care_note' => false,
+                    'can_add_comment' => false,
+                    'can_manage_client' => false,
+                    'can_delete_any_comment' => false,
+                ],
+            ]);
+        }
+
         if (! $this->canAccessClient($user, $client)) {
             return response()->json(['message' => 'Không có quyền xem luồng khách hàng.'], 403);
         }
@@ -132,6 +176,9 @@ class ClientFlowController extends Controller
                 ->get()
             : collect();
 
+        $transferService = app(ClientStaffTransferService::class);
+        $pendingTransfer = $transferService->pendingForClient((int) $client->id);
+
         return response()->json([
             'client' => [
                 'id' => $client->id,
@@ -223,6 +270,8 @@ class ClientFlowController extends Controller
                 'can_manage_client' => $this->canManageClient($user, $client),
                 'can_delete_any_comment' => in_array($user?->role, ['admin', 'administrator'], true),
             ],
+            'crm_access_mode' => 'full',
+            'pending_staff_transfer' => $pendingTransfer ? $transferService->transferToArray($pendingTransfer) : null,
         ]);
     }
 

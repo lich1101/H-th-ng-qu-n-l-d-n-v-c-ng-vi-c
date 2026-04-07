@@ -159,7 +159,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('/crm-mini', function () {
         return Inertia::render('CRM');
-    })->name('crm.index')->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
+    })->name('crm.index')->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
 
     Route::get('/khach-hang/{client}/luong', function (Client $client) {
         return Inertia::render('ClientFlow', [
@@ -200,18 +200,22 @@ Route::middleware(['auth', 'verified'])->group(function () {
     })->name('product-categories.index')->middleware('role:admin');
 
     Route::get('/form-tu-van', function () {
-        return Inertia::render('LeadForms');
-    })->name('lead-forms.index')->middleware('role:admin');
+        $user = request()->user();
+
+        return Inertia::render('LeadForms', [
+            'canManageLeadForms' => in_array((string) ($user->role ?? ''), ['admin', 'administrator'], true),
+        ]);
+    })->name('lead-forms.index')->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
 
     Route::get('/facebook/login', [FacebookAuthController::class, 'redirect'])
         ->name('facebook.login')
-        ->middleware('role:admin,quan_ly');
+        ->middleware('role:admin,administrator');
     Route::get('/facebook/callback', [FacebookAuthController::class, 'callback'])
         ->name('facebook.callback')
-        ->middleware('role:admin,quan_ly');
+        ->middleware('role:admin,administrator');
     Route::post('/facebook/disconnect', [FacebookAuthController::class, 'disconnect'])
         ->name('facebook.disconnect')
-        ->middleware('role:admin,quan_ly');
+        ->middleware('role:admin,administrator');
 
     Route::get('/facebook-pages', function () {
         $user = request()->user();
@@ -222,8 +226,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
         return Inertia::render('FacebookPages', [
             'facebookConnected' => $connected,
             'facebookTokenExpiresAt' => optional($expiresAt)->toIso8601String(),
+            'canManageFacebookPages' => in_array((string) ($user->role ?? ''), ['admin', 'administrator'], true),
         ]);
-    })->name('facebook.pages')->middleware('role:admin,quan_ly');
+    })->name('facebook.pages')->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
 
     Route::get('/trang-thai-khach-hang', function () {
         return Inertia::render('LeadTypes');

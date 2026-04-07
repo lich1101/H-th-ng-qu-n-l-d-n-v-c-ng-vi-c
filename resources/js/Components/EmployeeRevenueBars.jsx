@@ -35,9 +35,9 @@ export default function EmployeeRevenueBars({ data = [] }) {
     }
 
     return (
-        <div className="overflow-x-auto rounded-[20px] border border-slate-200/80 bg-white">
-            <table className="min-w-full divide-y divide-slate-200 text-sm">
-                <thead className="bg-slate-100/90 text-xs uppercase tracking-[0.12em] text-slate-600">
+        <div className="h-[min(70vh,520px)] w-full max-w-full overflow-auto rounded-[20px] border border-slate-200/80 bg-white">
+            <table className="min-w-[920px] w-full divide-y divide-slate-200 text-sm">
+                <thead className="sticky top-0 z-10 bg-slate-100/95 text-xs uppercase tracking-[0.12em] text-slate-600 shadow-[0_1px_0_0_rgba(226,232,240,0.9)]">
                     <tr>
                         <th className="px-4 py-3 text-left font-semibold">Nhân viên</th>
                         <th className="px-4 py-3 text-left font-semibold">Doanh số ký</th>

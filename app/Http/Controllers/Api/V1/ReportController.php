@@ -751,7 +751,6 @@ class ReportController extends Controller
 
         $staffSalesBreakdown = $staffSalesBreakdown
             ->sortByDesc('revenue')
-            ->take(8)
             ->values();
 
         $employeeStats = $employeeUsers
