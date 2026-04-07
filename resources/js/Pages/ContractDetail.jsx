@@ -236,6 +236,7 @@ export default function ContractDetail(props) {
         end_date: '',
         notes: '',
     });
+    const [workflowTopics, setWorkflowTopics] = useState([]);
     const [projectForm, setProjectForm] = useState({
         name: '',
         service_type: DEFAULT_SERVICES[0].value,
@@ -247,6 +248,8 @@ export default function ContractDetail(props) {
         owner_id: '',
         repo_url: '',
         website_url: '',
+        workflow_topic_id: '',
+        budget: '',
     });
 
     const statusOptions = useMemo(() => {
@@ -343,9 +346,14 @@ export default function ContractDetail(props) {
             const detail = res.data || null;
             setContract(detail);
 
-            // Set default project name based on contract
             if (detail) {
-                setProjectForm((s) => ({ ...s, name: detail.title || '' }));
+                setProjectForm((s) => ({
+                    ...s,
+                    name: detail.title || '',
+                    start_date: toDateInputValue(detail.start_date),
+                    deadline: toDateInputValue(detail.end_date),
+                    budget: String(parseNumberInput(resolveContractValue(detail)) || ''),
+                }));
             }
         } catch (e) {
             toast.error(e?.response?.data?.message || 'Không tải được chi tiết hợp đồng.');
@@ -356,15 +364,17 @@ export default function ContractDetail(props) {
 
     const fetchMetaAndOwners = async () => {
         try {
-            const [metaRes, ownerRes, collectorRes, careStaffRes, clientRes, productRes] = await Promise.all([
+            const [metaRes, ownerRes, collectorRes, careStaffRes, clientRes, productRes, workflowRes] = await Promise.all([
                 axios.get('/api/v1/meta').catch(() => ({ data: {} })),
                 axios.get('/api/v1/users/lookup', { params: { purpose: 'project_owner' } }).catch(() => ({ data: { data: [] } })),
                 axios.get('/api/v1/users/lookup', { params: { purpose: 'contract_collector' } }).catch(() => ({ data: { data: [] } })),
                 axios.get('/api/v1/users/lookup', { params: { purpose: 'contract_care_staff' } }).catch(() => ({ data: { data: [] } })),
                 axios.get('/api/v1/crm/clients', { params: { per_page: 500, page: 1, sort_by: 'last_activity_at', sort_dir: 'desc' } }).catch(() => ({ data: { data: [] } })),
                 axios.get('/api/v1/products', { params: { per_page: 500 } }).catch(() => ({ data: { data: [] } })),
+                axios.get('/api/v1/workflow-topics', { params: { per_page: 200, is_active: true } }).catch(() => ({ data: { data: [] } })),
             ]);
             setMeta(metaRes.data || {});
+            setWorkflowTopics(workflowRes.data?.data || []);
             setProjectOwners(ownerRes.data?.data || []);
             setCollectorsLookup(collectorRes.data?.data || []);
             setCareStaffUsers(careStaffRes.data?.data || []);
@@ -405,18 +415,30 @@ export default function ContractDetail(props) {
             return;
         }
         try {
+            const rawBudget = projectForm.budget !== '' && projectForm.budget != null
+                ? parseNumberInput(projectForm.budget)
+                : 0;
+            const budgetNum = rawBudget > 0 ? rawBudget : resolveContractValue(contract);
+
             const payload = {
-                ...projectForm,
                 contract_id: contract.id,
                 client_id: contract.client_id,
-                service_type_other: projectForm.service_type === 'khac' ? projectForm.service_type_other : null,
+                name: projectForm.name.trim(),
+                service_type: projectForm.service_type,
+                service_type_other: projectForm.service_type === 'khac' ? (projectForm.service_type_other || '').trim() || null : null,
+                workflow_topic_id: projectForm.workflow_topic_id ? Number(projectForm.workflow_topic_id) : null,
+                start_date: projectForm.start_date || null,
+                deadline: projectForm.deadline || null,
+                budget: budgetNum,
+                status: projectForm.status || null,
+                customer_requirement: projectForm.customer_requirement || null,
                 owner_id: projectForm.owner_id ? Number(projectForm.owner_id) : null,
-                budget: resolveContractValue(contract),
+                repo_url: projectForm.repo_url || null,
+                website_url: projectForm.website_url || null,
             };
 
             const res = await axios.post('/api/v1/projects/from-contract', payload).catch(async (e) => {
-               // if fallback fails, we create manually via /projects
-               return await axios.post('/api/v1/projects', payload);
+                return await axios.post('/api/v1/projects', payload);
             });
 
             toast.success('Đã tạo dự án thành công.');
@@ -743,7 +765,18 @@ export default function ContractDetail(props) {
                             )}
                             {canCreateProject && contract.approval_status === 'approved' && !contract.project_id && (
                                 <button
-                                    onClick={() => setShowProjectForm(true)}
+                                    type="button"
+                                    onClick={() => {
+                                        setProjectForm((s) => ({
+                                            ...s,
+                                            name: contract.title || '',
+                                            start_date: toDateInputValue(contract.start_date),
+                                            deadline: toDateInputValue(contract.end_date),
+                                            budget: String(parseNumberInput(resolveContractValue(contract)) || ''),
+                                            workflow_topic_id: '',
+                                        }));
+                                        setShowProjectForm(true);
+                                    }}
                                     className="rounded-xl bg-primary px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-primary/90"
                                 >
                                     + Tạo Dự Án Triển Khai
@@ -1214,6 +1247,39 @@ export default function ContractDetail(props) {
                             />
                         </div>
                     )}
+                    <div>
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Barem công việc theo topic</label>
+                        <select
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            value={projectForm.workflow_topic_id}
+                            onChange={(e) => setProjectForm((s) => ({ ...s, workflow_topic_id: e.target.value }))}
+                        >
+                            <option value="">Không dùng barem (tạo dự án trống)</option>
+                            {workflowTopics.map((topic) => (
+                                <option key={topic.id} value={String(topic.id)}>
+                                    {topic.name}{topic.code ? ` • ${topic.code}` : ''} ({topic.tasks?.length || 0} công việc mẫu)
+                                </option>
+                            ))}
+                        </select>
+                        <p className="mt-1 text-xs text-text-muted">
+                            Nếu chọn barem, hệ thống tự sinh công việc và đầu việc mẫu theo dự án (giống màn Tạo dự án).
+                        </p>
+                    </div>
+                    <div>
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Ngân sách dự án (VNĐ)</label>
+                        <input
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            type="number"
+                            min="0"
+                            step="1"
+                            placeholder="Mặc định theo giá trị hợp đồng"
+                            value={projectForm.budget}
+                            onChange={(e) => setProjectForm((s) => ({ ...s, budget: e.target.value }))}
+                        />
+                        <p className="mt-1 text-xs text-text-muted">
+                            Để trống hoặc 0 để dùng đúng giá trị hợp đồng: {formatCurrency(resolveContractValue(contract))} VNĐ.
+                        </p>
+                    </div>
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Trạng thái</label>

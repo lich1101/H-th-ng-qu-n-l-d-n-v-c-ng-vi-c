@@ -8,8 +8,10 @@ use App\Models\FacebookMessage;
 use App\Models\FacebookPage;
 use App\Models\LeadType;
 use App\Models\User;
+use App\Services\ClientPhoneDuplicateService;
 use App\Services\LeadNotificationService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 
@@ -74,7 +76,7 @@ class FacebookWebhookController extends Controller
                 $primaryPhone = $phones[0] ?? null;
                 if ($primaryPhone) {
                     $profile = $this->fetchProfile($senderId, $page->getRawOriginal('access_token'));
-                    $existingByPhone = $this->findClientByPhone($primaryPhone);
+                    $existingByPhone = app(ClientPhoneDuplicateService::class)->findExistingByNormalizedPhone($primaryPhone);
                     if (! $existingByPhone) {
                         $assignedStaffId = $page->assigned_staff_id ? (int) $page->assigned_staff_id : null;
                         $assignedDepartmentId = null;
@@ -102,20 +104,39 @@ class FacebookWebhookController extends Controller
                             'Page Facebook: '.$page->name
                         );
                     } else {
+                        $phoneService = app(ClientPhoneDuplicateService::class);
                         $client = $existingByPhone;
-                        $shouldUpdateName = empty($client->name)
-                            || str_starts_with((string) $client->name, 'Facebook User ');
-                        if ($shouldUpdateName && ! empty($profile['name'])) {
-                            $client->name = $profile['name'];
+                        $incomingName = trim((string) ($profile['name'] ?? ''));
+                        if ($incomingName === '') {
+                            $incomingName = "Facebook User {$senderId}";
                         }
+                        $client->name = $phoneService->mergeDisplayNames($client->name, $incomingName);
                         if (empty($client->facebook_psid)) {
                             $client->facebook_psid = $senderId;
                         }
                         if (empty($client->facebook_page_id)) {
                             $client->facebook_page_id = $pageId;
                         }
-                        if ($client->isDirty()) {
-                            $client->save();
+                        if ($text !== null && trim((string) $text) !== '') {
+                            $t = trim((string) $text);
+                            $client->lead_message = trim(
+                                ($client->lead_message ? $client->lead_message."\n\n" : '')
+                                .'[Page '.$page->name.'] '.$t
+                            );
+                        }
+                        $client->save();
+                        try {
+                            app(LeadNotificationService::class)->notifyPhoneDuplicateMerged(
+                                $client->fresh(),
+                                $incomingName,
+                                'Page Facebook: '.$page->name,
+                                $page->assigned_staff_id ? (int) $page->assigned_staff_id : null
+                            );
+                        } catch (\Throwable $e) {
+                            Log::warning('notifyPhoneDuplicateMerged failed (Facebook webhook)', [
+                                'client_id' => (int) $client->id,
+                                'error' => $e->getMessage(),
+                            ]);
                         }
                     }
                 }
@@ -240,23 +261,4 @@ class FacebookWebhookController extends Controller
         return $digits;
     }
 
-    private function findClientByPhone(string $normalized): ?Client
-    {
-        if ($normalized === '') {
-            return null;
-        }
-
-        try {
-            $client = Client::query()
-                ->whereRaw("REGEXP_REPLACE(phone, '[^0-9]', '') = ?", [$normalized])
-                ->first();
-            if ($client) {
-                return $client;
-            }
-        } catch (\Throwable $e) {
-            // ignore and fallback
-        }
-
-        return Client::query()->where('phone', $normalized)->first();
-    }
 }

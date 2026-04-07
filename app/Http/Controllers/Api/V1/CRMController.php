@@ -10,6 +10,7 @@ use App\Models\Department;
 use App\Models\LeadType;
 use App\Models\RevenueTier;
 use App\Models\User;
+use App\Services\ClientPhoneDuplicateService;
 use App\Services\LeadNotificationService;
 use App\Services\NotificationService;
 use Illuminate\Database\Eloquent\Builder;
@@ -195,6 +196,19 @@ class CRMController extends Controller
             $validated['sales_owner_id'] = $validated['assigned_staff_id'];
         }
 
+        $phoneDup = ! empty($validated['phone'])
+            ? app(ClientPhoneDuplicateService::class)->findExistingByPhone($validated['phone'])
+            : null;
+        if ($phoneDup) {
+            return response()->json([
+                'message' => 'Khách hàng với số điện thoại này đã tồn tại. Tên hiện tại: '.$phoneDup->name.'.',
+                'existing_client' => [
+                    'id' => (int) $phoneDup->id,
+                    'name' => $phoneDup->name,
+                ],
+            ], 422);
+        }
+
         try {
             $client = Client::create($validated);
         } catch (\Throwable $e) {
@@ -262,6 +276,23 @@ class CRMController extends Controller
         if (! empty($validated['assigned_staff_id']) && empty($validated['sales_owner_id'])) {
             $validated['sales_owner_id'] = $validated['assigned_staff_id'];
         }
+
+        $phoneDup = ! empty($validated['phone'])
+            ? app(ClientPhoneDuplicateService::class)->findExistingByPhone(
+                $validated['phone'],
+                (int) $client->id
+            )
+            : null;
+        if ($phoneDup) {
+            return response()->json([
+                'message' => 'Khách hàng với số điện thoại này đã tồn tại. Tên hiện tại: '.$phoneDup->name.'.',
+                'existing_client' => [
+                    'id' => (int) $phoneDup->id,
+                    'name' => $phoneDup->name,
+                ],
+            ], 422);
+        }
+
         $client->update($validated);
 
         if (array_key_exists('care_staff_ids', $validated)) {

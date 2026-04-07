@@ -7,6 +7,7 @@ use App\Models\Client;
 use App\Models\LeadForm;
 use App\Models\LeadType;
 use App\Models\User;
+use App\Services\ClientPhoneDuplicateService;
 use App\Services\LeadNotificationService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -120,30 +121,69 @@ class LeadFormPublicController extends Controller
                 ->value('department_id');
         }
 
-        $client = Client::create([
-            'name' => $clientPayload['name'],
-            'company' => $clientPayload['company'],
-            'email' => $clientPayload['email'],
-            'phone' => $clientPayload['phone'],
-            'lead_type_id' => $leadTypeId,
-            'lead_source' => $clientPayload['lead_source'] ?: 'lead_form',
-            'lead_channel' => $clientPayload['lead_channel'] ?: 'iframe:'.$form->slug,
-            'lead_message' => $clientPayload['lead_message'],
-            'notes' => $clientPayload['notes'],
-            'assigned_department_id' => $assignedDepartmentId,
-            'assigned_staff_id' => $assignedStaffId,
-            // New fields
-            'external_code' => $clientPayload['external_code'] ?? null,
-            'customer_status_label' => $clientPayload['customer_status_label'] ?? null,
-            'customer_level' => $clientPayload['customer_level'] ?? null,
-            'company_size' => $clientPayload['company_size'] ?? null,
-            'product_categories' => $clientPayload['product_categories'] ?? null,
-        ]);
+        $phoneService = app(ClientPhoneDuplicateService::class);
+        $existingByPhone = $phoneService->findExistingByPhone($clientPayload['phone'] ?? null);
 
-        app(LeadNotificationService::class)->notifyNewLead(
-            $client,
-            'Form: '.$form->name
-        );
+        if ($existingByPhone) {
+            $mergedName = $phoneService->mergeDisplayNames($existingByPhone->name, $clientPayload['name']);
+            $existingByPhone->name = $mergedName;
+            if (! empty($clientPayload['lead_message'])) {
+                $block = '[Form '.$form->name.'] '.$clientPayload['lead_message'];
+                $existingByPhone->lead_message = trim(
+                    ($existingByPhone->lead_message ? $existingByPhone->lead_message."\n\n" : '').$block
+                );
+            }
+            if (! empty($clientPayload['notes'])) {
+                $existingByPhone->notes = trim(
+                    ($existingByPhone->notes ? $existingByPhone->notes."\n\n" : '').$clientPayload['notes']
+                );
+            }
+            if (empty($existingByPhone->email) && ! empty($clientPayload['email'])) {
+                $existingByPhone->email = $clientPayload['email'];
+            }
+            if (empty($existingByPhone->company) && ! empty($clientPayload['company'])) {
+                $existingByPhone->company = $clientPayload['company'];
+            }
+            $existingByPhone->save();
+
+            try {
+                app(LeadNotificationService::class)->notifyPhoneDuplicateMerged(
+                    $existingByPhone->fresh(),
+                    (string) ($clientPayload['name'] ?? ''),
+                    'Form: '.$form->name,
+                    $assignedStaffId ?: null
+                );
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('notifyPhoneDuplicateMerged failed (lead form)', [
+                    'client_id' => (int) $existingByPhone->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        } else {
+            $client = Client::create([
+                'name' => $clientPayload['name'],
+                'company' => $clientPayload['company'],
+                'email' => $clientPayload['email'],
+                'phone' => $clientPayload['phone'],
+                'lead_type_id' => $leadTypeId,
+                'lead_source' => $clientPayload['lead_source'] ?: 'lead_form',
+                'lead_channel' => $clientPayload['lead_channel'] ?: 'iframe:'.$form->slug,
+                'lead_message' => $clientPayload['lead_message'],
+                'notes' => $clientPayload['notes'],
+                'assigned_department_id' => $assignedDepartmentId,
+                'assigned_staff_id' => $assignedStaffId,
+                'external_code' => $clientPayload['external_code'] ?? null,
+                'customer_status_label' => $clientPayload['customer_status_label'] ?? null,
+                'customer_level' => $clientPayload['customer_level'] ?? null,
+                'company_size' => $clientPayload['company_size'] ?? null,
+                'product_categories' => $clientPayload['product_categories'] ?? null,
+            ]);
+
+            app(LeadNotificationService::class)->notifyNewLead(
+                $client,
+                'Form: '.$form->name
+            );
+        }
 
         $style = $form->resolvedStyleConfig();
         $successMessage = $style['success_message'] ?: 'Cảm ơn bạn đã gửi thông tin!';

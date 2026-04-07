@@ -92,6 +92,85 @@ class LeadNotificationService
         );
     }
 
+    /**
+     * Trùng SĐT từ form công khai / fanpage: đã gộp tên — báo admin + người phụ trách (và quản lý phòng nếu có).
+     */
+    public function notifyPhoneDuplicateMerged(
+        Client $client,
+        string $submittedName,
+        string $sourceLabel,
+        ?int $formAssignedStaffId = null,
+        bool $afterResponse = true
+    ): void {
+        $setting = AppSetting::query()->first();
+        if ($setting && $setting->lead_capture_notification_enabled === false) {
+            return;
+        }
+
+        $client->loadMissing(['assignedStaff.departmentRelation.manager']);
+        $adminIds = User::query()
+            ->whereIn('role', ['admin', 'administrator'])
+            ->where('is_active', true)
+            ->pluck('id')
+            ->map(function ($id) {
+                return (int) $id;
+            })
+            ->all();
+
+        $userIds = $adminIds;
+        $responsible = $client->assignedStaff;
+        if ($responsible && $responsible->id) {
+            $userIds[] = (int) $responsible->id;
+        }
+        if ($formAssignedStaffId) {
+            $userIds[] = (int) $formAssignedStaffId;
+        }
+        $manager = optional(optional($responsible)->departmentRelation)->manager;
+        if ($manager && $manager->id && $manager->is_active) {
+            $userIds[] = (int) $manager->id;
+        }
+        $userIds = array_values(array_unique(array_filter($userIds)));
+        if (empty($userIds)) {
+            return;
+        }
+
+        $mergedName = trim((string) ($client->name ?: ''));
+        $phone = trim((string) ($client->phone ?: 'Chưa có SĐT'));
+        $body = sprintf(
+            'Trùng số điện thoại — đã gộp tên gửi lên ("%s") với hồ sơ #%d. Tên sau gộp: %s • SĐT: %s • Nguồn: %s',
+            trim($submittedName),
+            (int) $client->id,
+            $mergedName !== '' ? $mergedName : '(trống)',
+            $phone,
+            $sourceLabel
+        );
+
+        $payload = [
+            'type' => 'crm_phone_duplicate_merged',
+            'category' => 'crm_realtime',
+            'client_id' => (int) $client->id,
+            'source_label' => $sourceLabel,
+        ];
+
+        if ($afterResponse) {
+            $this->notifier->notifyUsersAfterResponse(
+                $userIds,
+                'Trùng SĐT — đã gộp tên khách hàng',
+                $body,
+                $payload
+            );
+
+            return;
+        }
+
+        $this->notifier->notifyUsers(
+            $userIds,
+            'Trùng SĐT — đã gộp tên khách hàng',
+            $body,
+            $payload
+        );
+    }
+
     public function makeSourceLabel(Client $client): string
     {
         $source = trim((string) ($client->lead_source ?: 'crm'));
