@@ -183,7 +183,8 @@ class ClientStaffTransferService
     }
 
     /**
-     * Gửi thông báo tới các bên liên quan, trừ người thực hiện hành động.
+     * Gửi thông báo tới toàn bộ bên liên quan — không loại trừ người thực hiện hành động,
+     * để đảm bảo họ cũng nhận được thông báo xác nhận.
      */
     public function notifyExcept(
         ClientStaffTransferRequest $transfer,
@@ -193,7 +194,7 @@ class ClientStaffTransferService
         int $exceptUserId
     ): void {
         $targets = collect($this->stakeholderUserIds($transfer))
-            ->filter(fn ($id) => (int) $id !== (int) $exceptUserId && (int) $id > 0)
+            ->filter(fn ($id) => (int) $id > 0)
             ->values()
             ->all();
 

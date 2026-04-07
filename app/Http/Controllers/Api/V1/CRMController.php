@@ -15,6 +15,7 @@ use App\Services\ClientPhoneDuplicateService;
 use App\Services\ClientStaffTransferService;
 use App\Services\LeadNotificationService;
 use App\Services\NotificationService;
+use App\Services\StaffFilterOptionsService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -23,6 +24,9 @@ use Illuminate\Support\Facades\Schema;
 
 class CRMController extends Controller
 {
+    /** @var \Illuminate\Support\Collection<int, int>|null Bộ id nhân sự được phép lọc CRM (nhan_vien), khớp /staff-filter-options?context=crm_clients */
+    private $crmNhanVienFilterStaffIds = null;
+
     public function clients(Request $request): JsonResponse
     {
         $clientRelations = [
@@ -656,7 +660,18 @@ class CRMController extends Controller
         }
 
         if ($viewer->role === 'nhan_vien') {
-            return (int) $viewer->id === $staffId;
+            if ($this->crmNhanVienFilterStaffIds === null) {
+                $this->crmNhanVienFilterStaffIds = app(StaffFilterOptionsService::class)
+                    ->forCrmClients($viewer)
+                    ->pluck('id')
+                    ->map(function ($id) {
+                        return (int) $id;
+                    })
+                    ->unique()
+                    ->values();
+            }
+
+            return $this->crmNhanVienFilterStaffIds->contains($staffId);
         }
 
         return false;

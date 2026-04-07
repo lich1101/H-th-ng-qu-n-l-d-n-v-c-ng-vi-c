@@ -10,29 +10,19 @@ use App\Models\User;
 class ContractApproverIds
 {
     /**
+     * Trả về toàn bộ admin/ke_toan đang hoạt động — không loại trừ ai,
+     * kể cả người vừa tạo hành động, để đảm bảo họ cũng nhận được thông báo.
+     *
      * @return array<int, int>
      */
     public static function query(?int $excludeUserId = null): array
     {
-        $ids = User::query()
+        return User::query()
             ->whereIn('role', ['admin', 'administrator', 'ke_toan'])
             ->where('is_active', true)
             ->pluck('id')
-            ->map(function ($id) {
-                return (int) $id;
-            })
+            ->map(fn ($id) => (int) $id)
             ->values()
             ->all();
-
-        if ($excludeUserId === null || $excludeUserId <= 0) {
-            return $ids;
-        }
-
-        $withoutActor = array_values(array_filter($ids, function (int $id) use ($excludeUserId) {
-            return $id !== $excludeUserId;
-        }));
-
-        // Nếu chỉ còn 1 admin/kế toán (tự gửi), vẫn cần ít nhất một người nhận thông báo để duyệt.
-        return $withoutActor !== [] ? $withoutActor : $ids;
     }
 }

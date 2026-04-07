@@ -8,6 +8,7 @@ use App\Models\Opportunity;
 use App\Models\OpportunityStatus;
 use App\Models\User;
 use App\Services\NotificationService;
+use App\Services\StaffFilterOptionsService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\JsonResponse;
@@ -16,6 +17,9 @@ use Illuminate\Validation\Rule;
 
 class OpportunityController extends Controller
 {
+    /** @var \Illuminate\Support\Collection<int, int>|null Khớp staff-filter-options?context=opportunities cho nhan_vien */
+    private $opportunityNhanVienFilterStaffIds = null;
+
     public function index(Request $request): JsonResponse
     {
         $viewer = $request->user();
@@ -337,7 +341,18 @@ class OpportunityController extends Controller
         }
 
         if ($viewer->role === 'nhan_vien') {
-            return (int) $viewer->id === $staffId;
+            if ($this->opportunityNhanVienFilterStaffIds === null) {
+                $this->opportunityNhanVienFilterStaffIds = app(StaffFilterOptionsService::class)
+                    ->forOpportunities($viewer)
+                    ->pluck('id')
+                    ->map(function ($id) {
+                        return (int) $id;
+                    })
+                    ->unique()
+                    ->values();
+            }
+
+            return $this->opportunityNhanVienFilterStaffIds->contains($staffId);
         }
 
         return false;
