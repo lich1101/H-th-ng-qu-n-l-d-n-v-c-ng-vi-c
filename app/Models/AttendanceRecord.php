@@ -29,6 +29,7 @@ class AttendanceRecord extends Model
         'note',
         'attendance_request_id',
         'approved_by',
+        'edited_after_wifi',
     ];
 
     protected $casts = [
@@ -39,6 +40,7 @@ class AttendanceRecord extends Model
         'minutes_late' => 'integer',
         'default_work_units' => 'float',
         'work_units' => 'float',
+        'edited_after_wifi' => 'boolean',
     ];
 
     public function user()
@@ -54,5 +56,10 @@ class AttendanceRecord extends Model
     public function approver()
     {
         return $this->belongsTo(User::class, 'approved_by');
+    }
+
+    public function editLogs()
+    {
+        return $this->hasMany(AttendanceRecordEditLog::class, 'attendance_record_id')->orderByDesc('created_at');
     }
 }

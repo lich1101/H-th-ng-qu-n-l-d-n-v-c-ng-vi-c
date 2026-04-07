@@ -55,7 +55,7 @@ export default function Opportunities(props) {
     const currentUserId = Number(props?.auth?.user?.id || 0) || null;
     const canCreate = ['admin', 'administrator', 'quan_ly', 'nhan_vien'].includes(userRole);
     const canManageStatuses = ['admin', 'administrator'].includes(userRole);
-    const canDelete = ['admin', 'administrator'].includes(userRole);
+    const canDelete = canCreate;
 
     const [opportunities, setOpportunities] = useState([]);
     const [opportunityMeta, setOpportunityMeta] = useState({ current_page: 1, last_page: 1, total: 0 });
@@ -725,15 +725,26 @@ export default function Opportunities(props) {
                                     .filter(Boolean);
 
                                 return (
-                                    <tr key={item.id} className="border-b border-slate-100 align-top">
+                                    <tr
+                                        key={item.id}
+                                        role="link"
+                                        tabIndex={0}
+                                        aria-label={`Mở chi tiết cơ hội: ${item.title || 'Không tiêu đề'}`}
+                                        className="cursor-pointer border-b border-slate-100 align-top transition-colors hover:bg-slate-50/90 focus-visible:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                                        onClick={() => {
+                                            window.location.href = route('opportunities.detail', item.id);
+                                        }}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' || e.key === ' ') {
+                                                e.preventDefault();
+                                                window.location.href = route('opportunities.detail', item.id);
+                                            }
+                                        }}
+                                    >
                                         <td className="py-3">
-                                            <button
-                                                type="button"
-                                                className="text-left font-semibold text-slate-900 hover:text-primary hover:underline"
-                                                onClick={() => { window.location.href = route('opportunities.detail', item.id); }}
-                                            >
+                                            <div className="text-left font-semibold text-slate-900">
                                                 {item.title || '—'}
-                                            </button>
+                                            </div>
                                             <div className="mt-1 text-xs text-text-muted">
                                                 {item.opportunity_type || 'Chưa phân loại'}
                                             </div>
@@ -748,7 +759,8 @@ export default function Opportunities(props) {
                                                 <button
                                                     type="button"
                                                     className="font-semibold text-primary hover:underline"
-                                                    onClick={() => {
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
                                                         window.location.href = route('crm.flow', clientId);
                                                     }}
                                                 >
@@ -783,7 +795,10 @@ export default function Opportunities(props) {
                                                     <button
                                                         type="button"
                                                         className="rounded-lg border border-slate-200 px-2.5 py-1.5 font-semibold text-slate-700"
-                                                        onClick={() => openEditForm(item)}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            openEditForm(item);
+                                                        }}
                                                     >
                                                         Sửa
                                                     </button>
@@ -792,7 +807,10 @@ export default function Opportunities(props) {
                                                     <button
                                                         type="button"
                                                         className="rounded-lg border border-rose-200 px-2.5 py-1.5 font-semibold text-rose-600"
-                                                        onClick={() => deleteOpportunity(item)}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            deleteOpportunity(item);
+                                                        }}
                                                     >
                                                         Xóa
                                                     </button>

@@ -47,9 +47,14 @@ const requestTypeOptions = [
     { value: 'leave_request', label: 'Nghỉ phép' },
 ];
 
-const approvalModeOptions = [
-    { value: 'full_work', label: 'Duyệt đủ công' },
-    { value: 'no_change', label: 'Duyệt không đủ công' },
+const lateApprovalModeOptions = [
+    { value: 'full_work', label: 'Duyệt đủ công (theo giờ trong đơn)' },
+    { value: 'no_change', label: 'Giữ nguyên công hiện có' },
+];
+
+const leaveApprovalModeOptions = [
+    { value: 'full_work', label: 'Duyệt tính công (đủ công các ngày trong đơn)' },
+    { value: 'no_count', label: 'Duyệt nhưng không tính công' },
 ];
 
 const cardClass = 'rounded-[28px] border border-slate-200/70 bg-white p-6 shadow-soft';
@@ -112,8 +117,10 @@ function matrixToneClass(tone) {
             return 'bg-emerald-500';
         case 'amber':
             return 'bg-amber-500';
+        case 'orange':
+            return 'bg-orange-500';
         case 'blue':
-            return 'bg-cyan-500';
+            return 'bg-sky-600';
         case 'teal':
             return 'bg-teal-500';
         default:
@@ -136,6 +143,20 @@ function monthStartIso() {
 
 function currentMonthKey() {
     return todayIso().slice(0, 7);
+}
+
+/** Trả về { start_date, end_date } (YYYY-MM-DD) theo tháng YYYY-MM. */
+function monthKeyToDateRange(monthKey) {
+    const pad = (n) => String(n).padStart(2, '0');
+    const m = monthKey && /^\d{4}-\d{2}$/.test(monthKey) ? monthKey : currentMonthKey();
+    const [yStr, moStr] = m.split('-');
+    const y = Number(yStr);
+    const mo = Number(moStr);
+    const lastDay = new Date(y, mo, 0).getDate();
+    return {
+        start_date: `${y}-${pad(mo)}-01`,
+        end_date: `${y}-${pad(mo)}-${pad(lastDay)}`,
+    };
 }
 
 function displayDateToIso(value) {
@@ -168,6 +189,8 @@ export default function AttendanceWifi(props) {
     const toast = useToast();
     const role = props?.auth?.user?.role || '';
     const canManage = ['admin', 'administrator', 'ke_toan'].includes(role);
+    const canExport = canManage;
+    const canViewReport = canManage || ['quan_ly', 'nhan_vien'].includes(role);
     const canManualAdjust = role === 'administrator';
     const [activeTab, setActiveTab] = useState('personal');
     const [loading, setLoading] = useState(false);
@@ -198,6 +221,7 @@ export default function AttendanceWifi(props) {
     const [requestForm, setRequestForm] = useState({
         request_type: 'late_arrival',
         request_date: todayIso(),
+        request_end_date: '',
         expected_check_in_time: '',
         title: '',
         content: '',
@@ -215,14 +239,18 @@ export default function AttendanceWifi(props) {
     const [reportFilters, setReportFilters] = useState({ month: currentMonthKey(), user_id: '', search: '' });
     const [manualRecordModal, setManualRecordModal] = useState({ open: false, item: null });
     const [manualRecordForm, setManualRecordForm] = useState({ user_id: '', work_date: todayIso(), work_units: '1.0', check_in_time: '', note: '' });
+    const [exportModalOpen, setExportModalOpen] = useState(false);
+    const [exportRange, setExportRange] = useState(() => monthKeyToDateRange(currentMonthKey()));
 
     const tabs = useMemo(() => {
         const base = ['personal', 'requests'];
         if (canManage) {
             base.push('settings', 'wifi', 'devices', 'holidays', 'staff', 'report');
+        } else if (canViewReport) {
+            base.push('report');
         }
         return base;
-    }, [canManage]);
+    }, [canManage, canViewReport]);
 
     const manualStaffOptions = useMemo(() => {
         const rows = [...staffRows];
@@ -439,7 +467,7 @@ export default function AttendanceWifi(props) {
     };
 
     const loadReport = async (filters = reportFilters) => {
-        if (!canManage) return;
+        if (!canViewReport) return;
         const res = await axios.get('/api/v1/attendance/report', { params: filters });
         setReportSummary(res.data?.summary || { total_staff: 0, today_work_units: 0 });
         setReportMatrix(res.data?.matrix || { month: filters.month || currentMonthKey(), month_label: '', days: [], rows: [], legend: [] });
@@ -456,7 +484,7 @@ export default function AttendanceWifi(props) {
                 canManage ? loadDevices(deviceFilters) : Promise.resolve(),
                 canManage ? loadHolidays() : Promise.resolve(),
                 canManage ? loadStaff(staffFilters) : Promise.resolve(),
-                canManage ? loadReport(reportFilters) : Promise.resolve(),
+                canViewReport ? loadReport(reportFilters) : Promise.resolve(),
             ]);
         } catch (error) {
             toast.error(error?.response?.data?.message || 'Không tải được dữ liệu chấm công.');
@@ -474,7 +502,7 @@ export default function AttendanceWifi(props) {
     useEffect(() => {
         initialLoad();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [canManage]);
+    }, [canManage, canViewReport]);
 
     const saveSettings = async () => {
         try {
@@ -515,9 +543,20 @@ export default function AttendanceWifi(props) {
 
     const submitLateRequest = async () => {
         try {
-            await axios.post('/api/v1/attendance/requests', requestForm);
+            const payload = { ...requestForm };
+            if (payload.request_type !== 'leave_request') {
+                delete payload.request_end_date;
+            }
+            await axios.post('/api/v1/attendance/requests', payload);
             toast.success(requestForm.request_type === 'leave_request' ? 'Đã gửi đơn xin nghỉ phép.' : 'Đã gửi đơn xin đi muộn.');
-            setRequestForm({ request_type: 'late_arrival', request_date: todayIso(), expected_check_in_time: '', title: '', content: '' });
+            setRequestForm({
+                request_type: 'late_arrival',
+                request_date: todayIso(),
+                request_end_date: '',
+                expected_check_in_time: '',
+                title: '',
+                content: '',
+            });
             await Promise.all([loadRequests({ ...requestFilters, page: 1 }), loadDashboard()]);
         } catch (error) {
             const body = error?.response?.data;
@@ -537,7 +576,7 @@ export default function AttendanceWifi(props) {
             await axios.post(`/api/v1/attendance/requests/${item.id}/review`, payload);
             toast.success(reviewForm.status === 'approved' ? 'Đã duyệt đơn.' : 'Đã từ chối đơn.');
             setReviewModal({ open: false, item: null });
-            await Promise.all([loadRequests(requestFilters), loadRecords(recordFilters), loadDashboard(), canManage ? loadReport(reportFilters) : Promise.resolve()]);
+            await Promise.all([loadRequests(requestFilters), loadRecords(recordFilters), loadDashboard(), canViewReport ? loadReport(reportFilters) : Promise.resolve()]);
         } catch (error) {
             toast.error(error?.response?.data?.message || 'Duyệt đơn thất bại.');
         }
@@ -596,14 +635,25 @@ export default function AttendanceWifi(props) {
         }
     };
 
-    const exportReport = (filters = reportFilters) => {
+    const openExportModal = () => {
+        setExportRange(monthKeyToDateRange(reportFilters.month));
+        setExportModalOpen(true);
+    };
+
+    const exportReport = () => {
         const params = new URLSearchParams();
-        Object.entries(filters).forEach(([key, value]) => {
-            if (value !== null && value !== undefined && String(value).trim() !== '') {
-                params.set(key, String(value));
-            }
-        });
+        params.set('start_date', exportRange.start_date);
+        params.set('end_date', exportRange.end_date);
+        const search = String(reportFilters.search || '').trim();
+        const userId = String(reportFilters.user_id || '').trim();
+        if (search !== '') {
+            params.set('search', search);
+        }
+        if (userId !== '') {
+            params.set('user_id', userId);
+        }
         window.open(`/api/v1/attendance/export?${params.toString()}`, '_blank');
+        setExportModalOpen(false);
     };
 
     const saveManualRecord = async () => {
@@ -741,11 +791,16 @@ export default function AttendanceWifi(props) {
                                         ))}
                                     </select>
                                 </FormField>
-                                <FormField label="Ngày áp dụng" required>
+                                <FormField label={requestForm.request_type === 'leave_request' ? 'Từ ngày' : 'Ngày áp dụng'} required>
                                     <input type="date" className={inputClass} value={requestForm.request_date} onChange={(e) => setRequestForm((s) => ({ ...s, request_date: e.target.value }))} />
                                 </FormField>
+                                {requestForm.request_type === 'leave_request' ? (
+                                    <FormField label="Đến ngày" hint="Để trống nếu nghỉ 1 ngày — mặc định trùng ngày bắt đầu">
+                                        <input type="date" className={inputClass} value={requestForm.request_end_date} onChange={(e) => setRequestForm((s) => ({ ...s, request_end_date: e.target.value }))} />
+                                    </FormField>
+                                ) : null}
                                 {requestForm.request_type === 'late_arrival' ? (
-                                    <FormField label="Giờ dự kiến vào" hint="Tùy chọn, ví dụ 09:10">
+                                    <FormField label="Giờ dự kiến vào" required hint="Bắt buộc — dùng làm mốc tính trễ khi duyệt">
                                         <input type="time" className={inputClass} value={requestForm.expected_check_in_time} onChange={(e) => setRequestForm((s) => ({ ...s, expected_check_in_time: e.target.value }))} />
                                     </FormField>
                                 ) : null}
@@ -1139,7 +1194,7 @@ export default function AttendanceWifi(props) {
                     </div>
                 )}
 
-                {activeTab === 'report' && canManage && (
+                {activeTab === 'report' && canViewReport && (
                     <div className={cardClass}>
                         <FilterToolbar enableSearch
                             className="mb-4"
@@ -1153,7 +1208,9 @@ export default function AttendanceWifi(props) {
                                         <button type="button" className={buttonSecondaryClass} onClick={() => openManualRecord()}>Sửa công tay</button>
                                     ) : null}
                                     <button type="button" className={buttonSecondaryClass} onClick={() => loadReport(reportFilters)}>Xem báo cáo</button>
-                                    <button type="button" className={buttonPrimaryClass} onClick={() => exportReport(reportFilters)}>Xuất Excel</button>
+                                    {canExport ? (
+                                        <button type="button" className={buttonPrimaryClass} onClick={openExportModal}>Xuất Excel</button>
+                                    ) : null}
                                 </FilterActionGroup>
                             )}
                         >
@@ -1362,7 +1419,7 @@ export default function AttendanceWifi(props) {
                     {reviewForm.status === 'approved' ? (
                         <FormField label="Cách tính công" required>
                             <select className={inputClass} value={reviewForm.approval_mode} onChange={(e) => setReviewForm((s) => ({ ...s, approval_mode: e.target.value }))}>
-                                {approvalModeOptions.map((option) => (
+                                {(reviewModal.item?.request_type === 'leave_request' ? leaveApprovalModeOptions : lateApprovalModeOptions).map((option) => (
                                     <option key={option.value} value={option.value}>{option.label}</option>
                                 ))}
                             </select>
@@ -1413,6 +1470,37 @@ export default function AttendanceWifi(props) {
                 <div className="mt-5 flex justify-end gap-3">
                     <button type="button" className={buttonSecondaryClass} onClick={() => setManualRecordModal({ open: false, item: null })}>Hủy</button>
                     <button type="button" className={buttonPrimaryClass} onClick={saveManualRecord} disabled={!manualRecordForm.user_id || !manualRecordForm.work_date}>Lưu công</button>
+                </div>
+            </Modal>
+
+            <Modal
+                open={exportModalOpen}
+                onClose={() => setExportModalOpen(false)}
+                title="Xuất báo cáo công (Excel)"
+                description="Chọn khoảng ngày cần xuất. File gồm công và phút trễ theo từng ngày, cột tổng hợp kỳ và đơn xin phép. Chỉ kế toán và quản trị mới xuất được."
+                size="md"
+            >
+                <div className="grid gap-4 md:grid-cols-2">
+                    <FormField label="Từ ngày" required>
+                        <input
+                            type="date"
+                            className={inputClass}
+                            value={exportRange.start_date}
+                            onChange={(e) => setExportRange((s) => ({ ...s, start_date: e.target.value }))}
+                        />
+                    </FormField>
+                    <FormField label="Đến ngày" required>
+                        <input
+                            type="date"
+                            className={inputClass}
+                            value={exportRange.end_date}
+                            onChange={(e) => setExportRange((s) => ({ ...s, end_date: e.target.value }))}
+                        />
+                    </FormField>
+                </div>
+                <div className="mt-5 flex justify-end gap-3">
+                    <button type="button" className={buttonSecondaryClass} onClick={() => setExportModalOpen(false)}>Hủy</button>
+                    <button type="button" className={buttonPrimaryClass} onClick={exportReport}>Tải file</button>
                 </div>
             </Modal>
         </PageContainer>

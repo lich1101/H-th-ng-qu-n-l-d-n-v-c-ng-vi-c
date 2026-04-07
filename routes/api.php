@@ -125,7 +125,7 @@ Route::prefix('v1')->group(function () {
         Route::post('/attendance/requests/{attendanceRequest}/review', [AttendanceController::class, 'reviewRequest'])
             ->middleware('role:admin,administrator,ke_toan');
         Route::post('/attendance/records/manual', [AttendanceController::class, 'manualUpdateRecord'])
-            ->middleware('role:admin,administrator,ke_toan');
+            ->middleware('role:administrator');
         Route::get('/attendance/holidays', [AttendanceController::class, 'holidays'])
             ->middleware('role:admin,administrator,ke_toan');
         Route::post('/attendance/holidays', [AttendanceController::class, 'holidayStore'])
@@ -134,10 +134,10 @@ Route::prefix('v1')->group(function () {
             ->middleware('role:admin,administrator,ke_toan');
         Route::delete('/attendance/holidays/{attendanceHoliday}', [AttendanceController::class, 'holidayDestroy'])
             ->middleware('role:admin,administrator,ke_toan');
-        Route::get('/attendance/report', [AttendanceController::class, 'report'])
-            ->middleware('role:admin,administrator,ke_toan');
+        Route::get('/attendance/report', [AttendanceController::class, 'report']);
         Route::get('/attendance/export', [AttendanceController::class, 'export'])
             ->middleware('role:admin,administrator,ke_toan');
+        Route::get('/attendance/records/{attendanceRecord}', [AttendanceController::class, 'recordShow']);
         Route::post('/push/test', [PushTestController::class, 'store'])
             ->middleware('role:administrator');
         Route::get('/system/status', [SystemStatusController::class, 'show'])

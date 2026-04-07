@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AppSetting;
 use App\Models\AttendanceDevice;
 use App\Models\AttendanceHoliday;
+use App\Models\Department;
 use App\Models\AttendanceRecord;
 use App\Models\AttendanceReminderLog;
 use App\Models\AttendanceRequest as AttendanceRequestModel;
@@ -16,7 +17,10 @@ use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 class AttendanceController extends Controller
 {
@@ -38,6 +42,11 @@ class AttendanceController extends Controller
             ->limit(10)
             ->get();
 
+        $nowTz = Carbon::now('Asia/Ho_Chi_Minh');
+        $checkBlock = $this->canTrackAttendance($user)
+            ? $attendance->checkInBlockedReason($user, $nowTz, $settings)
+            : null;
+
         return response()->json([
             'settings' => $settings,
             'today_record' => $todayRecord ? $this->recordPayload($todayRecord) : null,
@@ -46,6 +55,11 @@ class AttendanceController extends Controller
                 return $this->attendanceRequestPayload($item);
             })->values(),
             'can_manage_attendance' => $this->canManageAttendance($user),
+            'check_in_allowed' => $checkBlock === null,
+            'check_in_block_reason' => $checkBlock,
+            'shift_weekdays' => $attendance->shiftWeekdaysIso($user),
+            'earliest_checkin_time' => $user->attendance_earliest_checkin_time
+                ?: ($settings['work_start_time'] ?? '08:30'),
             'pending_counts' => $this->canManageAttendance($user)
                 ? [
                     'devices' => AttendanceDevice::query()->where('status', 'pending')->count(),
@@ -199,7 +213,18 @@ class AttendanceController extends Controller
         }
 
         $query = User::query()
-            ->select(['id', 'name', 'email', 'role', 'department', 'department_id', 'is_active', 'attendance_employment_type'])
+            ->select([
+                'id',
+                'name',
+                'email',
+                'role',
+                'department',
+                'department_id',
+                'is_active',
+                'attendance_employment_type',
+                'attendance_shift_weekdays',
+                'attendance_earliest_checkin_time',
+            ])
             ->where('role', '!=', 'administrator')
             ->orderBy('name');
 
@@ -222,7 +247,7 @@ class AttendanceController extends Controller
         return response()->json($rows);
     }
 
-    public function staffUpdate(Request $request, User $user): JsonResponse
+    public function staffUpdate(Request $request, User $user, AttendanceService $attendance): JsonResponse
     {
         if (! $this->canManageAttendance($request->user())) {
             return response()->json(['message' => 'Không có quyền cập nhật cấu hình nhân viên.'], 403);
@@ -230,10 +255,23 @@ class AttendanceController extends Controller
 
         $validated = $request->validate([
             'attendance_employment_type' => ['required', 'in:full_time,half_day_morning,half_day_afternoon'],
+            'attendance_shift_weekdays' => ['nullable', 'array'],
+            'attendance_shift_weekdays.*' => ['integer', 'min:1', 'max:7'],
+            'attendance_earliest_checkin_time' => ['nullable', 'regex:/^\d{2}:\d{2}$/'],
         ]);
+
+        $shiftDays = array_key_exists('attendance_shift_weekdays', $validated)
+            ? array_values(array_unique(array_map('intval', $validated['attendance_shift_weekdays'] ?? [])))
+            : $user->attendance_shift_weekdays;
 
         $user->update([
             'attendance_employment_type' => (string) $validated['attendance_employment_type'],
+            'attendance_shift_weekdays' => $shiftDays,
+            'attendance_earliest_checkin_time' => array_key_exists('attendance_earliest_checkin_time', $validated)
+                ? ($validated['attendance_earliest_checkin_time']
+                    ? $attendance->normalizeTime((string) $validated['attendance_earliest_checkin_time'], '08:30')
+                    : null)
+                : $user->attendance_earliest_checkin_time,
         ]);
 
         return response()->json([
@@ -480,6 +518,11 @@ class AttendanceController extends Controller
             ]);
         }
 
+        $shiftBlock = $attendance->checkInBlockedReason($user, $now, $settings);
+        if ($shiftBlock) {
+            return response()->json(['message' => $shiftBlock], 422);
+        }
+
         $record = AttendanceRecord::query()->firstOrNew([
             'user_id' => $user->id,
             'work_date' => $now->toDateString(),
@@ -518,6 +561,7 @@ class AttendanceController extends Controller
             'device_name' => trim((string) ($validated['device_name'] ?? '')) ?: $device->device_name,
             'device_platform' => trim((string) ($validated['device_platform'] ?? '')) ?: $device->device_platform,
             'note' => $record->note,
+            'edited_after_wifi' => false,
         ]);
         $record->save();
 
@@ -567,7 +611,18 @@ class AttendanceController extends Controller
             ->orderByDesc('request_date')
             ->orderByDesc('id');
 
-        if (! $this->canManageAttendance($user)) {
+        if ($this->canManageAttendance($user)) {
+            // xem toàn bộ
+        } elseif ($user->role === 'quan_ly') {
+            $deptIds = Department::query()->where('manager_id', $user->id)->pluck('id');
+            if ($deptIds->isEmpty()) {
+                $query->whereRaw('1 = 0');
+            } else {
+                $query->whereHas('user', function ($q) use ($deptIds) {
+                    $q->whereIn('department_id', $deptIds);
+                });
+            }
+        } else {
             $query->where('user_id', $user->id);
         }
 
@@ -602,17 +657,30 @@ class AttendanceController extends Controller
         $validated = $request->validate([
             'request_type' => ['required', 'in:late_arrival,leave_request'],
             'request_date' => ['required', 'date'],
+            'request_end_date' => ['nullable', 'date'],
             'expected_check_in_time' => ['nullable', 'regex:/^\d{2}:\d{2}$/'],
             'title' => ['required', 'string', 'max:191'],
             'content' => ['nullable', 'string', 'max:5000'],
         ]);
 
         $requestType = (string) $validated['request_type'];
+        $start = Carbon::parse($validated['request_date'], 'Asia/Ho_Chi_Minh')->startOfDay();
+        $endRaw = trim((string) ($validated['request_end_date'] ?? ''));
+        $end = $endRaw !== ''
+            ? Carbon::parse($endRaw, 'Asia/Ho_Chi_Minh')->startOfDay()
+            : $start->copy();
+        if ($end->lt($start)) {
+            return response()->json(['message' => 'Ngày kết thúc phải sau hoặc trùng ngày bắt đầu.'], 422);
+        }
+        if ($requestType === 'late_arrival' && empty($validated['expected_check_in_time'])) {
+            return response()->json(['message' => 'Đơn đi muộn cần có giờ dự kiến vào làm (HH:mm).'], 422);
+        }
 
         $item = AttendanceRequestModel::create([
             'user_id' => $user->id,
             'request_type' => $requestType,
-            'request_date' => Carbon::parse($validated['request_date'], 'Asia/Ho_Chi_Minh')->toDateString(),
+            'request_date' => $start->toDateString(),
+            'request_end_date' => $requestType === 'leave_request' ? $end->toDateString() : null,
             'expected_check_in_time' => $validated['expected_check_in_time'] ?? null,
             'title' => trim((string) $validated['title']),
             'content' => trim((string) ($validated['content'] ?? '')) ?: null,
@@ -620,11 +688,24 @@ class AttendanceController extends Controller
         ]);
 
         $requestTypeLabel = $this->attendanceRequestTypeLabel($requestType);
+        $dateLabel = $requestType === 'leave_request' && $item->request_end_date
+            && $item->request_date->toDateString() !== $item->request_end_date->toDateString()
+            ? sprintf(
+                '%s → %s',
+                Carbon::parse($item->request_date)->format('d/m/Y'),
+                Carbon::parse($item->request_end_date)->format('d/m/Y')
+            )
+            : Carbon::parse($item->request_date)->format('d/m/Y');
+
+        $notifyIds = array_values(array_unique(array_merge(
+            $this->attendanceManagerIds(),
+            $this->departmentManagerIdsForUser($user)
+        )));
 
         $notifications->notifyUsers(
-            $this->attendanceManagerIds(),
+            $notifyIds,
             sprintf('Có %s cần duyệt', mb_strtolower($requestTypeLabel)),
-            sprintf('%s vừa gửi %s cho ngày %s.', $user->name, mb_strtolower($requestTypeLabel), Carbon::parse($item->request_date)->format('d/m/Y')),
+            sprintf('%s vừa gửi %s (%s).', $user->name, mb_strtolower($requestTypeLabel), $dateLabel),
             [
                 'type' => 'attendance_request_submitted',
                 'category' => 'attendance',
@@ -649,16 +730,34 @@ class AttendanceController extends Controller
             return response()->json(['message' => 'Không có quyền duyệt đơn chấm công.'], 403);
         }
 
+        $requestType = (string) $attendanceRequest->request_type;
+
         $validated = $request->validate([
             'status' => ['required', 'in:approved,rejected'],
-            'approval_mode' => ['nullable', 'in:full_work,no_change'],
+            'approval_mode' => ['nullable', 'string', 'max:32'],
             'decision_note' => ['nullable', 'string', 'max:5000'],
         ]);
 
         $status = (string) $validated['status'];
-        $approvalMode = $status === 'approved'
-            ? (string) ($validated['approval_mode'] ?? 'full_work')
-            : null;
+        $approvalMode = null;
+        if ($status === 'approved') {
+            $rawMode = (string) ($validated['approval_mode'] ?? 'full_work');
+            if ($requestType === 'leave_request') {
+                if (! in_array($rawMode, ['full_work', 'no_count'], true)) {
+                    return response()->json([
+                        'message' => 'Đơn nghỉ: chọn duyệt tính công (full_work) hoặc duyệt không tính công (no_count).',
+                    ], 422);
+                }
+                $approvalMode = $rawMode;
+            } else {
+                if (! in_array($rawMode, ['full_work', 'no_change'], true)) {
+                    return response()->json([
+                        'message' => 'Đơn đi muộn: chế độ duyệt không hợp lệ.',
+                    ], 422);
+                }
+                $approvalMode = $rawMode;
+            }
+        }
 
         $attendanceRequest->update([
             'status' => $status,
@@ -763,8 +862,15 @@ class AttendanceController extends Controller
             'source' => 'manual_adjustment',
             'note' => trim((string) ($validated['note'] ?? '')) ?: $record->note,
             'approved_by' => (int) $request->user()->id,
+            'edited_after_wifi' => true,
         ]);
         $record->save();
+
+        $attendance->logRecordEdit($record->fresh(), $request->user(), 'manual_adjustment', [
+            'work_units' => $workUnits,
+            'minutes_late' => $minutesLate,
+            'check_in_time' => $validated['check_in_time'] ?? null,
+        ]);
 
         return response()->json([
             'message' => sprintf(
@@ -896,8 +1002,13 @@ class AttendanceController extends Controller
 
     public function report(Request $request): JsonResponse
     {
-        if (! $this->canManageAttendance($request->user())) {
+        if (! $this->canViewAttendanceReport($request->user())) {
             return response()->json(['message' => 'Không có quyền xem báo cáo chấm công.'], 403);
+        }
+
+        $filterResponse = $this->validateReportUserFilter($request);
+        if ($filterResponse) {
+            return $filterResponse;
         }
 
         [$rows, $summary, $matrix] = $this->buildReport($request);
@@ -909,101 +1020,148 @@ class AttendanceController extends Controller
         ]);
     }
 
+    public function recordShow(Request $request, AttendanceRecord $attendanceRecord): JsonResponse
+    {
+        if (! $this->canViewAttendanceReport($request->user())) {
+            return response()->json(['message' => 'Không có quyền xem chi tiết chấm công.'], 403);
+        }
+
+        $ids = $this->visibleUserIdsForAttendance($request->user());
+        if ($ids !== null && ! in_array((int) $attendanceRecord->user_id, $ids, true)) {
+            return response()->json(['message' => 'Không có quyền xem bản ghi này.'], 403);
+        }
+
+        $attendanceRecord->load(['user:id,name,email,role,department', 'editLogs.actor:id,name']);
+        $viewer = $request->user();
+        $canEdit = $viewer && in_array($viewer->role, ['admin', 'administrator', 'ke_toan'], true);
+
+        return response()->json([
+            'record' => $this->recordPayload($attendanceRecord),
+            'edit_logs' => $attendanceRecord->editLogs->map(function ($log) {
+                return [
+                    'id' => (int) $log->id,
+                    'action' => (string) $log->action,
+                    'payload' => $log->payload,
+                    'created_at' => optional($log->created_at)->toIso8601String(),
+                    'actor' => $log->actor ? [
+                        'id' => (int) $log->actor->id,
+                        'name' => $log->actor->name,
+                    ] : null,
+                ];
+            })->values(),
+            'form_read_only' => ! $canEdit,
+        ]);
+    }
+
     public function export(Request $request)
     {
-        if (! $this->canManageAttendance($request->user())) {
-            return response()->json(['message' => 'Không có quyền xuất báo cáo chấm công.'], 403);
+        if (! $this->canExportAttendanceReport($request->user())) {
+            return response()->json(['message' => 'Chỉ kế toán hoặc quản trị mới được xuất file báo cáo công.'], 403);
         }
 
-        [$rows] = $this->buildReport($request);
-        $summaryRows = $this->buildExportSummary($request);
-
-        $spreadsheet = new Spreadsheet();
-        $summarySheet = $spreadsheet->getActiveSheet();
-        $summarySheet->setTitle('Tong hop');
-
-        $summaryHeaders = [
-            'Tên nhân viên',
-            'Kiểu làm việc',
-            'Số công',
-            'Số công đi muộn',
-            'Tổng phút đi muộn',
-            'Số công còn lại',
-            'Số lần gửi đơn',
-        ];
-
-        $summarySheet->fromArray($summaryHeaders, null, 'A1');
-        $summaryRowIndex = 2;
-        foreach ($summaryRows as $row) {
-            $summarySheet->fromArray([
-                $row['user_name'],
-                $row['employment_type_label'],
-                $row['work_units'],
-                $row['late_work_units'],
-                $row['total_late_minutes'],
-                $row['missing_work_units'],
-                $row['request_count'],
-            ], null, 'A'.$summaryRowIndex);
-            $summaryRowIndex++;
+        $filterResponse = $this->validateReportUserFilter($request);
+        if ($filterResponse) {
+            return $filterResponse;
         }
-
-        foreach (range('A', 'G') as $column) {
-            $summarySheet->getColumnDimension($column)->setAutoSize(true);
-        }
-
-        $detailSheet = $spreadsheet->createSheet();
-        $detailSheet->setTitle('Chi tiet');
-
-        $detailHeaders = [
-            'Ngày',
-            'Nhân sự',
-            'Vai trò',
-            'Phòng ban',
-            'Hình thức làm',
-            'Giờ vào',
-            'Trễ (phút)',
-            'Công',
-            'Trạng thái',
-            'Nguồn',
-            'WiFi',
-            'BSSID',
-            'Ghi chú',
-        ];
-
-        $detailSheet->fromArray($detailHeaders, null, 'A1');
-        $rowIndex = 2;
-        foreach ($rows as $row) {
-            $detailSheet->fromArray([
-                $row['work_date'],
-                $row['user_name'],
-                $row['role'],
-                $row['department'],
-                $row['employment_type_label'],
-                $row['check_in_at'],
-                $row['minutes_late'],
-                $row['work_units'],
-                $row['status_label'],
-                $row['source_label'],
-                $row['wifi_ssid'],
-                $row['wifi_bssid'],
-                $row['note'],
-            ], null, 'A'.$rowIndex);
-            $rowIndex++;
-        }
-
-        foreach (range('A', 'M') as $column) {
-            $detailSheet->getColumnDimension($column)->setAutoSize(true);
-        }
-
-        $spreadsheet->setActiveSheetIndex(0);
 
         [$startDate, $endDate, $monthKey, $fromMonthFilter] = $this->resolveReportRange($request);
+        [, , $matrix] = $this->buildReport($request);
+
+        $userIds = [];
+        foreach ($matrix['rows'] ?? [] as $mr) {
+            $userIds[] = (int) ($mr['user_id'] ?? 0);
+        }
+        $requestSummaryByUser = $this->attendanceRequestExportSummaryForUsers(
+            $userIds,
+            $startDate,
+            $endDate
+        );
+
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Cong theo ngay');
+
+        $sheet->setCellValue('A1', 'STT');
+        $sheet->setCellValue('B1', 'Họ và tên');
+        $sheet->setCellValue('C1', 'Email');
+        $sheet->setCellValue('D1', 'Phòng ban');
+        $sheet->setCellValue('E1', 'Vai trò');
+
+        $days = $matrix['days'] ?? [];
+        $colIdx = 6;
+        foreach ($days as $day) {
+            $c1 = Coordinate::stringFromColumnIndex($colIdx);
+            $c2 = Coordinate::stringFromColumnIndex($colIdx + 1);
+            $label = sprintf('%s %s', $day['weekday'] ?? '', Carbon::parse($day['date'])->format('d/m/Y'));
+            $sheet->mergeCells("{$c1}1:{$c2}1");
+            $sheet->setCellValue("{$c1}1", $label);
+            $sheet->setCellValue("{$c1}2", 'Công');
+            $sheet->setCellValue("{$c2}2", 'Phút trễ');
+            $colIdx += 2;
+        }
+
+        $t1 = Coordinate::stringFromColumnIndex($colIdx);
+        $t2 = Coordinate::stringFromColumnIndex($colIdx + 1);
+        $t3 = Coordinate::stringFromColumnIndex($colIdx + 2);
+        $sheet->mergeCells("{$t1}1:{$t3}1");
+        $sheet->setCellValue("{$t1}1", 'Tổng hợp kỳ');
+        $sheet->setCellValue("{$t1}2", 'Tổng công');
+        $sheet->setCellValue("{$t2}2", 'Tổng phút trễ');
+        $sheet->setCellValue("{$t3}2", 'Đơn xin phép (số lần & ngày gửi)');
+
+        $lastColLetter = $t3;
+        $sheet->getStyle('A1:'.$lastColLetter.'2')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $sheet->getStyle('A1:'.$lastColLetter.'2')->getAlignment()->setVertical(Alignment::VERTICAL_CENTER);
+        $sheet->getStyle('A1:'.$lastColLetter.'2')->getFont()->setBold(true);
+
+        $dataRow = 3;
+        $stt = 1;
+        foreach ($matrix['rows'] ?? [] as $mrow) {
+            $uid = (int) ($mrow['user_id'] ?? 0);
+            $sheet->setCellValue('A'.$dataRow, $stt++);
+            $sheet->setCellValue('B'.$dataRow, (string) ($mrow['user_name'] ?? ''));
+            $sheet->setCellValue('C'.$dataRow, (string) ($mrow['email'] ?? ''));
+            $sheet->setCellValue('D'.$dataRow, (string) ($mrow['department'] ?? ''));
+            $sheet->setCellValue('E'.$dataRow, (string) ($mrow['role'] ?? ''));
+
+            $totalLateMin = 0;
+            $colIdx = 6;
+            foreach ($mrow['cells'] ?? [] as $cell) {
+                $wu = (float) ($cell['work_units'] ?? 0);
+                $ml = (int) ($cell['minutes_late'] ?? 0);
+                $totalLateMin += $ml;
+                $c1 = Coordinate::stringFromColumnIndex($colIdx);
+                $c2 = Coordinate::stringFromColumnIndex($colIdx + 1);
+                $has = ! empty($cell['has_record']);
+                $sheet->setCellValue($c1.$dataRow, $has ? round($wu, 2) : '');
+                $sheet->setCellValue($c2.$dataRow, $has && $ml > 0 ? $ml : '');
+                $colIdx += 2;
+            }
+
+            $sheet->setCellValue(Coordinate::stringFromColumnIndex($colIdx).$dataRow, round((float) ($mrow['total_work_units'] ?? 0), 2));
+            $sheet->setCellValue(Coordinate::stringFromColumnIndex($colIdx + 1).$dataRow, $totalLateMin);
+            $reqLabel = $requestSummaryByUser[$uid]['label'] ?? '—';
+            $sheet->setCellValue(Coordinate::stringFromColumnIndex($colIdx + 2).$dataRow, $reqLabel);
+
+            $dataRow++;
+        }
+
+        $lastDataRow = max(2, $dataRow - 1);
+        $sheet->getStyle('A1:'.$lastColLetter.$lastDataRow)->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN);
+
+        $maxColIndex = Coordinate::columnIndexFromString($lastColLetter);
+        for ($i = 1; $i <= $maxColIndex; $i++) {
+            $sheet->getColumnDimension(Coordinate::stringFromColumnIndex($i))->setAutoSize(true);
+        }
+
+        $sheet->freezePane('F3');
+
         $fileName = $fromMonthFilter
-            ? sprintf('bao-cao-cham-cong-thang-%s.xlsx', $monthKey)
+            ? sprintf('bao-cao-cong-theo-ngay-thang-%s.xlsx', $monthKey)
             : sprintf(
-                'bao-cao-cham-cong-%s-den-%s.xlsx',
-                $startDate->toDateString(),
-                $endDate->toDateString()
+                'bao-cao-cong-theo-ngay-%s-den-%s.xlsx',
+                $startDate->format('Y-m-d'),
+                $endDate->format('Y-m-d')
             );
 
         return response()->streamDownload(function () use ($spreadsheet) {
@@ -1014,15 +1172,73 @@ class AttendanceController extends Controller
         ]);
     }
 
+    /**
+     * @param  array<int>  $userIds
+     * @return array<int, array{count: int, label: string}>
+     */
+    private function attendanceRequestExportSummaryForUsers(array $userIds, Carbon $startDate, Carbon $endDate): array
+    {
+        $empty = [];
+        foreach ($userIds as $uid) {
+            $empty[(int) $uid] = ['count' => 0, 'label' => '—'];
+        }
+        if ($userIds === []) {
+            return $empty;
+        }
+
+        $from = $startDate->copy()->timezone('Asia/Ho_Chi_Minh')->startOfDay();
+        $to = $endDate->copy()->timezone('Asia/Ho_Chi_Minh')->endOfDay();
+
+        $rows = AttendanceRequestModel::query()
+            ->whereIn('user_id', $userIds)
+            ->whereBetween('created_at', [$from, $to])
+            ->orderBy('created_at')
+            ->get(['user_id', 'created_at']);
+
+        $grouped = $rows->groupBy('user_id');
+        foreach ($userIds as $uid) {
+            $uid = (int) $uid;
+            $items = $grouped->get($uid, collect());
+            if ($items->isEmpty()) {
+                continue;
+            }
+            $cnt = $items->count();
+            $dates = $items->map(function ($r) {
+                return optional($r->created_at)->timezone('Asia/Ho_Chi_Minh')->format('d/m/Y');
+            })->unique()->values()->all();
+            $empty[$uid] = [
+                'count' => $cnt,
+                'label' => sprintf('%d (%s)', $cnt, implode(', ', $dates)),
+            ];
+        }
+
+        return $empty;
+    }
+
+    private function canExportAttendanceReport(?User $user): bool
+    {
+        return $user && in_array($user->role, ['admin', 'administrator', 'ke_toan'], true);
+    }
+
     private function buildReport(Request $request): array
     {
         [$startDate, $endDate, $monthKey] = $this->resolveReportRange($request);
+
+        $visibleIds = $this->visibleUserIdsForAttendance($request->user());
 
         $query = AttendanceRecord::query()
             ->with(['user:id,name,email,role,department,department_id'])
             ->whereBetween('work_date', [$startDate->toDateString(), $endDate->toDateString()])
             ->orderBy('work_date')
             ->orderBy('user_id');
+
+        if ($visibleIds !== null) {
+            if (count($visibleIds) === 0) {
+                $query->whereRaw('1 = 0');
+            } else {
+                $query->whereIn('user_id', $visibleIds);
+            }
+        }
 
         if ($request->filled('search')) {
             $search = trim((string) $request->input('search'));
@@ -1048,6 +1264,13 @@ class AttendanceController extends Controller
         $trackedUserQuery = $attendance->trackedUsersQuery()
             ->select(['id', 'name', 'email', 'role', 'department', 'attendance_employment_type'])
             ->orderBy('name');
+        if ($visibleIds !== null) {
+            if (count($visibleIds) === 0) {
+                $trackedUserQuery->whereRaw('1 = 0');
+            } else {
+                $trackedUserQuery->whereIn('id', $visibleIds);
+            }
+        }
         if ($request->filled('search')) {
             $search = trim((string) $request->input('search'));
             $trackedUserQuery->where(function ($builder) use ($search) {
@@ -1165,7 +1388,7 @@ class AttendanceController extends Controller
                     'source_label' => (string) ($reportRow['source_label'] ?? ''),
                     'check_in_at' => (string) ($reportRow['check_in_at'] ?? '—'),
                     'note' => (string) ($reportRow['note'] ?? ''),
-                    'tone' => $this->matrixCellTone($status),
+                    'tone' => $this->matrixDotTone($record),
                 ];
             }
 
@@ -1192,9 +1415,8 @@ class AttendanceController extends Controller
             'days' => $dayColumns,
             'rows' => $matrixRows,
             'legend' => [
-                ['key' => 'present', 'label' => 'Đúng công', 'tone' => 'emerald'],
-                ['key' => 'late', 'label' => 'Đi muộn', 'tone' => 'amber'],
-                ['key' => 'approved', 'label' => 'Duyệt công', 'tone' => 'blue'],
+                ['key' => 'wifi_raw', 'label' => 'Chấm app (chưa chỉnh)', 'tone' => 'orange'],
+                ['key' => 'edited', 'label' => 'Đã chỉnh / duyệt', 'tone' => 'blue'],
                 ['key' => 'holiday', 'label' => 'Ngày lễ', 'tone' => 'teal'],
                 ['key' => 'absent', 'label' => 'Không chấm công', 'tone' => 'slate'],
             ],
@@ -1209,9 +1431,19 @@ class AttendanceController extends Controller
         [$startDate, $endDate] = $this->resolveReportRange($request);
         $totalDays = max(1, $startDate->diffInDays($endDate) + 1);
 
+        $visibleIds = $this->visibleUserIdsForAttendance($request->user());
+
         $userQuery = $attendance->trackedUsersQuery()
             ->select(['id', 'name', 'email', 'attendance_employment_type'])
             ->orderBy('name');
+
+        if ($visibleIds !== null) {
+            if (count($visibleIds) === 0) {
+                $userQuery->whereRaw('1 = 0');
+            } else {
+                $userQuery->whereIn('id', $visibleIds);
+            }
+        }
 
         if ($request->filled('search')) {
             $search = trim((string) $request->input('search'));
@@ -1315,22 +1547,21 @@ class AttendanceController extends Controller
         return rtrim(rtrim(number_format($workUnits, 1, '.', ''), '0'), '.');
     }
 
-    private function matrixCellTone(string $status): string
+    /**
+     * Cam: chấm WiFi gốc chưa chỉnh; xanh: đã chỉnh tay / duyệt đơn; teal: ngày lễ.
+     */
+    private function matrixDotTone(AttendanceRecord $record): string
     {
-        if (in_array($status, ['present'], true)) {
-            return 'emerald';
-        }
-        if (in_array($status, ['late', 'late_pending'], true)) {
-            return 'amber';
-        }
-        if (in_array($status, ['approved_full', 'approved_partial'], true)) {
-            return 'blue';
-        }
+        $status = (string) ($record->status ?? '');
         if ($status === 'holiday_auto') {
             return 'teal';
         }
+        $source = (string) ($record->source ?: 'wifi');
+        if ($source === 'wifi' && ! ($record->edited_after_wifi ?? false)) {
+            return 'orange';
+        }
 
-        return 'slate';
+        return 'blue';
     }
 
     private function resolveDate($value, Carbon $fallback): Carbon
@@ -1340,6 +1571,87 @@ class AttendanceController extends Controller
         } catch (\Throwable $e) {
             return $fallback->copy()->startOfDay();
         }
+    }
+
+    private function canViewAttendanceReport(?User $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+        if ($this->canManageAttendance($user)) {
+            return true;
+        }
+        if ($user->role === 'quan_ly') {
+            return (bool) $user->is_active;
+        }
+        if ($user->role === 'nhan_vien') {
+            return (bool) $user->is_active;
+        }
+
+        return false;
+    }
+
+    /**
+     * null = không giới hạn (admin / kế toán / admin hệ thống).
+     *
+     * @return array<int>|null
+     */
+    private function visibleUserIdsForAttendance(?User $viewer): ?array
+    {
+        if (! $viewer) {
+            return [];
+        }
+        if (in_array($viewer->role, ['admin', 'administrator', 'ke_toan'], true)) {
+            return null;
+        }
+        if ($viewer->role === 'nhan_vien') {
+            return [(int) $viewer->id];
+        }
+        if ($viewer->role === 'quan_ly') {
+            $deptIds = Department::query()->where('manager_id', $viewer->id)->pluck('id');
+            if ($deptIds->isEmpty()) {
+                return [];
+            }
+
+            return User::query()
+                ->where('is_active', true)
+                ->whereIn('department_id', $deptIds)
+                ->whereIn('role', ['admin', 'quan_ly', 'nhan_vien', 'ke_toan'])
+                ->pluck('id')
+                ->map(function ($id) {
+                    return (int) $id;
+                })
+                ->all();
+        }
+
+        return [];
+    }
+
+    private function validateReportUserFilter(Request $request): ?JsonResponse
+    {
+        if (! $request->filled('user_id')) {
+            return null;
+        }
+        $uid = (int) $request->input('user_id');
+        $ids = $this->visibleUserIdsForAttendance($request->user());
+        if ($ids !== null && ! in_array($uid, $ids, true)) {
+            return response()->json(['message' => 'Không có quyền xem nhân sự này.'], 403);
+        }
+
+        return null;
+    }
+
+    private function departmentManagerIdsForUser(User $subject): array
+    {
+        if (! $subject->department_id) {
+            return [];
+        }
+        $dept = Department::query()->find($subject->department_id);
+        if (! $dept || ! $dept->manager_id) {
+            return [];
+        }
+
+        return [(int) $dept->manager_id];
     }
 
     private function canManageAttendance(?User $user): bool
@@ -1444,6 +1756,9 @@ class AttendanceController extends Controller
             'request_type' => (string) $item->request_type,
             'request_type_label' => $this->attendanceRequestTypeLabel((string) $item->request_type),
             'request_date' => optional($item->request_date)->toDateString(),
+            'request_end_date' => $item->request_end_date
+                ? optional($item->request_end_date)->toDateString()
+                : null,
             'expected_check_in_time' => $item->expected_check_in_time,
             'title' => (string) $item->title,
             'content' => $item->content,
@@ -1482,6 +1797,8 @@ class AttendanceController extends Controller
             'employment_type' => (string) ($item->employment_type ?: 'full_time'),
             'status' => (string) ($item->status ?: 'absent'),
             'source' => (string) ($item->source ?: 'wifi'),
+            'edited_after_wifi' => (bool) ($item->edited_after_wifi ?? false),
+            'dot_tone' => $this->matrixDotTone($item),
             'wifi_ssid' => $item->wifi_ssid,
             'wifi_bssid' => $item->wifi_bssid,
             'device_uuid' => $item->device_uuid,

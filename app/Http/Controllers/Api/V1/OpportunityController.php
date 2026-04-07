@@ -253,7 +253,7 @@ class OpportunityController extends Controller
 
     public function destroy(Opportunity $opportunity): JsonResponse
     {
-        if (request()->user()->role !== 'admin') {
+        if (! $this->canAccessOpportunity(request()->user(), $opportunity)) {
             return response()->json(['message' => 'Không có quyền xóa cơ hội.'], 403);
         }
         $opportunity->delete();

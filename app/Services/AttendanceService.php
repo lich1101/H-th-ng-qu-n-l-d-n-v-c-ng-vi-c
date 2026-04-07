@@ -9,6 +9,7 @@ use App\Models\AttendanceRequest;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 
 class AttendanceService
 {
@@ -159,6 +160,77 @@ class AttendanceService
         return $record->refresh();
     }
 
+    public function trackedUsersQuery(): Builder
+    {
+        return User::query()
+            ->where('is_active', true)
+            ->whereIn('role', ['admin', 'quan_ly', 'nhan_vien', 'ke_toan']);
+    }
+
+    /**
+     * @return array<int>|null null = không giới hạn thứ trong tuần
+     */
+    public function shiftWeekdaysIso(User $user): ?array
+    {
+        $raw = $user->attendance_shift_weekdays;
+        if ($raw === null || $raw === []) {
+            return null;
+        }
+        if (! is_array($raw)) {
+            return null;
+        }
+        $days = [];
+        foreach ($raw as $d) {
+            $n = (int) $d;
+            if ($n >= 1 && $n <= 7) {
+                $days[$n] = $n;
+            }
+        }
+
+        return count($days) ? array_values($days) : null;
+    }
+
+    public function earliestCheckinAt(User $user, Carbon $date, ?array $settings = null): Carbon
+    {
+        if ($settings === null) {
+            $settings = $this->settings();
+        }
+        $t = trim((string) ($user->attendance_earliest_checkin_time ?? ''));
+        if ($t === '' || ! preg_match('/^\d{2}:\d{2}$/', $t)) {
+            $t = $settings['work_start_time'];
+        }
+        [$h, $m] = array_map('intval', explode(':', $t));
+
+        return $date->copy()->timezone('Asia/Ho_Chi_Minh')->setTime($h, $m, 0);
+    }
+
+    /**
+     * Chặn chấm công: sai ngày trong ca hoặc trước giờ được phép mở app chấm.
+     */
+    public function checkInBlockedReason(User $user, Carbon $now, ?array $settings = null): ?string
+    {
+        if ($settings === null) {
+            $settings = $this->settings();
+        }
+        $weekdays = $this->shiftWeekdaysIso($user);
+        if ($weekdays !== null) {
+            $iso = (int) $now->dayOfWeekIso;
+            if (! in_array($iso, $weekdays, true)) {
+                return 'Hôm nay không nằm trong lịch làm việc được phân ca. Bạn không thể chấm công.';
+            }
+        }
+
+        $earliest = $this->earliestCheckinAt($user, $now, $settings);
+        if ($now->lt($earliest)) {
+            return sprintf(
+                'Chưa đến giờ được phép chấm công (từ %s).',
+                $earliest->format('H:i')
+            );
+        }
+
+        return null;
+    }
+
     public function applyApprovedRequest(AttendanceRequest $attendanceRequest, User $approver): ?AttendanceRecord
     {
         $user = $attendanceRequest->user;
@@ -166,34 +238,136 @@ class AttendanceService
             return null;
         }
 
-        $date = Carbon::parse($attendanceRequest->request_date, 'Asia/Ho_Chi_Minh')->startOfDay();
         $settings = $this->settings();
-        $evaluation = $this->evaluateCheckIn($user, $date, $settings);
-        $approvalMode = trim((string) ($attendanceRequest->approval_mode ?? 'full_work'));
-        if (! in_array($approvalMode, ['full_work', 'no_change'], true)) {
-            $approvalMode = 'full_work';
+        $type = (string) $attendanceRequest->request_type;
+
+        if ($type === 'leave_request') {
+            return $this->applyApprovedLeaveRequest($attendanceRequest, $approver, $settings);
         }
 
+        return $this->applyApprovedLateRequest($attendanceRequest, $approver, $settings);
+    }
+
+    private function applyApprovedLeaveRequest(
+        AttendanceRequest $attendanceRequest,
+        User $approver,
+        array $settings
+    ): ?AttendanceRecord {
+        $user = $attendanceRequest->user;
+        if (! $user) {
+            return null;
+        }
+
+        $mode = trim((string) ($attendanceRequest->approval_mode ?? 'full_work'));
+        if ($mode === 'no_count') {
+            return null;
+        }
+        if ($mode !== 'full_work') {
+            $mode = 'full_work';
+        }
+
+        $start = Carbon::parse($attendanceRequest->request_date, 'Asia/Ho_Chi_Minh')->startOfDay();
+        $endRaw = $attendanceRequest->request_end_date ?? $attendanceRequest->request_date;
+        $end = Carbon::parse($endRaw, 'Asia/Ho_Chi_Minh')->startOfDay();
+        if ($end->lt($start)) {
+            [$start, $end] = [$end, $start];
+        }
+
+        $last = null;
+        $cursor = $start->copy();
+        while ($cursor->lte($end)) {
+            $last = $this->upsertLeaveApprovedDay($user, $cursor, $attendanceRequest, $approver, $settings);
+            $cursor->addDay();
+        }
+
+        return $last;
+    }
+
+    private function upsertLeaveApprovedDay(
+        User $user,
+        Carbon $day,
+        AttendanceRequest $attendanceRequest,
+        User $approver,
+        array $settings
+    ): AttendanceRecord {
+        $evaluation = $this->evaluateCheckIn($user, $day->copy()->setTime(12, 0), $settings);
         $defaultWorkUnits = (float) $evaluation['default_work_units'];
+
+        $record = AttendanceRecord::query()->firstOrNew([
+            'user_id' => (int) $user->id,
+            'work_date' => $day->toDateString(),
+        ]);
+
+        $existingNote = trim((string) ($record->note ?? ''));
+        $decisionNote = trim((string) ($attendanceRequest->decision_note ?? ''));
+        $noteParts = array_values(array_filter([$existingNote, $decisionNote]));
+
+        $record->fill([
+            'required_start_at' => $evaluation['required_start_at'],
+            'allowed_late_until' => $evaluation['allowed_late_until'],
+            'minutes_late' => 0,
+            'default_work_units' => $defaultWorkUnits,
+            'work_units' => $defaultWorkUnits,
+            'employment_type' => $evaluation['employment_type'],
+            'status' => 'approved_full',
+            'source' => 'request_approval',
+            'attendance_request_id' => (int) $attendanceRequest->id,
+            'approved_by' => (int) $approver->id,
+            'edited_after_wifi' => true,
+            'note' => empty($noteParts) ? null : implode("\n", $noteParts),
+        ]);
+        $record->save();
+
+        return $record->refresh();
+    }
+
+    private function applyApprovedLateRequest(
+        AttendanceRequest $attendanceRequest,
+        User $approver,
+        array $settings
+    ): ?AttendanceRecord {
+        $user = $attendanceRequest->user;
+        if (! $user) {
+            return null;
+        }
+
+        $mode = trim((string) ($attendanceRequest->approval_mode ?? 'full_work'));
+        if (! in_array($mode, ['full_work', 'no_change'], true)) {
+            $mode = 'full_work';
+        }
+
+        $date = Carbon::parse($attendanceRequest->request_date, 'Asia/Ho_Chi_Minh')->startOfDay();
+        $baseline = $this->evaluateCheckIn($user, $date->copy()->setTime(12, 0), $settings);
+        $defaultWorkUnits = (float) $baseline['default_work_units'];
+
+        $expectedTime = trim((string) ($attendanceRequest->expected_check_in_time ?? ''));
+        $requiredStartAt = $baseline['required_start_at'];
+        $allowedLateUntil = $baseline['allowed_late_until'];
+        if ($expectedTime !== '' && preg_match('/^\d{2}:\d{2}$/', $expectedTime)) {
+            [$hour, $minute] = array_map('intval', explode(':', $expectedTime));
+            $requiredStartAt = $date->copy()->setTime($hour, $minute, 0);
+            $allowedLateUntil = $requiredStartAt->copy()->addMinutes((int) $settings['late_grace_minutes']);
+        }
 
         $record = AttendanceRecord::query()->firstOrNew([
             'user_id' => (int) $user->id,
             'work_date' => $date->toDateString(),
         ]);
 
-        $expectedTime = trim((string) ($attendanceRequest->expected_check_in_time ?? ''));
-        $checkInAt = null;
-        if ($expectedTime !== '' && preg_match('/^\d{2}:\d{2}$/', $expectedTime)) {
+        $actualForLate = $record->check_in_at;
+        if (! $actualForLate && $expectedTime !== '' && preg_match('/^\d{2}:\d{2}$/', $expectedTime)) {
             [$hour, $minute] = array_map('intval', explode(':', $expectedTime));
-            $checkInAt = $date->copy()->setTime($hour, $minute, 0);
+            $actualForLate = $date->copy()->setTime($hour, $minute, 0);
         }
 
-        $minutesLate = $record->minutes_late ?? 0;
-        if ($checkInAt) {
-            $minutesLate = max(0, (int) $evaluation['allowed_late_until']->diffInMinutes($checkInAt, false));
+        $minutesLate = 0;
+        if ($actualForLate) {
+            $minutesLate = $actualForLate->lte($allowedLateUntil)
+                ? 0
+                : max(0, (int) $allowedLateUntil->diffInMinutes($actualForLate, false));
         }
 
-        $workUnits = $approvalMode === 'no_change'
+        $workUnits = $mode === 'no_change'
             ? (float) ($record->work_units ?? $defaultWorkUnits)
             : $defaultWorkUnits;
 
@@ -203,17 +377,18 @@ class AttendanceService
         $noteParts = array_values(array_filter([$existingNote, $decisionNote]));
 
         $record->fill([
-            'required_start_at' => $record->required_start_at ?: $evaluation['required_start_at'],
-            'allowed_late_until' => $record->allowed_late_until ?: $evaluation['allowed_late_until'],
-            'check_in_at' => $checkInAt ?: $record->check_in_at,
+            'required_start_at' => $requiredStartAt,
+            'allowed_late_until' => $allowedLateUntil,
+            'check_in_at' => $record->check_in_at ?: ($actualForLate ?: null),
             'minutes_late' => (int) $minutesLate,
             'default_work_units' => $defaultWorkUnits,
             'work_units' => $workUnits,
-            'employment_type' => $evaluation['employment_type'],
+            'employment_type' => $baseline['employment_type'],
             'status' => $status,
             'source' => 'request_approval',
             'attendance_request_id' => (int) $attendanceRequest->id,
             'approved_by' => (int) $approver->id,
+            'edited_after_wifi' => true,
             'note' => empty($noteParts) ? null : implode("\n", $noteParts),
         ]);
         $record->save();
@@ -221,10 +396,19 @@ class AttendanceService
         return $record->refresh();
     }
 
-    public function trackedUsersQuery(): Builder
-    {
-        return User::query()
-            ->where('is_active', true)
-            ->whereIn('role', ['admin', 'quan_ly', 'nhan_vien', 'ke_toan']);
+    public function logRecordEdit(
+        AttendanceRecord $record,
+        ?User $actor,
+        string $action,
+        array $payload = []
+    ): void {
+        DB::table('attendance_record_edit_logs')->insert([
+            'attendance_record_id' => $record->id,
+            'actor_id' => $actor?->id,
+            'action' => $action,
+            'payload' => json_encode($payload, JSON_UNESCAPED_UNICODE),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 }

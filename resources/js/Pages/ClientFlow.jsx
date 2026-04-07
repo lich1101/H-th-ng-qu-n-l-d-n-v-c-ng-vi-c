@@ -102,6 +102,9 @@ export default function ClientFlow({ auth, clientId }) {
     const toast = useToast();
     const userRole = String(auth?.user?.role || '').toLowerCase();
     const canCreateOpportunity = ['admin', 'administrator', 'quan_ly', 'nhan_vien'].includes(userRole);
+    /** Sửa / xóa: cùng nhóm có quyền tạo; API kiểm tra canAccessOpportunity. */
+    const canEditOpportunity = canCreateOpportunity;
+    const canDeleteOpportunity = canCreateOpportunity;
     const [flow, setFlow] = useState(null);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('tong_quan');
@@ -130,7 +133,9 @@ export default function ClientFlow({ auth, clientId }) {
     const [opportunityStatuses, setOpportunityStatuses] = useState([]);
     const [opportunityProducts, setOpportunityProducts] = useState([]);
     const [showOpportunityModal, setShowOpportunityModal] = useState(false);
+    const [editingOpportunityId, setEditingOpportunityId] = useState(null);
     const [savingOpportunity, setSavingOpportunity] = useState(false);
+    const [deletingOpportunityId, setDeletingOpportunityId] = useState(null);
     const [opportunityForm, setOpportunityForm] = useState({
         title: '',
         opportunity_type: '',
@@ -298,6 +303,11 @@ export default function ClientFlow({ auth, clientId }) {
         })).filter((user) => user.id > 0)
     ), [staffUsers]);
 
+    const closeOpportunityModal = () => {
+        setShowOpportunityModal(false);
+        setEditingOpportunityId(null);
+    };
+
     const openCreateOpportunityModal = async () => {
         if (loadingLookups) return;
         let nextStatuses = opportunityStatuses;
@@ -310,6 +320,7 @@ export default function ClientFlow({ auth, clientId }) {
 
         const defaultStatusCode = String((nextStatuses[0]?.code || '').trim());
         const currentUserId = Number(auth?.user?.id || 0);
+        setEditingOpportunityId(null);
         setOpportunityForm({
             title: '',
             opportunity_type: '',
@@ -324,6 +335,50 @@ export default function ClientFlow({ auth, clientId }) {
             notes: '',
         });
         setShowOpportunityModal(true);
+    };
+
+    const openEditOpportunityModal = async (row) => {
+        if (!row?.id || loadingLookups) return;
+        let nextStatuses = opportunityStatuses;
+        if (!opportunityStatuses.length || !staffUsers.length) {
+            const loaded = await fetchLookups();
+            if (loaded?.statuses) nextStatuses = loaded.statuses;
+        }
+        const statusCode = String((row.status || nextStatuses[0]?.code || '').trim());
+        setEditingOpportunityId(row.id);
+        setOpportunityForm({
+            title: row.title || '',
+            opportunity_type: row.opportunity_type || '',
+            source: row.source || '',
+            amount: row.amount !== null && row.amount !== undefined ? String(row.amount) : '',
+            status: statusCode,
+            success_probability: row.success_probability != null && row.success_probability !== ''
+                ? String(row.success_probability)
+                : '',
+            expected_close_date: row.expected_close_date ? String(row.expected_close_date).slice(0, 10) : '',
+            product_id: row.product_id ? String(row.product_id) : '',
+            assigned_to: row.assigned_to ? String(row.assigned_to) : '',
+            watcher_ids: Array.isArray(row.watcher_ids)
+                ? row.watcher_ids.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)
+                : [],
+            notes: row.notes || '',
+        });
+        setShowOpportunityModal(true);
+    };
+
+    const deleteOpportunity = async (row) => {
+        if (!row?.id || !canDeleteOpportunity) return;
+        if (!window.confirm(`Xóa cơ hội "${row.title || `#${row.id}`}"? Hành động không hoàn tác.`)) return;
+        setDeletingOpportunityId(row.id);
+        try {
+            await axios.delete(`/api/v1/opportunities/${row.id}`);
+            toast.success('Đã xóa cơ hội.');
+            await fetchFlow();
+        } catch (e) {
+            toast.error(e?.response?.data?.message || 'Không thể xóa cơ hội.');
+        } finally {
+            setDeletingOpportunityId(null);
+        }
     };
 
     const submitOpportunity = async (event) => {
@@ -344,24 +399,31 @@ export default function ClientFlow({ auth, clientId }) {
             return;
         }
 
+        const payload = {
+            title: String(opportunityForm.title || '').trim(),
+            opportunity_type: String(opportunityForm.opportunity_type || '').trim() || null,
+            client_id: Number(flow.client.id),
+            source: String(opportunityForm.source || '').trim() || null,
+            amount: amountParsed,
+            status: opportunityForm.status || null,
+            success_probability: probParsed,
+            product_id: opportunityForm.product_id ? Number(opportunityForm.product_id) : null,
+            assigned_to: opportunityForm.assigned_to ? Number(opportunityForm.assigned_to) : null,
+            watcher_ids: (opportunityForm.watcher_ids || []).map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0),
+            expected_close_date: opportunityForm.expected_close_date || null,
+            notes: String(opportunityForm.notes || '').trim() || null,
+        };
+
         setSavingOpportunity(true);
         try {
-            await axios.post('/api/v1/opportunities', {
-                title: String(opportunityForm.title || '').trim(),
-                opportunity_type: String(opportunityForm.opportunity_type || '').trim() || null,
-                client_id: Number(flow.client.id),
-                source: String(opportunityForm.source || '').trim() || null,
-                amount: amountParsed,
-                status: opportunityForm.status || null,
-                success_probability: probParsed,
-                product_id: opportunityForm.product_id ? Number(opportunityForm.product_id) : null,
-                assigned_to: opportunityForm.assigned_to ? Number(opportunityForm.assigned_to) : null,
-                watcher_ids: (opportunityForm.watcher_ids || []).map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0),
-                expected_close_date: opportunityForm.expected_close_date || null,
-                notes: String(opportunityForm.notes || '').trim() || null,
-            });
-            toast.success('Đã thêm cơ hội mới.');
-            setShowOpportunityModal(false);
+            if (editingOpportunityId) {
+                await axios.put(`/api/v1/opportunities/${editingOpportunityId}`, payload);
+                toast.success('Đã cập nhật cơ hội.');
+            } else {
+                await axios.post('/api/v1/opportunities', payload);
+                toast.success('Đã thêm cơ hội mới.');
+            }
+            closeOpportunityModal();
             await fetchFlow();
             setActiveTab('co_hoi');
         } catch (e) {
@@ -580,6 +642,7 @@ export default function ClientFlow({ auth, clientId }) {
                                         <th className="py-2">Phụ trách</th>
                                         <th className="py-2">Dự kiến chốt</th>
                                         <th className="py-2">Ghi chú</th>
+                                        <th className="py-2 w-[1%] whitespace-nowrap text-right">Thao tác</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -587,7 +650,10 @@ export default function ClientFlow({ auth, clientId }) {
                                         <tr
                                             key={row.id}
                                             className="cursor-pointer border-b border-slate-100 hover:bg-slate-50/80"
-                                            onClick={() => navigateTo(route('opportunities.detail', row.id))}
+                                            onClick={(e) => {
+                                                if (e.target.closest('[data-opp-action]')) return;
+                                                navigateTo(route('opportunities.detail', row.id));
+                                            }}
                                         >
                                             <td className="py-2.5 font-medium text-slate-900">{row.title || '—'}</td>
                                             <td className="py-2.5 text-xs text-slate-600">
@@ -606,9 +672,34 @@ export default function ClientFlow({ auth, clientId }) {
                                             <td className="py-2.5 text-xs text-slate-600">{row.assignee?.name || row.creator?.name || '—'}</td>
                                             <td className="py-2.5 text-xs text-slate-600">{formatDate(row.expected_close_date)}</td>
                                             <td className="py-2.5 text-xs text-slate-600">{row.notes || '—'}</td>
+                                            <td className="py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
+                                                <div className="flex flex-wrap items-center justify-end gap-1.5" data-opp-action>
+                                                    {canEditOpportunity ? (
+                                                        <button
+                                                            type="button"
+                                                            data-opp-action
+                                                            className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:border-primary/40 hover:text-primary"
+                                                            onClick={() => openEditOpportunityModal(row)}
+                                                        >
+                                                            Sửa
+                                                        </button>
+                                                    ) : null}
+                                                    {canDeleteOpportunity ? (
+                                                        <button
+                                                            type="button"
+                                                            data-opp-action
+                                                            className="rounded-lg border border-rose-200 bg-white px-2.5 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                                                            disabled={deletingOpportunityId === row.id}
+                                                            onClick={() => deleteOpportunity(row)}
+                                                        >
+                                                            {deletingOpportunityId === row.id ? '…' : 'Xóa'}
+                                                        </button>
+                                                    ) : null}
+                                                </div>
+                                            </td>
                                         </tr>
                                     ))}
-                                    {opportunities.length === 0 && <EmptyTable colSpan={6} message="Khách hàng chưa có cơ hội nào." />}
+                                    {opportunities.length === 0 && <EmptyTable colSpan={7} message="Khách hàng chưa có cơ hội nào." />}
                                 </tbody>
                             </table>
                             </div>
@@ -1018,9 +1109,13 @@ export default function ClientFlow({ auth, clientId }) {
 
             <Modal
                 open={showOpportunityModal}
-                onClose={() => setShowOpportunityModal(false)}
-                title="Thêm cơ hội mới"
-                description="Tạo cơ hội trực tiếp trong trang chi tiết khách hàng."
+                onClose={closeOpportunityModal}
+                title={editingOpportunityId ? `Sửa cơ hội #${editingOpportunityId}` : 'Thêm cơ hội mới'}
+                description={
+                    editingOpportunityId
+                        ? 'Cập nhật cơ hội cho khách hàng này. Khách hàng không đổi trên màn hình này.'
+                        : 'Tạo cơ hội trực tiếp trong trang chi tiết khách hàng. Khách hàng cố định theo trang đang xem.'
+                }
                 size="md"
             >
                 <form className="grid gap-4 xl:grid-cols-2" onSubmit={submitOpportunity}>
@@ -1059,11 +1154,17 @@ export default function ClientFlow({ auth, clientId }) {
                             required
                         />
                     </Field>
-                    <Field label="Khách hàng">
+                    <Field
+                        label="Khách hàng"
+                        hint="Cố định theo khách hàng đang xem — không chỉnh sửa tại đây."
+                    >
                         <input
-                            className={filterControlClass}
+                            className={`${filterControlClass} cursor-not-allowed bg-slate-100 text-slate-800 ring-1 ring-inset ring-slate-200`}
                             value={flow?.client?.name || ''}
                             readOnly
+                            tabIndex={-1}
+                            autoComplete="off"
+                            aria-readonly="true"
                         />
                     </Field>
                     <Field label="Tỷ lệ thành công (%)" required>
@@ -1155,12 +1256,12 @@ export default function ClientFlow({ auth, clientId }) {
                             className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white"
                             disabled={savingOpportunity}
                         >
-                            {savingOpportunity ? 'Đang lưu...' : 'Lưu cơ hội'}
+                            {savingOpportunity ? 'Đang lưu...' : (editingOpportunityId ? 'Cập nhật cơ hội' : 'Lưu cơ hội')}
                         </button>
                         <button
                             type="button"
                             className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700"
-                            onClick={() => setShowOpportunityModal(false)}
+                            onClick={closeOpportunityModal}
                         >
                             Đóng
                         </button>

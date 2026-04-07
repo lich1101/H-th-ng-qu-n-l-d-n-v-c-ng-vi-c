@@ -13,6 +13,7 @@ class AttendanceRequest extends Model
         'user_id',
         'request_type',
         'request_date',
+        'request_end_date',
         'expected_check_in_time',
         'title',
         'content',
@@ -26,6 +27,7 @@ class AttendanceRequest extends Model
 
     protected $casts = [
         'request_date' => 'date',
+        'request_end_date' => 'date',
         'approved_work_units' => 'float',
         'decided_at' => 'datetime',
     ];
