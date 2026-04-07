@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import FilterToolbar, {
     FILTER_GRID_SUBMIT_ROW,
@@ -14,6 +14,7 @@ import AppIcon from '@/Components/AppIcon';
 import ClientSelect from '@/Components/ClientSelect';
 import PaginationControls from '@/Components/PaginationControls';
 import TagMultiSelect from '@/Components/TagMultiSelect';
+import ClientStaffTransferPendingBanner from '@/Components/ClientStaffTransferPendingBanner';
 import { useToast } from '@/Contexts/ToastContext';
 import { formatVietnamDate } from '@/lib/vietnamTime';
 
@@ -62,16 +63,20 @@ function LabeledField({ label, required = false, hint = '', className = '', chil
 export default function CRM(props) {
     const toast = useToast();
     const userRole = props?.auth?.user?.role || '';
+    /** Tránh lệch chữ hoa/thường khiến nhân viên vô tình thấy khối phân công giống quản lý. */
+    const normalizedRole = String(userRole || '').toLowerCase();
     const userId = props?.auth?.user?.id;
     const userName = props?.auth?.user?.name || 'Nhân sự';
     const userDepartmentId = props?.auth?.user?.department_id || null;
-    const isManager = userRole === 'quan_ly';
-    const isAdminRole = ['admin', 'administrator'].includes(userRole);
-    const canFilterByStaff = ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'].includes(userRole);
-    const canManageClients = ['admin', 'administrator', 'quan_ly', 'nhan_vien'].includes(userRole);
-    const canDeleteClients = ['admin', 'administrator'].includes(userRole);
-    const canAssignClientOwner = ['admin', 'administrator', 'quan_ly'].includes(userRole);
+    const isManager = normalizedRole === 'quan_ly';
+    const isAdminRole = ['admin', 'administrator'].includes(normalizedRole);
+    const canFilterByStaff = ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'].includes(normalizedRole);
+    const canManageClients = ['admin', 'administrator', 'quan_ly', 'nhan_vien'].includes(normalizedRole);
+    const canDeleteClients = ['admin', 'administrator'].includes(normalizedRole);
+    const canAssignClientOwner = ['admin', 'administrator', 'quan_ly'].includes(normalizedRole);
     const canBulkClientActions = canManageClients || canDeleteClients;
+    /** POST /crm/clients/{id}/staff-transfer-requests — khớp middleware API */
+    const canUseStaffTransferApi = ['admin', 'administrator', 'quan_ly', 'nhan_vien'].includes(normalizedRole);
 
     const [clients, setClients] = useState([]);
     const [leadTypes, setLeadTypes] = useState([]);
@@ -108,6 +113,14 @@ export default function CRM(props) {
     const [importingClients, setImportingClients] = useState(false);
     const [clientImportReport, setClientImportReport] = useState(null);
     const [clientImportJob, setClientImportJob] = useState(null);
+    const [assigneeReadonlyLabel, setAssigneeReadonlyLabel] = useState('');
+    const [showTransferModal, setShowTransferModal] = useState(false);
+    const [transferTargetClient, setTransferTargetClient] = useState(null);
+    const [transferEligible, setTransferEligible] = useState([]);
+    const [transferForm, setTransferForm] = useState({ to_staff_id: '', note: '' });
+    const [transferSubmitting, setTransferSubmitting] = useState(false);
+    const [pendingTransferActionLoading, setPendingTransferActionLoading] = useState(false);
+    const [editingPendingTransfer, setEditingPendingTransfer] = useState(null);
     const [clientForm, setClientForm] = useState({
         name: '',
         company: '',
@@ -155,6 +168,105 @@ export default function CRM(props) {
                 .filter((id) => Number.isInteger(id) && id > 0)
             : []
     );
+
+    const canShowTransferOnClientRow = (client) => {
+        if (!canUseStaffTransferApi || !client?.id) return false;
+        if (['admin', 'administrator'].includes(normalizedRole)) return true;
+        if (normalizedRole === 'quan_ly') return true;
+        if (normalizedRole === 'nhan_vien') {
+            const uid = Number(userId || 0);
+            return (
+                Number(client.assigned_staff_id || 0) === uid
+                || Number(client.sales_owner_id || 0) === uid
+            );
+        }
+        return false;
+    };
+
+    const openCrmTransferModal = async (client, event) => {
+        if (event) event.stopPropagation();
+        if (!client?.id) return;
+        setTransferTargetClient(client);
+        setShowTransferModal(true);
+        setTransferForm({ to_staff_id: '', note: '' });
+        try {
+            const res = await axios.get(`/api/v1/crm/clients/${client.id}/staff-transfer/eligible-users`);
+            setTransferEligible(Array.isArray(res.data?.users) ? res.data.users : []);
+        } catch {
+            setTransferEligible([]);
+        }
+    };
+
+    const closeCrmTransferModal = () => {
+        setShowTransferModal(false);
+        setTransferTargetClient(null);
+        setTransferEligible([]);
+        setTransferSubmitting(false);
+    };
+
+    const submitCrmTransfer = async (event) => {
+        event.preventDefault();
+        if (!transferTargetClient?.id) return;
+        if (!transferForm.to_staff_id) {
+            toast.error('Chọn nhân sự nhận phụ trách.');
+            return;
+        }
+        setTransferSubmitting(true);
+        try {
+            await axios.post(`/api/v1/crm/clients/${transferTargetClient.id}/staff-transfer-requests`, {
+                to_staff_id: Number(transferForm.to_staff_id),
+                note: (transferForm.note || '').trim() || null,
+            });
+            toast.success('Đã gửi phiếu chuyển phụ trách.');
+            closeCrmTransferModal();
+            await fetchClients(clientPage, clientFilters);
+        } catch (error) {
+            toast.error(getErrorMessage(error, 'Không gửi được phiếu.'));
+        } finally {
+            setTransferSubmitting(false);
+        }
+    };
+
+    const actOnPendingTransferRequest = async (transferId, action) => {
+        if (!transferId) return;
+        let rejectionNote = null;
+        if (action === 'reject') {
+            rejectionNote = window.prompt('Lý do từ chối (tuỳ chọn):') || null;
+        }
+        if (action === 'cancel' && !window.confirm('Hủy phiếu chuyển phụ trách này?')) {
+            return;
+        }
+        setPendingTransferActionLoading(true);
+        try {
+            if (action === 'accept') {
+                await axios.post(`/api/v1/crm/staff-transfer-requests/${transferId}/accept`);
+            } else if (action === 'reject') {
+                await axios.post(`/api/v1/crm/staff-transfer-requests/${transferId}/reject`, { rejection_note: rejectionNote });
+            } else if (action === 'cancel') {
+                await axios.post(`/api/v1/crm/staff-transfer-requests/${transferId}/cancel`);
+            }
+            toast.success('Đã cập nhật phiếu chuyển phụ trách.');
+            await fetchClients(clientPage, clientFilters);
+            if (editingClientId) {
+                try {
+                    const res = await axios.get(`/api/v1/crm/clients/${editingClientId}`);
+                    if (res.data?.id) {
+                        applyClientRowToForm(res.data);
+                        setEditingPendingTransfer(res.data.pending_staff_transfer || null);
+                        setAssigneeReadonlyLabel(
+                            res.data?.assigned_staff?.name || res.data?.sales_owner?.name || '—',
+                        );
+                    }
+                } catch {
+                    setEditingPendingTransfer(null);
+                }
+            }
+        } catch (error) {
+            toast.error(getErrorMessage(error, 'Không thực hiện được.'));
+        } finally {
+            setPendingTransferActionLoading(false);
+        }
+    };
 
     const fetchLookups = async () => {
         try {
@@ -320,7 +432,7 @@ export default function CRM(props) {
     }, [leadTypes]);
 
     useEffect(() => {
-        if (userRole !== 'nhan_vien' || !userId) return;
+        if (normalizedRole !== 'nhan_vien' || !userId) return;
         setClientFilters((prev) => {
             const normalized = Array.isArray(prev.assigned_staff_ids)
                 ? prev.assigned_staff_ids.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)
@@ -333,7 +445,7 @@ export default function CRM(props) {
                 assigned_staff_ids: [Number(userId)],
             };
         });
-    }, [userRole, userId]);
+    }, [normalizedRole, userId]);
 
     useEffect(() => {
         const table = clientTableRef.current;
@@ -435,11 +547,19 @@ export default function CRM(props) {
         if (!client?.id) return;
         setEditingClientId(client.id);
         applyClientRowToForm(client);
+        setAssigneeReadonlyLabel(
+            client.assigned_staff?.name || client.sales_owner?.name || '—',
+        );
+        setEditingPendingTransfer(client.pending_staff_transfer || null);
         setShowClientForm(true);
         try {
             const res = await axios.get(`/api/v1/crm/clients/${client.id}`);
             if (res.data?.id) {
                 applyClientRowToForm(res.data);
+                setAssigneeReadonlyLabel(
+                    res.data?.assigned_staff?.name || res.data?.sales_owner?.name || '—',
+                );
+                setEditingPendingTransfer(res.data.pending_staff_transfer || null);
             }
         } catch {
             // giữ dữ liệu từ dòng bảng
@@ -448,6 +568,8 @@ export default function CRM(props) {
 
     const openClientCreate = () => {
         setEditingClientId(null);
+        setAssigneeReadonlyLabel('');
+        setEditingPendingTransfer(null);
         setClientForm({
             name: '',
             company: '',
@@ -469,6 +591,8 @@ export default function CRM(props) {
     const closeClientForm = () => {
         setShowClientForm(false);
         setEditingClientId(null);
+        setAssigneeReadonlyLabel('');
+        setEditingPendingTransfer(null);
         setSubmittingClient(false);
     };
 
@@ -689,7 +813,7 @@ export default function CRM(props) {
         const departmentId = Number(clientFilters.assigned_department_id || 0);
         const scopedUsers = staffUsers.length > 0
             ? staffUsers
-            : (userRole === 'nhan_vien' && userId
+            : (normalizedRole === 'nhan_vien' && userId
                 ? [{
                     id: Number(userId),
                     name: userName,
@@ -714,7 +838,7 @@ export default function CRM(props) {
         clientFilters.assigned_department_id,
         staffUsers,
         visibleDepartmentOptions,
-        userRole,
+        normalizedRole,
         userId,
         userName,
         userDepartmentId,
@@ -728,14 +852,17 @@ export default function CRM(props) {
         }))
     ), [clientResponsibleStaffOptions]);
 
-    /** Khi đã chọn phòng ban: lọc nhân sự theo phòng. Admin: toàn hệ thống khi chưa chọn phòng; quản lý: danh sách đã được API giới hạn phạm vi. */
+    /** Khi đã chọn phòng ban: lọc nhân sự theo phòng. Nhân viên: chỉ bản thân (phòng hợp lệ khi lỡ hiển thị khối phân công). */
     const clientFormAssignedStaffOptions = useMemo(() => {
+        if (normalizedRole === 'nhan_vien' && userId) {
+            return staffUsers.filter((u) => Number(u.id) === Number(userId));
+        }
         const deptId = Number(clientForm.assigned_department_id || 0);
         if (deptId <= 0) {
             return staffUsers;
         }
         return staffUsers.filter((u) => Number(u.department_id || 0) === deptId);
-    }, [staffUsers, clientForm.assigned_department_id]);
+    }, [staffUsers, clientForm.assigned_department_id, normalizedRole, userId]);
 
     return (
         <PageContainer
@@ -771,7 +898,7 @@ export default function CRM(props) {
                         <FilterToolbar enableSearch
                             className="mb-4 border-0 p-0 shadow-none"
                             title="Danh sách khách hàng"
-                            description="Lọc theo tên, loại lead và nhóm khách trước khi thao tác CRM hoặc phân công phụ trách."
+                            description="Lọc theo tên, loại lead và nhóm khách. Chuyển phụ trách: dùng biểu tượng bàn giao trên dòng hoặc mở trang luồng khách (click tên khách)."
                             searchValue={clientFilters.search}
                             onSearch={handleClientSearch}
                             onSubmitFilters={applyClientFilters}
@@ -842,8 +969,8 @@ export default function CRM(props) {
                                             options={clientResponsibleStaffTagOptions}
                                             selectedIds={clientFilters.assigned_staff_ids}
                                             onChange={(selectedIds) => setClientFilters((s) => ({ ...s, assigned_staff_ids: selectedIds }))}
-                                            addPlaceholder={userRole === 'nhan_vien' ? 'Chọn chính tôi' : 'Tìm và thêm nhân sự phụ trách'}
-                                            emptyLabel={userRole === 'nhan_vien' ? 'Mặc định lọc chính tôi.' : 'Để trống để xem tất cả nhân sự trong phạm vi.'}
+                                            addPlaceholder={normalizedRole === 'nhan_vien' ? 'Chọn chính tôi' : 'Tìm và thêm nhân sự phụ trách'}
+                                            emptyLabel={normalizedRole === 'nhan_vien' ? 'Mặc định lọc chính tôi.' : 'Để trống để xem tất cả nhân sự trong phạm vi.'}
                                         />
                                     </FilterField>
                                 )}
@@ -997,11 +1124,11 @@ export default function CRM(props) {
                                 </thead>
                                 <tbody>
                                     {clients.map((client) => (
+                                        <Fragment key={client.id}>
                                         <tr
-                                            key={client.id}
                                             className={`cursor-pointer border-b border-slate-100 hover:bg-slate-50 ${selectedClientSet.has(Number(client.id)) ? 'bg-primary/5' : ''}`}
                                             onClick={() => {
-                                                window.location.href = route('crm.flow', client.id);
+                                                window.location.href = route('crm.client.show', client.id);
                                             }}
                                         >
                                             {canBulkClientActions && (
@@ -1022,7 +1149,7 @@ export default function CRM(props) {
                                                     className="text-left"
                                                     onClick={(event) => {
                                                         event.stopPropagation();
-                                                        window.location.href = route('crm.flow', client.id);
+                                                        window.location.href = route('crm.client.show', client.id);
                                                     }}
                                                     title="Mở chi tiết khách hàng"
                                                 >
@@ -1102,6 +1229,16 @@ export default function CRM(props) {
                                             </td>
                                             <td className="py-2 text-right">
                                                 <div className="flex items-center justify-end gap-2">
+                                                    {canShowTransferOnClientRow(client) && (
+                                                        <button
+                                                            type="button"
+                                                            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-600 hover:bg-slate-50"
+                                                            onClick={(event) => openCrmTransferModal(client, event)}
+                                                            title="Chuyển phụ trách (phiếu chuyển giao)"
+                                                        >
+                                                            <AppIcon name="handover" className="h-4 w-4" />
+                                                        </button>
+                                                    )}
                                                     {canManageClients && (
                                                         <button
                                                             type="button"
@@ -1131,6 +1268,25 @@ export default function CRM(props) {
                                                 </div>
                                             </td>
                                         </tr>
+                                        {client.pending_staff_transfer?.status === 'pending' ? (
+                                            <tr className="border-b border-amber-100 bg-amber-50/50">
+                                                <td
+                                                    colSpan={canBulkClientActions ? 17 : 16}
+                                                    className="px-3 py-2"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                >
+                                                    <ClientStaffTransferPendingBanner
+                                                        transfer={client.pending_staff_transfer}
+                                                        myUserId={Number(userId || 0)}
+                                                        normalizedRole={normalizedRole}
+                                                        loading={pendingTransferActionLoading}
+                                                        density="compact"
+                                                        onAction={(action) => actOnPendingTransferRequest(client.pending_staff_transfer?.id, action)}
+                                                    />
+                                                </td>
+                                            </tr>
+                                        ) : null}
+                                        </Fragment>
                                     ))}
                                     {clients.length === 0 && (
                                         <tr>
@@ -1165,6 +1321,16 @@ export default function CRM(props) {
                         size="lg"
                     >
                         <form className="space-y-3 text-sm" onSubmit={submitClient}>
+                            {editingClientId && editingPendingTransfer?.status === 'pending' ? (
+                                <ClientStaffTransferPendingBanner
+                                    transfer={editingPendingTransfer}
+                                    myUserId={Number(userId || 0)}
+                                    normalizedRole={normalizedRole}
+                                    loading={pendingTransferActionLoading}
+                                    density="emphasized"
+                                    onAction={(action) => actOnPendingTransferRequest(editingPendingTransfer.id, action)}
+                                />
+                            ) : null}
                             <div className="rounded-2xl border border-slate-200/80 bg-slate-50 p-4">
                                 <div className="mb-3">
                                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-subtle">
@@ -1325,9 +1491,50 @@ export default function CRM(props) {
                                     </div>
                                 </div>
                             )}
-                            {!canAssignClientOwner && (
+                            {!canAssignClientOwner && !editingClientId && (
                                 <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-xs text-emerald-700">
-                                    Khách hàng này sẽ tự gắn cho bạn phụ trách. Khi có lead mới hệ thống cũng sẽ dùng người phụ trách này để gửi thông báo.
+                                    Khách hàng mới sẽ tự gắn cho bạn phụ trách. Khi có lead mới hệ thống cũng sẽ dùng người phụ trách này để gửi thông báo.
+                                </div>
+                            )}
+                            {!canAssignClientOwner && editingClientId && (
+                                <div className="rounded-2xl border border-amber-100 bg-amber-50/95 px-4 py-3 text-xs text-amber-950">
+                                    <p className="font-semibold text-amber-950">Phân công phụ trách (chỉ đọc)</p>
+                                    <p className="mt-1 text-amber-900/95">
+                                        Người phụ trách hiện tại:
+                                        {' '}
+                                        <span className="font-semibold">{assigneeReadonlyLabel || '—'}</span>
+                                    </p>
+                                    <p className="mt-2 leading-relaxed text-amber-900/90">
+                                        Nhân viên không đổi phụ trách trực tiếp trong form này. Dùng
+                                        {' '}
+                                        <span className="font-semibold">«Chuyển phụ trách»</span>
+                                        {' '}
+                                        trên dòng khách, hoặc mở
+                                        {' '}
+                                        <button
+                                            type="button"
+                                            className="font-semibold text-primary underline decoration-primary/40 underline-offset-2 hover:text-primary/90"
+                                            onClick={() => {
+                                                window.location.href = route('crm.client.show', editingClientId);
+                                            }}
+                                        >
+                                            chi tiết khách hàng
+                                        </button>
+                                        {' '}
+                                        (xác nhận phiếu, chuyển giao) —
+                                        {' '}
+                                        <button
+                                            type="button"
+                                            className="font-semibold text-slate-700 underline decoration-slate-400 underline-offset-2 hover:text-slate-900"
+                                            onClick={() => {
+                                                window.location.href = route('crm.flow', editingClientId);
+                                            }}
+                                        >
+                                            luồng đầy đủ
+                                        </button>
+                                        {' '}
+                                        (cơ hội, hợp đồng, dự án…).
+                                    </p>
                                 </div>
                             )}
                             <div className="rounded-2xl border border-slate-200/80 bg-white p-4">
@@ -1398,6 +1605,67 @@ export default function CRM(props) {
                                     disabled={submittingClient}
                                 >
                                     Hủy
+                                </button>
+                            </div>
+                        </form>
+                    </Modal>
+
+                    <Modal
+                        open={showTransferModal}
+                        onClose={closeCrmTransferModal}
+                        title="Chuyển phụ trách khách hàng"
+                        description={
+                            transferTargetClient?.name
+                                ? `Phiếu chuyển giao trong cùng phòng ban — khách «${transferTargetClient.name}».`
+                                : 'Gửi phiếu chuyển giao phụ trách trong cùng phòng ban.'
+                        }
+                        size="md"
+                    >
+                        <form className="mt-2 space-y-4 text-sm" onSubmit={submitCrmTransfer}>
+                            <div>
+                                <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">
+                                    Nhân sự nhận phụ trách
+                                </label>
+                                <select
+                                    className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                    value={transferForm.to_staff_id}
+                                    onChange={(e) => setTransferForm((s) => ({ ...s, to_staff_id: e.target.value }))}
+                                >
+                                    <option value="">Chọn nhân sự</option>
+                                    {transferEligible.map((u) => (
+                                        <option key={u.id} value={u.id}>
+                                            {u.name} ({u.role})
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">
+                                    Ghi chú
+                                </label>
+                                <textarea
+                                    className="min-h-[72px] w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                    rows={3}
+                                    value={transferForm.note}
+                                    onChange={(e) => setTransferForm((s) => ({ ...s, note: e.target.value }))}
+                                    placeholder="Lý do chuyển giao (tuỳ chọn)"
+                                />
+                            </div>
+                            <div className="flex items-center justify-end gap-2 pt-2">
+                                <button
+                                    type="button"
+                                    className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                                    onClick={closeCrmTransferModal}
+                                    disabled={transferSubmitting}
+                                >
+                                    Đóng
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={transferSubmitting}
+                                    className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90 disabled:opacity-60"
+                                >
+                                    {transferSubmitting ? 'Đang gửi...' : 'Gửi phiếu'}
                                 </button>
                             </div>
                         </form>

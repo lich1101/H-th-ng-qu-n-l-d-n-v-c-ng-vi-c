@@ -548,15 +548,15 @@ export default function Authenticated({ auth, header, children }) {
                 return false;
             }
             const exists = await checkEntityExists(
-                `/api/v1/crm/clients/${clientId}/flow`,
-                (payload) => Number(payload?.client?.id || 0) === clientId
+                `/api/v1/crm/clients/${clientId}`,
+                (payload) => Number(payload?.id || 0) === clientId
             );
             if (!exists) {
                 toast.error('Khách hàng không tồn tại.');
                 return false;
             }
             closeQuickPanels();
-            window.location.href = route('crm.flow', clientId);
+            window.location.href = route('crm.client.show', clientId);
             return true;
         }
 

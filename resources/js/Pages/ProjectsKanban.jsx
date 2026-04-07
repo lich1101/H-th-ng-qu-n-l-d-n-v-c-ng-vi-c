@@ -826,7 +826,7 @@ export default function ProjectsKanban(props) {
                                             <th className="py-2">Phụ trách</th>
                                             <th className="py-2">Hợp đồng</th>
                                             <th className="py-2">NV thu hợp đồng</th>
-                                            <th className="py-2">Link kho</th>
+                                            <th className="py-2">Link Lưu Tài Liệu</th>
                                             <th className="py-2">Ghi chú</th>
                                             <th className="py-2">Hạn chót</th>
                                             <th className="py-2">Ngân sách</th>

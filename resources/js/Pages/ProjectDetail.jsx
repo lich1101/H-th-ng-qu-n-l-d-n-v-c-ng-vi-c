@@ -515,7 +515,7 @@ export default function ProjectDetail(props) {
                                     {PROJECT_STATUS[project.status] || project.status}
                                 </span>
                                 <a className="text-sm text-primary font-semibold" href={`/du-an/${project.id}/luong`}>Luồng</a>
-                                <a className="text-sm text-slate-600 font-semibold" href={`/du-an/${project.id}/kho`}>Kho</a>
+                                <a className="text-sm text-slate-600 font-semibold" href={`/du-an/${project.id}/kho`}>Lưu Tài Liệu</a>
                                 {canEditProject && (
                                     <button
                                         type="button"
@@ -560,7 +560,7 @@ export default function ProjectDetail(props) {
                                 <div className="mt-1 font-semibold text-slate-900">{formatDate(project.start_date)}</div>
                             </div>
                             <div className="rounded-2xl bg-slate-50 px-4 py-3">
-                                <div className="text-xs text-text-muted">Link kho</div>
+                                <div className="text-xs text-text-muted">Link Lưu Tài Liệu</div>
                                 <div className="mt-1">{project.repo_url ? <a className="text-primary font-semibold text-xs" href={absoluteHttpUrl(project.repo_url)} target="_blank" rel="noreferrer">Mở kho</a> : <span className="text-text-muted">—</span>}</div>
                             </div>
                             <div className="rounded-2xl bg-slate-50 px-4 py-3">

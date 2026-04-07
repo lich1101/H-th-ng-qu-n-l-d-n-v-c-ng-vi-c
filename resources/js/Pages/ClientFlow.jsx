@@ -3,6 +3,7 @@ import axios from 'axios';
 import AppIcon from '@/Components/AppIcon';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
+import ClientStaffTransferPendingBanner from '@/Components/ClientStaffTransferPendingBanner';
 import TagMultiSelect from '@/Components/TagMultiSelect';
 import { filterControlClass } from '@/Components/FilterToolbar';
 import { useToast } from '@/Contexts/ToastContext';
@@ -630,12 +631,6 @@ export default function ClientFlow({ auth, clientId }) {
 
     const pt = flow?.pending_staff_transfer;
     const transferPending = pt && pt.status === 'pending';
-    const iAmReceiver = transferPending && Number(pt?.to_staff?.id) === myUserId;
-    const iAmRequesterSide = transferPending && (Number(pt?.requested_by?.id) === myUserId || Number(pt?.from_staff?.id) === myUserId);
-    const iAmAdmin = ['admin', 'administrator'].includes(userRole);
-    const iAmManager = userRole === 'quan_ly';
-    const canCancelTransfer = transferPending && (iAmRequesterSide || iAmAdmin || iAmManager);
-    const canAcceptOrRejectTransfer = transferPending && (iAmReceiver || iAmAdmin || iAmManager);
 
     const tabs = [
         { key: 'tong_quan', label: 'Tổng quan', icon: 'chart', count: null },
@@ -649,86 +644,21 @@ export default function ClientFlow({ auth, clientId }) {
     return (
         <PageContainer
             auth={auth}
-            title="Thông tin khách hàng"
-            description="Theo dõi khách hàng theo tab nghiệp vụ, thống kê tiến độ tổng hợp và trao đổi nội bộ."
+            title="Luồng khách hàng"
+            description="Trang chi tiết khách: tab nghiệp vụ, thống kê, chuyển phụ trách (phiếu bàn giao), ghi chú và trao đổi nội bộ."
             stats={stats}
         >
             <div className="space-y-5">
-                {flow?.crm_access_mode === 'transfer_receiver_pending' && transferPending && (
-                    <div className="rounded-2xl border border-amber-300 bg-amber-50 p-5 text-amber-950 shadow-card">
-                        <p className="font-semibold">Phiếu chuyển phụ trách đang chờ bạn xác nhận</p>
-                        <p className="mt-1 text-sm">
-                            Từ <span className="font-semibold">{pt?.from_staff?.name || '—'}</span>
-                            {' → '}
-                            <span className="font-semibold">{pt?.to_staff?.name || '—'}</span>
-                            {pt?.note ? <span className="block mt-2 text-amber-900/90">Ghi chú: {pt.note}</span> : null}
-                        </p>
-                        <div className="mt-4 flex flex-wrap gap-2">
-                            <button
-                                type="button"
-                                disabled={transferActionLoading}
-                                onClick={() => actOnPendingTransfer('accept')}
-                                className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
-                            >
-                                Chấp nhận phụ trách
-                            </button>
-                            <button
-                                type="button"
-                                disabled={transferActionLoading}
-                                onClick={() => actOnPendingTransfer('reject')}
-                                className="rounded-xl border border-amber-400 bg-white px-4 py-2 text-sm font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-60"
-                            >
-                                Từ chối
-                            </button>
-                        </div>
-                        <p className="mt-3 text-xs text-amber-900/80">
-                            Trước khi chấp nhận, bạn chưa thể thao tác đầy đủ trên khách hàng này (chỉ xử lý phiếu).
-                        </p>
-                    </div>
-                )}
-
-                {flow?.crm_access_mode === 'full' && transferPending && (
-                    <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4 text-sm text-amber-950">
-                        <p className="font-semibold">Đang có phiếu chuyển phụ trách chờ xử lý</p>
-                        <p className="mt-1">
-                            Đề xuất: <span className="font-medium">{pt?.from_staff?.name || '—'}</span>
-                            {' → '}
-                            <span className="font-medium">{pt?.to_staff?.name || '—'}</span>
-                        </p>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                            {canAcceptOrRejectTransfer && (
-                                <>
-                                    <button
-                                        type="button"
-                                        disabled={transferActionLoading}
-                                        onClick={() => actOnPendingTransfer('accept')}
-                                        className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
-                                    >
-                                        Chấp nhận (thay mặt)
-                                    </button>
-                                    <button
-                                        type="button"
-                                        disabled={transferActionLoading}
-                                        onClick={() => actOnPendingTransfer('reject')}
-                                        className="rounded-lg border border-amber-400 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-60"
-                                    >
-                                        Từ chối
-                                    </button>
-                                </>
-                            )}
-                            {canCancelTransfer && (
-                                <button
-                                    type="button"
-                                    disabled={transferActionLoading}
-                                    onClick={() => actOnPendingTransfer('cancel')}
-                                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
-                                >
-                                    Hủy phiếu
-                                </button>
-                            )}
-                        </div>
-                    </div>
-                )}
+                {transferPending ? (
+                    <ClientStaffTransferPendingBanner
+                        transfer={pt}
+                        myUserId={myUserId}
+                        normalizedRole={userRole}
+                        loading={transferActionLoading}
+                        density="emphasized"
+                        onAction={actOnPendingTransfer}
+                    />
+                ) : null}
 
                 <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card">
                     <div className="flex flex-wrap items-center justify-between gap-3">

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Http\Helpers\CrmScope;
 use App\Models\Client;
+use App\Models\ClientStaffTransferRequest;
 use App\Models\CustomerPayment;
 use App\Models\Department;
 use App\Models\LeadType;
@@ -164,10 +165,38 @@ class CRMController extends Controller
         $sortDir = $this->normalizeSortDirection((string) $request->input('sort_dir', 'desc'));
         $this->applyClientSorting($query, $sortBy, $sortDir, $lastActivityExpression);
 
-        return response()->json(
-            $query
-                ->paginate((int) $request->input('per_page', 10))
-        );
+        $paginator = $query->paginate((int) $request->input('per_page', 10));
+        $rows = $paginator->getCollection();
+        if ($rows->isNotEmpty()) {
+            $transferService = app(ClientStaffTransferService::class);
+            $clientIds = $rows->pluck('id')->map(function ($id) {
+                return (int) $id;
+            })->all();
+            $pendingByClientId = ClientStaffTransferRequest::query()
+                ->whereIn('client_id', $clientIds)
+                ->where('status', ClientStaffTransferService::STATUS_PENDING)
+                ->with([
+                    'fromStaff:id,name,email',
+                    'toStaff:id,name,email',
+                    'requestedBy:id,name',
+                    'client:id,name',
+                ])
+                ->get()
+                ->keyBy(function (ClientStaffTransferRequest $t) {
+                    return (int) $t->client_id;
+                });
+            $rows->transform(function (Client $client) use ($transferService, $pendingByClientId) {
+                $t = $pendingByClientId->get((int) $client->id);
+                $client->setAttribute(
+                    'pending_staff_transfer',
+                    $t ? $transferService->transferToArray($t) : null
+                );
+
+                return $client;
+            });
+        }
+
+        return response()->json($paginator);
     }
 
     /**
