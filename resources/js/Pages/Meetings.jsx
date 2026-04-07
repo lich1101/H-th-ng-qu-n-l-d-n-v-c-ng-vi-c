@@ -1,6 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
+import FilterToolbar, {
+    FILTER_SUBMIT_BUTTON_CLASS,
+    FilterActionGroup,
+    FilterField,
+    filterControlClass,
+} from '@/Components/FilterToolbar';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import { useToast } from '@/Contexts/ToastContext';
@@ -289,9 +294,12 @@ export default function Meetings(props) {
         }
     };
 
-    const applyFilters = async (event) => {
-        event.preventDefault();
-        await fetchMeetings(1, filters);
+    const applyMeetingFilters = () => {
+        setFilters((prev) => {
+            const next = { ...prev, page: 1 };
+            void fetchMeetings(1, next);
+            return next;
+        });
     };
 
     const openMeetingDetails = (meeting) => {
@@ -323,28 +331,28 @@ export default function Meetings(props) {
                 description="Tìm nhanh lịch họp qua tiêu đề, mô tả hoặc thành viên."
                 searchValue={filters.search}
                 onSearch={handleSearch}
+                onSubmitFilters={applyMeetingFilters}
                 actions={(
                     <FilterActionGroup className="justify-end">
-                        <button type="submit" form="meeting-filter-form" className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-semibold text-slate-700">
+                        {canManage ? (
+                            <button
+                                type="button"
+                                className="rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-sm"
+                                onClick={openCreate}
+                            >
+                                Thêm lịch họp
+                            </button>
+                        ) : null}
+                        <button type="submit" className={FILTER_SUBMIT_BUTTON_CLASS}>
                             Lọc
                         </button>
-                        <button type="button" className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-semibold text-slate-700" onClick={useCurrentMonthRange}>
+                        <button type="button" className={FILTER_SUBMIT_BUTTON_CLASS} onClick={useCurrentMonthRange}>
                             Tháng đang xem
                         </button>
                     </FilterActionGroup>
                 )}
             >
-                <form id="meeting-filter-form" onSubmit={applyFilters} className="grid gap-3 xl:grid-cols-[auto_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,1fr)_auto]">
-                    <FilterActionGroup className="xl:self-end">
-                        <button
-                            type="button"
-                            className="rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-sm"
-                            onClick={openCreate}
-                            disabled={!canManage}
-                        >
-                            Thêm lịch họp
-                        </button>
-                    </FilterActionGroup>
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                     <FilterField label="Từ ngày">
                         <input
                             type="date"
@@ -375,7 +383,7 @@ export default function Meetings(props) {
                             ))}
                         </select>
                     </FilterField>
-                </form>
+                </div>
             </FilterToolbar>
 
             <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">

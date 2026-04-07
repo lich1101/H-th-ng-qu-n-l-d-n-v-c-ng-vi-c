@@ -39,6 +39,20 @@ class CRMController extends Controller
             ->with($clientRelations)
             ->withCount(['opportunities', 'contracts']);
         CrmScope::applyClientScope($query, $request->user());
+
+        if ($request->filled('ids')) {
+            $rawIds = $request->input('ids');
+            $ids = is_array($rawIds)
+                ? $rawIds
+                : preg_split('/[\s,]+/', (string) $rawIds, -1, PREG_SPLIT_NO_EMPTY);
+            $ids = array_values(array_unique(array_filter(array_map('intval', $ids), function (int $id) {
+                return $id > 0;
+            })));
+            if (! empty($ids)) {
+                $query->whereIn('clients.id', $ids);
+            }
+        }
+
         if ($request->filled('search')) {
             $search = (string) $request->input('search');
             $query->where(function ($builder) use ($search) {

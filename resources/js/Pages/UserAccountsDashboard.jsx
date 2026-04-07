@@ -128,10 +128,12 @@ export default function UserAccountsDashboard(props) {
         setFilters(next);
     };
 
-    const submitSearch = (e) => {
-        e.preventDefault();
-        setFilters((prev) => ({ ...prev, page: 1, search: prev.search }));
-        fetchAccounts({ ...filters, page: 1 });
+    const applyAccountFilters = () => {
+        setFilters((prev) => {
+            const next = { ...prev, page: 1 };
+            fetchAccounts(next);
+            return next;
+        });
     };
 
     const toRoleLabel = (role) => roleLabels[role] || role;
@@ -375,12 +377,12 @@ export default function UserAccountsDashboard(props) {
                     description="Tìm nhanh nhân sự qua tên, email, số điện thoại hoặc phòng ban."
                     searchValue={filters.search}
                     onSearch={handleSearch}
+                    onSubmitFilters={applyAccountFilters}
                     actions={(
                         <FilterActionGroup>
                             <button
-                                type="button"
-                                className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90"
-                                onClick={() => fetchAccounts(filters)}
+                                type="submit"
+                                className="rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-primary/90"
                             >
                                 Tìm kiếm
                             </button>

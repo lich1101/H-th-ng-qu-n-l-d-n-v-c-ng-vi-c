@@ -1033,7 +1033,7 @@ class AttendanceController extends Controller
 
         $attendanceRecord->load(['user:id,name,email,role,department', 'editLogs.actor:id,name']);
         $viewer = $request->user();
-        $canEdit = $viewer && in_array($viewer->role, ['admin', 'administrator', 'ke_toan'], true);
+        $canEdit = $viewer && $viewer->role === 'administrator';
 
         return response()->json([
             'record' => $this->recordPayload($attendanceRecord),
@@ -1415,8 +1415,8 @@ class AttendanceController extends Controller
             'days' => $dayColumns,
             'rows' => $matrixRows,
             'legend' => [
-                ['key' => 'wifi_raw', 'label' => 'Chấm app (chưa chỉnh)', 'tone' => 'orange'],
-                ['key' => 'edited', 'label' => 'Đã chỉnh / duyệt', 'tone' => 'blue'],
+                ['key' => 'wifi_raw', 'label' => 'Chấm qua app (chưa chỉnh sửa)', 'tone' => 'orange'],
+                ['key' => 'edited', 'label' => 'Đã chỉnh sửa / duyệt đơn', 'tone' => 'blue'],
                 ['key' => 'holiday', 'label' => 'Ngày lễ', 'tone' => 'teal'],
                 ['key' => 'absent', 'label' => 'Không chấm công', 'tone' => 'slate'],
             ],
@@ -1901,6 +1901,8 @@ class AttendanceController extends Controller
             'wifi_ssid' => $item->wifi_ssid ?: '—',
             'wifi_bssid' => $item->wifi_bssid ?: '—',
             'note' => $item->note ?: '',
+            'edited_after_wifi' => (bool) ($item->edited_after_wifi ?? false),
+            'dot_tone' => $this->matrixDotTone($item),
         ];
     }
 

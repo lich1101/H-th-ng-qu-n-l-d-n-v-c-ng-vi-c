@@ -1,6 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
+import FilterToolbar, {
+    FILTER_GRID_WITH_SUBMIT,
+    FILTER_SUBMIT_BUTTON_CLASS,
+    FilterActionGroup,
+    FilterField,
+    filterControlClass,
+} from '@/Components/FilterToolbar';
 import Modal from '@/Components/Modal';
 import PageContainer from '@/Components/PageContainer';
 import PaginationControls from '@/Components/PaginationControls';
@@ -38,6 +44,14 @@ export default function ProductCategories(props) {
     const handleSearch = (val) => {
         const next = { ...filters, search: val, page: 1 };
         setFilters(next);
+    };
+
+    const applyCategoryFilters = () => {
+        setFilters((prev) => {
+            const next = { ...prev, page: 1 };
+            fetchCategories(1, next);
+            return next;
+        });
     };
 
     const fetchCategories = async (pageOrFilters = filters.page, maybeFilters = filters) => {
@@ -190,19 +204,9 @@ export default function ProductCategories(props) {
                     description="Tìm nhanh danh mục qua tên hoặc mã tự sinh."
                     searchValue={filters.search}
                     onSearch={handleSearch}
-                    actions={(
-                        <FilterActionGroup>
-                            <button
-                                type="button"
-                                className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
-                                onClick={() => fetchCategories(1, { ...filters, page: 1 })}
-                            >
-                                Lọc
-                            </button>
-                        </FilterActionGroup>
-                    )}
+                    onSubmitFilters={applyCategoryFilters}
                 >
-                    <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto]">
+                    <div className={FILTER_GRID_WITH_SUBMIT}>
                         <FilterField label="Trạng thái">
                             <select
                                 className={filterControlClass}
@@ -214,6 +218,11 @@ export default function ProductCategories(props) {
                                 <option value="0">Ngưng</option>
                             </select>
                         </FilterField>
+                        <FilterActionGroup className="sm:col-span-2 lg:col-span-2 xl:self-end xl:justify-end">
+                            <button type="submit" className={FILTER_SUBMIT_BUTTON_CLASS}>
+                                Lọc
+                            </button>
+                        </FilterActionGroup>
                     </div>
                 </FilterToolbar>
 

@@ -1,9 +1,16 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import PageContainer from '@/Components/PageContainer';
-import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
+import FilterToolbar, {
+    FILTER_GRID_WITH_SUBMIT,
+    FILTER_SUBMIT_BUTTON_CLASS,
+    FilterActionGroup,
+    FilterField,
+    filterControlClass,
+} from '@/Components/FilterToolbar';
 import PaginationControls from '@/Components/PaginationControls';
 import Modal from '@/Components/Modal';
+import ClientSelect from '@/Components/ClientSelect';
 import TagMultiSelect from '@/Components/TagMultiSelect';
 import { useToast } from '@/Contexts/ToastContext';
 
@@ -110,6 +117,14 @@ export default function Opportunities(props) {
         return statuses.length > 0 ? String(statuses[0].code) : '';
     }, [statuses]);
 
+    const editingOpportunityClient = useMemo(() => {
+        if (!editingId) {
+            return null;
+        }
+        const row = opportunities.find((o) => Number(o.id) === Number(editingId));
+        return row?.client || null;
+    }, [opportunities, editingId]);
+
     const statusCounts = useMemo(() => {
         const counts = {};
         opportunities.forEach((item) => {
@@ -174,6 +189,14 @@ export default function Opportunities(props) {
     const handleOpportunitySearch = (val) => {
         const next = { ...filters, search: val, page: 1 };
         setFilters(next);
+    };
+
+    const applyOpportunityFilters = () => {
+        setFilters((prev) => {
+            const next = { ...prev, page: 1 };
+            fetchOpportunities(1, next);
+            return next;
+        });
     };
 
     const fetchOpportunities = async (pageOrFilters = filters.page, maybeFilters = filters) => {
@@ -430,23 +453,9 @@ export default function Opportunities(props) {
                 description="Lọc theo trạng thái, khách hàng và tìm kiếm nhanh theo tên cơ hội, ghi chú hoặc khách hàng."
                 searchValue={filters.search}
                 onSearch={handleOpportunitySearch}
-                actions={(
-                    <FilterActionGroup>
-                        <button
-                            type="button"
-                            className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700"
-                            onClick={() => {
-                                const next = { ...filters, page: 1 };
-                                setFilters(next);
-                                fetchOpportunities(1, next);
-                            }}
-                        >
-                            Lọc
-                        </button>
-                    </FilterActionGroup>
-                )}
+                onSubmitFilters={applyOpportunityFilters}
             >
-                <div className="grid gap-3 lg:grid-cols-3">
+                <div className={FILTER_GRID_WITH_SUBMIT}>
                     <FilterField label="Trạng thái cơ hội">
                         <select
                             className={filterControlClass}
@@ -462,18 +471,14 @@ export default function Opportunities(props) {
                         </select>
                     </FilterField>
                     <FilterField label="Khách hàng">
-                        <select
-                            className={filterControlClass}
+                        <ClientSelect
+                            className="bg-slate-50/70"
                             value={filters.client_id}
-                            onChange={(event) => setFilters((prev) => ({ ...prev, client_id: event.target.value }))}
-                        >
-                            <option value="">Tất cả khách hàng</option>
-                            {clients.map((client) => (
-                                <option key={client.id} value={client.id}>
-                                    {client.name || `KH #${client.id}`} {client.company ? `• ${client.company}` : ''}
-                                </option>
-                            ))}
-                        </select>
+                            onChange={(id) => setFilters((prev) => ({ ...prev, client_id: id }))}
+                            allowClear
+                            clearLabel="Tất cả khách hàng"
+                            placeholder="Tất cả khách hàng"
+                        />
                     </FilterField>
                     <FilterField label="Nhân sự phụ trách">
                         <TagMultiSelect
@@ -484,6 +489,11 @@ export default function Opportunities(props) {
                             emptyLabel="Để trống để xem toàn bộ nhân sự trong phạm vi."
                         />
                     </FilterField>
+                    <FilterActionGroup className="xl:self-end xl:justify-end">
+                        <button type="submit" className={FILTER_SUBMIT_BUTTON_CLASS}>
+                            Lọc
+                        </button>
+                    </FilterActionGroup>
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
                     <button
@@ -568,18 +578,13 @@ export default function Opportunities(props) {
                     </Field>
 
                     <Field label="Khách hàng" required>
-                        <select
-                            className={filterControlClass}
+                        <ClientSelect
+                            className="bg-white"
                             value={form.client_id}
-                            onChange={(event) => setForm((prev) => ({ ...prev, client_id: event.target.value }))}
-                        >
-                            <option value="">Chọn khách hàng</option>
-                            {clients.map((client) => (
-                                <option key={client.id} value={client.id}>
-                                    {client.name || `KH #${client.id}`} {client.company ? `• ${client.company}` : ''}
-                                </option>
-                            ))}
-                        </select>
+                            onChange={(id) => setForm((prev) => ({ ...prev, client_id: id }))}
+                            placeholder="Chọn khách hàng"
+                            clientPreview={editingOpportunityClient}
+                        />
                     </Field>
 
                     <Field label="Tỷ lệ thành công (%)" required>

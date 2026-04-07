@@ -1,7 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import AppIcon from '@/Components/AppIcon';
-import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
+import FilterToolbar, {
+    FILTER_SUBMIT_BUTTON_CLASS,
+    FilterActionGroup,
+    FilterField,
+    filterControlClass,
+} from '@/Components/FilterToolbar';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import PaginationControls from '@/Components/PaginationControls';
@@ -433,6 +438,14 @@ export default function TasksBoard(props) {
     const handleTaskSearch = (val) => {
         const next = { ...filters, search: val, page: 1 };
         setFilters(next);
+    };
+
+    const applyTaskFilters = () => {
+        setFilters((prev) => {
+            const next = { ...prev, page: 1 };
+            fetchTasks(1, next);
+            return next;
+        });
     };
 
     const fetchTasks = async (page = filters.page, nextFilters = filters) => {
@@ -1755,6 +1768,7 @@ export default function TasksBoard(props) {
                     description="Tìm nhanh công việc dựa trên tiêu đề, dự án, hoặc nhân sự phụ trách."
                     searchValue={filters.search}
                     onSearch={handleTaskSearch}
+                    onSubmitFilters={applyTaskFilters}
                     actions={(
                         <FilterActionGroup className="justify-end">
                             {[
@@ -1826,15 +1840,7 @@ export default function TasksBoard(props) {
                             />
                         </FilterField>
                         <FilterActionGroup className="xl:self-end xl:justify-end">
-                            <button
-                                type="button"
-                                className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
-                                onClick={() => {
-                                    const next = { ...filters, page: 1 };
-                                    setFilters(next);
-                                    fetchTasks(1, next);
-                                }}
-                            >
+                            <button type="submit" className={FILTER_SUBMIT_BUTTON_CLASS}>
                                 Lọc
                             </button>
                         </FilterActionGroup>

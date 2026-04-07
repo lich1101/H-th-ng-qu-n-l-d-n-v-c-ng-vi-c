@@ -1,11 +1,17 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import AutoCodeBadge from '@/Components/AutoCodeBadge';
-import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
+import FilterToolbar, {
+    FILTER_SUBMIT_BUTTON_CLASS,
+    FilterActionGroup,
+    FilterField,
+    filterControlClass,
+} from '@/Components/FilterToolbar';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import AppIcon from '@/Components/AppIcon';
 import PaginationControls from '@/Components/PaginationControls';
+import ClientSelect from '@/Components/ClientSelect';
 import TagMultiSelect from '@/Components/TagMultiSelect';
 import { useToast } from '@/Contexts/ToastContext';
 import { formatVietnamDate } from '@/lib/vietnamTime';
@@ -150,7 +156,6 @@ export default function Contracts(props) {
         : '';
 
     const [contracts, setContracts] = useState([]);
-    const [clients, setClients] = useState([]);
     const [projects, setProjects] = useState([]);
     const [products, setProducts] = useState([]);
     const [collectors, setCollectors] = useState([]);
@@ -160,6 +165,7 @@ export default function Contracts(props) {
     const [savingPayment, setSavingPayment] = useState(false);
     const [savingCost, setSavingCost] = useState(false);
     const [editingId, setEditingId] = useState(null);
+    const [contractClientPreview, setContractClientPreview] = useState(null);
     const [showForm, setShowForm] = useState(false);
     const [showDetail, setShowDetail] = useState(false);
     const [detailLoading, setDetailLoading] = useState(false);
@@ -342,15 +348,6 @@ export default function Contracts(props) {
         [paymentBaseTotal, paymentForm.amount]
     );
 
-    const fetchClients = async () => {
-        try {
-            const res = await axios.get('/api/v1/crm/clients', { params: { per_page: 200 } });
-            setClients(res.data?.data || []);
-        } catch {
-            // ignore
-        }
-    };
-
     const fetchProjects = async () => {
         try {
             const res = await axios.get('/api/v1/projects', { params: { per_page: 200 } });
@@ -440,7 +437,6 @@ export default function Contracts(props) {
     };
 
     useEffect(() => {
-        fetchClients();
         fetchProjects();
         fetchProducts();
         fetchCollectors();
@@ -570,6 +566,7 @@ export default function Contracts(props) {
 
     const resetForm = () => {
         setEditingId(null);
+        setContractClientPreview(null);
         setEditingCanManage(true);
         setForm({
             title: '',
@@ -607,6 +604,7 @@ export default function Contracts(props) {
                 return;
             }
             setEditingCanManage(true);
+            setContractClientPreview(detail.client || null);
             setForm({
                 title: detail.title || '',
                 client_id: detail.client_id || '',
@@ -641,6 +639,7 @@ export default function Contracts(props) {
 
     const openCreate = () => {
         resetForm();
+        setContractClientPreview(null);
         setShowForm(true);
     };
 
@@ -1113,7 +1112,7 @@ export default function Contracts(props) {
                             />
                         </FilterField>
                         <FilterActionGroup className="xl:self-end xl:justify-end">
-                            <button type="submit" className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-semibold text-slate-700">Lọc</button>
+                            <button type="submit" className={FILTER_SUBMIT_BUTTON_CLASS}>Lọc</button>
                         </FilterActionGroup>
                     </div>
                 </FilterToolbar>
@@ -1377,14 +1376,13 @@ export default function Contracts(props) {
                                 />
                             </LabeledField>
                             <LabeledField label="Khách hàng" required className="md:col-span-2">
-                                <select
-                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
+                                <ClientSelect
+                                    className="bg-white"
                                     value={form.client_id}
-                                    onChange={(e) => setForm((s) => ({ ...s, client_id: e.target.value }))}
-                                >
-                                    <option value="">Chọn khách hàng do bạn đang quản lý</option>
-                                    {clients.map((c) => <option key={c.id} value={c.id}>{c.name} {c.company ? `(${c.company})` : ''}</option>)}
-                                </select>
+                                    onChange={(id) => setForm((s) => ({ ...s, client_id: id }))}
+                                    placeholder="Chọn khách hàng do bạn đang quản lý"
+                                    clientPreview={contractClientPreview}
+                                />
                             </LabeledField>
                         </div>
                     </div>

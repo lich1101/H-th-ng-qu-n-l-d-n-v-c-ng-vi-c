@@ -1,8 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
+import FilterToolbar, {
+    FILTER_GRID_WITH_SUBMIT,
+    FILTER_SUBMIT_BUTTON_CLASS,
+    FilterActionGroup,
+    FilterField,
+    filterControlClass,
+} from '@/Components/FilterToolbar';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
+import ClientSelect from '@/Components/ClientSelect';
 import PaginationControls from '@/Components/PaginationControls';
 import { useToast } from '@/Contexts/ToastContext';
 
@@ -31,7 +38,6 @@ export default function DepartmentAssignments(props) {
     const canDelete = userRole === 'admin';
 
     const [assignments, setAssignments] = useState([]);
-    const [clients, setClients] = useState([]);
     const [contracts, setContracts] = useState([]);
     const [departments, setDepartments] = useState([]);
     const [paging, setPaging] = useState({ current_page: 1, last_page: 1, total: 0 });
@@ -60,7 +66,7 @@ export default function DepartmentAssignments(props) {
             ? Number(pageOrFilters.page || 1)
             : Number(pageOrFilters || 1);
         try {
-            const [assignRes, deptRes, clientRes, contractRes] = await Promise.all([
+            const [assignRes, deptRes, contractRes] = await Promise.all([
                 axios.get('/api/v1/department-assignments', {
                     params: {
                         ...nextFilters,
@@ -69,7 +75,6 @@ export default function DepartmentAssignments(props) {
                     },
                 }),
                 axios.get('/api/v1/departments'),
-                axios.get('/api/v1/crm/clients', { params: { per_page: 200 } }),
                 axios.get('/api/v1/contracts', { params: { per_page: 200 } }),
             ]);
             setAssignments(assignRes.data?.data || []);
@@ -80,7 +85,6 @@ export default function DepartmentAssignments(props) {
             });
             setFilters((prev) => ({ ...prev, page: assignRes.data?.current_page || nextPage }));
             setDepartments(deptRes.data || []);
-            setClients(clientRes.data?.data || []);
             setContracts(contractRes.data?.data || []);
         } catch (error) {
             toast.error(error?.response?.data?.message || 'Không tải được điều phối.');
@@ -91,6 +95,14 @@ export default function DepartmentAssignments(props) {
         fetchData();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    const applyDepartmentFilters = () => {
+        setFilters((prev) => {
+            const next = { ...prev, page: 1 };
+            fetchData(1, next);
+            return next;
+        });
+    };
 
     const stats = useMemo(() => {
         const total = paging.total || assignments.length;
@@ -216,48 +228,41 @@ export default function DepartmentAssignments(props) {
                 <FilterToolbar enableSearch
                     title="Bộ lọc điều phối"
                     description="Lọc nhanh theo phòng ban và trạng thái triển khai để theo dõi nhóm đang xử lý."
-                    actions={(
-                        <FilterActionGroup>
-                            <button
-                                type="button"
-                                className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700"
-                                onClick={() => {
-                                    const next = { ...filters, page: 1 };
-                                    setFilters(next);
-                                    fetchData(1, next);
-                                }}
+                    onSubmitFilters={applyDepartmentFilters}
+                >
+                    <div className={FILTER_GRID_WITH_SUBMIT}>
+                        <FilterField label="Phòng ban">
+                            <select
+                                className={filterControlClass}
+                                value={filters.department_id}
+                                onChange={(e) => setFilters((s) => ({ ...s, department_id: e.target.value }))}
                             >
+                                <option value="">Tất cả phòng ban</option>
+                                {departments.map((dept) => (
+                                    <option key={dept.id} value={dept.id}>
+                                        {dept.name}
+                                    </option>
+                                ))}
+                            </select>
+                        </FilterField>
+                        <FilterField label="Trạng thái">
+                            <select
+                                className={filterControlClass}
+                                value={filters.status}
+                                onChange={(e) => setFilters((s) => ({ ...s, status: e.target.value }))}
+                            >
+                                <option value="">Tất cả trạng thái</option>
+                                <option value="new">Mới</option>
+                                <option value="in_progress">Đang triển khai</option>
+                                <option value="done">Hoàn tất</option>
+                            </select>
+                        </FilterField>
+                        <FilterActionGroup className="sm:col-span-2 lg:col-span-1 xl:self-end xl:justify-end">
+                            <button type="submit" className={FILTER_SUBMIT_BUTTON_CLASS}>
                                 Lọc
                             </button>
                         </FilterActionGroup>
-                    )}
-                >
-                    <FilterField label="Phòng ban">
-                        <select
-                            className={filterControlClass}
-                            value={filters.department_id}
-                            onChange={(e) => setFilters((s) => ({ ...s, department_id: e.target.value }))}
-                        >
-                            <option value="">Tất cả phòng ban</option>
-                            {departments.map((dept) => (
-                                <option key={dept.id} value={dept.id}>
-                                    {dept.name}
-                                </option>
-                            ))}
-                        </select>
-                    </FilterField>
-                    <FilterField label="Trạng thái">
-                        <select
-                            className={filterControlClass}
-                            value={filters.status}
-                            onChange={(e) => setFilters((s) => ({ ...s, status: e.target.value }))}
-                        >
-                            <option value="">Tất cả trạng thái</option>
-                            <option value="new">Mới</option>
-                            <option value="in_progress">Đang triển khai</option>
-                            <option value="done">Hoàn tất</option>
-                        </select>
-                    </FilterField>
+                    </div>
                 </FilterToolbar>
                 <div className="mt-4 space-y-4">
                     {assignments.map((assignment) => (
@@ -350,18 +355,12 @@ export default function DepartmentAssignments(props) {
             >
                 <div className="space-y-3 text-sm">
                     <FormField label="Khách hàng" required>
-                        <select
-                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                        <ClientSelect
+                            className="bg-white"
                             value={form.client_id}
-                            onChange={(e) => setForm((s) => ({ ...s, client_id: e.target.value }))}
-                        >
-                            <option value="">Chọn khách hàng *</option>
-                            {clients.map((client) => (
-                                <option key={client.id} value={client.id}>
-                                    {client.name} {client.company ? `(${client.company})` : ''}
-                                </option>
-                            ))}
-                        </select>
+                            onChange={(id) => setForm((s) => ({ ...s, client_id: id }))}
+                            placeholder="Chọn khách hàng *"
+                        />
                     </FormField>
                     <FormField label="Hợp đồng liên kết">
                         <select

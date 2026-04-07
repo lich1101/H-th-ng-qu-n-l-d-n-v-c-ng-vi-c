@@ -1,6 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
+import FilterToolbar, {
+    FILTER_SUBMIT_BUTTON_CLASS,
+    FilterActionGroup,
+} from '@/Components/FilterToolbar';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import PaginationControls from '@/Components/PaginationControls';
@@ -45,6 +48,14 @@ export default function HandoverCenter(props) {
     const handleSearch = (val) => {
         const next = { ...filters, search: val, page: 1 };
         setFilters(next);
+    };
+
+    const applyHandoverFilters = () => {
+        setFilters((prev) => {
+            const next = { ...prev, page: 1 };
+            fetchQueue(1, next);
+            return next;
+        });
     };
 
     const fetchQueue = async (pageOrFilters = filters.page, maybeFilters = filters) => {
@@ -151,13 +162,10 @@ export default function HandoverCenter(props) {
                     description="Tìm nhanh theo mã dự án, hợp đồng, khách hàng hoặc người gửi."
                     searchValue={filters.search}
                     onSearch={handleSearch}
+                    onSubmitFilters={applyHandoverFilters}
                     actions={(
                         <FilterActionGroup>
-                            <button
-                                type="button"
-                                className="rounded-xl border border-slate-200/80 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700"
-                                onClick={() => fetchQueue(1, { ...filters, page: 1 })}
-                            >
+                            <button type="submit" className={FILTER_SUBMIT_BUTTON_CLASS}>
                                 Lọc
                             </button>
                             {userRole === 'nhan_vien' && (

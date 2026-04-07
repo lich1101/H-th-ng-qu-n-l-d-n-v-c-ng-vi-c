@@ -2,6 +2,17 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 export const filterControlClass = 'w-full rounded-2xl border border-slate-200/80 bg-slate-50/70 px-3.5 py-3 text-sm text-slate-700 transition focus:border-primary focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/10';
 
+/** Nút "Lọc" thống nhất — dùng với type="submit" trong FilterToolbar có onSubmitFilters */
+export const FILTER_SUBMIT_BUTTON_CLASS =
+    'rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50';
+
+/**
+ * Lưới bộ lọc cân đối: 1 cột mobile → 2 tablet → 3 laptop → 4 desktop.
+ * Nút Lọc đặt cột riêng (thường cuối) với class: xl:col-span-1 flex items-end justify-end
+ */
+export const FILTER_GRID_WITH_SUBMIT =
+    'grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]';
+
 export function FilterField({
     label,
     hint = '',
@@ -122,23 +133,6 @@ function TableSearchInput({ containerRef, searchValue, onSearchChange }) {
         return () => observer.disconnect();
     }, [containerRef, term, applyFilter]);
 
-    // Keyboard shortcut: Ctrl/Cmd + F focuses search
-    useEffect(() => {
-        const handleKeyDown = (e) => {
-            if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
-                // Only intercept if the FilterToolbar is visible
-                if (containerRef.current && containerRef.current.offsetParent !== null) {
-                    e.preventDefault();
-                    inputRef.current?.focus();
-                    inputRef.current?.select();
-                }
-            }
-        };
-        // Don't add global listener to avoid conflicts
-        // window.addEventListener('keydown', handleKeyDown);
-        // return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [containerRef]);
-
     return (
         <div className="relative">
             <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
@@ -150,7 +144,7 @@ function TableSearchInput({ containerRef, searchValue, onSearchChange }) {
                 ref={inputRef}
                 type="text"
                 className="w-full rounded-2xl border border-slate-200/80 bg-slate-50/70 py-3 pl-10 pr-20 text-sm text-slate-700 placeholder-slate-400 transition focus:border-primary focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/10"
-                placeholder="Tìm nhanh trong bảng... (nhập bất kỳ từ khóa)"
+                placeholder="Tìm nhanh trong bảng... (Enter để áp dụng lọc)"
                 value={term}
                 onChange={handleChange}
             />
@@ -185,16 +179,19 @@ export default function FilterToolbar({
     enableSearch = false,
     searchValue = undefined,
     onSearch = undefined,
-    /** Khi có: bọc ô tìm + bộ lọc trong <form>, Enter sẽ gọi lọc (không cần chỉ chuột). */
+    /** Khi có: bọc toàn bộ (tiêu đề + nút + ô tìm + children) trong <form>. Nút Lọc dùng type="submit". Enter áp dụng lọc. */
     onSubmitFilters = undefined,
     children,
 }) {
     const containerRef = useRef(null);
 
+    const hasHeader = Boolean(title || description || actions);
+    const hasTopBlock = hasHeader || enableSearch;
+
     const filterBody = (
         <>
             {enableSearch && (
-                <div className={title || description || actions ? 'mt-4' : ''}>
+                <div className={hasHeader ? 'mt-4' : ''}>
                     <TableSearchInput
                         containerRef={containerRef}
                         searchValue={searchValue}
@@ -202,43 +199,59 @@ export default function FilterToolbar({
                     />
                 </div>
             )}
-            <div className={title || description || actions || enableSearch ? 'mt-4' : ''}>
+            <div className={hasTopBlock ? 'mt-4' : ''}>
                 {children}
             </div>
         </>
     );
 
-    return (
-        <div ref={containerRef} className={`mb-6 rounded-[28px] border border-slate-200/80 bg-white p-5 shadow-card ${className}`.trim()}>
-            {(title || description || actions) ? (
-                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                    {(title || description) ? (
-                        <div className="max-w-3xl">
-                            {title ? (
-                                <h3 className="text-base font-semibold text-slate-900">{title}</h3>
-                            ) : null}
-                            {description ? (
-                                <p className="mt-1.5 text-sm leading-6 text-text-muted">{description}</p>
-                            ) : null}
-                        </div>
+    const headerRow = hasHeader ? (
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+            {(title || description) ? (
+                <div className="max-w-3xl">
+                    {title ? (
+                        <h3 className="text-base font-semibold text-slate-900">{title}</h3>
                     ) : null}
-                    {actions ? (
-                        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2.5">
-                            {actions}
-                        </div>
+                    {description ? (
+                        <p className="mt-1.5 text-sm leading-6 text-text-muted">
+                            {description}
+                            {onSubmitFilters ? (
+                                <span className="block mt-1 text-xs text-text-muted/90">
+                                    Nhấn Enter trong ô tìm hoặc các trường lọc để áp dụng (hoặc bấm Lọc).
+                                </span>
+                            ) : null}
+                        </p>
                     ) : null}
                 </div>
             ) : null}
-            {onSubmitFilters ? (
-                <form
-                    onSubmit={(e) => {
-                        e.preventDefault();
-                        onSubmitFilters();
-                    }}
-                >
-                    {filterBody}
-                </form>
-            ) : filterBody}
+            {actions ? (
+                <div className="flex w-full shrink-0 flex-wrap items-center justify-end gap-2.5 xl:w-auto">
+                    {actions}
+                </div>
+            ) : null}
+        </div>
+    ) : null;
+
+    const wrapped = onSubmitFilters ? (
+        <form
+            onSubmit={(e) => {
+                e.preventDefault();
+                onSubmitFilters();
+            }}
+        >
+            {headerRow}
+            {filterBody}
+        </form>
+    ) : (
+        <>
+            {headerRow}
+            {filterBody}
+        </>
+    );
+
+    return (
+        <div ref={containerRef} className={`mb-6 rounded-[28px] border border-slate-200/80 bg-white p-5 shadow-card ${className}`.trim()}>
+            {wrapped}
         </div>
     );
 }

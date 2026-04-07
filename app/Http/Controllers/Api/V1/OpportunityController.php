@@ -19,7 +19,7 @@ class OpportunityController extends Controller
     {
         $viewer = $request->user();
         $query = Opportunity::query()->with([
-            'client:id,name,company,email,phone',
+            'client:id,name,company,email,phone,notes',
             'assignee:id,name,email,role',
             'creator:id,name,email,role',
             'product:id,name,code',
@@ -104,7 +104,7 @@ class OpportunityController extends Controller
 
         $opportunity = Opportunity::create($validated);
         $opportunity->load([
-            'client:id,name,company,email,phone',
+            'client:id,name,company,email,phone,notes',
             'assignee:id,name,email,role',
             'creator:id,name,email,role',
             'product:id,name,code',
@@ -208,7 +208,7 @@ class OpportunityController extends Controller
             return response()->json(['message' => 'Không có quyền xem cơ hội.'], 403);
         }
         return response()->json($opportunity->load([
-            'client:id,name,company,email,phone',
+            'client:id,name,company,email,phone,notes',
             'assignee:id,name,email,role',
             'creator:id,name,email,role',
             'product:id,name,code',
@@ -243,7 +243,7 @@ class OpportunityController extends Controller
         }
         $opportunity->update($validated);
         return response()->json($opportunity->load([
-            'client:id,name,company,email,phone',
+            'client:id,name,company,email,phone,notes',
             'assignee:id,name,email,role',
             'creator:id,name,email,role',
             'product:id,name,code',

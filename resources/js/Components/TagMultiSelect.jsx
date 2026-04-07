@@ -220,6 +220,14 @@ export default function TagMultiSelect({
                         className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-0"
                         value={query}
                         onChange={(event) => setQuery(event.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key !== 'Enter') return;
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (filteredAvailableOptions.length > 0) {
+                                addSelected(filteredAvailableOptions[0].id);
+                            }
+                        }}
                         placeholder={availableOptions.length > 0 ? addPlaceholder : 'Đã chọn hết nhân sự khả dụng'}
                     />
                 </div>

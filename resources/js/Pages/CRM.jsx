@@ -1,9 +1,16 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
-import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
+import FilterToolbar, {
+    FILTER_GRID_WITH_SUBMIT,
+    FILTER_SUBMIT_BUTTON_CLASS,
+    FilterActionGroup,
+    FilterField,
+    filterControlClass,
+} from '@/Components/FilterToolbar';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import AppIcon from '@/Components/AppIcon';
+import ClientSelect from '@/Components/ClientSelect';
 import PaginationControls from '@/Components/PaginationControls';
 import TagMultiSelect from '@/Components/TagMultiSelect';
 import { useToast } from '@/Contexts/ToastContext';
@@ -99,6 +106,7 @@ export default function CRM(props) {
     const [paymentFilters, setPaymentFilters] = useState({ status: '', per_page: 10 });
     const [editingClientId, setEditingClientId] = useState(null);
     const [editingPaymentId, setEditingPaymentId] = useState(null);
+    const [paymentClientPreview, setPaymentClientPreview] = useState(null);
     const [showClientForm, setShowClientForm] = useState(false);
     const [showPaymentForm, setShowPaymentForm] = useState(false);
     const [submittingClient, setSubmittingClient] = useState(false);
@@ -250,6 +258,20 @@ export default function CRM(props) {
         } catch (error) {
             toast.error(getErrorMessage(error, 'Không tải được danh sách thanh toán.'));
         }
+    };
+
+    const applyClientFilters = () => {
+        setClientFilters((prev) => {
+            fetchClients(1, prev);
+            return prev;
+        });
+    };
+
+    const applyPaymentFilters = () => {
+        setPaymentFilters((prev) => {
+            fetchPayments(1, prev);
+            return prev;
+        });
     };
 
     const submitClientImport = async (e) => {
@@ -677,6 +699,7 @@ export default function CRM(props) {
 
     const editPayment = (payment) => {
         setEditingPaymentId(payment.id);
+        setPaymentClientPreview(payment.client || null);
         setPaymentForm({
             client_id: String(payment.client_id || ''),
             amount: String(payment.amount || ''),
@@ -690,6 +713,7 @@ export default function CRM(props) {
 
     const openPaymentCreate = () => {
         setEditingPaymentId(null);
+        setPaymentClientPreview(null);
         setPaymentForm({
             client_id: '',
             amount: '',
@@ -704,6 +728,7 @@ export default function CRM(props) {
     const closePaymentForm = () => {
         setShowPaymentForm(false);
         setEditingPaymentId(null);
+        setPaymentClientPreview(null);
         setSubmittingPayment(false);
     };
 
@@ -887,6 +912,7 @@ export default function CRM(props) {
                             description="Lọc theo tên, loại lead và nhóm khách trước khi thao tác CRM hoặc phân công phụ trách."
                             searchValue={clientFilters.search}
                             onSearch={handleClientSearch}
+                            onSubmitFilters={applyClientFilters}
                         >
                             <div className={`grid gap-3 ${isAdminRole ? 'md:grid-cols-2 xl:grid-cols-6' : 'md:grid-cols-2 xl:grid-cols-5'}`}>
                                 <FilterField label="Trạng thái lead">
@@ -960,11 +986,7 @@ export default function CRM(props) {
                                     </FilterField>
                                 )}
                                 <FilterActionGroup className="md:col-span-2 xl:col-span-1 xl:self-end xl:justify-end">
-                                    <button
-                                        type="button"
-                                        className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
-                                        onClick={() => fetchClients(1, clientFilters)}
-                                    >
+                                    <button type="submit" className={FILTER_SUBMIT_BUTTON_CLASS}>
                                         Lọc
                                     </button>
                                 </FilterActionGroup>
@@ -1519,12 +1541,13 @@ export default function CRM(props) {
                                 </button>
                             </div>
                         )}
-                        <FilterToolbar enableSearch
+                        <FilterToolbar
                             className="mb-4 border-0 p-0 shadow-none"
                             title="Danh sách thanh toán"
                             description="Lọc nhanh trạng thái thanh toán để theo dõi công nợ và nhắc hạn dễ hơn."
+                            onSubmitFilters={applyPaymentFilters}
                         >
-                            <div className="grid gap-3 xl:grid-cols-[minmax(0,0.85fr)_auto]">
+                            <div className={FILTER_GRID_WITH_SUBMIT}>
                                 <FilterField label="Trạng thái thanh toán">
                                     <select
                                         className={filterControlClass}
@@ -1538,11 +1561,7 @@ export default function CRM(props) {
                                     </select>
                                 </FilterField>
                                 <FilterActionGroup className="xl:self-end xl:justify-end">
-                                    <button
-                                        type="button"
-                                        className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
-                                        onClick={() => fetchPayments(1, paymentFilters)}
-                                    >
+                                    <button type="submit" className={FILTER_SUBMIT_BUTTON_CLASS}>
                                         Lọc
                                     </button>
                                 </FilterActionGroup>
@@ -1638,18 +1657,13 @@ export default function CRM(props) {
                     >
                         <form className="space-y-3 text-sm" onSubmit={submitPayment}>
                             <LabeledField label="Khách hàng" required>
-                                <select
-                                    className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                <ClientSelect
+                                    className="bg-white"
                                     value={paymentForm.client_id}
-                                    onChange={(e) => setPaymentForm((s) => ({ ...s, client_id: e.target.value }))}
-                                >
-                                    <option value="">Chọn khách hàng *</option>
-                                    {clients.map((c) => (
-                                        <option key={c.id} value={c.id}>
-                                            {c.name} {c.company ? `(${c.company})` : ''}
-                                        </option>
-                                    ))}
-                                </select>
+                                    onChange={(id) => setPaymentForm((s) => ({ ...s, client_id: id }))}
+                                    placeholder="Chọn khách hàng *"
+                                    clientPreview={paymentClientPreview}
+                                />
                             </LabeledField>
                             <LabeledField label="Số tiền" required>
                                 <input

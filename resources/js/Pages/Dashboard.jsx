@@ -225,11 +225,11 @@ export default function Dashboard(props) {
             <FilterToolbar enableSearch
                 title="Bộ lọc thời gian"
                 description="Mặc định trang chủ hiển thị dữ liệu của tháng hiện tại. Bạn có thể thay đổi khoảng thời gian để quan sát chi tiết hơn."
+                onSubmitFilters={applyReportFilters}
                 actions={(
                     <FilterActionGroup>
                         <button
-                            type="button"
-                            onClick={applyReportFilters}
+                            type="submit"
                             className="rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-card"
                         >
                             Áp dụng

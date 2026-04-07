@@ -6,6 +6,7 @@ import Modal from '@/Components/Modal';
 import TagMultiSelect from '@/Components/TagMultiSelect';
 import { filterControlClass } from '@/Components/FilterToolbar';
 import { useToast } from '@/Contexts/ToastContext';
+import { formatClientOptionLabel } from '@/utils/clientOptionLabel';
 import { formatVietnamDate, formatVietnamDateTime } from '@/lib/vietnamTime';
 
 const STATUS_LABELS = {
@@ -1160,7 +1161,7 @@ export default function ClientFlow({ auth, clientId }) {
                     >
                         <input
                             className={`${filterControlClass} cursor-not-allowed bg-slate-100 text-slate-800 ring-1 ring-inset ring-slate-200`}
-                            value={flow?.client?.name || ''}
+                            value={formatClientOptionLabel(flow?.client) || flow?.client?.name || ''}
                             readOnly
                             tabIndex={-1}
                             autoComplete="off"

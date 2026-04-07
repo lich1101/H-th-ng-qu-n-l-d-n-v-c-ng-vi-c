@@ -1,6 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
+import FilterToolbar, {
+    FILTER_SUBMIT_BUTTON_CLASS,
+    FilterField,
+    filterControlClass,
+} from '@/Components/FilterToolbar';
 import PageContainer from '@/Components/PageContainer';
 import PaginationControls from '@/Components/PaginationControls';
 import TagMultiSelect from '@/Components/TagMultiSelect';
@@ -92,6 +96,14 @@ export default function TaskItemsBoard(props) {
         setFilters(next);
     };
 
+    const applyTaskItemFilters = () => {
+        setFilters((prev) => {
+            const next = { ...prev, page: 1 };
+            fetchItems(1, next);
+            return next;
+        });
+    };
+
     const fetchItems = async (page = filters.page, nextFilters = filters) => {
         setLoading(true);
         try {
@@ -164,17 +176,7 @@ export default function TaskItemsBoard(props) {
                     description="Tìm nhanh đầu việc qua tiêu đề, dự án, công việc hoặc nhân sự phụ trách."
                     searchValue={filters.search}
                     onSearch={handleSearch}
-                    actions={(
-                        <FilterActionGroup>
-                            <button
-                                type="button"
-                                className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white"
-                                onClick={() => fetchItems(1, { ...filters, page: 1 })}
-                            >
-                                Lọc
-                            </button>
-                        </FilterActionGroup>
-                    )}
+                    onSubmitFilters={applyTaskItemFilters}
                 >
                     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                         <FilterField label="Dự án">
@@ -262,6 +264,11 @@ export default function TaskItemsBoard(props) {
                                 onChange={(e) => setFilters((s) => ({ ...s, deadline_to: e.target.value }))}
                             />
                         </FilterField>
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center justify-end gap-3">
+                        <button type="submit" className={FILTER_SUBMIT_BUTTON_CLASS}>
+                            Lọc
+                        </button>
                     </div>
                     <div className="mt-3 text-xs text-slate-500">
                         Tổng: {paging.total} • Đang làm: {summary.doing} • Hoàn tất: {summary.done}

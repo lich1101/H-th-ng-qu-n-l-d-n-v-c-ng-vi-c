@@ -238,7 +238,7 @@ class ContractPaymentController extends Controller
                 'Có phiếu duyệt thanh toán hợp đồng mới',
                 $actor->name.' vừa gửi yêu cầu thêm thanh toán cho hợp đồng: '.$contract->title,
                 [
-                    'type' => 'contract_finance_request_pending',
+                    'type' => 'contract_finance_request_pending_payment',
                     'category' => 'contract_finance',
                     'contract_id' => (int) $contract->id,
                     'contract_finance_request_id' => (int) $financeRequest->id,

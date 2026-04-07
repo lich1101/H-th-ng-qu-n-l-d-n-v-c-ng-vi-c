@@ -304,11 +304,11 @@ export default function CompanyRevenueReport(props) {
             <FilterToolbar enableSearch
                 title="Bộ lọc thời gian"
                 description="Khi vừa vào trang, hệ thống mặc định lọc đúng tháng hiện tại. Bấm “Toàn thời gian” nếu bạn muốn xem toàn bộ dữ liệu."
+                onSubmitFilters={applyFilters}
                 actions={(
                     <FilterActionGroup>
                         <button
-                            type="button"
-                            onClick={applyFilters}
+                            type="submit"
                             className="rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-card"
                         >
                             Áp dụng

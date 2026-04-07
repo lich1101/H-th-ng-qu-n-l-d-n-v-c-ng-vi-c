@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import axios from 'axios';
 import PageContainer from '@/Components/PageContainer';
+import ClientSelect from '@/Components/ClientSelect';
 import Modal from '@/Components/Modal';
 import AppIcon from '@/Components/AppIcon';
 import TagMultiSelect from '@/Components/TagMultiSelect';
@@ -216,7 +217,6 @@ export default function ContractDetail(props) {
     const [showProjectForm, setShowProjectForm] = useState(false);
     const [showEditContractModal, setShowEditContractModal] = useState(false);
     const [savingContract, setSavingContract] = useState(false);
-    const [clientsLookup, setClientsLookup] = useState([]);
     const [productsLookup, setProductsLookup] = useState([]);
     const [collectorsLookup, setCollectorsLookup] = useState([]);
     const [careStaffUsers, setCareStaffUsers] = useState([]);
@@ -383,12 +383,11 @@ export default function ContractDetail(props) {
 
     const fetchMetaAndOwners = async () => {
         try {
-            const [metaRes, ownerRes, collectorRes, careStaffRes, clientRes, productRes, workflowRes] = await Promise.all([
+            const [metaRes, ownerRes, collectorRes, careStaffRes, productRes, workflowRes] = await Promise.all([
                 axios.get('/api/v1/meta').catch(() => ({ data: {} })),
                 axios.get('/api/v1/users/lookup', { params: { purpose: 'project_owner' } }).catch(() => ({ data: { data: [] } })),
                 axios.get('/api/v1/users/lookup', { params: { purpose: 'contract_collector' } }).catch(() => ({ data: { data: [] } })),
                 axios.get('/api/v1/users/lookup', { params: { purpose: 'contract_care_staff' } }).catch(() => ({ data: { data: [] } })),
-                axios.get('/api/v1/crm/clients', { params: { per_page: 500, page: 1, sort_by: 'last_activity_at', sort_dir: 'desc' } }).catch(() => ({ data: { data: [] } })),
                 axios.get('/api/v1/products', { params: { per_page: 500 } }).catch(() => ({ data: { data: [] } })),
                 axios.get('/api/v1/workflow-topics', { params: { per_page: 200, is_active: true } }).catch(() => ({ data: { data: [] } })),
             ]);
@@ -397,7 +396,6 @@ export default function ContractDetail(props) {
             setProjectOwners(ownerRes.data?.data || []);
             setCollectorsLookup(collectorRes.data?.data || []);
             setCareStaffUsers(careStaffRes.data?.data || []);
-            setClientsLookup(clientRes.data?.data || []);
             setProductsLookup(productRes.data?.data || []);
         } catch {
             // ignore
@@ -1512,23 +1510,13 @@ export default function ContractDetail(props) {
                                 />
                             </LabeledField>
                             <LabeledField label="Khách hàng" required className="md:col-span-2">
-                                <select
-                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
+                                <ClientSelect
+                                    className="bg-white"
                                     value={editForm.client_id}
-                                    onChange={(e) => setEditForm((s) => ({ ...s, client_id: e.target.value }))}
-                                >
-                                    <option value="">Chọn khách hàng do bạn đang quản lý</option>
-                                    {!clientsLookup.some((client) => String(client.id) === String(editForm.client_id)) && contract?.client?.id ? (
-                                        <option value={contract.client.id}>
-                                            {contract.client.name || `Khách hàng #${contract.client.id}`}
-                                        </option>
-                                    ) : null}
-                                    {clientsLookup.map((client) => (
-                                        <option key={client.id} value={client.id}>
-                                            {client.name} {client.company ? `(${client.company})` : ''}
-                                        </option>
-                                    ))}
-                                </select>
+                                    onChange={(id) => setEditForm((s) => ({ ...s, client_id: id }))}
+                                    placeholder="Chọn khách hàng do bạn đang quản lý"
+                                    clientPreview={contract?.client}
+                                />
                             </LabeledField>
                         </div>
                     </div>

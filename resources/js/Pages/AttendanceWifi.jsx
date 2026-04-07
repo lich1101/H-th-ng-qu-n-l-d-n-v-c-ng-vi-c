@@ -239,6 +239,15 @@ export default function AttendanceWifi(props) {
     const [reportFilters, setReportFilters] = useState({ month: currentMonthKey(), user_id: '', search: '' });
     const [manualRecordModal, setManualRecordModal] = useState({ open: false, item: null });
     const [manualRecordForm, setManualRecordForm] = useState({ user_id: '', work_date: todayIso(), work_units: '1.0', check_in_time: '', note: '' });
+    const [recordDetailModal, setRecordDetailModal] = useState({
+        open: false,
+        loading: false,
+        record: null,
+        edit_logs: [],
+        form_read_only: true,
+        error: null,
+        meta: null,
+    });
     const [exportModalOpen, setExportModalOpen] = useState(false);
     const [exportRange, setExportRange] = useState(() => monthKeyToDateRange(currentMonthKey()));
 
@@ -377,6 +386,54 @@ export default function AttendanceWifi(props) {
             check_in_at: cell?.has_record ? (cell?.check_in_at || '') : '',
             note: cell?.has_record ? (cell?.note || '') : '',
         });
+    };
+
+    const loadRecordDetail = async (recordId, meta = {}) => {
+        if (!recordId) return;
+        setRecordDetailModal({
+            open: true,
+            loading: true,
+            record: null,
+            edit_logs: [],
+            form_read_only: true,
+            error: null,
+            meta,
+        });
+        try {
+            const res = await axios.get(`/api/v1/attendance/records/${recordId}`);
+            setRecordDetailModal({
+                open: true,
+                loading: false,
+                record: res.data?.record || null,
+                edit_logs: res.data?.edit_logs || [],
+                form_read_only: res.data?.form_read_only !== false,
+                error: null,
+                meta,
+            });
+        } catch (error) {
+            setRecordDetailModal({
+                open: true,
+                loading: false,
+                record: null,
+                edit_logs: [],
+                form_read_only: true,
+                error: error?.response?.data?.message || 'Không tải được chi tiết bản ghi.',
+                meta,
+            });
+        }
+    };
+
+    const onMatrixCellClick = (row, cell) => {
+        if (cell?.has_record && cell?.record_id) {
+            void loadRecordDetail(cell.record_id, {
+                user_name: row?.user_name,
+                work_date: cell.date,
+            });
+            return;
+        }
+        if (canManualAdjust) {
+            openManualRecordFromMatrixCell(row, cell);
+        }
     };
 
     const loadDashboard = async () => {
@@ -705,9 +762,10 @@ export default function AttendanceWifi(props) {
                                 className="mt-4 mb-4"
                                 title="Bộ lọc bảng công"
                                 description="Chọn khoảng ngày để xem lịch sử công cá nhân theo đúng chuẩn hiển thị chung của hệ thống."
+                                onSubmitFilters={() => loadRecords(recordFilters)}
                                 actions={(
                                     <FilterActionGroup className="xl:justify-end">
-                                        <button type="button" className={buttonPrimaryClass} onClick={() => loadRecords(recordFilters)}>
+                                        <button type="submit" className={buttonPrimaryClass}>
                                             Xem công
                                         </button>
                                     </FilterActionGroup>
@@ -822,12 +880,12 @@ export default function AttendanceWifi(props) {
                                 description={canManage ? 'Xem và duyệt toàn bộ đơn đi muộn hoặc nghỉ phép của nhân sự.' : 'Theo dõi trạng thái đơn của bạn.'}
                                 searchValue={requestFilters.search}
                                 onSearch={handleRequestSearch}
+                                onSubmitFilters={() => loadRequests({ ...requestFilters, page: 1 })}
                                 actions={(
                                     <FilterActionGroup className="xl:justify-end">
                                         <button
-                                            type="button"
+                                            type="submit"
                                             className={buttonSecondaryClass}
-                                            onClick={() => loadRequests({ ...requestFilters, page: 1 })}
                                         >
                                             Lọc
                                         </button>
@@ -998,12 +1056,12 @@ export default function AttendanceWifi(props) {
                             description="Mỗi nhân viên chỉ dùng một thiết bị đã được duyệt để chấm công trên đúng Wi-Fi/BSSID công ty."
                             searchValue={deviceFilters.search}
                             onSearch={handleDeviceSearch}
+                            onSubmitFilters={() => loadDevices({ ...deviceFilters, page: 1 })}
                             actions={(
                                 <FilterActionGroup className="xl:justify-end">
                                     <button
-                                        type="button"
+                                        type="submit"
                                         className={buttonSecondaryClass}
-                                        onClick={() => loadDevices({ ...deviceFilters, page: 1 })}
                                     >
                                         Lọc
                                     </button>
@@ -1109,12 +1167,12 @@ export default function AttendanceWifi(props) {
                             description="Toàn thời gian phải chấm trong khung đầu giờ để được 1 công. Mỗi chiều lấy mốc từ giờ bắt đầu buổi chiều."
                             searchValue={staffFilters.search}
                             onSearch={handleStaffSearch}
+                            onSubmitFilters={() => loadStaff({ ...staffFilters, page: 1 })}
                             actions={(
                                 <FilterActionGroup className="xl:justify-end">
                                     <button
-                                        type="button"
+                                        type="submit"
                                         className={buttonSecondaryClass}
-                                        onClick={() => loadStaff({ ...staffFilters, page: 1 })}
                                     >
                                         Lọc
                                     </button>
@@ -1202,12 +1260,13 @@ export default function AttendanceWifi(props) {
                             description="Bảng công dạng ma trận theo tháng: mỗi hàng là nhân sự, mỗi cột là ngày trong tháng."
                             searchValue={reportFilters.search}
                             onSearch={handleReportSearch}
+                            onSubmitFilters={() => loadReport(reportFilters)}
                             actions={(
                                 <FilterActionGroup className="xl:justify-end">
                                     {canManualAdjust ? (
                                         <button type="button" className={buttonSecondaryClass} onClick={() => openManualRecord()}>Sửa công tay</button>
                                     ) : null}
-                                    <button type="button" className={buttonSecondaryClass} onClick={() => loadReport(reportFilters)}>Xem báo cáo</button>
+                                    <button type="submit" className={buttonSecondaryClass}>Xem báo cáo</button>
                                     {canExport ? (
                                         <button type="button" className={buttonPrimaryClass} onClick={openExportModal}>Xuất Excel</button>
                                     ) : null}
@@ -1316,9 +1375,9 @@ export default function AttendanceWifi(props) {
                                                 >
                                                     <button
                                                         type="button"
-                                                        onClick={() => openManualRecordFromMatrixCell(row, cell)}
-                                                        disabled={!canManualAdjust}
-                                                        className="mx-auto inline-flex min-h-[30px] min-w-[38px] items-center justify-center gap-1 rounded-lg border border-transparent px-1.5 py-1 text-xs font-semibold text-slate-700 transition hover:border-slate-200 hover:bg-slate-100"
+                                                        onClick={() => onMatrixCellClick(row, cell)}
+                                                        disabled={!cell.has_record && !canManualAdjust}
+                                                        className="mx-auto inline-flex min-h-[30px] min-w-[38px] items-center justify-center gap-1 rounded-lg border border-transparent px-1.5 py-1 text-xs font-semibold text-slate-700 transition hover:border-slate-200 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                                                     >
                                                         <span>{cell.work_units_display || '·'}</span>
                                                         <span className={`h-1.5 w-1.5 rounded-full ${matrixToneClass(cell.tone)}`} />
@@ -1330,11 +1389,17 @@ export default function AttendanceWifi(props) {
                                 </tbody>
                             </table>
                         </div>
-                        {canManualAdjust ? (
-                            <div className="mt-3 rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3 text-xs text-text-muted">
-                                Bấm vào từng ô ngày để sửa công tay nhanh cho đúng nhân sự và đúng ngày.
-                            </div>
-                        ) : null}
+                        <div className="mt-3 rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3 text-xs text-text-muted space-y-1">
+                            <p>
+                                Ô có chấm <span className="inline-block h-2 w-2 rounded-full bg-orange-500 align-middle" /> = chấm qua app thành công, chưa chỉnh sửa.
+                                Chấm <span className="inline-block h-2 w-2 rounded-full bg-sky-600 align-middle" /> = đã chỉnh sửa hoặc duyệt đơn — xem lịch sử trong chi tiết.
+                            </p>
+                            {canManualAdjust ? (
+                                <p>Administrator: bấm ô trống hoặc có bản ghi để sửa công tay; các vai trò khác chỉ xem chi tiết.</p>
+                            ) : (
+                                <p>Bấm vào ô có dữ liệu để xem chi tiết (chỉ đọc). Lịch sử chỉnh sửa hiển thị khi bản ghi đã được điều chỉnh.</p>
+                            )}
+                        </div>
                     </div>
                 )}
             </div>
@@ -1470,6 +1535,121 @@ export default function AttendanceWifi(props) {
                 <div className="mt-5 flex justify-end gap-3">
                     <button type="button" className={buttonSecondaryClass} onClick={() => setManualRecordModal({ open: false, item: null })}>Hủy</button>
                     <button type="button" className={buttonPrimaryClass} onClick={saveManualRecord} disabled={!manualRecordForm.user_id || !manualRecordForm.work_date}>Lưu công</button>
+                </div>
+            </Modal>
+
+            <Modal
+                open={recordDetailModal.open}
+                onClose={() => setRecordDetailModal((s) => ({ ...s, open: false }))}
+                title={
+                    recordDetailModal.meta?.user_name
+                        ? `Chi tiết công — ${recordDetailModal.meta.user_name}`
+                        : 'Chi tiết bản ghi chấm công'
+                }
+                description={
+                    recordDetailModal.meta?.work_date
+                        ? `Ngày ${formatIsoDate(recordDetailModal.meta.work_date)}. ${
+                            recordDetailModal.form_read_only
+                                ? 'Bạn chỉ xem thông tin; chỉ Administrator sửa công trực tiếp không qua đơn.'
+                                : 'Administrator có thể điều chỉnh qua nút «Sửa công tay» trên báo cáo.'
+                        }`
+                        : ''
+                }
+                size="lg"
+            >
+                {recordDetailModal.loading ? (
+                    <p className="text-sm text-text-muted">Đang tải...</p>
+                ) : null}
+                {recordDetailModal.error ? (
+                    <p className="text-sm text-rose-600">{recordDetailModal.error}</p>
+                ) : null}
+                {!recordDetailModal.loading && recordDetailModal.record ? (
+                    <div className="space-y-4 text-sm">
+                        <div className="grid gap-3 md:grid-cols-2">
+                            <div>
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-text-subtle">Số công</p>
+                                <p className="font-semibold text-slate-900">{recordDetailModal.record.work_units}</p>
+                            </div>
+                            <div>
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-text-subtle">Giờ vào (check-in)</p>
+                                <p className="text-slate-800">
+                                    {recordDetailModal.record.check_in_at
+                                        ? formatVietnamDateTime(recordDetailModal.record.check_in_at)
+                                        : '—'}
+                                </p>
+                            </div>
+                            <div>
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-text-subtle">Phút trễ</p>
+                                <p className="text-slate-800">{recordDetailModal.record.minutes_late ?? 0}</p>
+                            </div>
+                            <div>
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-text-subtle">Trạng thái</p>
+                                <p className="text-slate-800">{recordDetailModal.record.status}</p>
+                            </div>
+                            <div>
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-text-subtle">Nguồn dữ liệu</p>
+                                <p className="text-slate-800">{recordDetailModal.record.source}</p>
+                            </div>
+                            <div>
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-text-subtle">Loại chấm</p>
+                                <p className="flex items-center gap-2 text-slate-800">
+                                    <span className={`h-2.5 w-2.5 rounded-full ${matrixToneClass(recordDetailModal.record.dot_tone)}`} />
+                                    {recordDetailModal.record.dot_tone === 'orange'
+                                        ? 'Chấm app (chưa chỉnh)'
+                                        : recordDetailModal.record.dot_tone === 'blue'
+                                            ? 'Đã chỉnh / duyệt'
+                                            : recordDetailModal.record.dot_tone || '—'}
+                                </p>
+                            </div>
+                            <div className="md:col-span-2">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-text-subtle">Ghi chú</p>
+                                <p className="whitespace-pre-wrap text-slate-800">{recordDetailModal.record.note || '—'}</p>
+                            </div>
+                            <div className="md:col-span-2 rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2 text-xs text-slate-600">
+                                <span className="font-semibold text-slate-700">Thiết bị / Wi-Fi:</span>{' '}
+                                {recordDetailModal.record.device_name || '—'} • {recordDetailModal.record.wifi_ssid || '—'}
+                            </div>
+                        </div>
+                        {Array.isArray(recordDetailModal.edit_logs) && recordDetailModal.edit_logs.length > 0 ? (
+                            <div>
+                                <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-text-subtle">
+                                    Lịch sử chỉnh sửa
+                                </p>
+                                <ul className="max-h-48 space-y-2 overflow-y-auto rounded-xl border border-slate-200/80 bg-white p-3">
+                                    {recordDetailModal.edit_logs.map((log) => (
+                                        <li key={log.id} className="border-b border-slate-100 pb-2 text-xs last:border-0 last:pb-0">
+                                            <div className="flex flex-wrap justify-between gap-2 text-text-muted">
+                                                <span>{log.created_at ? formatVietnamDateTime(log.created_at) : '—'}</span>
+                                                <span className="font-medium text-slate-700">
+                                                    {log.actor?.name || 'Hệ thống'} — {log.action}
+                                                </span>
+                                            </div>
+                                            {log.payload ? (
+                                                <pre className="mt-1 whitespace-pre-wrap break-all text-[11px] text-slate-600">
+                                                    {typeof log.payload === 'string' ? log.payload : JSON.stringify(log.payload, null, 2)}
+                                                </pre>
+                                            ) : null}
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        ) : (
+                            <p className="text-xs text-text-muted">
+                                {recordDetailModal.record.dot_tone === 'orange'
+                                    ? 'Bản ghi gốc từ app — chưa có lịch sử chỉnh sửa.'
+                                    : 'Chưa có mục lịch sử (có thể chỉnh qua luồng khác).'}
+                            </p>
+                        )}
+                    </div>
+                ) : null}
+                <div className="mt-5 flex justify-end gap-3">
+                    <button
+                        type="button"
+                        className={buttonSecondaryClass}
+                        onClick={() => setRecordDetailModal((s) => ({ ...s, open: false }))}
+                    >
+                        Đóng
+                    </button>
                 </div>
             </Modal>
 

@@ -1,6 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
+import FilterToolbar, {
+    FILTER_GRID_WITH_SUBMIT,
+    FILTER_SUBMIT_BUTTON_CLASS,
+    FilterActionGroup,
+    FilterField,
+    filterControlClass,
+} from '@/Components/FilterToolbar';
 import AutoCodeBadge from '@/Components/AutoCodeBadge';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
@@ -47,6 +53,14 @@ export default function Products(props) {
     const handleSearch = (val) => {
         const next = { ...filters, search: val, page: 1 };
         setFilters(next);
+    };
+
+    const applyProductFilters = () => {
+        setFilters((prev) => {
+            const next = { ...prev, page: 1 };
+            fetchProducts(1, next);
+            return next;
+        });
     };
 
     const fetchProducts = async (pageOrFilters = filters.page, maybeFilters = filters) => {
@@ -279,23 +293,9 @@ export default function Products(props) {
                     description="Tìm nhanh sản phẩm qua tên, mã hoặc danh mục."
                     searchValue={filters.search}
                     onSearch={handleSearch}
-                    actions={(
-                        <FilterActionGroup>
-                            <button
-                                type="button"
-                                className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700"
-                                onClick={() => {
-                                    const next = { ...filters, page: 1 };
-                                    setFilters(next);
-                                    fetchProducts(1, next);
-                                }}
-                            >
-                                Lọc
-                            </button>
-                        </FilterActionGroup>
-                    )}
+                    onSubmitFilters={applyProductFilters}
                 >
-                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    <div className={FILTER_GRID_WITH_SUBMIT}>
                             <FilterField label="Danh mục">
                                 <select
                                     className={filterControlClass}
@@ -321,6 +321,11 @@ export default function Products(props) {
                                     <option value="0">Ngưng</option>
                                 </select>
                             </FilterField>
+                            <FilterActionGroup className="xl:self-end xl:justify-end">
+                                <button type="submit" className={FILTER_SUBMIT_BUTTON_CLASS}>
+                                    Lọc
+                                </button>
+                            </FilterActionGroup>
                             </div>
                         </FilterToolbar>
                     <div className="mb-4" />

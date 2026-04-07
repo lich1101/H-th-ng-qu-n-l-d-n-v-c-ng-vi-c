@@ -208,7 +208,7 @@ class ContractCostController extends Controller
                 'Có phiếu duyệt chi phí hợp đồng mới',
                 $actor->name.' vừa gửi yêu cầu thêm chi phí cho hợp đồng: '.$contract->title,
                 [
-                    'type' => 'contract_finance_request_pending',
+                    'type' => 'contract_finance_request_pending_cost',
                     'category' => 'contract_finance',
                     'contract_id' => (int) $contract->id,
                     'contract_finance_request_id' => (int) $financeRequest->id,

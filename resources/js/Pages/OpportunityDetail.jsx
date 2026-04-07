@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
-import FilterToolbar, { FilterField, filterControlClass } from '@/Components/FilterToolbar';
+import { filterControlClass } from '@/Components/FilterToolbar';
+import ClientSelect from '@/Components/ClientSelect';
 import TagMultiSelect from '@/Components/TagMultiSelect';
 import { useToast } from '@/Contexts/ToastContext';
 
@@ -62,7 +63,6 @@ export default function OpportunityDetail({ auth, opportunityId }) {
 
     const [opportunity, setOpportunity] = useState(null);
     const [statuses, setStatuses] = useState([]);
-    const [clients, setClients] = useState([]);
     const [users, setUsers] = useState([]);
     const [products, setProducts] = useState([]);
     const [form, setForm] = useState(emptyForm);
@@ -122,14 +122,12 @@ export default function OpportunityDetail({ auth, opportunityId }) {
 
     const fetchLookups = async () => {
         try {
-            const [statusRes, clientRes, userRes, productRes] = await Promise.all([
+            const [statusRes, userRes, productRes] = await Promise.all([
                 axios.get('/api/v1/opportunity-statuses'),
-                axios.get('/api/v1/crm/clients', { params: { per_page: 300, page: 1 } }),
                 axios.get('/api/v1/users/lookup', { params: { purpose: 'operational_assignee' } }),
                 axios.get('/api/v1/products', { params: { per_page: 300, page: 1 } }),
             ]);
             setStatuses(statusRes.data || []);
-            setClients(clientRes.data?.data || []);
             setUsers(userRes.data?.data || []);
             setProducts(productRes.data?.data || []);
         } catch {
@@ -365,18 +363,13 @@ export default function OpportunityDetail({ auth, opportunityId }) {
                         />
                     </Field>
                     <Field label="Khách hàng" required>
-                        <select
-                            className={filterControlClass}
+                        <ClientSelect
+                            className="bg-white"
                             value={form.client_id}
-                            onChange={(event) => setForm((prev) => ({ ...prev, client_id: event.target.value }))}
-                        >
-                            <option value="">Chọn khách hàng</option>
-                            {clients.map((client) => (
-                                <option key={client.id} value={client.id}>
-                                    {client.name || `KH #${client.id}`} {client.company ? `• ${client.company}` : ''}
-                                </option>
-                            ))}
-                        </select>
+                            onChange={(id) => setForm((prev) => ({ ...prev, client_id: id }))}
+                            placeholder="Chọn khách hàng"
+                            clientPreview={opportunity?.client}
+                        />
                     </Field>
                     <Field label="Tỷ lệ thành công (%)" required>
                         <select

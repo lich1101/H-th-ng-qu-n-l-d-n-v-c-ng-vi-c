@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import Modal from '@/Components/Modal';
 import PageContainer from '@/Components/PageContainer';
-import FilterToolbar, { FilterActionGroup, filterControlClass } from '@/Components/FilterToolbar';
 import { useToast } from '@/Contexts/ToastContext';
 
 const PROJECT_STATUS = {

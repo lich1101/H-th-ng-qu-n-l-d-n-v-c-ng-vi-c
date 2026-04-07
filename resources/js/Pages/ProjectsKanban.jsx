@@ -1,6 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
+import FilterToolbar, {
+    FILTER_SUBMIT_BUTTON_CLASS,
+    FilterActionGroup,
+    FilterField,
+    filterControlClass,
+} from '@/Components/FilterToolbar';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import PaginationControls from '@/Components/PaginationControls';
@@ -732,10 +737,7 @@ export default function ProjectsKanban(props) {
                             />
                         </FilterField>
                         <FilterActionGroup className="xl:self-end xl:justify-end">
-                            <button
-                                type="submit"
-                                className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
-                            >
+                            <button type="submit" className={FILTER_SUBMIT_BUTTON_CLASS}>
                                 Lọc
                             </button>
                         </FilterActionGroup>

@@ -1,6 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
+import FilterToolbar, {
+    FILTER_SUBMIT_BUTTON_CLASS,
+    FilterField,
+    filterControlClass,
+} from '@/Components/FilterToolbar';
 import PageContainer from '@/Components/PageContainer';
 import PaginationControls from '@/Components/PaginationControls';
 import { useToast } from '@/Contexts/ToastContext';
@@ -68,6 +72,18 @@ export default function TasksByStaff(props) {
         }
     };
 
+    const handleSearch = (val) => {
+        setFilters((s) => ({ ...s, search: val, page: 1 }));
+    };
+
+    const applyTasksByStaffFilters = () => {
+        setFilters((prev) => {
+            const next = { ...prev, page: 1 };
+            fetchTasks(1, next);
+            return next;
+        });
+    };
+
     const fetchTasks = async (page = filters.page, nextFilters = filters) => {
         setLoading(true);
         try {
@@ -131,21 +147,9 @@ export default function TasksByStaff(props) {
                 <FilterToolbar enableSearch
                     title="Bộ lọc công việc theo nhân sự"
                     description="Lọc theo dự án, nhân sự, trạng thái và khoảng hạn chót để theo dõi khối lượng công việc rõ hơn."
-                    actions={(
-                        <FilterActionGroup>
-                            <button
-                                type="button"
-                                className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white"
-                                onClick={() => {
-                                    const next = { ...filters, page: 1 };
-                                    setFilters(next);
-                                    fetchTasks(1, next);
-                                }}
-                            >
-                                Lọc
-                            </button>
-                        </FilterActionGroup>
-                    )}
+                    searchValue={filters.search}
+                    onSearch={handleSearch}
+                    onSubmitFilters={applyTasksByStaffFilters}
                 >
                     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                         <FilterField label="Dự án">
@@ -178,14 +182,6 @@ export default function TasksByStaff(props) {
                                 {Object.keys(LABELS).map((key) => <option key={key} value={key}>{LABELS[key]}</option>)}
                             </select>
                         </FilterField>
-                        <FilterField label="Tìm kiếm">
-                            <input
-                                className={filterControlClass}
-                                placeholder="Tiêu đề công việc"
-                                value={filters.search}
-                                onChange={(e) => setFilters((s) => ({ ...s, search: e.target.value }))}
-                            />
-                        </FilterField>
                         <FilterField label="Từ hạn chót">
                             <input
                                 type="date"
@@ -202,6 +198,11 @@ export default function TasksByStaff(props) {
                                 onChange={(e) => setFilters((s) => ({ ...s, deadline_to: e.target.value }))}
                             />
                         </FilterField>
+                    </div>
+                    <div className="mt-3 flex justify-end">
+                        <button type="submit" className={FILTER_SUBMIT_BUTTON_CLASS}>
+                            Lọc
+                        </button>
                     </div>
                 </FilterToolbar>
 
