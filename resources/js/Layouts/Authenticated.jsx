@@ -501,6 +501,8 @@ export default function Authenticated({ auth, header, children }) {
             || type === 'new_client'
             || type === 'client_form_lead'
             || type === 'crm_new_lead'
+            || type === 'lead_form_new_lead'
+            || type === 'crm_phone_duplicate_merged'
             || type.startsWith('crm_client_');
 
         if (isOpportunityNotification) {

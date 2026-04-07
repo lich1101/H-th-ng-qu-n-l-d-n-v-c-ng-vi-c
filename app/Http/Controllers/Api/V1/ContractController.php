@@ -28,6 +28,7 @@ class ContractController extends Controller
                 'client',
                 'client.careStaffUsers:id',
                 'project',
+                'linkedProject',
                 'opportunity',
                 'creator:id,name,email,avatar_url',
                 'approver:id,name,email,avatar_url',
@@ -79,10 +80,32 @@ class ContractController extends Controller
         if ($request->filled('has_project')) {
             $hasProject = $request->input('has_project');
             if ($hasProject === 'yes') {
-                $query->whereNotNull('project_id');
+                $query->where(function (Builder $builder) {
+                    $builder->whereNotNull('contracts.project_id')
+                        ->orWhereExists(function ($sub) {
+                            $sub->selectRaw('1')
+                                ->from('projects')
+                                ->whereColumn('projects.contract_id', 'contracts.id');
+                        });
+                });
             } elseif ($hasProject === 'no') {
-                $query->whereNull('project_id');
+                $query->whereNull('contracts.project_id')
+                    ->whereNotExists(function ($sub) {
+                        $sub->selectRaw('1')
+                            ->from('projects')
+                            ->whereColumn('projects.contract_id', 'contracts.id');
+                    });
             }
+        }
+        if ($request->filled('project_status')) {
+            $ps = (string) $request->input('project_status');
+            $query->where(function (Builder $builder) use ($ps) {
+                $builder->whereHas('project', function (Builder $q) use ($ps) {
+                    $q->where('status', $ps);
+                })->orWhereHas('linkedProject', function (Builder $q) use ($ps) {
+                    $q->where('status', $ps);
+                });
+            });
         }
         if ($request->boolean('available_only')) {
             $projectId = (int) $request->input('project_id', 0);
@@ -106,6 +129,14 @@ class ContractController extends Controller
                             ->orWhere('company', 'like', "%{$search}%")
                             ->orWhere('email', 'like', "%{$search}%")
                             ->orWhere('phone', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('project', function ($projectQuery) use ($search) {
+                        $projectQuery->where('name', 'like', "%{$search}%")
+                            ->orWhere('code', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('linkedProject', function ($projectQuery) use ($search) {
+                        $projectQuery->where('name', 'like', "%{$search}%")
+                            ->orWhere('code', 'like', "%{$search}%");
                     });
             });
         }
@@ -947,6 +978,7 @@ class ContractController extends Controller
             'client',
             'client.careStaffUsers:id,name,email,avatar_url',
             'project',
+            'linkedProject',
             'opportunity',
             'creator:id,name,email,avatar_url',
             'approver:id,name,email,avatar_url',

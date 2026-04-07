@@ -125,8 +125,7 @@ class LeadFormPublicController extends Controller
         $existingByPhone = $phoneService->findExistingByPhone($clientPayload['phone'] ?? null);
 
         if ($existingByPhone) {
-            $mergedName = $phoneService->mergeDisplayNames($existingByPhone->name, $clientPayload['name']);
-            $existingByPhone->name = $mergedName;
+            // Trùng SĐT: giữ nguyên tên khách trên CRM; chỉ cập nhật tin nhắn/ghi chú (tên người gửi mới nằm trong thông báo).
             if (! empty($clientPayload['lead_message'])) {
                 $block = '[Form '.$form->name.'] '.$clientPayload['lead_message'];
                 $existingByPhone->lead_message = trim(
@@ -144,7 +143,11 @@ class LeadFormPublicController extends Controller
             if (empty($existingByPhone->company) && ! empty($clientPayload['company'])) {
                 $existingByPhone->company = $clientPayload['company'];
             }
-            $existingByPhone->save();
+            if ($existingByPhone->isDirty()) {
+                $existingByPhone->save();
+            } else {
+                $existingByPhone->touch();
+            }
 
             try {
                 app(LeadNotificationService::class)->notifyPhoneDuplicateMerged(

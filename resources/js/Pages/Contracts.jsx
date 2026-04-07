@@ -19,6 +19,19 @@ const STATUS_OPTIONS = [
     { value: 'cancelled', label: 'Hủy' },
 ];
 
+/** Trạng thái dự án (lọc / hiển thị cột dự án liên kết) */
+const PROJECT_STATUS_LABELS = {
+    moi_tao: 'Mới tạo',
+    dang_trien_khai: 'Đang triển khai',
+    cho_duyet: 'Chờ duyệt',
+    hoan_thanh: 'Hoàn thành',
+    tam_dung: 'Tạm dừng',
+};
+
+const PROJECT_STATUS_OPTIONS = Object.entries(PROJECT_STATUS_LABELS).map(([value, label]) => ({ value, label }));
+
+const resolveLinkedProject = (contract) => contract?.project || contract?.linked_project || null;
+
 const APPROVAL_LABELS = {
     pending: 'Chờ duyệt',
     approved: 'Đã duyệt',
@@ -161,6 +174,7 @@ export default function Contracts(props) {
         approval_status: '',
         handover_receive_status: '',
         has_project: '',
+        project_status: '',
         staff_ids: [],
         per_page: 20,
         page: 1,
@@ -402,6 +416,7 @@ export default function Contracts(props) {
                     ...(nextFilters.approval_status ? { approval_status: nextFilters.approval_status } : {}),
                     ...(nextFilters.handover_receive_status ? { handover_receive_status: nextFilters.handover_receive_status } : {}),
                     ...(nextFilters.has_project ? { has_project: nextFilters.has_project } : {}),
+                    ...(nextFilters.project_status ? { project_status: nextFilters.project_status } : {}),
                     ...(Array.isArray(nextFilters.staff_ids) && nextFilters.staff_ids.length > 0 ? { staff_ids: nextFilters.staff_ids } : {}),
                     sort_by: nextFilters.sort_by || 'signed_at',
                     sort_dir: nextFilters.sort_dir || 'desc',
@@ -973,9 +988,11 @@ export default function Contracts(props) {
     };
 
     const applyFilters = () => {
-        const next = { ...filters, page: 1 };
-        setFilters(next);
-        fetchContracts(1, next);
+        setFilters((prev) => {
+            const next = { ...prev, page: 1 };
+            fetchContracts(1, next);
+            return next;
+        });
     };
 
     const submitCareNote = async () => {
@@ -1042,11 +1059,12 @@ export default function Contracts(props) {
                 <FilterToolbar enableSearch
                     className="mb-4 border-0 p-0 shadow-none"
                     title="Danh sách hợp đồng"
-                    description="Lọc theo mã, trạng thái thực hiện và trạng thái duyệt trước khi thao tác chi tiết từng hợp đồng."
+                    description="Lọc theo mã, trạng thái thực hiện và trạng thái duyệt. Ô tìm kiếm gồm cả mã/tên dự án liên kết. Nhấn Enter để áp dụng lọc."
                     searchValue={filters.search}
                     onSearch={handleContractSearch}
+                    onSubmitFilters={applyFilters}
                 >
-                    <div className="grid gap-3 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.8fr)_auto]">
+                    <div className="grid gap-3 xl:grid-cols-[minmax(0,0.65fr)_minmax(0,0.65fr)_minmax(0,0.85fr)_minmax(0,0.7fr)_minmax(0,0.75fr)_minmax(0,1fr)_auto]">
                         <FilterField label="Trạng thái">
                             <select className={filterControlClass} value={filters.status} onChange={(e) => setFilters((s) => ({ ...s, status: e.target.value }))}>
                                 <option value="">Tất cả trạng thái</option>
@@ -1077,6 +1095,14 @@ export default function Contracts(props) {
                                 <option value="no">Chưa liên kết</option>
                             </select>
                         </FilterField>
+                        <FilterField label="Trạng thái dự án">
+                            <select className={filterControlClass} value={filters.project_status} onChange={(e) => setFilters((s) => ({ ...s, project_status: e.target.value }))}>
+                                <option value="">Tất cả</option>
+                                {PROJECT_STATUS_OPTIONS.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                ))}
+                            </select>
+                        </FilterField>
                         <FilterField label="Nhân sự phụ trách">
                             <TagMultiSelect
                                 options={collectorFilterOptions}
@@ -1087,7 +1113,7 @@ export default function Contracts(props) {
                             />
                         </FilterField>
                         <FilterActionGroup className="xl:self-end xl:justify-end">
-                            <button type="button" className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-semibold text-slate-700" onClick={applyFilters}>Lọc</button>
+                            <button type="submit" className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-semibold text-slate-700">Lọc</button>
                         </FilterActionGroup>
                     </div>
                 </FilterToolbar>
@@ -1160,6 +1186,7 @@ export default function Contracts(props) {
                                     )}
                                     <th className="py-2" data-sort-key="code">Hợp đồng</th>
                                     <th className="py-2" data-sort-key="client_name">Khách hàng</th>
+                                    <th className="py-2" data-az-ignore>Dự án liên kết</th>
                                     <th className="py-2" data-sort-key="client_phone">SĐT khách hàng</th>
                                     <th className="py-2" data-sort-key="signed_at">Ngày ký</th>
                                     <th className="py-2" data-sort-key="end_date">Ngày kết thúc</th>
@@ -1204,6 +1231,29 @@ export default function Contracts(props) {
                                             </button>
                                         </td>
                                         <td className="py-2 text-slate-700">{c.client?.name || '—'}</td>
+                                        <td className="py-2 align-top text-slate-700">
+                                            {(() => {
+                                                const pr = resolveLinkedProject(c);
+                                                if (!pr?.id) return '—';
+                                                return (
+                                                    <div className="max-w-[14rem]">
+                                                        <a
+                                                            href={`/du-an/${pr.id}`}
+                                                            className="font-semibold text-primary hover:underline text-xs leading-snug"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                        >
+                                                            {pr.code || `DA-${pr.id}`}
+                                                        </a>
+                                                        <div className="text-[11px] text-text-muted truncate" title={pr.name || ''}>
+                                                            {pr.name || '—'}
+                                                        </div>
+                                                        <span className="mt-0.5 inline-block rounded-full border border-slate-200/80 bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-600">
+                                                            {PROJECT_STATUS_LABELS[pr.status] || pr.status || '—'}
+                                                        </span>
+                                                    </div>
+                                                );
+                                            })()}
+                                        </td>
                                         <td className="py-2 text-slate-700">{c.client?.phone || '—'}</td>
                                         <td className="py-2 text-slate-700">{formatDateDisplay(c.signed_at)}</td>
                                         <td className="py-2 text-slate-700">{formatDateDisplay(c.end_date)}</td>

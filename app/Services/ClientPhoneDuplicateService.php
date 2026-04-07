@@ -61,7 +61,7 @@ class ClientPhoneDuplicateService
     }
 
     /**
-     * Gộp tên khi trùng SĐT (form / fanpage): "Tên cũ, Tên mới".
+     * Gộp hiển thị tên (legacy). Luồng FormLead/Fanpage trùng SĐT không còn gộp tên trên hồ sơ CRM.
      */
     public function mergeDisplayNames(?string $existing, ?string $incoming): string
     {

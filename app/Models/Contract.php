@@ -82,6 +82,14 @@ class Contract extends Model
         return $this->belongsTo(Project::class);
     }
 
+    /**
+     * Dự án trỏ ngược về hợp đồng qua projects.contract_id (khi chưa có contracts.project_id).
+     */
+    public function linkedProject()
+    {
+        return $this->hasOne(Project::class, 'contract_id');
+    }
+
     public function creator()
     {
         return $this->belongsTo(User::class, 'created_by');

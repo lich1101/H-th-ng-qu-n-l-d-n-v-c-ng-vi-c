@@ -52,8 +52,7 @@ class LeadCaptureController extends Controller
         $formStaffId = ! empty($validated['assigned_staff_id']) ? (int) $validated['assigned_staff_id'] : null;
 
         if ($existing) {
-            $mergedName = $phoneService->mergeDisplayNames($existing->name, $validated['name']);
-            $existing->name = $mergedName;
+            // Trùng SĐT: giữ tên khách cũ; nội dung liên hệ mới ghi vào tin nhắn/ghi chú.
             if (! empty($validated['message'])) {
                 $block = '[Webhook] '.$validated['message'];
                 $existing->lead_message = trim(
@@ -69,7 +68,11 @@ class LeadCaptureController extends Controller
             if (empty($existing->company) && ! empty($validated['company'])) {
                 $existing->company = $validated['company'];
             }
-            $existing->save();
+            if ($existing->isDirty()) {
+                $existing->save();
+            } else {
+                $existing->touch();
+            }
 
             try {
                 app(LeadNotificationService::class)->notifyPhoneDuplicateMerged(

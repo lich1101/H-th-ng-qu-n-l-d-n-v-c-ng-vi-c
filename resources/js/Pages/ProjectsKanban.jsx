@@ -129,7 +129,12 @@ export default function ProjectsKanban(props) {
     };
 
     const injectCurrentProjectContract = (rows, project) => {
-        const contractId = Number(project?.contract_id || project?.contract?.id || 0);
+        const contractId = Number(
+            project?.contract_id
+            || project?.contract?.id
+            || project?.linked_contract?.id
+            || 0,
+        );
         if (contractId <= 0) return rows;
         if (rows.some((item) => Number(item?.id || 0) === contractId)) {
             return rows;
@@ -216,7 +221,8 @@ export default function ProjectsKanban(props) {
                 params: {
                     per_page: 200,
                     available_only: true,
-                    approval_status: 'approved',
+                    // Khi mở form sửa dự án: hiện cả HĐ chưa duyệt để select đúng giá trị đang liên kết
+                    ...(projectId ? {} : { approval_status: 'approved' }),
                     ...(projectId ? { project_id: projectId } : {}),
                 },
             });
@@ -449,11 +455,12 @@ export default function ProjectsKanban(props) {
     const startEdit = (p) => {
         setEditingId(p.id);
         setEditingOriginalWorkflowTopicId(Number(p.workflow_topic_id || p.workflow_topic?.id || 0));
+        const resolvedContractId = p.contract_id || p.contract?.id || p.linked_contract?.id || '';
         setForm({
             code: p.code || '',
             name: p.name || '',
             client_id: p.client_id || '',
-            contract_id: String(p.contract_id || p.contract?.id || ''),
+            contract_id: resolvedContractId ? String(resolvedContractId) : '',
             service_type: p.service_type || serviceOptions[0]?.value || DEFAULT_SERVICES[0].value,
             service_type_other: p.service_type_other || '',
             start_date: toDateInputValue(p.start_date),
@@ -660,9 +667,16 @@ export default function ProjectsKanban(props) {
                 )}
                 <FilterToolbar enableSearch
                     title="Bộ lọc dự án"
-                    description="Tìm nhanh theo mã dự án, khách hàng, ghi chú hoặc tên trước khi chuyển chế độ xem."
+                    description="Tìm nhanh theo mã dự án, khách hàng, ghi chú hoặc tên trước khi chuyển chế độ xem. Nhấn Enter trong ô tìm hoặc bộ lọc để áp dụng."
                     searchValue={filters.search}
                     onSearch={handleProjectSearch}
+                    onSubmitFilters={() => {
+                        setFilters((prev) => {
+                            const next = { ...prev, page: 1 };
+                            fetchProjects(1, next);
+                            return next;
+                        });
+                    }}
                     actions={(
                         <FilterActionGroup className="justify-end">
                             {[
@@ -719,13 +733,8 @@ export default function ProjectsKanban(props) {
                         </FilterField>
                         <FilterActionGroup className="xl:self-end xl:justify-end">
                             <button
-                                type="button"
+                                type="submit"
                                 className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
-                                onClick={() => {
-                                    const next = { ...filters, page: 1 };
-                                    setFilters(next);
-                                    fetchProjects(1, next);
-                                }}
                             >
                                 Lọc
                             </button>

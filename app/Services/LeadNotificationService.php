@@ -93,7 +93,8 @@ class LeadNotificationService
     }
 
     /**
-     * Trùng SĐT từ form công khai / fanpage: đã gộp tên — báo admin + người phụ trách (và quản lý phòng nếu có).
+     * Trùng SĐT từ FormLead / Fanpage: vẫn gửi thông báo (tên người vừa liên hệ trong nội dung);
+     * hồ sơ CRM giữ tên khách cũ; danh sách đẩy lên đầu nhờ cập nhật hoạt động (updated_at).
      */
     public function notifyPhoneDuplicateMerged(
         Client $client,
@@ -134,28 +135,33 @@ class LeadNotificationService
             return;
         }
 
-        $mergedName = trim((string) ($client->name ?: ''));
-        $phone = trim((string) ($client->phone ?: 'Chưa có SĐT'));
-        $body = sprintf(
-            'Trùng số điện thoại — đã gộp tên gửi lên ("%s") với hồ sơ #%d. Tên sau gộp: %s • SĐT: %s • Nguồn: %s',
-            trim($submittedName),
-            (int) $client->id,
-            $mergedName !== '' ? $mergedName : '(trống)',
-            $phone,
-            $sourceLabel
-        );
+        $hoTen = trim($submittedName);
+        if ($hoTen === '') {
+            $hoTen = 'Khách hàng';
+        }
+        $phone = trim((string) ($client->phone ?: ''));
+        $phoneLine = $phone !== '' ? $phone : '—';
+
+        $title = 'Liên hệ lại — trùng số điện thoại';
+        $body = "Các khách đăng ký từ FormLead hoặc Fanpage.\n\n"
+            ."Nếu trùng số điện thoại, vẫn gửi thông báo:\n"
+            .'+ Khách hàng '.$hoTen." liên hệ lại\n"
+            .'+ SĐT: '.$phoneLine."\n\n"
+            .'Đồng thời, đẩy khách hàng đó lên đầu (theo hoạt động mới nhất). Hồ sơ CRM vẫn dùng tên khách cũ.'
+            ."\n\nNguồn: ".$sourceLabel;
 
         $payload = [
             'type' => 'crm_phone_duplicate_merged',
             'category' => 'crm_realtime',
             'client_id' => (int) $client->id,
             'source_label' => $sourceLabel,
+            'submitted_contact_name' => $hoTen,
         ];
 
         if ($afterResponse) {
             $this->notifier->notifyUsersAfterResponse(
                 $userIds,
-                'Trùng SĐT — đã gộp tên khách hàng',
+                $title,
                 $body,
                 $payload
             );
@@ -165,7 +171,7 @@ class LeadNotificationService
 
         $this->notifier->notifyUsers(
             $userIds,
-            'Trùng SĐT — đã gộp tên khách hàng',
+            $title,
             $body,
             $payload
         );

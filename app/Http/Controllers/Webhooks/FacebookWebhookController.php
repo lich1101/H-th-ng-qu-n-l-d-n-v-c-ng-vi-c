@@ -104,13 +104,12 @@ class FacebookWebhookController extends Controller
                             'Page Facebook: '.$page->name
                         );
                     } else {
-                        $phoneService = app(ClientPhoneDuplicateService::class);
                         $client = $existingByPhone;
                         $incomingName = trim((string) ($profile['name'] ?? ''));
                         if ($incomingName === '') {
                             $incomingName = "Facebook User {$senderId}";
                         }
-                        $client->name = $phoneService->mergeDisplayNames($client->name, $incomingName);
+                        // Trùng SĐT: không gộp tên — giữ tên khách cũ trên hồ sơ.
                         if (empty($client->facebook_psid)) {
                             $client->facebook_psid = $senderId;
                         }
@@ -124,7 +123,11 @@ class FacebookWebhookController extends Controller
                                 .'[Page '.$page->name.'] '.$t
                             );
                         }
-                        $client->save();
+                        if ($client->isDirty()) {
+                            $client->save();
+                        } else {
+                            $client->touch();
+                        }
                         try {
                             app(LeadNotificationService::class)->notifyPhoneDuplicateMerged(
                                 $client->fresh(),

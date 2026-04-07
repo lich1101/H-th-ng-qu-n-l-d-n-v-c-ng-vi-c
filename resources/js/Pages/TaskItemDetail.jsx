@@ -22,6 +22,31 @@ const REVIEW_STYLES = {
 const formatDate = (raw) => formatVietnamDate(raw, raw ? String(raw).slice(0, 10) : '—');
 const formatDateTime = (raw) => formatVietnamDateTime(raw, raw ? String(raw) : '—');
 
+/** Chỉ giữ chữ số, giới hạn 0–100 (dùng cho ô tiến độ phiếu / duyệt). */
+function clipProgressPercentInput(raw) {
+    const digits = String(raw ?? '').replace(/\D/g, '');
+    if (digits === '') return '';
+    const n = parseInt(digits, 10);
+    if (!Number.isFinite(n)) return '';
+    return String(Math.min(100, Math.max(0, n)));
+}
+
+/**
+ * @returns {{ ok: true, value: number | null } | { ok: false, message: string }}
+ */
+function parseOptionalProgressPercent(raw) {
+    const t = String(raw ?? '').trim();
+    if (t === '') return { ok: true, value: null };
+    if (!/^\d+$/.test(t)) {
+        return { ok: false, message: 'Tiến độ phải là số nguyên (0–100).' };
+    }
+    const n = parseInt(t, 10);
+    if (n < 0 || n > 100) {
+        return { ok: false, message: 'Tiến độ không được vượt quá 100% (và không nhỏ hơn 0%).' };
+    }
+    return { ok: true, value: n };
+}
+
 export default function TaskItemDetail(props) {
     const toast = useToast();
     const itemId = props.taskItemId;
@@ -121,11 +146,17 @@ export default function TaskItemDetail(props) {
 
     const saveEdit = async () => {
         if (!editForm.title?.trim()) { toast.error('Tiêu đề là bắt buộc.'); return; }
+        let progressNum = null;
+        if (editForm.progress_percent !== '' && editForm.progress_percent != null) {
+            const pr = parseOptionalProgressPercent(String(editForm.progress_percent));
+            if (!pr.ok) { toast.error(pr.message); return; }
+            progressNum = pr.value;
+        }
         setSavingEdit(true);
         try {
             await axios.put(`/api/v1/tasks/${taskId}/items/${itemId}`, {
                 ...editForm,
-                progress_percent: editForm.progress_percent === '' ? null : Number(editForm.progress_percent),
+                progress_percent: progressNum,
                 weight_percent: editForm.weight_percent === '' ? null : Number(editForm.weight_percent),
                 assignee_id: editForm.assignee_id ? Number(editForm.assignee_id) : null,
                 start_date: editForm.start_date || null,
@@ -152,9 +183,15 @@ export default function TaskItemDetail(props) {
 
     const submitReport = async () => {
         if (!taskId) return;
+        let progressVal = null;
+        if (reportForm.progress_percent !== '') {
+            const pr = parseOptionalProgressPercent(reportForm.progress_percent);
+            if (!pr.ok) { toast.error(pr.message); return; }
+            progressVal = pr.value;
+        }
         const fd = new FormData();
         if (reportForm.status) fd.append('status', reportForm.status);
-        if (reportForm.progress_percent !== '') fd.append('progress_percent', reportForm.progress_percent);
+        if (progressVal !== null) fd.append('progress_percent', String(progressVal));
         if (reportForm.note) fd.append('note', reportForm.note);
         if (reportForm.attachment) fd.append('attachment', reportForm.attachment);
 
@@ -184,10 +221,16 @@ export default function TaskItemDetail(props) {
     };
 
     const approveUpdate = async (update) => {
+        let progressPayload = update.progress_percent;
+        if (reportForm.progress_percent !== '') {
+            const pr = parseOptionalProgressPercent(reportForm.progress_percent);
+            if (!pr.ok) { toast.error(pr.message); return; }
+            progressPayload = pr.value;
+        }
         try {
             await axios.post(`/api/v1/tasks/${taskId}/items/${itemId}/updates/${update.id}/approve`, {
                 status: reportForm.status || update.status || undefined,
-                progress_percent: reportForm.progress_percent === '' ? update.progress_percent : Number(reportForm.progress_percent),
+                progress_percent: progressPayload,
                 note: reportForm.note || update.note || undefined,
             });
             toast.success('Đã duyệt phiếu.');
@@ -504,7 +547,7 @@ export default function TaskItemDetail(props) {
                                                                 type="number" min="0" max="100"
                                                                 className="mt-1 w-full rounded-xl border border-slate-200/80 px-3 py-2 text-sm"
                                                                 value={reportForm.progress_percent}
-                                                                onChange={(e) => setReportForm((s) => ({ ...s, progress_percent: e.target.value }))}
+                                                                onChange={(e) => setReportForm((s) => ({ ...s, progress_percent: clipProgressPercentInput(e.target.value) }))}
                                                             />
                                                         </div>
                                                     </div>
@@ -565,7 +608,7 @@ export default function TaskItemDetail(props) {
                             type="number" min="0" max="100"
                             className="mt-2 w-full rounded-xl border border-slate-200/80 px-3 py-2"
                             value={reportForm.progress_percent}
-                            onChange={(e) => setReportForm((s) => ({ ...s, progress_percent: e.target.value }))}
+                            onChange={(e) => setReportForm((s) => ({ ...s, progress_percent: clipProgressPercentInput(e.target.value) }))}
                         />
                     </div>
                     <div>
@@ -642,7 +685,7 @@ export default function TaskItemDetail(props) {
                         </div>
                         <div>
                             <label className="text-xs text-text-muted">Tiến độ (%)</label>
-                            <input type="number" min="0" max="100" className="mt-2 w-full rounded-xl border border-slate-200/80 px-3 py-2" value={editForm.progress_percent ?? ''} onChange={(e) => setEditForm((s) => ({ ...s, progress_percent: e.target.value }))} />
+                            <input type="number" min="0" max="100" className="mt-2 w-full rounded-xl border border-slate-200/80 px-3 py-2" value={editForm.progress_percent ?? ''} onChange={(e) => setEditForm((s) => ({ ...s, progress_percent: clipProgressPercentInput(e.target.value) }))} />
                         </div>
                         <div>
                             <label className="text-xs text-text-muted">Ngày bắt đầu</label>

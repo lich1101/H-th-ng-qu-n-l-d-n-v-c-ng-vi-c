@@ -185,9 +185,28 @@ export default function FilterToolbar({
     enableSearch = false,
     searchValue = undefined,
     onSearch = undefined,
+    /** Khi có: bọc ô tìm + bộ lọc trong <form>, Enter sẽ gọi lọc (không cần chỉ chuột). */
+    onSubmitFilters = undefined,
     children,
 }) {
     const containerRef = useRef(null);
+
+    const filterBody = (
+        <>
+            {enableSearch && (
+                <div className={title || description || actions ? 'mt-4' : ''}>
+                    <TableSearchInput
+                        containerRef={containerRef}
+                        searchValue={searchValue}
+                        onSearchChange={onSearch}
+                    />
+                </div>
+            )}
+            <div className={title || description || actions || enableSearch ? 'mt-4' : ''}>
+                {children}
+            </div>
+        </>
+    );
 
     return (
         <div ref={containerRef} className={`mb-6 rounded-[28px] border border-slate-200/80 bg-white p-5 shadow-card ${className}`.trim()}>
@@ -210,18 +229,16 @@ export default function FilterToolbar({
                     ) : null}
                 </div>
             ) : null}
-            {enableSearch && (
-                <div className={title || description || actions ? 'mt-4' : ''}>
-                    <TableSearchInput
-                        containerRef={containerRef}
-                        searchValue={searchValue}
-                        onSearchChange={onSearch}
-                    />
-                </div>
-            )}
-            <div className={title || description || actions || enableSearch ? 'mt-4' : ''}>
-                {children}
-            </div>
+            {onSubmitFilters ? (
+                <form
+                    onSubmit={(e) => {
+                        e.preventDefault();
+                        onSubmitFilters();
+                    }}
+                >
+                    {filterBody}
+                </form>
+            ) : filterBody}
         </div>
     );
 }
