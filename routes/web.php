@@ -46,11 +46,11 @@ Route::get('/webhook/facebook', [FacebookWebhookController::class, 'verify'])->n
 Route::post('/webhook/facebook', [FacebookWebhookController::class, 'handle'])->name('facebook.webhook.handle');
 
 Route::middleware(['auth', 'verified'])->group(function () {
+    Route::post('/impersonate/leave', [ImpersonationController::class, 'leave'])
+        ->name('impersonate.leave');
     Route::post('/impersonate/{user}', [ImpersonationController::class, 'start'])
         ->name('impersonate.start')
         ->middleware('role:admin');
-    Route::post('/impersonate/leave', [ImpersonationController::class, 'leave'])
-        ->name('impersonate.leave');
 
     Route::get('/dashboard/summary-data', [PublicMobileController::class, 'summary'])
         ->name('dashboard.summary-data');
