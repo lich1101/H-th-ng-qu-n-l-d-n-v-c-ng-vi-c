@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import FilterToolbar, {
+    FILTER_GRID_SUBMIT_ROW,
     FILTER_GRID_WITH_SUBMIT,
     FILTER_SUBMIT_BUTTON_CLASS,
     FilterActionGroup,
@@ -199,8 +200,7 @@ export default function Products(props) {
         setForm({ name: '', category_id: '', unit: '', unit_price: '', description: '', is_active: true });
     };
 
-    const startEdit = (product) => {
-        setEditingId(product.id);
+    const applyProductToForm = (product) => {
         setForm({
             name: product.name || '',
             category_id: product.category_id ? String(product.category_id) : '',
@@ -209,7 +209,21 @@ export default function Products(props) {
             description: product.description || '',
             is_active: !!product.is_active,
         });
+    };
+
+    const startEdit = async (product) => {
+        if (!product?.id) return;
+        setEditingId(product.id);
+        applyProductToForm(product);
         setShowForm(true);
+        try {
+            const res = await axios.get(`/api/v1/products/${product.id}`);
+            if (res.data?.id) {
+                applyProductToForm(res.data);
+            }
+        } catch {
+            // giữ dữ liệu từ bảng
+        }
     };
 
     const openCreate = () => {
@@ -321,7 +335,7 @@ export default function Products(props) {
                                     <option value="0">Ngưng</option>
                                 </select>
                             </FilterField>
-                            <FilterActionGroup className="xl:self-end xl:justify-end">
+                            <FilterActionGroup className={FILTER_GRID_SUBMIT_ROW}>
                                 <button type="submit" className={FILTER_SUBMIT_BUTTON_CLASS}>
                                     Lọc
                                 </button>
@@ -511,7 +525,7 @@ export default function Products(props) {
                             ))}
                         </select>
                     </FormField>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                         <FormField label="Đơn vị">
                             <input
                                 className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"

@@ -769,7 +769,7 @@ export default function AttendanceWifi(props) {
 
             <div className="mt-5 space-y-5">
                 {activeTab === 'personal' && (
-                    <div className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
+                    <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(280px,0.9fr)]">
                         <div className={cardClass}>
                             <div>
                                 <h3 className="text-lg font-semibold text-slate-900">Công cá nhân</h3>
@@ -854,7 +854,7 @@ export default function AttendanceWifi(props) {
                 )}
 
                 {activeTab === 'requests' && (
-                    <div className="grid gap-5 xl:grid-cols-[0.92fr_1.08fr]">
+                    <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
                         <div className={cardClass}>
                             <h3 className="text-lg font-semibold text-slate-900">Gửi đơn xin phép</h3>
                                 <p className="mt-1 text-sm text-text-muted">Nhân viên có thể gửi đơn đi muộn hoặc nghỉ phép. Admin và kế toán duyệt đơn; khi duyệt sẽ điều chỉnh giờ vào theo đơn xin phép (nếu có).</p>
@@ -987,7 +987,7 @@ export default function AttendanceWifi(props) {
                             </div>
                             <button type="button" className={buttonPrimaryClass} onClick={saveSettings}>Lưu cấu hình</button>
                         </div>
-                        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                             <FormField label="Giờ bắt đầu" required>
                                 <input type="time" className={inputClass} value={settingsForm.attendance_work_start_time} onChange={(e) => setSettingsForm((s) => ({ ...s, attendance_work_start_time: e.target.value }))} />
                             </FormField>

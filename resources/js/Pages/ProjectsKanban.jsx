@@ -1,6 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import FilterToolbar, {
+    FILTER_GRID_RESPONSIVE,
+    FILTER_GRID_SUBMIT_ROW,
     FILTER_SUBMIT_BUTTON_CLASS,
     FilterActionGroup,
     FilterField,
@@ -118,6 +120,8 @@ export default function ProjectsKanban(props) {
     });
     const [selectedProjectIds, setSelectedProjectIds] = useState([]);
     const [bulkLoading, setBulkLoading] = useState(false);
+    /** Tránh race: GET /contracts lúc mount ghi đè danh sách khi đang mở form sửa (mất option HĐ đã liên kết). */
+    const contractsFetchSeqRef = useRef(0);
 
     const injectCurrentProjectContract = (rows, project) => {
         const contractId = Number(
@@ -207,6 +211,7 @@ export default function ProjectsKanban(props) {
     };
 
     const fetchContracts = async (projectId = null, currentProject = null) => {
+        const seq = ++contractsFetchSeqRef.current;
         try {
             const res = await axios.get('/api/v1/contracts', {
                 params: {
@@ -217,9 +222,11 @@ export default function ProjectsKanban(props) {
                     ...(projectId ? { project_id: projectId } : {}),
                 },
             });
+            if (seq !== contractsFetchSeqRef.current) return;
             const rows = injectCurrentProjectContract(res.data?.data || [], currentProject);
             setContracts(rows);
         } catch {
+            if (seq !== contractsFetchSeqRef.current) return;
             if (currentProject) {
                 setContracts(injectCurrentProjectContract([], currentProject));
             }
@@ -441,29 +448,38 @@ export default function ProjectsKanban(props) {
         resetForm();
     };
 
-    const startEdit = (p) => {
+    const startEdit = async (p) => {
         setEditingId(p.id);
-        setEditingOriginalWorkflowTopicId(Number(p.workflow_topic_id || p.workflow_topic?.id || 0));
-        const resolvedContractId = p.contract_id || p.contract?.id || p.linked_contract?.id || '';
+        let row = p;
+        try {
+            const res = await axios.get(`/api/v1/projects/${p.id}`);
+            if (res.data) {
+                row = { ...p, ...res.data };
+            }
+        } catch {
+            // Giữ dữ liệu từ bảng nếu API chi tiết lỗi
+        }
+        setEditingOriginalWorkflowTopicId(Number(row.workflow_topic_id || row.workflow_topic?.id || 0));
+        const resolvedContractId = row.contract_id || row.contract?.id || row.linked_contract?.id || '';
         setForm({
-            code: p.code || '',
-            name: p.name || '',
-            client_id: p.client_id || '',
+            code: row.code || '',
+            name: row.name || '',
+            client_id: row.client_id || '',
             contract_id: resolvedContractId ? String(resolvedContractId) : '',
-            service_type: p.service_type || serviceOptions[0]?.value || DEFAULT_SERVICES[0].value,
-            service_type_other: p.service_type_other || '',
-            start_date: toDateInputValue(p.start_date),
-            deadline: toDateInputValue(p.deadline),
-            budget: p.budget ?? '',
-            status: p.status || statusOptions[0]?.value || DEFAULT_STATUSES[0].value,
-            customer_requirement: p.customer_requirement || '',
-            owner_id: String(p.owner_id || p.owner?.id || ''),
-            repo_url: p.repo_url || '',
-            website_url: p.website_url || '',
-            workflow_topic_id: String(p.workflow_topic_id || p.workflow_topic?.id || ''),
+            service_type: row.service_type || serviceOptions[0]?.value || DEFAULT_SERVICES[0].value,
+            service_type_other: row.service_type_other || '',
+            start_date: toDateInputValue(row.start_date),
+            deadline: toDateInputValue(row.deadline),
+            budget: row.budget ?? '',
+            status: row.status || statusOptions[0]?.value || DEFAULT_STATUSES[0].value,
+            customer_requirement: row.customer_requirement || '',
+            owner_id: String(row.owner_id || row.owner?.id || ''),
+            repo_url: row.repo_url || '',
+            website_url: row.website_url || '',
+            workflow_topic_id: String(row.workflow_topic_id || row.workflow_topic?.id || ''),
         });
         setShowForm(true);
-        fetchContracts(p.id, p);
+        fetchContracts(row.id, row);
     };
 
     const save = async () => {
@@ -690,7 +706,7 @@ export default function ProjectsKanban(props) {
                         </FilterActionGroup>
                     )}
                 >
-                    <div className="grid gap-3 xl:grid-cols-[minmax(0,0.75fr)_minmax(0,0.65fr)_minmax(0,1.15fr)_auto]">
+                    <div className={FILTER_GRID_RESPONSIVE}>
                         <FilterField label="Trạng thái">
                             <select
                                 className={filterControlClass}
@@ -720,7 +736,7 @@ export default function ProjectsKanban(props) {
                                 emptyLabel="Để trống để xem toàn bộ nhân sự trong phạm vi."
                             />
                         </FilterField>
-                        <FilterActionGroup className="xl:self-end xl:justify-end">
+                        <FilterActionGroup className={FILTER_GRID_SUBMIT_ROW}>
                             <button type="submit" className={FILTER_SUBMIT_BUTTON_CLASS}>
                                 Lọc
                             </button>
@@ -912,7 +928,14 @@ export default function ProjectsKanban(props) {
                                                             {p.repo_url}
                                                         </a>
                                                     ) : (
-                                                        <span className="text-xs text-text-muted">—</span>
+                                                        <a
+                                                            href={`/du-an/${p.id}/kho`}
+                                                            className="inline-block text-xs font-semibold text-primary hover:underline"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            title="Kho dự án (không có link Google Sheet)"
+                                                        >
+                                                            /du-an/{p.id}/kho
+                                                        </a>
                                                     )}
                                                 </td>
                                                 <td className="py-3">

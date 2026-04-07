@@ -1,7 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import FilterToolbar, {
+    FILTER_GRID_RESPONSIVE,
+    FILTER_GRID_SUBMIT_ROW,
     FILTER_SUBMIT_BUTTON_CLASS,
+    FilterActionGroup,
     FilterField,
     filterControlClass,
 } from '@/Components/FilterToolbar';
@@ -149,7 +152,7 @@ export default function TasksByStaff(props) {
                     onSearch={handleSearch}
                     onSubmitFilters={applyTasksByStaffFilters}
                 >
-                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    <div className={FILTER_GRID_RESPONSIVE}>
                         <FilterField label="Dự án">
                             <select
                                 className={filterControlClass}
@@ -196,11 +199,11 @@ export default function TasksByStaff(props) {
                                 onChange={(e) => setFilters((s) => ({ ...s, deadline_to: e.target.value }))}
                             />
                         </FilterField>
-                    </div>
-                    <div className="mt-3 flex justify-end">
-                        <button type="submit" className={FILTER_SUBMIT_BUTTON_CLASS}>
-                            Lọc
-                        </button>
+                        <FilterActionGroup className={FILTER_GRID_SUBMIT_ROW}>
+                            <button type="submit" className={FILTER_SUBMIT_BUTTON_CLASS}>
+                                Lọc
+                            </button>
+                        </FilterActionGroup>
                     </div>
                 </FilterToolbar>
 

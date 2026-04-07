@@ -1,7 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import FilterToolbar, {
+    FILTER_GRID_RESPONSIVE,
+    FILTER_GRID_SUBMIT_ROW,
     FILTER_SUBMIT_BUTTON_CLASS,
+    FilterActionGroup,
     FilterField,
     filterControlClass,
 } from '@/Components/FilterToolbar';
@@ -179,7 +182,7 @@ export default function TaskItemsBoard(props) {
                     onSearch={handleSearch}
                     onSubmitFilters={applyTaskItemFilters}
                 >
-                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    <div className={FILTER_GRID_RESPONSIVE}>
                         <FilterField label="Dự án">
                             <select
                                 className={filterControlClass}
@@ -265,11 +268,11 @@ export default function TaskItemsBoard(props) {
                                 onChange={(e) => setFilters((s) => ({ ...s, deadline_to: e.target.value }))}
                             />
                         </FilterField>
-                    </div>
-                    <div className="mt-3 flex flex-wrap items-center justify-end gap-3">
-                        <button type="submit" className={FILTER_SUBMIT_BUTTON_CLASS}>
-                            Lọc
-                        </button>
+                        <FilterActionGroup className={FILTER_GRID_SUBMIT_ROW}>
+                            <button type="submit" className={FILTER_SUBMIT_BUTTON_CLASS}>
+                                Lọc
+                            </button>
+                        </FilterActionGroup>
                     </div>
                     <div className="mt-3 text-xs text-slate-500">
                         Tổng: {paging.total} • Đang làm: {summary.doing} • Hoàn tất: {summary.done}

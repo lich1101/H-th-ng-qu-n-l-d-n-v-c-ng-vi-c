@@ -1,6 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
-import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
+import FilterToolbar, {
+    FILTER_GRID_RESPONSIVE,
+    FilterActionGroup,
+    FilterField,
+    filterControlClass,
+} from '@/Components/FilterToolbar';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import RoleBarChart from '@/Components/RoleBarChart';
@@ -389,7 +394,7 @@ export default function UserAccountsDashboard(props) {
                         </FilterActionGroup>
                     )}
                 >
-                    <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                    <div className={FILTER_GRID_RESPONSIVE}>
                         <FilterField label="Vai trò">
                             <select
                                 value={filters.role}
@@ -428,7 +433,7 @@ export default function UserAccountsDashboard(props) {
             >
                 <form onSubmit={submitAccount} className="space-y-5">
                     <div className="rounded-3xl border border-slate-200/80 bg-slate-50/70 p-4">
-                        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
                             <FormField label="Họ tên" required>
                                 <input
                                     type="text"
@@ -647,8 +652,8 @@ export default function UserAccountsDashboard(props) {
                 </form>
             </Modal>
 
-            <div className="grid gap-4 xl:grid-cols-3 mb-4">
-                <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card xl:col-span-2">
+            <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+                <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card lg:col-span-2">
                     <h3 className="font-semibold text-slate-900 mb-3">Danh sách tài khoản</h3>
                     <div className="overflow-x-auto">
                         <table className="min-w-full text-sm">

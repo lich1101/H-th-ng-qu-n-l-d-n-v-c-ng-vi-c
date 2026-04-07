@@ -848,7 +848,7 @@ export default function LeadForms(props) {
                         ))}
                     </div>
 
-                    <div className="grid gap-5 xl:grid-cols-[minmax(0,1.25fr)_380px]">
+                    <div className="grid grid-cols-1 gap-5 2xl:grid-cols-[minmax(0,1.15fr)_minmax(300px,360px)]">
                         <div className="space-y-5">
                             {activeTab === 'basics' && (
                                 <>

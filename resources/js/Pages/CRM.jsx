@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import FilterToolbar, {
+    FILTER_GRID_SUBMIT_ROW,
     FILTER_GRID_WITH_SUBMIT,
     FILTER_SUBMIT_BUTTON_CLASS,
     FilterActionGroup,
@@ -929,7 +930,7 @@ export default function CRM(props) {
                             onSearch={handleClientSearch}
                             onSubmitFilters={applyClientFilters}
                         >
-                            <div className={`grid gap-3 ${isAdminRole ? 'md:grid-cols-2 xl:grid-cols-8' : 'md:grid-cols-2 xl:grid-cols-7'}`}>
+                            <div className={FILTER_GRID_WITH_SUBMIT}>
                                 <FilterField label="Trạng thái lead">
                                     <select
                                         className={filterControlClass}
@@ -1016,7 +1017,7 @@ export default function CRM(props) {
                                         onChange={(e) => setClientFilters((s) => ({ ...s, created_to: e.target.value }))}
                                     />
                                 </FilterField>
-                                <FilterActionGroup className="md:col-span-2 xl:col-span-1 xl:self-end xl:justify-end">
+                                <FilterActionGroup className={FILTER_GRID_SUBMIT_ROW}>
                                     <button type="submit" className={FILTER_SUBMIT_BUTTON_CLASS}>
                                         Lọc
                                     </button>
@@ -1045,7 +1046,7 @@ export default function CRM(props) {
                                         Bỏ chọn
                                     </button>
                                 </div>
-                                <div className="mt-3 grid gap-2 xl:grid-cols-[minmax(0,0.9fr)_auto_minmax(0,1fr)_auto_auto]">
+                                <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-stretch">
                                     {canManageClients && (
                                         <select
                                             className={filterControlClass}
@@ -1591,7 +1592,7 @@ export default function CRM(props) {
                                         <option value="overdue">Quá hạn</option>
                                     </select>
                                 </FilterField>
-                                <FilterActionGroup className="xl:self-end xl:justify-end">
+                                <FilterActionGroup className={FILTER_GRID_SUBMIT_ROW}>
                                     <button type="submit" className={FILTER_SUBMIT_BUTTON_CLASS}>
                                         Lọc
                                     </button>

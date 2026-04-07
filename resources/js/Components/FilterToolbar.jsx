@@ -7,11 +7,20 @@ export const FILTER_SUBMIT_BUTTON_CLASS =
     'rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50';
 
 /**
- * Lưới bộ lọc cân đối: 1 cột mobile → 2 tablet → 3 laptop → 4 desktop.
- * Nút Lọc đặt cột riêng (thường cuối) với class: xl:col-span-1 flex items-end justify-end
+ * Lưới bộ lọc cho laptop ~13" và màn nhỏ:
+ * 1 cột (xs) → 2 cột (sm+) → 3 cột (xl+). Tránh ép 4–7 cột trên một hàng như màn 24".
  */
-export const FILTER_GRID_WITH_SUBMIT =
-    'grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]';
+export const FILTER_GRID_RESPONSIVE =
+    'grid gap-3 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3';
+
+/** @deprecated Dùng FILTER_GRID_RESPONSIVE + FILTER_GRID_SUBMIT_ROW */
+export const FILTER_GRID_WITH_SUBMIT = FILTER_GRID_RESPONSIVE;
+
+/**
+ * Đặt sau các FilterField: full width, nút Lọc căn phải (span đủ cột lưới).
+ */
+export const FILTER_GRID_SUBMIT_ROW =
+    'col-span-full mt-1 flex flex-wrap items-center justify-end gap-2.5 border-t border-slate-100/90 pt-3 sm:col-span-2 xl:col-span-3';
 
 export function FilterField({
     label,
@@ -250,7 +259,7 @@ export default function FilterToolbar({
     );
 
     return (
-        <div ref={containerRef} className={`mb-6 rounded-[28px] border border-slate-200/80 bg-white p-5 shadow-card ${className}`.trim()}>
+        <div ref={containerRef} className={`mb-6 rounded-[28px] border border-slate-200/80 bg-white p-4 shadow-card sm:p-5 ${className}`.trim()}>
             {wrapped}
         </div>
     );

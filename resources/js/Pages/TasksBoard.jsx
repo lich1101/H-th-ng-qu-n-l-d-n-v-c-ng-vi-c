@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import AppIcon from '@/Components/AppIcon';
 import FilterToolbar, {
+    FILTER_GRID_RESPONSIVE,
+    FILTER_GRID_SUBMIT_ROW,
     FILTER_SUBMIT_BUTTON_CLASS,
     FilterActionGroup,
     FilterField,
@@ -1791,7 +1793,7 @@ export default function TasksBoard(props) {
                         </FilterActionGroup>
                     )}
                 >
-                    <div className="grid gap-3 xl:grid-cols-[minmax(0,0.75fr)_minmax(0,0.65fr)_minmax(0,1.1fr)_minmax(0,0.55fr)_minmax(0,0.55fr)_auto]">
+                    <div className={FILTER_GRID_RESPONSIVE}>
                         <FilterField label="Dự án">
                             <select
                                 className={filterControlClass}
@@ -1837,7 +1839,7 @@ export default function TasksBoard(props) {
                                 onChange={(e) => setFilters((s) => ({ ...s, deadline_to: e.target.value }))}
                             />
                         </FilterField>
-                        <FilterActionGroup className="xl:self-end xl:justify-end">
+                        <FilterActionGroup className={FILTER_GRID_SUBMIT_ROW}>
                             <button type="submit" className={FILTER_SUBMIT_BUTTON_CLASS}>
                                 Lọc
                             </button>
@@ -2847,7 +2849,7 @@ export default function TasksBoard(props) {
                 description="Danh sách phiếu ở bên trái, chi tiết và thao tác phản hồi ở bên phải."
                 size="lg"
             >
-                <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)] text-sm">
+                <div className="grid grid-cols-1 gap-4 text-sm xl:grid-cols-[minmax(260px,300px)_minmax(0,1fr)]">
                     <div className="space-y-3 rounded-2xl border border-slate-200/80 bg-slate-50 p-3">
                         <div className="flex items-center justify-between gap-3">
                             <div className="text-sm font-semibold text-slate-900">Danh sách phiếu</div>
@@ -3080,7 +3082,7 @@ export default function TasksBoard(props) {
 
                     {!itemInsightLoading && itemInsight && (
                         <>
-                            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
                                 <InsightStat
                                     label="Nhân sự phụ trách"
                                     value={itemInsight?.summary?.assignee_name || '—'}

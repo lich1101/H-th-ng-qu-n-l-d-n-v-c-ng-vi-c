@@ -585,7 +585,7 @@ export default function ClientFlow({ auth, clientId }) {
                         )}
                     </div>
 
-                    <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                    <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                         {[
                             { label: 'Cơ hội', value: `${summary.opportunities.done}/${summary.opportunities.total}` },
                             { label: 'Hợp đồng', value: `${summary.contracts.done}/${summary.contracts.total}` },
@@ -1180,7 +1180,7 @@ export default function ClientFlow({ auth, clientId }) {
                 }
                 size="md"
             >
-                <form className="grid gap-4 xl:grid-cols-2" onSubmit={submitOpportunity}>
+                <form className="grid grid-cols-1 gap-4 md:grid-cols-2" onSubmit={submitOpportunity}>
                     <Field label="Tên cơ hội" required>
                         <input
                             className={filterControlClass}

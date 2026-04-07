@@ -271,7 +271,7 @@ export default function Dashboard(props) {
                 </div>
             </FilterToolbar>
 
-            <div className="grid items-start gap-5 xl:grid-cols-[1.02fr_0.98fr]">
+            <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-2">
                 <section className={cardClass}>
                     <SectionHeader
                         title="Biểu đồ tròn cơ cấu dịch vụ"
@@ -327,7 +327,7 @@ export default function Dashboard(props) {
                 </div>
             </section>
 
-            <div className="mt-5 grid items-start gap-5 xl:grid-cols-[minmax(320px,0.8fr)_minmax(0,1.2fr)]">
+            <div className="mt-5 grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(260px,0.85fr)_minmax(0,1.15fr)]">
                 <section className={cardClass}>
                     <SectionHeader
                         title="Thống kê nhân sự"
@@ -417,7 +417,7 @@ export default function Dashboard(props) {
                 </section>
             </div>
 
-            <div className="mt-5 grid items-start gap-5 xl:grid-cols-2">
+            <div className="mt-5 grid grid-cols-1 items-start gap-5 lg:grid-cols-2">
                 <section className={cardClass}>
                     <div className="flex items-center justify-between gap-3">
                         <h3 className="text-lg font-semibold text-slate-900">Hoạt động gần đây</h3>

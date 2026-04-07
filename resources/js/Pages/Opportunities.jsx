@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import PageContainer from '@/Components/PageContainer';
 import FilterToolbar, {
+    FILTER_GRID_SUBMIT_ROW,
     FILTER_GRID_WITH_SUBMIT,
     FILTER_SUBMIT_BUTTON_CLASS,
     FilterActionGroup,
@@ -526,7 +527,7 @@ export default function Opportunities(props) {
                             onChange={(event) => setFilters((prev) => ({ ...prev, expected_close_to: event.target.value }))}
                         />
                     </FilterField>
-                    <FilterActionGroup className="xl:self-end xl:justify-end">
+                    <FilterActionGroup className={FILTER_GRID_SUBMIT_ROW}>
                         <button type="submit" className={FILTER_SUBMIT_BUTTON_CLASS}>
                             Lọc
                         </button>
@@ -574,7 +575,7 @@ export default function Opportunities(props) {
                 description="Form cơ hội theo chuẩn CRM: khách hàng, trạng thái, doanh số dự kiến và người phụ trách."
                 size="md"
             >
-                <div className="grid gap-4 xl:grid-cols-2">
+                <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
                     <Field label="Tên cơ hội" required>
                         <input
                             className={filterControlClass}
@@ -691,7 +692,7 @@ export default function Opportunities(props) {
                         </select>
                     </Field>
 
-                    <div className="xl:col-span-2">
+                    <div className="md:col-span-2">
                         <Field label="Người theo dõi">
                             <TagMultiSelect
                                 options={users.map((user) => ({
@@ -707,7 +708,7 @@ export default function Opportunities(props) {
                         </Field>
                     </div>
 
-                    <div className="xl:col-span-2">
+                    <div className="md:col-span-2">
                         <Field label="Ghi chú">
                             <textarea
                                 className={`${filterControlClass} min-h-[108px] resize-y`}
@@ -719,7 +720,7 @@ export default function Opportunities(props) {
                     </div>
                 </div>
 
-                <div className="mt-2 flex flex-wrap items-center gap-3 xl:col-span-2">
+                <div className="mt-2 flex flex-wrap items-center gap-3 md:col-span-2">
                     <button
                         type="button"
                         className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white"

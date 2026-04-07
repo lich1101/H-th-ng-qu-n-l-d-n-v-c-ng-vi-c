@@ -237,7 +237,7 @@ export default function OpportunityDetail({ auth, opportunityId }) {
                                 <p className="mt-1 text-sm text-slate-500">{opportunity.opportunity_type || 'Chưa phân loại'} • {opportunity.source || 'Chưa có nguồn'}</p>
                             </div>
 
-                            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                                 <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">
                                     <div className="text-xs uppercase tracking-[0.14em] text-text-subtle">Trạng thái</div>
                                     <span className="mt-2 inline-flex rounded-full border px-2 py-1 text-xs font-semibold" style={toColorStyle(opportunity?.statusConfig?.color_hex || '#64748B')}>
@@ -331,7 +331,7 @@ export default function OpportunityDetail({ auth, opportunityId }) {
                 description="Cập nhật thông tin cơ hội trực tiếp từ trang chi tiết."
                 size="md"
             >
-                <div className="grid gap-4 xl:grid-cols-2">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <Field label="Tên cơ hội" required>
                         <input
                             className={filterControlClass}
@@ -434,7 +434,7 @@ export default function OpportunityDetail({ auth, opportunityId }) {
                             ))}
                         </select>
                     </Field>
-                    <div className="xl:col-span-2">
+                    <div className="md:col-span-2">
                         <Field label="Người theo dõi">
                             <TagMultiSelect
                                 options={watcherOptions}
@@ -445,7 +445,7 @@ export default function OpportunityDetail({ auth, opportunityId }) {
                             />
                         </Field>
                     </div>
-                    <div className="xl:col-span-2">
+                    <div className="md:col-span-2">
                         <Field label="Ghi chú">
                             <textarea
                                 className={`${filterControlClass} min-h-[108px] resize-y`}
@@ -455,7 +455,7 @@ export default function OpportunityDetail({ auth, opportunityId }) {
                         </Field>
                     </div>
                 </div>
-                <div className="mt-2 flex flex-wrap items-center gap-3 xl:col-span-2">
+                <div className="mt-2 flex flex-wrap items-center gap-3 md:col-span-2">
                     <button
                         type="button"
                         className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white"

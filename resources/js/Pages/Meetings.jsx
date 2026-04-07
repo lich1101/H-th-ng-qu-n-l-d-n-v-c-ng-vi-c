@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import FilterToolbar, {
+    FILTER_GRID_RESPONSIVE,
     FILTER_SUBMIT_BUTTON_CLASS,
     FilterActionGroup,
     FilterField,
@@ -345,7 +346,7 @@ export default function Meetings(props) {
                     </FilterActionGroup>
                 )}
             >
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                <div className={FILTER_GRID_RESPONSIVE}>
                     <FilterField label="Từ ngày">
                         <input
                             type="date"
@@ -379,7 +380,7 @@ export default function Meetings(props) {
                 </div>
             </FilterToolbar>
 
-            <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+            <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(280px,320px)]">
                 <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-card">
                     <div className="flex items-center justify-between mb-3">
                         <button

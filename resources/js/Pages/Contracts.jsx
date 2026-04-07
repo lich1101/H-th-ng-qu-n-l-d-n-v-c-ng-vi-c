@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import AutoCodeBadge from '@/Components/AutoCodeBadge';
 import FilterToolbar, {
+    FILTER_GRID_RESPONSIVE,
+    FILTER_GRID_SUBMIT_ROW,
     FILTER_SUBMIT_BUTTON_CLASS,
     FilterActionGroup,
     FilterField,
@@ -1076,7 +1078,7 @@ export default function Contracts(props) {
                     onSearch={handleContractSearch}
                     onSubmitFilters={applyFilters}
                 >
-                    <div className="grid gap-3 xl:grid-cols-[minmax(0,0.65fr)_minmax(0,0.65fr)_minmax(0,0.85fr)_minmax(0,0.7fr)_minmax(0,0.75fr)_minmax(0,1fr)_auto]">
+                    <div className={FILTER_GRID_RESPONSIVE}>
                         <FilterField label="Trạng thái">
                             <select className={filterControlClass} value={filters.status} onChange={(e) => setFilters((s) => ({ ...s, status: e.target.value }))}>
                                 <option value="">Tất cả trạng thái</option>
@@ -1124,7 +1126,7 @@ export default function Contracts(props) {
                                 emptyLabel="Để trống để xem toàn bộ nhân sự trong phạm vi."
                             />
                         </FilterField>
-                        <FilterActionGroup className="xl:self-end xl:justify-end">
+                        <FilterActionGroup className={FILTER_GRID_SUBMIT_ROW}>
                             <button type="submit" className={FILTER_SUBMIT_BUTTON_CLASS}>Lọc</button>
                         </FilterActionGroup>
                     </div>

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import FilterToolbar, {
+    FILTER_GRID_SUBMIT_ROW,
     FILTER_GRID_WITH_SUBMIT,
     FILTER_SUBMIT_BUTTON_CLASS,
     FilterActionGroup,
@@ -258,7 +259,7 @@ export default function DepartmentAssignments(props) {
                                 <option value="done">Hoàn tất</option>
                             </select>
                         </FilterField>
-                        <FilterActionGroup className="sm:col-span-2 lg:col-span-1 xl:self-end xl:justify-end">
+                        <FilterActionGroup className={FILTER_GRID_SUBMIT_ROW}>
                             <button type="submit" className={FILTER_SUBMIT_BUTTON_CLASS}>
                                 Lọc
                             </button>

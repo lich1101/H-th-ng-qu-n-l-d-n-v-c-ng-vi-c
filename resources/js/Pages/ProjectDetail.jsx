@@ -1016,10 +1016,10 @@ export default function ProjectDetail(props) {
                         />
                     </div>
                     <div>
-                        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Link kho / tài liệu</label>
+                        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Link lưu tài liệu dự án (tuỳ chọn)</label>
                         <input
                             className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                            placeholder="URL repo hoặc kho tài liệu"
+                            placeholder="URL link lưu tài liệu dự án (tuỳ chọn)"
                             value={projectForm.repo_url}
                             onChange={(e) => setProjectForm((s) => ({ ...s, repo_url: e.target.value }))}
                         />

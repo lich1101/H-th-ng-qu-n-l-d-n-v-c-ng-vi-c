@@ -17,11 +17,11 @@ export default function PageContainer({
         <Authenticated
             auth={resolvedAuth}
             header={
-                <div className="rounded-[28px] border border-slate-200/80 bg-white p-6 shadow-soft">
-                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                        <div>
+                <div className="rounded-[28px] border border-slate-200/80 bg-white p-4 shadow-soft sm:p-5 md:p-6">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                        <div className="min-w-0">
                             <p className="text-xs uppercase tracking-[0.22em] text-primary/70">Workspace overview</p>
-                            <h1 className="mt-2 text-2xl font-semibold text-slate-900">{title}</h1>
+                            <h1 className="mt-2 text-xl font-semibold text-slate-900 sm:text-2xl">{title}</h1>
                             <p className="mt-2 max-w-3xl text-sm leading-6 text-text-muted">{description}</p>
                         </div>
                         {actions ? (
