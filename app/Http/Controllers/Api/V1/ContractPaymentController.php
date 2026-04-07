@@ -226,13 +226,14 @@ class ContractPaymentController extends Controller
         }
 
         try {
-            app(NotificationService::class)->notifyUsersAfterResponse(
+            // category "system": tránh bị chặn khi user tắt nhóm CRM realtime (type contract_finance_* vẫn map crm_realtime).
+            app(NotificationService::class)->notifyUsers(
                 $targetIds,
                 'Có phiếu duyệt thanh toán hợp đồng mới',
                 $actor->name.' vừa gửi yêu cầu thêm thanh toán cho hợp đồng: '.$contract->title,
                 [
                     'type' => 'contract_finance_request_pending_payment',
-                    'category' => 'contract_finance',
+                    'category' => 'system',
                     'contract_id' => (int) $contract->id,
                     'contract_finance_request_id' => (int) $financeRequest->id,
                     'request_type' => 'payment',

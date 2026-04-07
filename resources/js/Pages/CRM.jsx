@@ -49,6 +49,25 @@ const parseProductCategories = (rawValue) => {
         .filter(Boolean);
 };
 
+/** Query GET: gửi assigned_staff_ids dạng "1,2" để Laravel nhận ổn định (tránh lỗi serialize mảng trên một số proxy/stack). */
+function buildCrmClientsQueryParams(filtersArg, page) {
+    const f = { ...filtersArg };
+    if (Array.isArray(f.assigned_staff_ids) && f.assigned_staff_ids.length > 0) {
+        f.assigned_staff_ids = f.assigned_staff_ids
+            .map((id) => Number(id))
+            .filter((id) => Number.isInteger(id) && id > 0)
+            .join(',');
+    } else {
+        delete f.assigned_staff_ids;
+    }
+    return {
+        ...f,
+        page,
+        sort_by: f.sort_by || 'last_activity_at',
+        sort_dir: f.sort_dir || 'desc',
+    };
+}
+
 function LabeledField({ label, required = false, hint = '', className = '', children }) {
     return (
         <div className={className}>
@@ -321,12 +340,7 @@ export default function CRM(props) {
     const fetchClients = async (page = 1, filtersArg = clientFilters) => {
         try {
             const clientsRes = await axios.get('/api/v1/crm/clients', {
-                params: {
-                    ...filtersArg,
-                    page,
-                    sort_by: filtersArg.sort_by || 'last_activity_at',
-                    sort_dir: filtersArg.sort_dir || 'desc',
-                },
+                params: buildCrmClientsQueryParams(filtersArg, page),
             });
             const resolvedPage = clientsRes.data.current_page || 1;
             const rows = clientsRes.data.data || [];
@@ -465,22 +479,6 @@ export default function CRM(props) {
             setClientForm((prev) => ({ ...prev, lead_type_id: leadTypes[0]?.id || '' }));
         }
     }, [leadTypes]);
-
-    useEffect(() => {
-        if (normalizedRole !== 'nhan_vien' || !userId) return;
-        setClientFilters((prev) => {
-            const normalized = Array.isArray(prev.assigned_staff_ids)
-                ? prev.assigned_staff_ids.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)
-                : [];
-            if (normalized.length === 1 && normalized[0] === Number(userId)) {
-                return prev;
-            }
-            return {
-                ...prev,
-                assigned_staff_ids: [Number(userId)],
-            };
-        });
-    }, [normalizedRole, userId]);
 
     useEffect(() => {
         const table = clientTableRef.current;
@@ -1010,8 +1008,8 @@ export default function CRM(props) {
                                             options={clientResponsibleStaffTagOptions}
                                             selectedIds={clientFilters.assigned_staff_ids}
                                             onChange={(selectedIds) => setClientFilters((s) => ({ ...s, assigned_staff_ids: selectedIds }))}
-                                            addPlaceholder={normalizedRole === 'nhan_vien' ? 'Chọn chính tôi' : 'Tìm và thêm nhân sự phụ trách'}
-                                            emptyLabel={normalizedRole === 'nhan_vien' ? 'Mặc định lọc chính tôi.' : 'Để trống để xem tất cả nhân sự trong phạm vi.'}
+                                            addPlaceholder="Tìm và thêm nhân sự phụ trách"
+                                            emptyLabel="Để trống để xem tất cả nhân sự trong phạm vi."
                                         />
                                     </FilterField>
                                 )}

@@ -8,6 +8,7 @@ use App\Models\Client;
 use App\Models\Contract;
 use App\Models\ContractCareNote;
 use App\Models\ContractCost;
+use App\Models\ContractFinanceRequest;
 use App\Models\ContractItem;
 use App\Models\ContractPayment;
 use App\Models\Product;
@@ -21,6 +22,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Str;
 
 class ContractController extends Controller
@@ -337,8 +339,27 @@ class ContractController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        $validated = $request->validate($this->rules(null, true));
+        $rules = array_merge($this->rules(null, true), [
+            'pending_payment_requests' => ['nullable', 'array', 'max:100'],
+            'pending_payment_requests.*.amount' => ['required', 'numeric', 'min:0'],
+            'pending_payment_requests.*.paid_at' => ['nullable', 'date'],
+            'pending_payment_requests.*.method' => ['nullable', 'string', 'max:60'],
+            'pending_payment_requests.*.note' => ['nullable', 'string'],
+            'pending_cost_requests' => ['nullable', 'array', 'max:100'],
+            'pending_cost_requests.*.amount' => ['required', 'numeric', 'min:0'],
+            'pending_cost_requests.*.cost_date' => ['nullable', 'date'],
+            'pending_cost_requests.*.cost_type' => ['nullable', 'string', 'max:120'],
+            'pending_cost_requests.*.note' => ['nullable', 'string'],
+        ]);
+
+        $validated = $request->validate($rules);
         $careStaffIds = $this->extractCareStaffIds($validated);
+        $pendingPayments = isset($validated['pending_payment_requests']) && is_array($validated['pending_payment_requests'])
+            ? $validated['pending_payment_requests'] : [];
+        $pendingCosts = isset($validated['pending_cost_requests']) && is_array($validated['pending_cost_requests'])
+            ? $validated['pending_cost_requests'] : [];
+        unset($validated['pending_payment_requests'], $validated['pending_cost_requests']);
+
         $client = Client::query()->find((int) $validated['client_id']);
         if (! $client) {
             return response()->json(['message' => 'Khách hàng không tồn tại.'], 422);
@@ -351,7 +372,7 @@ class ContractController extends Controller
         }
         $validated['code'] = $this->generateContractCode();
         $validated['created_by'] = $request->user()->id;
-        unset($validated['project_id']);
+        unset($validated['project_id'], $validated['create_and_approve']);
 
         $items = $this->normalizeItems($request->input('items', []));
         if (! empty($items)) {
@@ -361,16 +382,41 @@ class ContractController extends Controller
         $validated['collector_user_id'] = $this->resolveCollectorUserId($request, $validated);
         $validated = array_merge($validated, $this->resolveApproval($request));
 
-        $contract = Contract::create($validated);
-        $this->syncCareStaff($contract, $careStaffIds, $request->user());
+        $contract = null;
 
-        if (! empty($items)) {
-            $this->syncItems($contract, $items);
+        try {
+            DB::transaction(function () use ($request, &$contract, $validated, $careStaffIds, $items, $pendingPayments, $pendingCosts) {
+                $contract = Contract::create($validated);
+                $this->syncCareStaff($contract, $careStaffIds, $request->user());
+
+                if (! empty($items)) {
+                    $this->syncItems($contract, $items);
+                }
+
+                $contract->refreshFinancials();
+
+                $this->createPendingFinanceRequestsForNewContract(
+                    $contract,
+                    $request->user(),
+                    $pendingPayments,
+                    $pendingCosts
+                );
+
+                if (($contract->fresh()->approval_status ?? '') === 'approved') {
+                    app(ContractFinanceRequestService::class)->approveAllPendingForContract($contract, $request->user());
+                }
+            });
+        } catch (ValidationException $e) {
+            return response()->json([
+                'message' => collect($e->errors())->flatten()->first() ?: 'Dữ liệu phiếu thu/chi không hợp lệ.',
+                'errors' => $e->errors(),
+            ], 422);
         }
 
-        $contract->refreshFinancials();
+        $contract->refresh();
+        $contract->loadMissing('client');
 
-        if ($contract->approval_status === 'approved') {
+        if ($contract->approval_status === 'approved' && $contract->client) {
             $this->syncClientRevenue($contract->client);
         }
 
@@ -379,7 +425,7 @@ class ContractController extends Controller
             try {
                 $pending = ($contract->approval_status ?? '') === 'pending';
                 $actorName = (string) ($request->user()->name ?? '');
-                app(NotificationService::class)->notifyUsersAfterResponse(
+                app(NotificationService::class)->notifyUsers(
                     $approverIds,
                     $pending ? 'Hợp đồng mới cần duyệt' : 'Hợp đồng mới đã được tạo (tự duyệt)',
                     $pending
@@ -387,7 +433,7 @@ class ContractController extends Controller
                         : ($actorName !== '' ? $actorName.' vừa tạo và duyệt hợp đồng: ' : 'Hợp đồng: ').$contract->title,
                     [
                         'type' => 'contract_approval',
-                        'category' => 'contract_approval',
+                        'category' => 'system',
                         'contract_id' => $contract->id,
                         'approval_target' => 'contract',
                     ]
@@ -1177,6 +1223,108 @@ class ContractController extends Controller
         });
 
         return $rows;
+    }
+
+    /**
+     * Phiếu thu/chi gửi kèm khi tạo hợp đồng (bản ghi ContractFinanceRequest trạng thái pending).
+     *
+     * @param  array<int, array<string, mixed>>  $pendingPayments
+     * @param  array<int, array<string, mixed>>  $pendingCosts
+     */
+    private function createPendingFinanceRequestsForNewContract(
+        Contract $contract,
+        User $actor,
+        array $pendingPayments,
+        array $pendingCosts
+    ): void {
+        $actorId = (int) $actor->id;
+        $contract->refreshFinancials();
+
+        $runningPaymentTotal = (float) $contract->payments()->sum('amount');
+        $contractValue = (float) ($contract->value ?? 0);
+
+        foreach ($pendingPayments as $row) {
+            $amount = (float) ($row['amount'] ?? 0);
+            if ($amount <= 0) {
+                continue;
+            }
+            $projected = $runningPaymentTotal + $amount;
+            if ($projected > $contractValue + 0.0001) {
+                $remaining = max(0, $contractValue - $runningPaymentTotal);
+
+                throw ValidationException::withMessages([
+                    'pending_payment_requests' => [
+                        'Số tiền thanh toán vượt giá trị hợp đồng. Chỉ còn có thể thu tối đa '
+                        .number_format($remaining, 0, ',', '.')
+                        .' VNĐ.',
+                    ],
+                ]);
+            }
+            $runningPaymentTotal = $projected;
+
+            $financeRequest = ContractFinanceRequest::query()->create([
+                'contract_id' => $contract->id,
+                'request_type' => 'payment',
+                'request_action' => 'create',
+                'amount' => $amount,
+                'transaction_date' => $row['paid_at'] ?? null,
+                'method' => $row['method'] ?? null,
+                'note' => $row['note'] ?? null,
+                'status' => 'pending',
+                'submitted_by' => $actorId,
+            ]);
+
+            $this->notifyContractFinanceApproversLine($contract, $actor, $financeRequest);
+        }
+
+        foreach ($pendingCosts as $row) {
+            $amount = (float) ($row['amount'] ?? 0);
+            if ($amount <= 0) {
+                continue;
+            }
+
+            $financeRequest = ContractFinanceRequest::query()->create([
+                'contract_id' => $contract->id,
+                'request_type' => 'cost',
+                'request_action' => 'create',
+                'amount' => $amount,
+                'transaction_date' => $row['cost_date'] ?? null,
+                'cost_type' => $row['cost_type'] ?? null,
+                'note' => $row['note'] ?? null,
+                'status' => 'pending',
+                'submitted_by' => $actorId,
+            ]);
+
+            $this->notifyContractFinanceApproversLine($contract, $actor, $financeRequest);
+        }
+    }
+
+    private function notifyContractFinanceApproversLine(Contract $contract, User $actor, ContractFinanceRequest $financeRequest): void
+    {
+        $targetIds = \App\Support\ContractApproverIds::query((int) $actor->id);
+        if (empty($targetIds)) {
+            return;
+        }
+
+        $isPayment = ($financeRequest->request_type ?? '') === 'payment';
+
+        try {
+            app(NotificationService::class)->notifyUsers(
+                $targetIds,
+                $isPayment ? 'Có phiếu duyệt thanh toán hợp đồng mới' : 'Có phiếu duyệt chi phí hợp đồng mới',
+                ($actor->name ?? '').' vừa gửi yêu cầu '.($isPayment ? 'thêm thanh toán' : 'thêm chi phí').' cho hợp đồng: '.$contract->title,
+                [
+                    'type' => $isPayment ? 'contract_finance_request_pending_payment' : 'contract_finance_request_pending_cost',
+                    'category' => 'system',
+                    'contract_id' => (int) $contract->id,
+                    'contract_finance_request_id' => (int) $financeRequest->id,
+                    'request_type' => (string) $financeRequest->request_type,
+                    'approval_target' => 'finance_request',
+                ]
+            );
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
     private function loadContractDetail(Contract $contract): void

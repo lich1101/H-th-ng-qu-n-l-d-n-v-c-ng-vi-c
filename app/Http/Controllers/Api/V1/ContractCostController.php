@@ -195,13 +195,13 @@ class ContractCostController extends Controller
         }
 
         try {
-            app(NotificationService::class)->notifyUsersAfterResponse(
+            app(NotificationService::class)->notifyUsers(
                 $targetIds,
                 'Có phiếu duyệt chi phí hợp đồng mới',
                 $actor->name.' vừa gửi yêu cầu thêm chi phí cho hợp đồng: '.$contract->title,
                 [
                     'type' => 'contract_finance_request_pending_cost',
-                    'category' => 'contract_finance',
+                    'category' => 'system',
                     'contract_id' => (int) $contract->id,
                     'contract_finance_request_id' => (int) $financeRequest->id,
                     'request_type' => 'cost',

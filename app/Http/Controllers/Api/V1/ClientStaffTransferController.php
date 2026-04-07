@@ -38,8 +38,8 @@ class ClientStaffTransferController extends Controller
         $rows = $query->orderByDesc('id')->limit(100)->get();
 
         return response()->json([
-            'data' => $rows->map(function (ClientStaffTransferRequest $t) use ($service) {
-                return $service->transferToArray($t);
+            'data' => $rows->map(function (ClientStaffTransferRequest $t) use ($service, $user) {
+                return $this->transferPayloadForViewer($service, $t, $user);
             })->values()->all(),
         ]);
     }
@@ -73,7 +73,7 @@ class ClientStaffTransferController extends Controller
             return response()->json(['message' => $e->getMessage()], 422);
         }
 
-        return response()->json(['transfer' => $service->transferToArray($transfer)], 201);
+        return response()->json(['transfer' => $this->transferPayloadForViewer($service, $transfer, $request->user())], 201);
     }
 
     public function show(Request $request, ClientStaffTransferRequest $transfer, ClientStaffTransferService $service): JsonResponse
@@ -82,7 +82,7 @@ class ClientStaffTransferController extends Controller
             return response()->json(['message' => 'Không có quyền xem phiếu chuyển giao.'], 403);
         }
 
-        return response()->json(['transfer' => $service->transferToArray($transfer)]);
+        return response()->json(['transfer' => $this->transferPayloadForViewer($service, $transfer, $request->user())]);
     }
 
     public function accept(Request $request, ClientStaffTransferRequest $transfer, ClientStaffTransferService $service): JsonResponse
@@ -93,7 +93,7 @@ class ClientStaffTransferController extends Controller
             return response()->json(['message' => $e->getMessage()], 422);
         }
 
-        return response()->json(['transfer' => $service->transferToArray($transfer)]);
+        return response()->json(['transfer' => $this->transferPayloadForViewer($service, $transfer, $request->user())]);
     }
 
     public function reject(Request $request, ClientStaffTransferRequest $transfer, ClientStaffTransferService $service): JsonResponse
@@ -112,7 +112,7 @@ class ClientStaffTransferController extends Controller
             return response()->json(['message' => $e->getMessage()], 422);
         }
 
-        return response()->json(['transfer' => $service->transferToArray($transfer)]);
+        return response()->json(['transfer' => $this->transferPayloadForViewer($service, $transfer, $request->user())]);
     }
 
     public function cancel(Request $request, ClientStaffTransferRequest $transfer, ClientStaffTransferService $service): JsonResponse
@@ -123,6 +123,25 @@ class ClientStaffTransferController extends Controller
             return response()->json(['message' => $e->getMessage()], 422);
         }
 
-        return response()->json(['transfer' => $service->transferToArray($transfer)]);
+        return response()->json(['transfer' => $this->transferPayloadForViewer($service, $transfer, $request->user())]);
+    }
+
+    private function transferPayloadForViewer(
+        ClientStaffTransferService $service,
+        ClientStaffTransferRequest $transfer,
+        $viewer
+    ): array {
+        $payload = $service->transferToArray($transfer);
+        $payload['permissions'] = [
+            'can_accept' => $service->canActOnRequest($viewer, $transfer),
+            'can_reject' => $transfer->status === ClientStaffTransferService::STATUS_PENDING
+                && (
+                    (int) $transfer->to_staff_id === (int) $viewer->id
+                    || $service->canActOnRequest($viewer, $transfer)
+                ),
+            'can_cancel' => $service->canCancelRequest($viewer, $transfer),
+        ];
+
+        return $payload;
     }
 }

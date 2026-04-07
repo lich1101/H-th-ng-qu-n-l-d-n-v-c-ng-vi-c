@@ -4,7 +4,6 @@ import PageContainer from '@/Components/PageContainer';
 import ClientSelect from '@/Components/ClientSelect';
 import Modal from '@/Components/Modal';
 import AppIcon from '@/Components/AppIcon';
-import TagMultiSelect from '@/Components/TagMultiSelect';
 import { useToast } from '@/Contexts/ToastContext';
 import { formatVietnamDate, toDateInputValue } from '@/lib/vietnamTime';
 import { Link } from '@inertiajs/inertia-react';
@@ -62,6 +61,17 @@ const parseNumberInput = (value) => {
     raw = raw.replace(/[^\d.-]/g, '');
     const parsed = Number(raw);
     return Number.isFinite(parsed) ? parsed : 0;
+};
+const formatMoneyInput = (value) => {
+    if (value === null || value === undefined || value === '') return '';
+    const digitsOnly = String(value).replace(/[^\d]/g, '');
+    if (!digitsOnly) return '';
+    return Number(digitsOnly).toLocaleString('vi-VN');
+};
+const todayInputValue = () => {
+    const now = new Date();
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+    return now.toISOString().slice(0, 10);
 };
 
 const formatCurrency = (amount) => {
@@ -201,10 +211,10 @@ export default function ContractDetail(props) {
     const [savingContract, setSavingContract] = useState(false);
     const [productsLookup, setProductsLookup] = useState([]);
     const [collectorsLookup, setCollectorsLookup] = useState([]);
-    const [careStaffUsers, setCareStaffUsers] = useState([]);
     const [editItems, setEditItems] = useState([]);
     const [showPaymentForm, setShowPaymentForm] = useState(false);
     const [editingPaymentId, setEditingPaymentId] = useState(null);
+    const [savingPayment, setSavingPayment] = useState(false);
     const [paymentForm, setPaymentForm] = useState({
         amount: '',
         paid_at: '',
@@ -213,6 +223,7 @@ export default function ContractDetail(props) {
     });
     const [showCostForm, setShowCostForm] = useState(false);
     const [editingCostId, setEditingCostId] = useState(null);
+    const [savingCost, setSavingCost] = useState(false);
     const [costForm, setCostForm] = useState({
         amount: '',
         cost_date: '',
@@ -220,12 +231,12 @@ export default function ContractDetail(props) {
         note: '',
     });
     const [reviewingRequestId, setReviewingRequestId] = useState(null);
+    const [approvingContract, setApprovingContract] = useState(false);
     const [editForm, setEditForm] = useState({
         title: '',
         client_id: '',
         status: 'draft',
         collector_user_id: '',
-        care_staff_ids: [],
         value: '',
         payment_times: '1',
         signed_at: '',
@@ -269,20 +280,6 @@ export default function ContractDetail(props) {
         () => collectorsLookup.filter((owner) => !['admin', 'administrator', 'ke_toan'].includes(String(owner?.role || '').toLowerCase())),
         [collectorsLookup]
     );
-    const careStaffOptions = useMemo(() => {
-        return (careStaffUsers || [])
-            .map((user) => ({
-                id: Number(user.id || 0),
-                label: user.name || 'Nhân sự',
-                meta: user.email || user.role || '',
-            }))
-            .filter((user) => user.id > 0);
-    }, [careStaffUsers]);
-    const normalizeCareStaffIds = (values) => {
-        return Array.from(new Set((values || [])
-            .map((value) => Number(typeof value === 'object' && value !== null ? value.id : value))
-            .filter((value) => Number.isInteger(value) && value > 0)));
-    };
     const editItemsTotal = useMemo(() => {
         return editItems.reduce((sum, item) => sum + calculateItemTotal(item), 0);
     }, [editItems]);
@@ -320,7 +317,6 @@ export default function ContractDetail(props) {
             client_id: data.client_id ? String(data.client_id) : '',
             status: data.status || 'draft',
             collector_user_id: data.collector_user_id ? String(data.collector_user_id) : '',
-            care_staff_ids: normalizeCareStaffIds(data.care_staff_users || []),
             value: String(parseNumberInput(data.value || resolveContractValue(data) || 0)),
             payment_times: String(data.payment_times || 1),
             signed_at: toDateInputValue(data.signed_at),
@@ -365,11 +361,10 @@ export default function ContractDetail(props) {
 
     const fetchMetaAndOwners = async () => {
         try {
-            const [metaRes, ownerRes, collectorRes, careStaffRes, productRes, workflowRes] = await Promise.all([
+            const [metaRes, ownerRes, collectorRes, productRes, workflowRes] = await Promise.all([
                 axios.get('/api/v1/meta').catch(() => ({ data: {} })),
                 axios.get('/api/v1/users/lookup', { params: { purpose: 'project_owner' } }).catch(() => ({ data: { data: [] } })),
                 axios.get('/api/v1/users/lookup', { params: { purpose: 'contract_collector' } }).catch(() => ({ data: { data: [] } })),
-                axios.get('/api/v1/users/lookup', { params: { purpose: 'contract_care_staff' } }).catch(() => ({ data: { data: [] } })),
                 axios.get('/api/v1/products', { params: { per_page: 500 } }).catch(() => ({ data: { data: [] } })),
                 axios.get('/api/v1/workflow-topics', { params: { per_page: 200, is_active: true } }).catch(() => ({ data: { data: [] } })),
             ]);
@@ -377,7 +372,6 @@ export default function ContractDetail(props) {
             setWorkflowTopics(workflowRes.data?.data || []);
             setProjectOwners(ownerRes.data?.data || []);
             setCollectorsLookup(collectorRes.data?.data || []);
-            setCareStaffUsers(careStaffRes.data?.data || []);
             setProductsLookup(productRes.data?.data || []);
         } catch {
             // ignore
@@ -476,7 +470,6 @@ export default function ContractDetail(props) {
                 client_id: Number(editForm.client_id),
                 status: editForm.status,
                 collector_user_id: editForm.collector_user_id ? Number(editForm.collector_user_id) : null,
-                care_staff_ids: normalizeCareStaffIds(editForm.care_staff_ids || []),
                 value: editItems.length ? editItemsTotal : parseNumberInput(editForm.value),
                 payment_times: Math.max(1, Number(editForm.payment_times || 1)),
                 signed_at: editForm.signed_at || null,
@@ -523,14 +516,14 @@ export default function ContractDetail(props) {
 
     const openPaymentCreate = () => {
         setEditingPaymentId(null);
-        setPaymentForm({ amount: '', paid_at: '', method: '', note: '' });
+        setPaymentForm({ amount: '', paid_at: todayInputValue(), method: '', note: '' });
         setShowPaymentForm(true);
     };
 
     const editPayment = (payment) => {
         setEditingPaymentId(payment.id);
         setPaymentForm({
-            amount: payment.amount ?? '',
+            amount: formatMoneyInput(payment.amount),
             paid_at: toDateInputValue(payment.paid_at),
             method: payment.method || '',
             note: payment.note || '',
@@ -540,6 +533,7 @@ export default function ContractDetail(props) {
 
     const submitPayment = async (e) => {
         e.preventDefault();
+        if (savingPayment) return;
         if (!contract?.id) return;
         if (paymentProjectedTotal > contractValueTotal + 0.0001) {
             toast.error(`Số tiền thanh toán vượt giá trị hợp đồng. Chỉ còn tối đa ${formatCurrency(paymentRemaining)} VNĐ.`);
@@ -547,6 +541,7 @@ export default function ContractDetail(props) {
         }
 
         try {
+            setSavingPayment(true);
             const payload = {
                 amount: parseNumberInput(paymentForm.amount),
                 paid_at: paymentForm.paid_at || null,
@@ -573,6 +568,8 @@ export default function ContractDetail(props) {
             await loadData();
         } catch (error) {
             toast.error(error?.response?.data?.message || 'Lưu thanh toán thất bại.');
+        } finally {
+            setSavingPayment(false);
         }
     };
 
@@ -590,14 +587,14 @@ export default function ContractDetail(props) {
 
     const openCostCreate = () => {
         setEditingCostId(null);
-        setCostForm({ amount: '', cost_date: '', cost_type: '', note: '' });
+        setCostForm({ amount: '', cost_date: todayInputValue(), cost_type: '', note: '' });
         setShowCostForm(true);
     };
 
     const editCost = (cost) => {
         setEditingCostId(cost.id);
         setCostForm({
-            amount: cost.amount ?? '',
+            amount: formatMoneyInput(cost.amount),
             cost_date: toDateInputValue(cost.cost_date),
             cost_type: cost.cost_type || '',
             note: cost.note || '',
@@ -607,9 +604,11 @@ export default function ContractDetail(props) {
 
     const submitCost = async (e) => {
         e.preventDefault();
+        if (savingCost) return;
         if (!contract?.id) return;
 
         try {
+            setSavingCost(true);
             const payload = {
                 amount: parseNumberInput(costForm.amount),
                 cost_date: costForm.cost_date || null,
@@ -636,6 +635,8 @@ export default function ContractDetail(props) {
             await loadData();
         } catch (error) {
             toast.error(error?.response?.data?.message || 'Lưu chi phí thất bại.');
+        } finally {
+            setSavingCost(false);
         }
     };
 
@@ -717,6 +718,22 @@ export default function ContractDetail(props) {
     const canSubmitFinanceRequest = readBoolean(contract?.can_submit_finance_request) === true;
     const canReviewFinanceRequest = readBoolean(contract?.can_review_finance_request) === true;
     const paymentDisplayRows = normalizePaymentDisplayRows(contract);
+
+    const submitContractApproval = async () => {
+        if (!contract?.id || !canReviewFinanceRequest) return;
+        if ((contract.approval_status || '') !== 'pending') return;
+        if (!confirm('Duyệt hợp đồng này?')) return;
+        setApprovingContract(true);
+        try {
+            await axios.post(`/api/v1/contracts/${contract.id}/approve`, {});
+            toast.success('Đã duyệt hợp đồng.');
+            await loadData();
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Duyệt hợp đồng thất bại.');
+        } finally {
+            setApprovingContract(false);
+        }
+    };
     const costDisplayRows = normalizeCostDisplayRows(contract);
 
     return (
@@ -784,6 +801,24 @@ export default function ContractDetail(props) {
                             )}
                         </div>
                     </div>
+                    {canReviewFinanceRequest && contract.approval_status === 'pending' && (
+                        <div className="mt-4 w-full rounded-xl border border-amber-200 bg-amber-50/90 p-4">
+                            <div className="text-xs font-semibold uppercase tracking-[0.12em] text-amber-900">
+                                Duyệt hợp đồng
+                            </div>
+                            <p className="mt-2 text-sm text-amber-950/90">
+                                Hợp đồng đang chờ duyệt. Sau khi duyệt, dữ liệu tài chính mới được khóa theo hợp đồng.
+                            </p>
+                            <button
+                                type="button"
+                                onClick={submitContractApproval}
+                                disabled={approvingContract}
+                                className="mt-3 rounded-xl bg-amber-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-amber-700 disabled:opacity-60"
+                            >
+                                {approvingContract ? 'Đang duyệt…' : 'Duyệt hợp đồng'}
+                            </button>
+                        </div>
+                    )}
                 </div>
 
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -826,19 +861,6 @@ export default function ContractDetail(props) {
                             <div className="flex items-center justify-between pb-2">
                                 <span className="text-text-muted">Nhận bàn giao dự án</span>
                                 <span className="font-semibold text-slate-900">{handoverReceiveLabel(contract.handover_receive_status)}</span>
-                            </div>
-                            <div className="pt-2 rounded-xl bg-slate-50 p-3 mt-2">
-                                <div className="text-text-muted mb-2 text-xs font-medium">Nhóm chăm sóc hợp đồng:</div>
-                                <div className="flex flex-wrap gap-2">
-                                    {(contract.care_staff_users || []).map((staff) => (
-                                        <span key={staff.id} className="rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-xs font-medium text-cyan-700">
-                                            {staff.name}
-                                        </span>
-                                    ))}
-                                    {(contract.care_staff_users || []).length === 0 && (
-                                        <span className="text-xs text-text-muted">Chưa gắn nhân viên chăm sóc riêng cho hợp đồng này.</span>
-                                    )}
-                                </div>
                             </div>
                         </div>
                     </div>
@@ -1237,12 +1259,11 @@ export default function ContractDetail(props) {
                         <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Ngân sách dự án (VNĐ)</label>
                         <input
                             className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                            type="number"
-                            min="0"
-                            step="1"
+                            type="text"
+                            inputMode="numeric"
                             placeholder="Mặc định theo giá trị hợp đồng"
                             value={projectForm.budget}
-                            onChange={(e) => setProjectForm((s) => ({ ...s, budget: e.target.value }))}
+                            onChange={(e) => setProjectForm((s) => ({ ...s, budget: formatMoneyInput(e.target.value) }))}
                         />
                         <p className="mt-1 text-xs text-text-muted">
                             Để trống hoặc 0 để dùng đúng giá trị hợp đồng: {formatCurrency(resolveContractValue(contract))} VNĐ.
@@ -1344,7 +1365,10 @@ export default function ContractDetail(props) {
 
             <Modal
                 open={showPaymentForm}
-                onClose={() => setShowPaymentForm(false)}
+                onClose={() => {
+                    if (savingPayment) return;
+                    setShowPaymentForm(false);
+                }}
                 title={editingPaymentId ? 'Sửa thanh toán' : 'Thêm thanh toán'}
                 size="md"
             >
@@ -1355,7 +1379,7 @@ export default function ContractDetail(props) {
                             <span className="font-semibold text-slate-900">{formatCurrency(contractValueTotal)} VNĐ</span>
                         </div>
                         <div className="mt-1 flex items-center justify-between gap-3">
-                            <span>Còn có thể thu</span>
+                            <span>Số tiền còn cần thu</span>
                             <span className={`font-semibold ${paymentRemaining > 0 ? 'text-emerald-700' : 'text-rose-600'}`}>{formatCurrency(paymentRemaining)} VNĐ</span>
                         </div>
                         {!canManageFinance && (
@@ -1373,10 +1397,10 @@ export default function ContractDetail(props) {
                         <input
                             className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
                             placeholder="Nhập số tiền đã thu"
-                            type="number"
-                            min="0"
+                            type="text"
+                            inputMode="numeric"
                             value={paymentForm.amount}
-                            onChange={(e) => setPaymentForm((s) => ({ ...s, amount: e.target.value }))}
+                            onChange={(e) => setPaymentForm((s) => ({ ...s, amount: formatMoneyInput(e.target.value) }))}
                         />
                     </LabeledField>
                     <LabeledField label="Ngày thu">
@@ -1405,10 +1429,12 @@ export default function ContractDetail(props) {
                         />
                     </LabeledField>
                     <div className="flex items-center gap-2">
-                        <button type="submit" className="flex-1 rounded-2xl px-3 py-2.5 bg-primary text-white text-sm font-semibold">
-                            {canManageFinance ? 'Lưu' : 'Gửi duyệt'}
+                        <button type="submit" disabled={savingPayment} className="flex-1 rounded-2xl px-3 py-2.5 bg-primary text-white text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60">
+                            {savingPayment
+                                ? (editingPaymentId ? 'Đang cập nhật...' : 'Đang tạo...')
+                                : (editingPaymentId ? 'Cập nhật phiếu thu' : 'Tạo phiếu thu')}
                         </button>
-                        <button type="button" className="flex-1 rounded-2xl px-3 py-2.5 border border-slate-200 text-sm font-semibold" onClick={() => setShowPaymentForm(false)}>
+                        <button type="button" disabled={savingPayment} className="flex-1 rounded-2xl px-3 py-2.5 border border-slate-200 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60" onClick={() => setShowPaymentForm(false)}>
                             Hủy
                         </button>
                     </div>
@@ -1417,7 +1443,10 @@ export default function ContractDetail(props) {
 
             <Modal
                 open={showCostForm}
-                onClose={() => setShowCostForm(false)}
+                onClose={() => {
+                    if (savingCost) return;
+                    setShowCostForm(false);
+                }}
                 title={editingCostId ? 'Sửa chi phí' : 'Thêm chi phí'}
                 size="md"
             >
@@ -1431,10 +1460,10 @@ export default function ContractDetail(props) {
                         <input
                             className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
                             placeholder="Nhập chi phí phát sinh"
-                            type="number"
-                            min="0"
+                            type="text"
+                            inputMode="numeric"
                             value={costForm.amount}
-                            onChange={(e) => setCostForm((s) => ({ ...s, amount: e.target.value }))}
+                            onChange={(e) => setCostForm((s) => ({ ...s, amount: formatMoneyInput(e.target.value) }))}
                         />
                     </LabeledField>
                     <LabeledField label="Ngày chi">
@@ -1463,10 +1492,12 @@ export default function ContractDetail(props) {
                         />
                     </LabeledField>
                     <div className="flex items-center gap-2">
-                        <button type="submit" className="flex-1 rounded-2xl px-3 py-2.5 bg-primary text-white text-sm font-semibold">
-                            {canManageFinance ? 'Lưu' : 'Gửi duyệt'}
+                        <button type="submit" disabled={savingCost} className="flex-1 rounded-2xl px-3 py-2.5 bg-primary text-white text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60">
+                            {savingCost
+                                ? (editingCostId ? 'Đang cập nhật...' : 'Đang tạo...')
+                                : (editingCostId ? 'Cập nhật phiếu chi' : 'Tạo phiếu chi')}
                         </button>
-                        <button type="button" className="flex-1 rounded-2xl px-3 py-2.5 border border-slate-200 text-sm font-semibold" onClick={() => setShowCostForm(false)}>
+                        <button type="button" disabled={savingCost} className="flex-1 rounded-2xl px-3 py-2.5 border border-slate-200 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60" onClick={() => setShowCostForm(false)}>
                             Hủy
                         </button>
                     </div>
@@ -1538,30 +1569,6 @@ export default function ContractDetail(props) {
                         </div>
                     </div>
 
-                    <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-4">
-                        <div className="mb-3">
-                            <p className="text-xs uppercase tracking-[0.16em] text-text-subtle">Nhân viên chăm sóc hợp đồng</p>
-                            <p className="mt-1 text-xs text-text-muted">
-                                Danh sách này quyết định nhân sự có thể theo dõi nhật ký chăm sóc trong hợp đồng.
-                            </p>
-                        </div>
-                        {careStaffUsers.length > 0 ? (
-                            <TagMultiSelect
-                                options={careStaffOptions}
-                                selectedIds={editForm.care_staff_ids}
-                                addPlaceholder="Thêm nhân viên chăm sóc hợp đồng"
-                                emptyLabel="Chưa thêm nhân viên chăm sóc hợp đồng nào."
-                                onChange={(selectedIds) => {
-                                    setEditForm((current) => ({ ...current, care_staff_ids: selectedIds }));
-                                }}
-                            />
-                        ) : (
-                            <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-3 text-xs text-text-muted">
-                                Chưa có nhân viên chăm sóc phù hợp trong phạm vi được phép gán.
-                            </div>
-                        )}
-                    </div>
-
                     <div className="rounded-2xl border border-slate-200/80 bg-slate-50 p-4">
                         <div className="grid gap-4 md:grid-cols-3">
                             <LabeledField
@@ -1570,11 +1577,11 @@ export default function ContractDetail(props) {
                             >
                                 <input
                                     className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
-                                    type="number"
-                                    min="0"
+                                    type="text"
+                                    inputMode="numeric"
                                     placeholder="0"
-                                    value={editItems.length ? editItemsTotal : editForm.value}
-                                    onChange={(e) => setEditForm((s) => ({ ...s, value: e.target.value }))}
+                                    value={editItems.length ? formatMoneyInput(editItemsTotal) : editForm.value}
+                                    onChange={(e) => setEditForm((s) => ({ ...s, value: formatMoneyInput(e.target.value) }))}
                                     disabled={editItems.length > 0}
                                 />
                             </LabeledField>
@@ -1696,10 +1703,10 @@ export default function ContractDetail(props) {
                                             <input
                                                 className="rounded-xl border border-slate-200/80 px-3 py-2 text-xs"
                                                 placeholder="Giá bán"
-                                                type="number"
-                                                min="0"
+                                                type="text"
+                                                inputMode="numeric"
                                                 value={item.unit_price}
-                                                onChange={(e) => updateEditItem(index, { unit_price: e.target.value })}
+                                                onChange={(e) => updateEditItem(index, { unit_price: formatMoneyInput(e.target.value) })}
                                             />
                                         </div>
                                         <div>

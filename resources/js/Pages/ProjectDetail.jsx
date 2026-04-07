@@ -79,8 +79,10 @@ const injectCurrentProjectContract = (rows, project) => {
     return [
         {
             id: contractId,
-            code: project?.contract?.code || `HĐ #${contractId}`,
-            title: project?.contract?.title || `Hợp đồng liên kết của dự án #${project?.id || ''}`,
+            code: project?.contract?.code || project?.linked_contract?.code || `HĐ #${contractId}`,
+            title: project?.contract?.title
+                || project?.linked_contract?.title
+                || `Hợp đồng liên kết của dự án #${project?.id || ''}`,
         },
         ...rows,
     ];
@@ -214,6 +216,7 @@ export default function ProjectDetail(props) {
             const res = await axios.get('/api/v1/contracts', {
                 params: {
                     per_page: 200,
+                    available_only: true,
                     project_id: projectId,
                 },
             });

@@ -83,6 +83,17 @@ const parseNumberInput = (value) => {
     const parsed = Number(raw);
     return Number.isFinite(parsed) ? parsed : 0;
 };
+const formatMoneyInput = (value) => {
+    if (value === null || value === undefined || value === '') return '';
+    const digitsOnly = String(value).replace(/[^\d]/g, '');
+    if (!digitsOnly) return '';
+    return Number(digitsOnly).toLocaleString('vi-VN');
+};
+const todayInputValue = () => {
+    const now = new Date();
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+    return now.toISOString().slice(0, 10);
+};
 const calculateItemTotal = (item) => {
     const price = parseNumberInput(item?.unit_price);
     const quantity = Math.max(1, parseNumberInput(item?.quantity) || 1);
@@ -163,7 +174,6 @@ export default function Contracts(props) {
     const [products, setProducts] = useState([]);
     const [collectors, setCollectors] = useState([]);
     const [contractStaffFilterUsers, setContractStaffFilterUsers] = useState([]);
-    const [careStaffUsers, setCareStaffUsers] = useState([]);
     const [loading, setLoading] = useState(false);
     const [savingContract, setSavingContract] = useState(false);
     const [savingPayment, setSavingPayment] = useState(false);
@@ -332,14 +342,6 @@ export default function Contracts(props) {
         }, 0);
     }, [items]);
 
-    const careStaffOptions = useMemo(() => {
-        return careStaffUsers.map((user) => ({
-            id: Number(user.id || 0),
-            label: user.name || 'Nhân sự',
-            meta: user.email || user.role || '',
-        })).filter((user) => user.id > 0);
-    }, [careStaffUsers]);
-
     const contractValueTotal = useMemo(() => (
         items.length ? itemsTotal : parseNumberInput(form.value)
     ), [form.value, items.length, itemsTotal]);
@@ -350,8 +352,9 @@ export default function Contracts(props) {
                 return sum;
             }
             const isPending = payment.row_type === 'pending_request';
+            const isCreateDraft = payment.row_type === 'create_draft';
             const isRecord = payment.row_type === 'record' || !payment.row_type;
-            if (!isPending && !isRecord) {
+            if (!isPending && !isRecord && !isCreateDraft) {
                 return sum;
             }
             return sum + parseNumberInput(payment.amount);
@@ -394,17 +397,6 @@ export default function Contracts(props) {
             setCollectors(res.data?.data || []);
         } catch {
             setCollectors([]);
-        }
-    };
-
-    const fetchCareStaffUsers = async () => {
-        try {
-            const res = await axios.get('/api/v1/users/lookup', {
-                params: { purpose: 'contract_care_staff' },
-            });
-            setCareStaffUsers(res.data?.data || []);
-        } catch {
-            setCareStaffUsers([]);
         }
     };
 
@@ -476,7 +468,6 @@ export default function Contracts(props) {
         fetchProjects();
         fetchProducts();
         fetchCollectors();
-        fetchCareStaffUsers();
         fetchContractStaffFilterOptions();
         fetchContracts();
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -753,12 +744,8 @@ export default function Contracts(props) {
             toast.error('Bạn không có quyền gửi phiếu thanh toán cho hợp đồng này.');
             return;
         }
-        if (!editingId) {
-            toast.error('Vui lòng lưu hợp đồng trước khi thêm thanh toán.');
-            return;
-        }
         setEditingPaymentId(null);
-        setPaymentForm({ amount: '', paid_at: '', method: '', note: '' });
+        setPaymentForm({ amount: '', paid_at: todayInputValue(), method: '', note: '' });
         setShowPaymentForm(true);
     };
 
@@ -767,9 +754,20 @@ export default function Contracts(props) {
             toast.error('Không sửa trực tiếp phiếu đang chờ duyệt.');
             return;
         }
+        if (payment.row_type === 'create_draft') {
+            setEditingPaymentId(payment.id);
+            setPaymentForm({
+                amount: formatMoneyInput(payment.amount),
+                paid_at: toDateInputValue(payment.paid_at),
+                method: payment.method || '',
+                note: payment.note || '',
+            });
+            setShowPaymentForm(true);
+            return;
+        }
         setEditingPaymentId(payment.id);
         setPaymentForm({
-            amount: payment.amount ?? '',
+            amount: formatMoneyInput(payment.amount),
             paid_at: toDateInputValue(payment.paid_at),
             method: payment.method || '',
             note: payment.note || '',
@@ -780,9 +778,35 @@ export default function Contracts(props) {
     const submitPayment = async (e) => {
         e.preventDefault();
         if (savingPayment) return;
-        if (!editingId) return;
         if (paymentProjectedTotal > contractValueTotal + 0.0001) {
             toast.error(`Số tiền thanh toán vượt giá trị hợp đồng. Chỉ còn tối đa ${formatCurrency(paymentRemaining)} VNĐ.`);
+            return;
+        }
+        if (!editingId) {
+            setSavingPayment(true);
+            try {
+                const payload = {
+                    id: editingPaymentId && String(editingPaymentId).startsWith('local-pay-')
+                        ? editingPaymentId
+                        : `local-pay-${Date.now()}`,
+                    row_type: 'create_draft',
+                    amount: parseNumberInput(paymentForm.amount),
+                    paid_at: paymentForm.paid_at || null,
+                    method: paymentForm.method || null,
+                    note: paymentForm.note || null,
+                };
+                if (editingPaymentId && String(editingPaymentId).startsWith('local-pay-')) {
+                    setPayments((prev) => prev.map((p) => (String(p.id) === String(editingPaymentId) ? { ...payload, id: editingPaymentId } : p)));
+                    toast.success('Đã cập nhật dòng thanh toán (gửi duyệt khi tạo hợp đồng).');
+                } else {
+                    setPayments((prev) => [...prev, payload]);
+                    toast.success('Đã thêm dòng thanh toán (gửi duyệt khi tạo hợp đồng).');
+                }
+                setShowPaymentForm(false);
+                setEditingPaymentId(null);
+            } finally {
+                setSavingPayment(false);
+            }
             return;
         }
         setSavingPayment(true);
@@ -816,7 +840,13 @@ export default function Contracts(props) {
     };
 
     const removePayment = async (id) => {
-        if (!editingId) return;
+        if (!editingId) {
+            if (String(id).startsWith('local-pay-')) {
+                if (!confirm('Xóa dòng thanh toán nháp này?')) return;
+                setPayments((prev) => prev.filter((p) => p.id !== id));
+            }
+            return;
+        }
         if (!confirm('Xóa thanh toán này?')) return;
         try {
             await axios.delete(`/api/v1/contracts/${editingId}/payments/${id}`);
@@ -833,12 +863,8 @@ export default function Contracts(props) {
             toast.error('Bạn không có quyền gửi phiếu chi phí cho hợp đồng này.');
             return;
         }
-        if (!editingId) {
-            toast.error('Vui lòng lưu hợp đồng trước khi thêm chi phí.');
-            return;
-        }
         setEditingCostId(null);
-        setCostForm({ amount: '', cost_date: '', cost_type: '', note: '' });
+        setCostForm({ amount: '', cost_date: todayInputValue(), cost_type: '', note: '' });
         setShowCostForm(true);
     };
 
@@ -847,10 +873,21 @@ export default function Contracts(props) {
             toast.error('Không sửa trực tiếp phiếu đang chờ duyệt.');
             return;
         }
+        if (cost.row_type === 'create_draft') {
+            setEditingCostId(cost.id);
+            setCostForm({
+                amount: formatMoneyInput(cost.amount),
+                cost_date: toDateInputValue(cost.cost_date),
+                cost_type: cost.cost_type || '',
+                note: cost.note || '',
+            });
+            setShowCostForm(true);
+            return;
+        }
         setEditingCostId(cost.id);
         setCostForm({
-            amount: cost.amount ?? '',
-                cost_date: toDateInputValue(cost.cost_date),
+            amount: formatMoneyInput(cost.amount),
+            cost_date: toDateInputValue(cost.cost_date),
             cost_type: cost.cost_type || '',
             note: cost.note || '',
         });
@@ -860,7 +897,33 @@ export default function Contracts(props) {
     const submitCost = async (e) => {
         e.preventDefault();
         if (savingCost) return;
-        if (!editingId) return;
+        if (!editingId) {
+            setSavingCost(true);
+            try {
+                const payload = {
+                    id: editingCostId && String(editingCostId).startsWith('local-cost-')
+                        ? editingCostId
+                        : `local-cost-${Date.now()}`,
+                    row_type: 'create_draft',
+                    amount: parseNumberInput(costForm.amount),
+                    cost_date: costForm.cost_date || null,
+                    cost_type: costForm.cost_type || null,
+                    note: costForm.note || null,
+                };
+                if (editingCostId && String(editingCostId).startsWith('local-cost-')) {
+                    setCosts((prev) => prev.map((c) => (String(c.id) === String(editingCostId) ? { ...payload, id: editingCostId } : c)));
+                    toast.success('Đã cập nhật dòng chi phí (gửi duyệt khi tạo hợp đồng).');
+                } else {
+                    setCosts((prev) => [...prev, payload]);
+                    toast.success('Đã thêm dòng chi phí (gửi duyệt khi tạo hợp đồng).');
+                }
+                setShowCostForm(false);
+                setEditingCostId(null);
+            } finally {
+                setSavingCost(false);
+            }
+            return;
+        }
         setSavingCost(true);
         try {
             const payload = {
@@ -892,7 +955,13 @@ export default function Contracts(props) {
     };
 
     const removeCost = async (id) => {
-        if (!editingId) return;
+        if (!editingId) {
+            if (String(id).startsWith('local-cost-')) {
+                if (!confirm('Xóa dòng chi phí nháp này?')) return;
+                setCosts((prev) => prev.filter((c) => c.id !== id));
+            }
+            return;
+        }
         if (!confirm('Xóa chi phí này?')) return;
         try {
             await axios.delete(`/api/v1/contracts/${editingId}/costs/${id}`);
@@ -1032,7 +1101,6 @@ export default function Contracts(props) {
             title: form.title,
             client_id: Number(form.client_id),
             collector_user_id: form.collector_user_id ? Number(form.collector_user_id) : null,
-            care_staff_ids: normalizeCareStaffIds(form.care_staff_ids),
             value: items.length ? itemsTotal : form.value === '' ? null : parseNumberInput(form.value),
             payment_times: form.payment_times === '' ? 1 : Number(form.payment_times),
             status: form.status,
@@ -1049,6 +1117,24 @@ export default function Contracts(props) {
                 note: item.note || null,
             })),
         };
+        if (!editingId) {
+            payload.pending_payment_requests = payments
+                .filter((p) => p.row_type === 'create_draft')
+                .map((p) => ({
+                    amount: parseNumberInput(p.amount),
+                    paid_at: p.paid_at || null,
+                    method: p.method || null,
+                    note: p.note || null,
+                }));
+            payload.pending_cost_requests = costs
+                .filter((c) => c.row_type === 'create_draft')
+                .map((c) => ({
+                    amount: parseNumberInput(c.amount),
+                    cost_date: c.cost_date || null,
+                    cost_type: c.cost_type || null,
+                    note: c.note || null,
+                }));
+        }
         setSavingContract(true);
         try {
             if (editingId) {
@@ -1544,29 +1630,6 @@ export default function Contracts(props) {
                             </select>
                         </div>
                     </div>
-                    <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-4">
-                        <div className="mb-3">
-                            <p className="text-xs uppercase tracking-[0.16em] text-text-subtle">Nhân viên chăm sóc hợp đồng</p>
-                            <p className="mt-1 text-xs text-text-muted">
-                                Chỉ admin, kế toán và quản lý được gắn nhóm chăm sóc. Nhân viên được gắn ở đây có quyền xem hợp đồng và cập nhật nhật ký chăm sóc.
-                            </p>
-                        </div>
-                        {careStaffUsers.length > 0 ? (
-                            <TagMultiSelect
-                                options={careStaffOptions}
-                                selectedIds={form.care_staff_ids}
-                                addPlaceholder="Thêm nhân viên chăm sóc hợp đồng"
-                                emptyLabel="Chưa thêm nhân viên chăm sóc hợp đồng nào."
-                                onChange={(selectedIds) => {
-                                    setForm((current) => ({ ...current, care_staff_ids: selectedIds }));
-                                }}
-                            />
-                        ) : (
-                            <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-3 text-xs text-text-muted">
-                                Chưa có nhân viên chăm sóc phù hợp trong phạm vi được phép gán.
-                            </div>
-                        )}
-                    </div>
                     <div className="rounded-2xl border border-slate-200/80 bg-slate-50 p-4">
                         <div className="grid gap-4 md:grid-cols-3">
                             <LabeledField
@@ -1575,10 +1638,11 @@ export default function Contracts(props) {
                             >
                                 <input
                                     className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
-                                    type="number"
+                                    type="text"
+                                    inputMode="numeric"
                                     placeholder="0"
-                                    value={items.length ? itemsTotal : form.value}
-                                    onChange={(e) => setForm((s) => ({ ...s, value: e.target.value }))}
+                                    value={items.length ? formatMoneyInput(itemsTotal) : form.value}
+                                    onChange={(e) => setForm((s) => ({ ...s, value: formatMoneyInput(e.target.value) }))}
                                     disabled={items.length > 0}
                                 />
                             </LabeledField>
@@ -1694,9 +1758,10 @@ export default function Contracts(props) {
                                             <input
                                                 className="rounded-xl border border-slate-200/80 px-3 py-2 text-xs"
                                                 placeholder="Giá bán"
-                                                type="number"
+                                                type="text"
+                                                inputMode="numeric"
                                                 value={item.unit_price}
-                                                onChange={(e) => updateItem(index, { unit_price: e.target.value })}
+                                                onChange={(e) => updateItem(index, { unit_price: formatMoneyInput(e.target.value) })}
                                             />
                                         </div>
                                         <div>
@@ -1772,7 +1837,31 @@ export default function Contracts(props) {
                                             <td className="py-2">{p.method || '—'}</td>
                                             <td className="py-2">{p.note || '—'}</td>
                                             <td className="py-2 text-right">
-                                                {p.row_type === 'pending_request' ? (
+                                                {p.row_type === 'create_draft' ? (
+                                                    <div className="inline-flex flex-wrap items-center justify-end gap-2">
+                                                        <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-semibold text-sky-800">
+                                                            Gửi kèm khi tạo HĐ
+                                                        </span>
+                                                        <button
+                                                            type="button"
+                                                            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+                                                            aria-label="Sửa dòng nháp"
+                                                            title="Sửa dòng nháp"
+                                                            onClick={() => editPayment(p)}
+                                                        >
+                                                            <AppIcon name="pencil" className="h-4 w-4" />
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-rose-200 text-rose-500 hover:bg-rose-50 hover:text-rose-600"
+                                                            aria-label="Xóa dòng nháp"
+                                                            title="Xóa dòng nháp"
+                                                            onClick={() => removePayment(p.id)}
+                                                        >
+                                                            <AppIcon name="trash" className="h-4 w-4" />
+                                                        </button>
+                                                    </div>
+                                                ) : p.row_type === 'pending_request' ? (
                                                     <div className="inline-flex flex-wrap items-center justify-end gap-2">
                                                         <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
                                                             Cần duyệt
@@ -1873,7 +1962,31 @@ export default function Contracts(props) {
                                             <td className="py-2">{formatCurrency(c.amount || 0)}</td>
                                             <td className="py-2">{c.note || '—'}</td>
                                             <td className="py-2 text-right">
-                                                {c.row_type === 'pending_request' ? (
+                                                {c.row_type === 'create_draft' ? (
+                                                    <div className="inline-flex flex-wrap items-center justify-end gap-2">
+                                                        <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-semibold text-sky-800">
+                                                            Gửi kèm khi tạo HĐ
+                                                        </span>
+                                                        <button
+                                                            type="button"
+                                                            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+                                                            aria-label="Sửa dòng nháp"
+                                                            title="Sửa dòng nháp"
+                                                            onClick={() => editCost(c)}
+                                                        >
+                                                            <AppIcon name="pencil" className="h-4 w-4" />
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-rose-200 text-rose-500 hover:bg-rose-50 hover:text-rose-600"
+                                                            aria-label="Xóa dòng nháp"
+                                                            title="Xóa dòng nháp"
+                                                            onClick={() => removeCost(c.id)}
+                                                        >
+                                                            <AppIcon name="trash" className="h-4 w-4" />
+                                                        </button>
+                                                    </div>
+                                                ) : c.row_type === 'pending_request' ? (
                                                     <div className="inline-flex flex-wrap items-center justify-end gap-2">
                                                         <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
                                                             Cần duyệt
@@ -1992,7 +2105,7 @@ export default function Contracts(props) {
                             <span className="font-semibold text-slate-900">{formatCurrency(contractValueTotal)} VNĐ</span>
                         </div>
                         <div className="mt-1 flex items-center justify-between gap-3">
-                            <span>Còn có thể thu</span>
+                            <span>Số tiền còn cần thu</span>
                             <span className={`font-semibold ${paymentRemaining > 0 ? 'text-emerald-700' : 'text-rose-600'}`}>{formatCurrency(paymentRemaining)} VNĐ</span>
                         </div>
                         {paymentProjectedTotal > contractValueTotal + 0.0001 && (
@@ -2005,9 +2118,10 @@ export default function Contracts(props) {
                         <input
                             className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
                             placeholder="Nhập số tiền đã thu"
-                            type="number"
+                            type="text"
+                            inputMode="numeric"
                             value={paymentForm.amount}
-                            onChange={(e) => setPaymentForm((s) => ({ ...s, amount: e.target.value }))}
+                            onChange={(e) => setPaymentForm((s) => ({ ...s, amount: formatMoneyInput(e.target.value) }))}
                         />
                     </LabeledField>
                     <LabeledField label="Ngày thu">
@@ -2041,7 +2155,11 @@ export default function Contracts(props) {
                             className="flex-1 rounded-2xl px-3 py-2.5 bg-primary text-white text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
                             disabled={savingPayment}
                         >
-                            {savingPayment ? 'Đang lưu...' : 'Lưu'}
+                            {savingPayment
+                                ? (editingPaymentId ? 'Đang cập nhật...' : 'Đang tạo...')
+                                : (editingPaymentId
+                                    ? 'Cập nhật phiếu thu'
+                                    : 'Tạo phiếu thu')}
                         </button>
                         <button
                             type="button"
@@ -2069,9 +2187,10 @@ export default function Contracts(props) {
                         <input
                             className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
                             placeholder="Nhập chi phí phát sinh"
-                            type="number"
+                            type="text"
+                            inputMode="numeric"
                             value={costForm.amount}
-                            onChange={(e) => setCostForm((s) => ({ ...s, amount: e.target.value }))}
+                            onChange={(e) => setCostForm((s) => ({ ...s, amount: formatMoneyInput(e.target.value) }))}
                         />
                     </LabeledField>
                     <LabeledField label="Ngày chi">
@@ -2105,7 +2224,11 @@ export default function Contracts(props) {
                             className="flex-1 rounded-2xl px-3 py-2.5 bg-primary text-white text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
                             disabled={savingCost}
                         >
-                            {savingCost ? 'Đang lưu...' : 'Lưu'}
+                            {savingCost
+                                ? (editingCostId ? 'Đang cập nhật...' : 'Đang tạo...')
+                                : (editingCostId
+                                    ? 'Cập nhật phiếu chi'
+                                    : 'Tạo phiếu chi')}
                         </button>
                         <button
                             type="button"

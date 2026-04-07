@@ -650,7 +650,9 @@ class CRMController extends Controller
         }
 
         if ($viewer->role === 'quan_ly') {
-            return CrmScope::managerVisibleUserIds($viewer)->contains($staffId);
+            return CrmScope::managerVisibleUserIds($viewer)->contains(function ($id) use ($staffId) {
+                return (int) $id === $staffId;
+            });
         }
 
         if ($viewer->role === 'nhan_vien') {
@@ -664,7 +666,8 @@ class CRMController extends Controller
     {
         $raw = $request->input('assigned_staff_ids', []);
         if (is_string($raw)) {
-            $raw = preg_split('/[\s,;|]+/', $raw) ?: [];
+            $trimmed = trim($raw);
+            $raw = $trimmed === '' ? [] : (preg_split('/[\s,;|]+/', $trimmed) ?: []);
         }
         if (! is_array($raw)) {
             $raw = [];

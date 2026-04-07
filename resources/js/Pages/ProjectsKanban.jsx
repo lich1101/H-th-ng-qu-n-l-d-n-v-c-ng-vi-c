@@ -141,8 +141,10 @@ export default function ProjectsKanban(props) {
         return [
             {
                 id: contractId,
-                code: project?.contract?.code || `HĐ #${contractId}`,
-                title: project?.contract?.title || `Hợp đồng liên kết của dự án #${project?.id || ''}`,
+            code: project?.contract?.code || project?.linked_contract?.code || `HĐ #${contractId}`,
+            title: project?.contract?.title
+                || project?.linked_contract?.title
+                || `Hợp đồng liên kết của dự án #${project?.id || ''}`,
             },
             ...rows,
         ];

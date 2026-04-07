@@ -201,7 +201,7 @@ class ClientStaffTransferService
             return;
         }
 
-        app(NotificationService::class)->notifyUsersAfterResponse($targets, $title, $body, $data);
+        app(NotificationService::class)->notifyUsers($targets, $title, $body, $data);
     }
 
     public function createRequest(User $actor, Client $client, int $toStaffId, ?string $note): ClientStaffTransferRequest
@@ -389,7 +389,7 @@ class ClientStaffTransferService
 
         return [
             'type' => 'staff_transfer_request',
-            'category' => 'crm_realtime',
+            'category' => 'system',
             'transfer_id' => (int) $transfer->id,
             'client_id' => (int) $transfer->client_id,
             'from_staff_id' => (int) ($transfer->from_staff_id ?? 0),
