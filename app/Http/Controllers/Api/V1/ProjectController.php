@@ -299,7 +299,7 @@ class ProjectController extends Controller
         if (! ProjectScope::canAccessProject($request->user(), $project)) {
             return response()->json(['message' => 'Không có quyền cập nhật dự án.'], 403);
         }
-        
+
         $canEdit = in_array($request->user()->role, ['admin', 'administrator', 'quan_ly'], true)
             || (int) $project->owner_id === (int) $request->user()->id;
         if (! $canEdit && $this->projectHasLinkedContract($project)) {
@@ -310,7 +310,7 @@ class ProjectController extends Controller
                 $canEdit = true;
             }
         }
-        
+
         if (! $canEdit) {
             return response()->json(['message' => 'Bạn chỉ có quyền xem dự án trong phạm vi phụ trách.'], 403);
         }
