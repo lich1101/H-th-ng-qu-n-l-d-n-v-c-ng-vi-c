@@ -6,15 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Http\Helpers\CrmScope;
 use App\Models\Client;
 use App\Models\Contract;
-use App\Models\ContractCost;
 use App\Models\ContractFinanceRequest;
-use App\Models\ContractPayment;
 use App\Models\User;
-use App\Services\DataTransfers\ClientFinancialSyncService;
-use App\Services\NotificationService;
+use App\Services\ContractFinanceRequestService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class ContractFinanceRequestController extends Controller
@@ -52,60 +48,25 @@ class ContractFinanceRequestController extends Controller
             'review_note' => ['nullable', 'string', 'max:1000'],
         ]);
 
-        DB::transaction(function () use ($contract, $financeRequest, $request, $validated) {
-            $createdPaymentId = null;
-            $createdCostId = null;
+        try {
+            $fresh = app(ContractFinanceRequestService::class)->approve(
+                $contract,
+                $financeRequest,
+                $request->user(),
+                $validated['review_note'] ?? null
+            );
+        } catch (ValidationException $e) {
+            $first = collect($e->errors())->flatten()->first();
 
-            if ((string) $financeRequest->request_type === 'payment') {
-                $amount = max(0, (float) ($financeRequest->amount ?? 0));
-                if ($error = $this->validatePaymentCap($contract, $amount)) {
-                    throw ValidationException::withMessages([
-                        'amount' => $error,
-                    ]);
-                }
-
-                $payment = $contract->payments()->create([
-                    'amount' => $amount,
-                    'paid_at' => $financeRequest->transaction_date,
-                    'method' => $financeRequest->method,
-                    'note' => $financeRequest->note,
-                    'created_by' => $financeRequest->submitted_by ?: $request->user()->id,
-                ]);
-                $createdPaymentId = (int) $payment->id;
-            } else {
-                $cost = $contract->costs()->create([
-                    'amount' => max(0, (float) ($financeRequest->amount ?? 0)),
-                    'cost_date' => $financeRequest->transaction_date,
-                    'cost_type' => $financeRequest->cost_type,
-                    'note' => $financeRequest->note,
-                    'created_by' => $financeRequest->submitted_by ?: $request->user()->id,
-                ]);
-                $createdCostId = (int) $cost->id;
-            }
-
-            $financeRequest->update([
-                'status' => 'approved',
-                'reviewed_by' => $request->user()->id,
-                'reviewed_at' => now(),
-                'review_note' => trim((string) ($validated['review_note'] ?? '')) ?: null,
-                'contract_payment_id' => $createdPaymentId,
-                'contract_cost_id' => $createdCostId,
-            ]);
-
-            $contract->refreshFinancials();
-            if ($contract->client) {
-                app(ClientFinancialSyncService::class)->sync($contract->client);
-            }
-        });
-
-        $this->notifyRequesterFeedback($contract, $financeRequest->fresh(), $request->user(), 'approved');
+            return response()->json([
+                'message' => $first ?: 'Không thể duyệt phiếu tài chính.',
+                'errors' => $e->errors(),
+            ], 422);
+        }
 
         return response()->json([
             'message' => 'Đã duyệt phiếu tài chính hợp đồng.',
-            'request' => $financeRequest->fresh()->load([
-                'submitter:id,name,email,avatar_url',
-                'reviewer:id,name,email,avatar_url',
-            ]),
+            'request' => $fresh,
         ]);
     }
 
@@ -132,7 +93,7 @@ class ContractFinanceRequestController extends Controller
             'review_note' => trim((string) $validated['review_note']),
         ]);
 
-        $this->notifyRequesterFeedback($contract, $financeRequest->fresh(), $request->user(), 'rejected');
+        $this->notifyRejectFeedback($contract, $financeRequest->fresh(), $request->user());
 
         return response()->json([
             'message' => 'Đã từ chối phiếu tài chính hợp đồng.',
@@ -222,28 +183,7 @@ class ContractFinanceRequestController extends Controller
             ->exists();
     }
 
-    private function validatePaymentCap(Contract $contract, float $nextAmount, ?ContractPayment $currentPayment = null): ?string
-    {
-        $contractValue = (float) ($contract->value ?? 0);
-        $existingTotal = (float) $contract->payments()->sum('amount');
-
-        if ($currentPayment) {
-            $existingTotal -= (float) ($currentPayment->amount ?? 0);
-        }
-
-        $projectedTotal = $existingTotal + max(0, $nextAmount);
-        if ($projectedTotal <= $contractValue + 0.0001) {
-            return null;
-        }
-
-        $remaining = max(0, $contractValue - $existingTotal);
-
-        return 'Số tiền thanh toán vượt giá trị hợp đồng. Chỉ còn có thể thu tối đa '
-            .number_format($remaining, 0, ',', '.')
-            .' VNĐ.';
-    }
-
-    private function notifyRequesterFeedback(Contract $contract, ContractFinanceRequest $financeRequest, User $actor, string $action): void
+    private function notifyRejectFeedback(Contract $contract, ContractFinanceRequest $financeRequest, User $actor): void
     {
         $targetId = (int) ($financeRequest->submitted_by ?? 0);
         if ($targetId <= 0 || $targetId === (int) $actor->id) {
@@ -252,15 +192,11 @@ class ContractFinanceRequestController extends Controller
 
         try {
             $isPayment = (string) $financeRequest->request_type === 'payment';
-            $title = $action === 'approved'
-                ? 'Phiếu tài chính hợp đồng đã được duyệt'
-                : 'Phiếu tài chính hợp đồng bị từ chối';
+            $title = 'Phiếu tài chính hợp đồng bị từ chối';
             $body = ($isPayment ? 'Phiếu thu tiền' : 'Phiếu chi phí')
-                .' của hợp đồng "'.((string) ($contract->title ?? '')) .'" đã được '
-                .($action === 'approved' ? 'duyệt' : 'từ chối')
-                .' bởi '.$actor->name.'.';
+                .' của hợp đồng "'.((string) ($contract->title ?? '')).'" đã được từ chối bởi '.$actor->name.'.';
 
-            app(NotificationService::class)->notifyUsersAfterResponse(
+            app(\App\Services\NotificationService::class)->notifyUsersAfterResponse(
                 [$targetId],
                 $title,
                 $body,
@@ -270,7 +206,7 @@ class ContractFinanceRequestController extends Controller
                     'contract_id' => (int) $contract->id,
                     'contract_finance_request_id' => (int) $financeRequest->id,
                     'request_type' => (string) $financeRequest->request_type,
-                    'review_action' => $action,
+                    'review_action' => 'rejected',
                 ]
             );
         } catch (\Throwable $e) {

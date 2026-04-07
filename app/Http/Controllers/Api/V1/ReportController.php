@@ -93,6 +93,9 @@ class ReportController extends Controller
         $hasContractFinanceRequestStatus = $hasContractFinanceRequestsTable && Schema::hasColumn('contract_finance_requests', 'status');
         $hasContractFinanceRequestReviewedAt = $hasContractFinanceRequestsTable && Schema::hasColumn('contract_finance_requests', 'reviewed_at');
         $hasContractFinanceRequestPaymentId = $hasContractFinanceRequestsTable && Schema::hasColumn('contract_finance_requests', 'contract_payment_id');
+        $hasContractFinanceRequestCostId = $hasContractFinanceRequestsTable && Schema::hasColumn('contract_finance_requests', 'contract_cost_id');
+        $hasContractCostsTable = Schema::hasTable('contract_costs');
+        $hasContractCostsDate = $hasContractCostsTable && Schema::hasColumn('contract_costs', 'cost_date');
         $hasClientAssignedStaffId = Schema::hasColumn('clients', 'assigned_staff_id');
         $hasClientCreatedAt = Schema::hasColumn('clients', 'created_at');
         $hasOpportunityAssignedTo = Schema::hasColumn('opportunities', 'assigned_to');
@@ -562,6 +565,85 @@ class ReportController extends Controller
 
                 $amount = (float) ($cashflowRow->total_amount ?? 0);
                 $currentStaffMetrics[$staffId]['cashflow'] += $amount;
+            }
+        }
+
+        if ($hasContractCostsTable && $hasContractCostsDate) {
+            $costflowQuery = ContractCost::query()
+                ->whereNotNull('contract_costs.cost_date')
+                ->whereIn('contract_id', (clone $approvedContractsBaseQuery)->select('contracts.id'));
+
+            $costDateExpr = 'DATE(contract_costs.cost_date)';
+            if ($hasContractFinanceRequestCostId) {
+                $approvedCostReviews = DB::table('contract_finance_requests')
+                    ->selectRaw('contract_cost_id, MAX(reviewed_at) as reviewed_at')
+                    ->whereNotNull('contract_cost_id')
+                    ->when($hasContractFinanceRequestStatus, function ($query) {
+                        $query->where('status', 'approved');
+                    })
+                    ->when($hasContractFinanceRequestReviewedAt, function ($query) {
+                        $query->whereNotNull('reviewed_at');
+                    })
+                    ->groupBy('contract_cost_id');
+
+                $costflowQuery->leftJoinSub($approvedCostReviews, 'cost_review_dates', function ($join) {
+                    $join->on('cost_review_dates.contract_cost_id', '=', 'contract_costs.id');
+                });
+                $costDateExpr = 'DATE(COALESCE(cost_review_dates.reviewed_at, contract_costs.cost_date))';
+            }
+
+            $costflowRows = $costflowQuery
+                ->whereBetween(DB::raw($costDateExpr), [
+                    $currentPeriodStart->toDateString(),
+                    $currentPeriodEnd->toDateString(),
+                ])
+                ->selectRaw("contract_costs.contract_id, $costDateExpr as cost_day, SUM(contract_costs.amount) as total_amount")
+                ->groupBy('contract_costs.contract_id', DB::raw($costDateExpr))
+                ->get();
+
+            $costContractLookup = collect();
+            $costContractIds = $costflowRows
+                ->pluck('contract_id')
+                ->map(function ($id) {
+                    return (int) $id;
+                })
+                ->filter(function ($id) {
+                    return $id > 0;
+                })
+                ->unique()
+                ->values()
+                ->all();
+
+            if (! empty($costContractIds)) {
+                $costContractLookup = (clone $approvedContractsBaseQuery)
+                    ->with($contractWithClientSelect)
+                    ->whereIn('contracts.id', $costContractIds)
+                    ->get(['id', 'client_id', 'collector_user_id', 'created_by'])
+                    ->keyBy('id');
+            }
+
+            foreach ($costflowRows as $costRow) {
+                $contractId = (int) ($costRow->contract_id ?? 0);
+                if ($contractId <= 0) {
+                    continue;
+                }
+
+                $contractModel = $costContractLookup->get($contractId);
+                if (! $contractModel instanceof Contract) {
+                    continue;
+                }
+
+                $staffId = $resolveStaffId($contractModel);
+                if (! isset($currentStaffMetrics[$staffId])) {
+                    $currentStaffMetrics[$staffId] = [
+                        'revenue' => 0.0,
+                        'cashflow' => 0.0,
+                        'contracts_count' => 0,
+                    ];
+                }
+
+                $amount = (float) ($costRow->total_amount ?? 0);
+                $currentStaffMetrics[$staffId]['cashflow'] -= $amount;
             }
         }
 

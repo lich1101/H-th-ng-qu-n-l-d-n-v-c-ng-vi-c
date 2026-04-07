@@ -138,6 +138,21 @@ const readBoolean = (raw) => {
     return null;
 };
 
+/** API trả payments_display (ghi nhận + phiếu chờ); fallback payments cũ */
+function normalizePaymentDisplayRows(contract) {
+    const raw = contract?.payments_display || contract?.payments || [];
+    if (!Array.isArray(raw) || raw.length === 0) return [];
+    if (raw[0]?.row_type) return raw;
+    return raw.map((p) => ({ ...p, row_type: 'record' }));
+}
+
+function normalizeCostDisplayRows(contract) {
+    const raw = contract?.costs_display || contract?.costs || [];
+    if (!Array.isArray(raw) || raw.length === 0) return [];
+    if (raw[0]?.row_type) return raw;
+    return raw.map((c) => ({ ...c, row_type: 'record' }));
+}
+
 function AutoCodeBadge({ code, className = '' }) {
     if (!code) return <span className={`text-text-muted ${className}`}>Chưa có</span>;
     return (
@@ -289,14 +304,18 @@ export default function ContractDetail(props) {
     const editItemsTotal = useMemo(() => {
         return editItems.reduce((sum, item) => sum + calculateItemTotal(item), 0);
     }, [editItems]);
+    const paymentRowsNormalized = useMemo(() => normalizePaymentDisplayRows(contract), [contract]);
     const paymentBaseTotal = useMemo(() => {
-        return (contract?.payments || []).reduce((sum, payment) => {
-            if (editingPaymentId && Number(payment.id) === Number(editingPaymentId)) {
+        return paymentRowsNormalized.reduce((sum, row) => {
+            if (row.row_type === 'pending_request') {
+                return sum + parseNumberInput(row.amount);
+            }
+            if (editingPaymentId && Number(row.id) === Number(editingPaymentId)) {
                 return sum;
             }
-            return sum + parseNumberInput(payment.amount);
+            return sum + parseNumberInput(row.amount);
         }, 0);
-    }, [contract?.payments, editingPaymentId]);
+    }, [paymentRowsNormalized, editingPaymentId]);
     const contractValueTotal = useMemo(() => {
         if (showEditContractModal && editItems.length > 0) {
             return editItemsTotal;
@@ -654,7 +673,7 @@ export default function ContractDetail(props) {
 
     const approveFinanceRequest = async (requestId) => {
         if (!contract?.id || !requestId) return;
-        if (!confirm('Duyệt phiếu tài chính này?')) return;
+        if (!confirm('Duyệt ghi nhận thu/chi này?')) return;
 
         setReviewingRequestId(requestId);
         try {
@@ -717,7 +736,8 @@ export default function ContractDetail(props) {
     const canManageFinance = readBoolean(contract?.can_manage_finance) === true;
     const canSubmitFinanceRequest = readBoolean(contract?.can_submit_finance_request) === true;
     const canReviewFinanceRequest = readBoolean(contract?.can_review_finance_request) === true;
-    const financeRequests = contract?.finance_requests || [];
+    const paymentDisplayRows = normalizePaymentDisplayRows(contract);
+    const costDisplayRows = normalizeCostDisplayRows(contract);
 
     return (
         <PageContainer
@@ -941,20 +961,51 @@ export default function ContractDetail(props) {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
-                                    {(contract.payments || []).map((payment) => (
-                                        <tr key={payment.id}>
-                                            <td className="px-4 py-3">{formatDateDisplay(payment.paid_at)}</td>
-                                            <td className="px-4 py-3 font-semibold text-emerald-700">{formatCurrency(payment.amount || 0)}</td>
-                                            <td className="px-4 py-3">{payment.method || '—'}</td>
-                                            <td className="px-4 py-3">{payment.note || '—'}</td>
+                                    {paymentDisplayRows.map((row) => (
+                                        <tr key={row.id}>
+                                            <td className="px-4 py-3">{formatDateDisplay(row.paid_at)}</td>
+                                            <td className="px-4 py-3 font-semibold text-emerald-700">{formatCurrency(row.amount || 0)}</td>
+                                            <td className="px-4 py-3">{row.method || '—'}</td>
+                                            <td className="px-4 py-3">{row.note || '—'}</td>
                                             <td className="px-4 py-3 text-right">
-                                                {canManageFinance ? (
+                                                {row.row_type === 'pending_request' ? (
+                                                    <div className="inline-flex flex-wrap items-center justify-end gap-2">
+                                                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                                                            Cần duyệt
+                                                        </span>
+                                                        {row.submitter?.name ? (
+                                                            <span className="max-w-[120px] truncate text-[11px] text-text-muted" title={row.submitter.name}>
+                                                                {row.submitter.name}
+                                                            </span>
+                                                        ) : null}
+                                                        {canReviewFinanceRequest ? (
+                                                            <>
+                                                                <button
+                                                                    type="button"
+                                                                    className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
+                                                                    onClick={() => approveFinanceRequest(row.finance_request_id)}
+                                                                    disabled={reviewingRequestId === row.finance_request_id}
+                                                                >
+                                                                    Duyệt
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-60"
+                                                                    onClick={() => rejectFinanceRequest(row.finance_request_id)}
+                                                                    disabled={reviewingRequestId === row.finance_request_id}
+                                                                >
+                                                                    Từ chối
+                                                                </button>
+                                                            </>
+                                                        ) : null}
+                                                    </div>
+                                                ) : canManageFinance ? (
                                                     <div className="inline-flex items-center justify-end gap-2">
                                                         <button
                                                             type="button"
                                                             className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700"
                                                             title="Sửa thanh toán"
-                                                            onClick={() => editPayment(payment)}
+                                                            onClick={() => editPayment(row)}
                                                         >
                                                             <AppIcon name="pencil" className="h-4 w-4" />
                                                         </button>
@@ -962,7 +1013,7 @@ export default function ContractDetail(props) {
                                                             type="button"
                                                             className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-rose-200 text-rose-500 hover:bg-rose-50 hover:text-rose-600"
                                                             title="Xóa thanh toán"
-                                                            onClick={() => removePayment(payment.id)}
+                                                            onClick={() => removePayment(row.id)}
                                                         >
                                                             <AppIcon name="trash" className="h-4 w-4" />
                                                         </button>
@@ -973,7 +1024,7 @@ export default function ContractDetail(props) {
                                             </td>
                                         </tr>
                                     ))}
-                                    {(contract.payments || []).length === 0 && (
+                                    {paymentDisplayRows.length === 0 && (
                                         <tr>
                                             <td className="px-4 py-4 text-center text-text-muted" colSpan={5}>Chưa có đợt thu nào.</td>
                                         </tr>
@@ -1008,20 +1059,51 @@ export default function ContractDetail(props) {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
-                                    {(contract.costs || []).map((cost) => (
-                                        <tr key={cost.id}>
-                                            <td className="px-4 py-3">{formatDateDisplay(cost.cost_date)}</td>
-                                            <td className="px-4 py-3">{cost.cost_type || '—'}</td>
-                                            <td className="px-4 py-3 font-semibold text-rose-600">{formatCurrency(cost.amount || 0)}</td>
-                                            <td className="px-4 py-3">{cost.note || '—'}</td>
+                                    {costDisplayRows.map((row) => (
+                                        <tr key={row.id}>
+                                            <td className="px-4 py-3">{formatDateDisplay(row.cost_date)}</td>
+                                            <td className="px-4 py-3">{row.cost_type || '—'}</td>
+                                            <td className="px-4 py-3 font-semibold text-rose-600">{formatCurrency(row.amount || 0)}</td>
+                                            <td className="px-4 py-3">{row.note || '—'}</td>
                                             <td className="px-4 py-3 text-right">
-                                                {canManageFinance ? (
+                                                {row.row_type === 'pending_request' ? (
+                                                    <div className="inline-flex flex-wrap items-center justify-end gap-2">
+                                                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                                                            Cần duyệt
+                                                        </span>
+                                                        {row.submitter?.name ? (
+                                                            <span className="max-w-[120px] truncate text-[11px] text-text-muted" title={row.submitter.name}>
+                                                                {row.submitter.name}
+                                                            </span>
+                                                        ) : null}
+                                                        {canReviewFinanceRequest ? (
+                                                            <>
+                                                                <button
+                                                                    type="button"
+                                                                    className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
+                                                                    onClick={() => approveFinanceRequest(row.finance_request_id)}
+                                                                    disabled={reviewingRequestId === row.finance_request_id}
+                                                                >
+                                                                    Duyệt
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-60"
+                                                                    onClick={() => rejectFinanceRequest(row.finance_request_id)}
+                                                                    disabled={reviewingRequestId === row.finance_request_id}
+                                                                >
+                                                                    Từ chối
+                                                                </button>
+                                                            </>
+                                                        ) : null}
+                                                    </div>
+                                                ) : canManageFinance ? (
                                                     <div className="inline-flex items-center justify-end gap-2">
                                                         <button
                                                             type="button"
                                                             className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700"
                                                             title="Sửa chi phí"
-                                                            onClick={() => editCost(cost)}
+                                                            onClick={() => editCost(row)}
                                                         >
                                                             <AppIcon name="pencil" className="h-4 w-4" />
                                                         </button>
@@ -1029,7 +1111,7 @@ export default function ContractDetail(props) {
                                                             type="button"
                                                             className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-rose-200 text-rose-500 hover:bg-rose-50 hover:text-rose-600"
                                                             title="Xóa chi phí"
-                                                            onClick={() => removeCost(cost.id)}
+                                                            onClick={() => removeCost(row.id)}
                                                         >
                                                             <AppIcon name="trash" className="h-4 w-4" />
                                                         </button>
@@ -1040,7 +1122,7 @@ export default function ContractDetail(props) {
                                             </td>
                                         </tr>
                                     ))}
-                                    {(contract.costs || []).length === 0 && (
+                                    {costDisplayRows.length === 0 && (
                                         <tr>
                                             <td className="px-4 py-4 text-center text-text-muted" colSpan={5}>Chưa ghi nhận chi phí nào.</td>
                                         </tr>
@@ -1048,100 +1130,6 @@ export default function ContractDetail(props) {
                                 </tbody>
                             </table>
                         </div>
-                    </div>
-                </div>
-
-                <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
-                    <div className="mb-4">
-                        <h4 className="text-sm font-semibold text-slate-900">Phiếu duyệt thu/chi hợp đồng</h4>
-                        <p className="mt-1 text-xs text-text-muted">
-                            Nhân sự không phải admin/kế toán khi thêm thu/chi sẽ tạo phiếu ở đây để chờ duyệt.
-                        </p>
-                    </div>
-                    <div className="overflow-x-auto rounded-xl border border-slate-200/80">
-                        <table className="min-w-full text-xs">
-                            <thead className="bg-slate-50">
-                                <tr className="border-b border-slate-200 text-left uppercase tracking-[0.12em] text-slate-500 font-semibold">
-                                    <th className="px-4 py-3">Loại</th>
-                                    <th className="px-4 py-3">Ngày ghi nhận</th>
-                                    <th className="px-4 py-3">Số tiền</th>
-                                    <th className="px-4 py-3">Nội dung</th>
-                                    <th className="px-4 py-3">Người gửi</th>
-                                    <th className="px-4 py-3">Trạng thái</th>
-                                    <th className="px-4 py-3">Người duyệt</th>
-                                    <th className="px-4 py-3 text-right">Thao tác</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {financeRequests.map((request) => {
-                                    const status = String(request.status || 'pending');
-                                    const isPending = status === 'pending';
-                                    const statusClass = status === 'approved'
-                                        ? 'bg-emerald-100 text-emerald-700'
-                                        : status === 'rejected'
-                                            ? 'bg-rose-100 text-rose-700'
-                                            : 'bg-amber-100 text-amber-700';
-
-                                    return (
-                                        <tr key={request.id}>
-                                            <td className="px-4 py-3">
-                                                {String(request.request_type) === 'payment' ? 'Phiếu thu' : 'Phiếu chi'}
-                                            </td>
-                                            <td className="px-4 py-3">{formatDateDisplay(request.transaction_date)}</td>
-                                            <td className="px-4 py-3 font-semibold">{formatCurrency(request.amount || 0)}</td>
-                                            <td className="px-4 py-3">
-                                                <div className="space-y-1">
-                                                    {request.method ? <div>PTTT: {request.method}</div> : null}
-                                                    {request.cost_type ? <div>Loại chi: {request.cost_type}</div> : null}
-                                                    <div className="text-text-muted">{request.note || '—'}</div>
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-3">{request.submitter?.name || '—'}</td>
-                                            <td className="px-4 py-3">
-                                                <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${statusClass}`}>
-                                                    {status === 'approved' ? 'Đã duyệt' : status === 'rejected' ? 'Từ chối' : 'Chờ duyệt'}
-                                                </span>
-                                            </td>
-                                            <td className="px-4 py-3">
-                                                {request.reviewer?.name || '—'}
-                                                {request.review_note ? (
-                                                    <div className="mt-1 text-[11px] text-text-muted">{request.review_note}</div>
-                                                ) : null}
-                                            </td>
-                                            <td className="px-4 py-3 text-right">
-                                                {canReviewFinanceRequest && isPending ? (
-                                                    <div className="inline-flex items-center justify-end gap-2">
-                                                        <button
-                                                            type="button"
-                                                            className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
-                                                            onClick={() => approveFinanceRequest(request.id)}
-                                                            disabled={reviewingRequestId === request.id}
-                                                        >
-                                                            Duyệt
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-60"
-                                                            onClick={() => rejectFinanceRequest(request.id)}
-                                                            disabled={reviewingRequestId === request.id}
-                                                        >
-                                                            Từ chối
-                                                        </button>
-                                                    </div>
-                                                ) : (
-                                                    <span className="text-text-muted">—</span>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                                {financeRequests.length === 0 && (
-                                    <tr>
-                                        <td className="px-4 py-4 text-center text-text-muted" colSpan={8}>Chưa có phiếu duyệt tài chính nào.</td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
                     </div>
                 </div>
 

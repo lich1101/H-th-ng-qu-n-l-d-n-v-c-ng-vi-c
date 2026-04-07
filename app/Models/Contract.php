@@ -238,7 +238,7 @@ class Contract extends Model
             'value' => $value,
             'revenue' => $payments,
             'debt' => max(0, $value - $payments),
-            'cash_flow' => $value - $costs,
+            'cash_flow' => $payments - $costs,
         ]);
     }
 }

@@ -12,11 +12,13 @@ use App\Models\Product;
 use App\Models\Project;
 use App\Models\RevenueTier;
 use App\Models\User;
+use App\Services\ContractFinanceRequestService;
 use App\Services\DataTransfers\ClientFinancialSyncService;
 use App\Services\NotificationService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class ContractController extends Controller
@@ -389,18 +391,35 @@ class ContractController extends Controller
             'approval_note' => ['nullable', 'string'],
         ]);
 
-        $contract->update([
-            'approval_status' => 'approved',
-            'approved_by' => $request->user()->id,
-            'approved_at' => now(),
-            'approval_note' => $validated['approval_note'] ?? $contract->approval_note,
-        ]);
+        try {
+            DB::transaction(function () use ($contract, $request, $validated) {
+                $contract->update([
+                    'approval_status' => 'approved',
+                    'approved_by' => $request->user()->id,
+                    'approved_at' => now(),
+                    'approval_note' => $validated['approval_note'] ?? $contract->approval_note,
+                ]);
 
+                $contract->refresh();
+                app(ContractFinanceRequestService::class)->approveAllPendingForContract($contract, $request->user());
+            });
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $first = collect($e->errors())->flatten()->first();
+
+            return response()->json([
+                'message' => $first ?: 'Không thể duyệt phiếu tài chính kèm theo hợp đồng.',
+                'errors' => $e->errors(),
+            ], 422);
+        }
+
+        $contract->refresh();
         if ($contract->client) {
             $this->syncClientRevenue($contract->client);
         }
 
-        return response()->json($contract->load(['client', 'project', 'opportunity', 'creator', 'approver', 'collector', 'items']));
+        $this->loadContractDetail($contract);
+
+        return response()->json($this->appendContractPermissions($contract, $request->user()));
     }
 
     public function destroy(Request $request, Contract $contract): JsonResponse
@@ -822,7 +841,9 @@ class ContractController extends Controller
         $contract->setAttribute('can_review_finance_request', $this->canApprove($user));
         $contract->setAttribute('can_manage_finance', $this->canApprove($user));
         $contract->setAttribute('can_submit_finance_request', $this->canViewContract($user, $contract));
-        
+        $contract->setAttribute('payments_display', $this->buildPaymentDisplayRows($contract));
+        $contract->setAttribute('costs_display', $this->buildCostDisplayRows($contract));
+
         $canCreateProject = in_array((string) $user->role, ['admin', 'administrator'], true)
             || (int) ($contract->collector_user_id ?? 0) === (int) $user->id 
             || (int) ($contract->created_by ?? 0) === (int) $user->id;
@@ -970,6 +991,94 @@ class ContractController extends Controller
         return $contract->careStaffUsers()
             ->where('users.id', $user->id)
             ->exists();
+    }
+
+    private function buildPaymentDisplayRows(Contract $contract): array
+    {
+        if (! $contract->relationLoaded('payments')) {
+            return [];
+        }
+
+        $rows = [];
+        foreach ($contract->payments as $p) {
+            $rows[] = [
+                'row_type' => 'record',
+                'id' => $p->id,
+                'paid_at' => optional($p->paid_at)->toIso8601String(),
+                'amount' => (float) ($p->amount ?? 0),
+                'method' => $p->method,
+                'note' => $p->note,
+                'created_by' => $p->created_by,
+            ];
+        }
+        $financeRequests = $contract->relationLoaded('financeRequests')
+            ? $contract->financeRequests
+            : collect();
+
+        foreach ($financeRequests as $fr) {
+            if ((string) $fr->status !== 'pending' || (string) $fr->request_type !== 'payment') {
+                continue;
+            }
+            $rows[] = [
+                'row_type' => 'pending_request',
+                'finance_request_id' => $fr->id,
+                'id' => 'fr_'.$fr->id,
+                'paid_at' => optional($fr->transaction_date)->toIso8601String(),
+                'amount' => (float) ($fr->amount ?? 0),
+                'method' => $fr->method,
+                'note' => $fr->note,
+                'submitter' => $fr->submitter,
+            ];
+        }
+        usort($rows, function ($a, $b) {
+            return strcmp((string) ($b['paid_at'] ?? ''), (string) ($a['paid_at'] ?? ''));
+        });
+
+        return $rows;
+    }
+
+    private function buildCostDisplayRows(Contract $contract): array
+    {
+        if (! $contract->relationLoaded('costs')) {
+            return [];
+        }
+
+        $rows = [];
+        foreach ($contract->costs as $c) {
+            $rows[] = [
+                'row_type' => 'record',
+                'id' => $c->id,
+                'cost_date' => optional($c->cost_date)->toIso8601String(),
+                'amount' => (float) ($c->amount ?? 0),
+                'cost_type' => $c->cost_type,
+                'note' => $c->note,
+                'created_by' => $c->created_by,
+            ];
+        }
+        $financeRequests = $contract->relationLoaded('financeRequests')
+            ? $contract->financeRequests
+            : collect();
+
+        foreach ($financeRequests as $fr) {
+            if ((string) $fr->status !== 'pending' || (string) $fr->request_type !== 'cost') {
+                continue;
+            }
+            $rows[] = [
+                'row_type' => 'pending_request',
+                'finance_request_id' => $fr->id,
+                'id' => 'frc_'.$fr->id,
+                'cost_date' => optional($fr->transaction_date)->toIso8601String(),
+                'amount' => (float) ($fr->amount ?? 0),
+                'cost_type' => $fr->cost_type,
+                'note' => $fr->note,
+                'submitter' => $fr->submitter,
+            ];
+        }
+        usort($rows, function ($a, $b) {
+            return strcmp((string) ($b['cost_date'] ?? ''), (string) ($a['cost_date'] ?? ''));
+        });
+
+        return $rows;
     }
 
     private function loadContractDetail(Contract $contract): void
