@@ -366,10 +366,7 @@ export default function CRM(props) {
     };
 
     const applyClientFilters = () => {
-        setClientFilters((prev) => {
-            fetchClients(1, prev);
-            return prev;
-        });
+        fetchClients(1, clientFilters);
     };
 
     const submitClientImport = async (e) => {
