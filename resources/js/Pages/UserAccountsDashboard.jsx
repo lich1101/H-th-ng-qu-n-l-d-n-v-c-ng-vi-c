@@ -12,6 +12,7 @@ import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import RoleBarChart from '@/Components/RoleBarChart';
 import PaginationControls from '@/Components/PaginationControls';
+import { useToast } from '@/Contexts/ToastContext';
 
 const roleLabels = {
     admin: 'Quản trị',
@@ -33,6 +34,7 @@ function FormField({ label, required = false, children, className = '' }) {
 }
 
 export default function UserAccountsDashboard(props) {
+    const toast = useToast();
     const [filters, setFilters] = useState({ search: '', role: '', status: '', per_page: 10, page: 1 });
     const filtersRef = useRef(filters);
     const [usersData, setUsersData] = useState([]);
@@ -67,6 +69,7 @@ export default function UserAccountsDashboard(props) {
     });
     const [message, setMessage] = useState('');
     const [errorMessage, setErrorMessage] = useState('');
+    const [impersonatingId, setImpersonatingId] = useState(null);
 
     const extractValidationMessages = (error) => {
         const errors = error?.response?.data?.errors;
@@ -144,6 +147,25 @@ export default function UserAccountsDashboard(props) {
     };
 
     const toRoleLabel = (role) => roleLabels[role] || role;
+
+    const loginAsUser = async (user) => {
+        if (!user?.id) return;
+        if (
+            !window.confirm(
+                `Đăng nhập nhanh với tài khoản "${user.name}" (${user.email})?\n\nBạn sẽ xem hệ thống đúng như người dùng này. Dùng nút "Thoát về tài khoản gốc" phía trên để quay lại.`,
+            )
+        ) {
+            return;
+        }
+        setImpersonatingId(user.id);
+        try {
+            await axios.post(route('impersonate.start', user.id));
+            window.location.assign('/dashboard');
+        } catch (error) {
+            toast.error(getErrorMessage(error, 'Không thể đăng nhập nhanh.'));
+            setImpersonatingId(null);
+        }
+    };
 
     const resetForm = () => {
         setEditingId(null);
@@ -683,21 +705,35 @@ export default function UserAccountsDashboard(props) {
                                                 {user.is_active ? 'Hoạt động' : 'Tạm khóa'}
                                             </span>
                                         </td>
-                                        <td className="px-3 py-2 text-right space-x-2">
-                                            <button
-                                                type="button"
-                                                onClick={() => startEdit(user)}
-                                                className="text-xs font-semibold text-primary"
-                                            >
-                                                Sửa
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => deleteAccount(user)}
-                                                className="text-xs font-semibold text-rose-500"
-                                            >
-                                                Xóa
-                                            </button>
+                                        <td className="px-3 py-2 text-right">
+                                            <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => loginAsUser(user)}
+                                                    disabled={impersonatingId === user.id || !user.is_active}
+                                                    className="inline-flex items-center gap-1 text-xs font-semibold text-cyan-700 hover:text-cyan-900 disabled:cursor-not-allowed disabled:opacity-50"
+                                                    title={!user.is_active ? 'Tài khoản đang tạm khóa' : 'Đăng nhập nhanh'}
+                                                >
+                                                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+                                                    </svg>
+                                                    {impersonatingId === user.id ? 'Đang chuyển...' : 'Đăng nhập nhanh'}
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => startEdit(user)}
+                                                    className="text-xs font-semibold text-primary"
+                                                >
+                                                    Sửa
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => deleteAccount(user)}
+                                                    className="text-xs font-semibold text-rose-500"
+                                                >
+                                                    Xóa
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}

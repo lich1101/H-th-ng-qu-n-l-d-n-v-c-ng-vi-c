@@ -73,10 +73,25 @@ class HandleInertiaRequests extends Middleware
             ]
             : AppSetting::defaults();
 
+        $impersonator = $request->session()->get('impersonator');
+
         return array_merge(parent::share($request), [
             'auth' => [
                 'user' => $request->user(),
             ],
+            'impersonation' => is_array($impersonator) && ! empty($impersonator['id'])
+                ? [
+                    'active' => true,
+                    'original' => [
+                        'id' => (int) $impersonator['id'],
+                        'name' => (string) ($impersonator['name'] ?? ''),
+                        'email' => (string) ($impersonator['email'] ?? ''),
+                    ],
+                ]
+                : [
+                    'active' => false,
+                    'original' => null,
+                ],
             'settings' => $settingsPayload,
             'ziggy' => function () use ($request) {
                 return array_merge((new Ziggy)->toArray(), [

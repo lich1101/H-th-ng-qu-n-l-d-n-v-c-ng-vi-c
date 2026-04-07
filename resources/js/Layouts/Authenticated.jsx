@@ -9,7 +9,7 @@ import { Link, usePage } from '@inertiajs/inertia-react';
 
 export default function Authenticated({ auth, header, children }) {
     const toast = useToast();
-    const { settings, chatbotQuickOpen = false, chatbotInitialBotId = null } = usePage().props;
+    const { settings, chatbotQuickOpen = false, chatbotInitialBotId = null, impersonation } = usePage().props;
     const [showSidebar, setShowSidebar] = useState(false);
     /** Desktop (lg+): ẩn sidebar để nội dung rộng hơn; lưu theo phiên trình duyệt */
     const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
@@ -725,6 +725,19 @@ export default function Authenticated({ auth, header, children }) {
         }
     };
 
+    const [leavingImpersonation, setLeavingImpersonation] = useState(false);
+    const leaveImpersonation = async () => {
+        if (leavingImpersonation) return;
+        setLeavingImpersonation(true);
+        try {
+            await axios.post(route('impersonate.leave'));
+            window.location.assign('/dashboard');
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Không thể thoát phiên đăng nhập nhanh.');
+            setLeavingImpersonation(false);
+        }
+    };
+
     return (
             <div className="min-h-screen overflow-x-hidden bg-app-bg text-slate-900">
             <div className="flex min-h-screen min-w-0">
@@ -837,6 +850,42 @@ export default function Authenticated({ auth, header, children }) {
                         desktopSidebarOpen ? 'lg:ml-72' : 'lg:ml-0'
                     }`}
                 >
+                    {impersonation?.active && impersonation?.original && auth?.user && (
+                        <div
+                            role="status"
+                            className="sticky top-0 z-[35] flex flex-wrap items-center justify-between gap-3 border-b border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-950 shadow-sm md:px-8"
+                        >
+                            <div className="flex min-w-0 flex-1 items-start gap-2">
+                                <span className="mt-0.5 text-lg leading-none" aria-hidden>
+                                    ⚠️
+                                </span>
+                                <div className="min-w-0">
+                                    <p>
+                                        Bạn đang đăng nhập nhanh với tài khoản:{' '}
+                                        <span className="font-semibold">{auth.user.name}</span>
+                                        {auth.user.email ? (
+                                            <span className="text-teal-800/90"> ({auth.user.email})</span>
+                                        ) : null}
+                                    </p>
+                                    <p className="mt-1 text-xs text-teal-900/85">
+                                        Tài khoản gốc:{' '}
+                                        <span className="font-semibold">{impersonation.original.name}</span>
+                                        {impersonation.original.email
+                                            ? ` (${impersonation.original.email})`
+                                            : ''}
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={leaveImpersonation}
+                                disabled={leavingImpersonation}
+                                className="shrink-0 rounded-xl bg-teal-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                                {leavingImpersonation ? 'Đang xử lý...' : 'Thoát về tài khoản gốc'}
+                            </button>
+                        </div>
+                    )}
                     <header className="bg-white/80 backdrop-blur border-b border-slate-200 sticky top-0 z-30">
                         <div className="px-4 md:px-8 py-3 flex items-center justify-between">
                             <div className="flex items-center gap-3">
