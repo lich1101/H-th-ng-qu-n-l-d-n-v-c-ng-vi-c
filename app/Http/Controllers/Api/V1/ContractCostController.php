@@ -195,7 +195,7 @@ class ContractCostController extends Controller
         }
 
         try {
-            app(NotificationService::class)->notifyUsers(
+            app(NotificationService::class)->notifyUsersAfterResponse(
                 $targetIds,
                 'Có phiếu duyệt chi phí hợp đồng mới',
                 $actor->name.' vừa gửi yêu cầu thêm chi phí cho hợp đồng: '.$contract->title,

@@ -168,7 +168,9 @@ class NotificationService
             UserDeviceToken::query()->whereIn('token', $failedTokens)->delete();
         }
 
-        if ($pushAttempted && $sent <= 0 && $settings['email_fallback_enabled']) {
+        if ($pushAttempted && $sent <= 0 && $settings['email_fallback_enabled']
+            && ($result['error'] ?? null) !== 'no_device_tokens'
+        ) {
             $this->sendEmailFallback($user, $title, $body);
         }
     }
@@ -236,7 +238,9 @@ class NotificationService
         }
 
         $emailSent = false;
-        if ($pushAttempted && $sent <= 0 && $settings['email_fallback_enabled']) {
+        if ($pushAttempted && $sent <= 0 && $settings['email_fallback_enabled']
+            && $error !== 'no_device_tokens'
+        ) {
             $emailSent = $this->sendEmailFallback($user, $title, $body);
         }
 

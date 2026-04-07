@@ -226,7 +226,7 @@ class ContractPaymentController extends Controller
         }
 
         try {
-            app(NotificationService::class)->notifyUsers(
+            app(NotificationService::class)->notifyUsersAfterResponse(
                 $targetIds,
                 'Có phiếu duyệt thanh toán hợp đồng mới',
                 $actor->name.' vừa gửi yêu cầu thêm thanh toán cho hợp đồng: '.$contract->title,

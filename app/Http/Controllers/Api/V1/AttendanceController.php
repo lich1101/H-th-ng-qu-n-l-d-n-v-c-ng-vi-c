@@ -432,7 +432,7 @@ class AttendanceController extends Controller
         ]);
 
         if ($attendanceDevice->user) {
-            $notifications->notifyUsers(
+            $notifications->notifyUsersAfterResponse(
                 [$attendanceDevice->user_id],
                 $status === 'approved' ? 'Thiết bị chấm công đã được duyệt' : 'Thiết bị chấm công bị từ chối',
                 $status === 'approved'
@@ -472,7 +472,7 @@ class AttendanceController extends Controller
 
         $attendanceDevice->delete();
 
-        $notifications->notifyUsers(
+        $notifications->notifyUsersAfterResponse(
             [$targetUserId],
             'Thiết bị chấm công đã được gỡ',
             'Quản trị đã gỡ thiết bị đăng ký của bạn. Vui lòng mở app và gửi phiếu đăng ký thiết bị lại để tiếp tục chấm công bằng Wi‑Fi.',
@@ -736,7 +736,7 @@ class AttendanceController extends Controller
             $this->departmentManagerIdsForUser($user)
         )));
 
-        $notifications->notifyUsers(
+        $notifications->notifyUsersAfterResponse(
             $notifyIds,
             sprintf('Có %s cần duyệt', mb_strtolower($requestTypeLabel)),
             sprintf('%s vừa gửi %s (%s).', $user->name, mb_strtolower($requestTypeLabel), $dateLabel),
@@ -807,7 +807,7 @@ class AttendanceController extends Controller
             $record = $attendance->applyApprovedRequest($attendanceRequest->fresh(['user']), $request->user());
         }
 
-        $notifications->notifyUsers(
+        $notifications->notifyUsersAfterResponse(
             [$attendanceRequest->user_id],
             $status === 'approved'
                 ? sprintf('%s đã được duyệt', $this->attendanceRequestTypeLabel((string) $attendanceRequest->request_type))
@@ -1712,7 +1712,7 @@ class AttendanceController extends Controller
 
     private function notifyManagers(string $title, string $body, array $data = []): void
     {
-        app(NotificationService::class)->notifyUsers(
+        app(NotificationService::class)->notifyUsersAfterResponse(
             $this->attendanceManagerIds(),
             $title,
             $body,

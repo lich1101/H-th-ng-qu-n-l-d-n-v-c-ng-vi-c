@@ -807,7 +807,7 @@ class ProjectController extends Controller
             return;
         }
 
-        app(NotificationService::class)->notifyUsers(
+        app(NotificationService::class)->notifyUsersAfterResponse(
             $targetIds,
             'Có phiếu duyệt bàn giao dự án',
             sprintf(
@@ -841,7 +841,7 @@ class ProjectController extends Controller
             $reason ? ' • Lý do: '.$reason : ''
         );
 
-        app(NotificationService::class)->notifyUsers(
+        app(NotificationService::class)->notifyUsersAfterResponse(
             [$ownerId],
             $title,
             $body,

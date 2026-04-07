@@ -425,7 +425,7 @@ class ContractController extends Controller
             try {
                 $pending = ($contract->approval_status ?? '') === 'pending';
                 $actorName = (string) ($request->user()->name ?? '');
-                app(NotificationService::class)->notifyUsers(
+                app(NotificationService::class)->notifyUsersAfterResponse(
                     $approverIds,
                     $pending ? 'Hợp đồng mới cần duyệt' : 'Hợp đồng mới đã được tạo (tự duyệt)',
                     $pending
@@ -1310,7 +1310,7 @@ class ContractController extends Controller
         $isPayment = ($financeRequest->request_type ?? '') === 'payment';
 
         try {
-            app(NotificationService::class)->notifyUsers(
+            app(NotificationService::class)->notifyUsersAfterResponse(
                 $targetIds,
                 $isPayment ? 'Có phiếu duyệt thanh toán hợp đồng mới' : 'Có phiếu duyệt chi phí hợp đồng mới',
                 ($actor->name ?? '').' vừa gửi yêu cầu '.($isPayment ? 'thêm thanh toán' : 'thêm chi phí').' cho hợp đồng: '.$contract->title,

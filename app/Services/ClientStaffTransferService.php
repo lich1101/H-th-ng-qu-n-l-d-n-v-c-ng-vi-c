@@ -201,7 +201,7 @@ class ClientStaffTransferService
             return;
         }
 
-        app(NotificationService::class)->notifyUsers($targets, $title, $body, $data);
+        app(NotificationService::class)->notifyUsersAfterResponse($targets, $title, $body, $data);
     }
 
     public function createRequest(User $actor, Client $client, int $toStaffId, ?string $note): ClientStaffTransferRequest
