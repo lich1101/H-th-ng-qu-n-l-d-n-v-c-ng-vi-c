@@ -171,6 +171,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
         return Inertia::render('Opportunities');
     })->name('opportunities.index')->middleware('role:admin,quan_ly,nhan_vien');
 
+    Route::get('/co-hoi/{opportunity}', function (App\Models\Opportunity $opportunity) {
+        return Inertia::render('OpportunityDetail', [
+            'opportunityId' => $opportunity->id,
+        ]);
+    })->name('opportunities.detail')->middleware('role:admin,quan_ly,nhan_vien');
+
     Route::get('/trang-thai-co-hoi', function () {
         return Inertia::render('OpportunityStatuses');
     })->name('opportunity-statuses.index')->middleware('role:admin');

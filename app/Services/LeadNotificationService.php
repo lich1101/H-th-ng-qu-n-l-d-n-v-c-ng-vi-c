@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\AppSetting;
 use App\Models\Client;
+use App\Models\LeadForm;
 use App\Models\User;
 
 class LeadNotificationService
@@ -61,13 +62,17 @@ class LeadNotificationService
             $responsibleName
         );
 
+        $leadFormId = $this->resolveLeadFormId($client);
         $payload = [
-            'type' => 'crm_new_lead',
+            'type' => $leadFormId ? 'lead_form_new_lead' : 'crm_new_lead',
             'category' => 'crm_realtime',
             'client_id' => (int) $client->id,
             'responsible_user_id' => $responsible ? (int) $responsible->id : null,
             'source_label' => $source,
         ];
+        if ($leadFormId) {
+            $payload['lead_form_id'] = $leadFormId;
+        }
 
         if ($afterResponse) {
             $this->notifier->notifyUsersAfterResponse(
@@ -107,5 +112,31 @@ class LeadNotificationService
         }
 
         return $source !== '' ? $source : 'CRM';
+    }
+
+    /**
+     * Gắn id form tư vấn khi khách gửi từ form công khai (lead_channel dạng iframe:slug).
+     */
+    private function resolveLeadFormId(Client $client): ?int
+    {
+        if (trim((string) ($client->lead_source ?? '')) !== 'lead_form') {
+            return null;
+        }
+        $channel = trim((string) ($client->lead_channel ?? ''));
+        if ($channel === '') {
+            return null;
+        }
+        $slug = null;
+        if (preg_match('/^iframe:(.+)$/i', $channel, $m)) {
+            $slug = trim((string) ($m[1]));
+        } else {
+            $slug = $channel;
+        }
+        if ($slug === '') {
+            return null;
+        }
+        $id = LeadForm::query()->where('slug', $slug)->value('id');
+
+        return $id ? (int) $id : null;
     }
 }

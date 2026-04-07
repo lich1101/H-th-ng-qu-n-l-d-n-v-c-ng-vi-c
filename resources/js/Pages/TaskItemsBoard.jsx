@@ -3,6 +3,7 @@ import axios from 'axios';
 import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
 import PageContainer from '@/Components/PageContainer';
 import PaginationControls from '@/Components/PaginationControls';
+import TagMultiSelect from '@/Components/TagMultiSelect';
 import { useToast } from '@/Contexts/ToastContext';
 
 const LABELS = {
@@ -20,6 +21,13 @@ const STATUS_STYLES = {
 };
 
 const formatDate = (raw) => (raw ? String(raw).slice(0, 10) : '—');
+const parseMultiIds = (raw) => {
+    if (!raw) return [];
+    return String(raw)
+        .split(/[\s,;|]+/)
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value) && value > 0);
+};
 
 export default function TaskItemsBoard(props) {
     const toast = useToast();
@@ -27,7 +35,7 @@ export default function TaskItemsBoard(props) {
     const [filters, setFilters] = useState({
         project_id: searchParams.get('project_id') || '',
         task_id: searchParams.get('task_id') || '',
-        assignee_id: searchParams.get('assignee_id') || '',
+        assignee_ids: parseMultiIds(searchParams.get('assignee_ids') || searchParams.get('assignee_id')),
         status: searchParams.get('status') || '',
         search: searchParams.get('search') || '',
         start_from: searchParams.get('start_from') || '',
@@ -55,7 +63,9 @@ export default function TaskItemsBoard(props) {
 
     const fetchUsers = async () => {
         try {
-            const res = await axios.get('/api/v1/users/lookup');
+            const res = await axios.get('/api/v1/users/lookup', {
+                params: { purpose: 'operational_assignee' },
+            });
             setUsers(res.data?.data || []);
         } catch {
             setUsers([]);
@@ -90,7 +100,7 @@ export default function TaskItemsBoard(props) {
                     page,
                     ...(nextFilters.project_id ? { project_id: nextFilters.project_id } : {}),
                     ...(nextFilters.task_id ? { task_id: nextFilters.task_id } : {}),
-                    ...(nextFilters.assignee_id ? { assignee_id: nextFilters.assignee_id } : {}),
+                    ...(Array.isArray(nextFilters.assignee_ids) && nextFilters.assignee_ids.length > 0 ? { assignee_ids: nextFilters.assignee_ids } : {}),
                     ...(nextFilters.status ? { status: nextFilters.status } : {}),
                     ...(nextFilters.search ? { search: nextFilters.search } : {}),
                     ...(nextFilters.start_from ? { start_from: nextFilters.start_from } : {}),
@@ -131,6 +141,13 @@ export default function TaskItemsBoard(props) {
         const doing = items.filter((item) => item.status === 'doing').length;
         return { done, doing };
     }, [items]);
+    const assigneeFilterOptions = useMemo(() => (
+        users.map((user) => ({
+            id: Number(user.id || 0),
+            label: user.name || `Nhân sự #${user.id}`,
+            meta: user.email || '',
+        })).filter((user) => user.id > 0)
+    ), [users]);
 
     return (
         <PageContainer
@@ -179,14 +196,13 @@ export default function TaskItemsBoard(props) {
                             </select>
                         </FilterField>
                         <FilterField label="Nhân sự">
-                            <select
-                                className={filterControlClass}
-                                value={filters.assignee_id}
-                                onChange={(e) => setFilters((s) => ({ ...s, assignee_id: e.target.value }))}
-                            >
-                                <option value="">Tất cả nhân sự</option>
-                                {users.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
-                            </select>
+                            <TagMultiSelect
+                                options={assigneeFilterOptions}
+                                selectedIds={filters.assignee_ids}
+                                onChange={(selectedIds) => setFilters((s) => ({ ...s, assignee_ids: selectedIds }))}
+                                addPlaceholder="Tìm và thêm nhân sự"
+                                emptyLabel="Để trống để xem toàn bộ nhân sự trong phạm vi."
+                            />
                         </FilterField>
                         <FilterField label="Trạng thái">
                             <select

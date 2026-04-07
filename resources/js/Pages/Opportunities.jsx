@@ -713,7 +713,13 @@ export default function Opportunities(props) {
                                 return (
                                     <tr key={item.id} className="border-b border-slate-100 align-top">
                                         <td className="py-3">
-                                            <div className="font-semibold text-slate-900">{item.title || '—'}</div>
+                                            <button
+                                                type="button"
+                                                className="text-left font-semibold text-slate-900 hover:text-primary hover:underline"
+                                                onClick={() => { window.location.href = route('opportunities.detail', item.id); }}
+                                            >
+                                                {item.title || '—'}
+                                            </button>
                                             <div className="mt-1 text-xs text-text-muted">
                                                 {item.opportunity_type || 'Chưa phân loại'}
                                             </div>

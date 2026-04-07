@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\ProductCategory;
+use App\Models\User;
+use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -49,6 +51,8 @@ class ProductController extends Controller
         $validated['is_active'] = $validated['is_active'] ?? true;
 
         $product = Product::create($validated);
+        $this->notifyProductAdmins($product, $request->user(), 'created');
+
         return response()->json($product, 201);
     }
 
@@ -68,6 +72,8 @@ class ProductController extends Controller
             'is_active' => ['nullable', 'boolean'],
         ]);
         $product->update($validated);
+        $this->notifyProductAdmins($product->fresh(), $request->user(), 'updated');
+
         return response()->json($product);
     }
 
@@ -104,5 +110,48 @@ class ProductController extends Controller
         return $normalized !== ''
             ? Str::limit($normalized, 10, '')
             : 'SP';
+    }
+
+    private function notifyProductAdmins(Product $product, $actor, string $action): void
+    {
+        if (! $actor) {
+            return;
+        }
+        $actorId = (int) $actor->id;
+        $targetIds = User::query()
+            ->whereIn('role', ['admin', 'administrator'])
+            ->where('is_active', true)
+            ->pluck('id')
+            ->map(function ($id) {
+                return (int) $id;
+            })
+            ->filter(function ($id) use ($actorId) {
+                return $id > 0 && $id !== $actorId;
+            })
+            ->values()
+            ->all();
+        if (empty($targetIds)) {
+            return;
+        }
+        $name = trim((string) ($product->name ?: 'Sản phẩm'));
+        $title = $action === 'created' ? 'Có sản phẩm mới' : 'Sản phẩm đã được cập nhật';
+        $body = $action === 'created'
+            ? sprintf('Sản phẩm "%s" vừa được tạo.', $name)
+            : sprintf('Sản phẩm "%s" vừa được cập nhật.', $name);
+
+        try {
+            app(NotificationService::class)->notifyUsersAfterResponse(
+                $targetIds,
+                $title,
+                $body,
+                [
+                    'type' => $action === 'created' ? 'product_created' : 'product_updated',
+                    'category' => 'catalog',
+                    'product_id' => (int) $product->id,
+                ]
+            );
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 }

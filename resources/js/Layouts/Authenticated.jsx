@@ -493,12 +493,31 @@ export default function Authenticated({ auth, header, children }) {
         const taskId = extractTaskId(item);
         const opportunityId = extractEntityId(item, 'opportunity_id');
         const meetingId = extractEntityId(item, 'meeting_id');
+        const isOpportunityNotification = type === 'crm_notification'
+            || type.includes('opportunity')
+            || (opportunityId && opportunityId > 0);
 
         const isClientNotification = type === 'facebook_lead'
             || type === 'new_client'
             || type === 'client_form_lead'
             || type === 'crm_new_lead'
             || type.startsWith('crm_client_');
+
+        if (isOpportunityNotification) {
+            if (opportunityId) {
+                const exists = await checkEntityExists(`/api/v1/opportunities/${opportunityId}`);
+                if (!exists) {
+                    toast.error('Cơ hội không tồn tại.');
+                    return false;
+                }
+                closeQuickPanels();
+                window.location.href = route('opportunities.detail', opportunityId);
+                return true;
+            }
+            closeQuickPanels();
+            window.location.href = route('opportunities.index');
+            return true;
+        }
 
         if (isClientNotification) {
             if (!clientId) {
@@ -603,19 +622,6 @@ export default function Authenticated({ auth, header, children }) {
             }
             closeQuickPanels();
             window.location.href = route('projects.detail', projectId);
-            return true;
-        }
-
-        if (type === 'crm_notification' || type.includes('opportunity')) {
-            if (opportunityId) {
-                const exists = await checkEntityExists(`/api/v1/opportunities/${opportunityId}`);
-                if (!exists) {
-                    toast.error('Cơ hội không tồn tại.');
-                    return false;
-                }
-            }
-            closeQuickPanels();
-            window.location.href = route('opportunities.index');
             return true;
         }
 

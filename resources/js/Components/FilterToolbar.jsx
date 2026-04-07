@@ -81,15 +81,15 @@ function TableSearchInput({ containerRef, searchValue, onSearchChange }) {
 
     const handleChange = useCallback((e) => {
         const value = e.target.value;
-        if (isControlled) setControlledTerm(value);
-        else setLocalTerm(value);
+        if (isControlled) {
+            setControlledTerm(value);
+            onSearchChange(value);
+            return;
+        }
+        setLocalTerm(value);
         if (debounceRef.current) clearTimeout(debounceRef.current);
         debounceRef.current = setTimeout(() => {
-            if (isControlled) {
-                onSearchChange(value);
-            } else {
-                applyFilter(value);
-            }
+            applyFilter(value);
         }, 300);
     }, [isControlled, applyFilter, onSearchChange]);
 

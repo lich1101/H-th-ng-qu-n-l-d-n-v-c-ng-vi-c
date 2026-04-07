@@ -5,6 +5,7 @@ import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } fro
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import PaginationControls from '@/Components/PaginationControls';
+import TagMultiSelect from '@/Components/TagMultiSelect';
 import { useToast } from '@/Contexts/ToastContext';
 import { formatVietnamDateTime } from '@/lib/vietnamTime';
 
@@ -61,6 +62,14 @@ const clampPercent = (value) => {
     const parsed = Number(value || 0);
     if (Number.isNaN(parsed)) return 0;
     return Math.max(0, Math.min(100, parsed));
+};
+
+const parseMultiIds = (raw) => {
+    if (!raw) return [];
+    return String(raw)
+        .split(/[\s,;|]+/)
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value) && value > 0);
 };
 
 function FieldLabel({ children }) {
@@ -207,7 +216,7 @@ export default function TasksBoard(props) {
     const [filters, setFilters] = useState({
         project_id: queryParams.get('project_id') || '',
         status: queryParams.get('status') || '',
-        assignee_id: queryParams.get('assignee_id') || '',
+        assignee_ids: parseMultiIds(queryParams.get('assignee_ids') || queryParams.get('assignee_id')),
         search: queryParams.get('search') || '',
         deadline_from: queryParams.get('deadline_from') || '',
         deadline_to: queryParams.get('deadline_to') || '',
@@ -412,7 +421,9 @@ export default function TasksBoard(props) {
 
     const fetchUsers = async () => {
         try {
-            const res = await axios.get('/api/v1/users/lookup');
+            const res = await axios.get('/api/v1/users/lookup', {
+                params: { purpose: 'operational_assignee' },
+            });
             setUserOptions(res.data?.data || []);
         } catch {
             setUserOptions([]);
@@ -433,7 +444,7 @@ export default function TasksBoard(props) {
                     page,
                     ...(nextFilters.project_id ? { project_id: nextFilters.project_id } : {}),
                     ...(nextFilters.status ? { status: nextFilters.status } : {}),
-                    ...(nextFilters.assignee_id ? { assignee_id: nextFilters.assignee_id } : {}),
+                    ...(Array.isArray(nextFilters.assignee_ids) && nextFilters.assignee_ids.length > 0 ? { assignee_ids: nextFilters.assignee_ids } : {}),
                     ...(nextFilters.search ? { search: nextFilters.search } : {}),
                     ...(nextFilters.deadline_from ? { deadline_from: nextFilters.deadline_from } : {}),
                     ...(nextFilters.deadline_to ? { deadline_to: nextFilters.deadline_to } : {}),
@@ -448,11 +459,14 @@ export default function TasksBoard(props) {
             setFilters((s) => ({ ...s, page: res.data?.current_page || 1 }));
             if (typeof window !== 'undefined') {
                 const params = new URLSearchParams();
-                ['project_id', 'status', 'assignee_id', 'search', 'deadline_from', 'deadline_to'].forEach((key) => {
+                ['project_id', 'status', 'search', 'deadline_from', 'deadline_to'].forEach((key) => {
                     if (nextFilters[key]) {
                         params.set(key, String(nextFilters[key]));
                     }
                 });
+                if (Array.isArray(nextFilters.assignee_ids) && nextFilters.assignee_ids.length > 0) {
+                    params.set('assignee_ids', nextFilters.assignee_ids.join(','));
+                }
                 const query = params.toString();
                 window.history.replaceState({}, '', query ? `/cong-viec?${query}` : '/cong-viec');
             }
@@ -1455,6 +1469,14 @@ export default function TasksBoard(props) {
         () => userOptions.filter((user) => !BLOCKED_ASSIGNMENT_ROLES.includes(String(user?.role || '').toLowerCase())),
         [userOptions]
     );
+    const assigneeFilterOptions = useMemo(
+        () => assignableUserOptions.map((user) => ({
+            id: Number(user.id || 0),
+            label: user.name || `Nhân sự #${user.id}`,
+            meta: user.email || '',
+        })).filter((user) => user.id > 0),
+        [assignableUserOptions]
+    );
 
     const siblingTaskItems = useMemo(
         () => taskItems.filter((item) => Number(item.id) !== Number(editingItemId || 0)),
@@ -1757,7 +1779,7 @@ export default function TasksBoard(props) {
                         </FilterActionGroup>
                     )}
                 >
-                    <div className="grid gap-3 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,0.7fr)_minmax(0,0.7fr)_minmax(0,0.6fr)_minmax(0,0.6fr)_auto]">
+                    <div className="grid gap-3 xl:grid-cols-[minmax(0,0.75fr)_minmax(0,0.65fr)_minmax(0,1.1fr)_minmax(0,0.55fr)_minmax(0,0.55fr)_auto]">
                         <FilterField label="Dự án">
                             <select
                                 className={filterControlClass}
@@ -1779,14 +1801,13 @@ export default function TasksBoard(props) {
                             </select>
                         </FilterField>
                         <FilterField label="Nhân sự">
-                            <select
-                                className={filterControlClass}
-                                value={filters.assignee_id}
-                                onChange={(e) => setFilters((s) => ({ ...s, assignee_id: e.target.value }))}
-                            >
-                                <option value="">Tất cả nhân sự</option>
-                                {assignableUserOptions.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                            </select>
+                            <TagMultiSelect
+                                options={assigneeFilterOptions}
+                                selectedIds={filters.assignee_ids}
+                                onChange={(selectedIds) => setFilters((s) => ({ ...s, assignee_ids: selectedIds }))}
+                                addPlaceholder="Tìm và thêm nhân sự"
+                                emptyLabel="Để trống để xem toàn bộ nhân sự trong phạm vi."
+                            />
                         </FilterField>
                         <FilterField label="Từ hạn">
                             <input

@@ -4,6 +4,7 @@ import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } fro
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import PaginationControls from '@/Components/PaginationControls';
+import TagMultiSelect from '@/Components/TagMultiSelect';
 import { useToast } from '@/Contexts/ToastContext';
 
 const DEFAULT_STATUSES = [
@@ -88,6 +89,7 @@ export default function ProjectsKanban(props) {
         search: '',
         status: '',
         service_type: '',
+        owner_ids: [],
         per_page: 20,
         page: 1,
     });
@@ -186,7 +188,9 @@ export default function ProjectsKanban(props) {
                     ...(nextFilters.search ? { search: nextFilters.search } : {}),
                     ...(nextFilters.status ? { status: nextFilters.status } : {}),
                     ...(nextFilters.service_type ? { service_type: nextFilters.service_type } : {}),
-                    ...(nextFilters.owner_id ? { owner_id: nextFilters.owner_id } : {}),
+                    ...(Array.isArray(nextFilters.owner_ids) && nextFilters.owner_ids.length > 0
+                        ? { owner_ids: nextFilters.owner_ids }
+                        : {}),
                 },
             });
             setProjects(res.data?.data || []);
@@ -250,6 +254,14 @@ export default function ProjectsKanban(props) {
     const ownerOptions = useMemo(
         () => owners.filter((owner) => !BLOCKED_ASSIGNMENT_ROLES.includes(String(owner?.role || '').toLowerCase())),
         [owners]
+    );
+    const ownerFilterOptions = useMemo(
+        () => ownerOptions.map((owner) => ({
+            id: Number(owner.id || 0),
+            label: owner.name || `Nhân sự #${owner.id}`,
+            meta: owner.email || '',
+        })).filter((owner) => owner.id > 0),
+        [ownerOptions]
     );
 
     useEffect(() => {
@@ -675,7 +687,7 @@ export default function ProjectsKanban(props) {
                         </FilterActionGroup>
                     )}
                 >
-                    <div className="grid gap-3 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,0.7fr)_minmax(0,1fr)_auto]">
+                    <div className="grid gap-3 xl:grid-cols-[minmax(0,0.75fr)_minmax(0,0.65fr)_minmax(0,1.15fr)_auto]">
                         <FilterField label="Trạng thái">
                             <select
                                 className={filterControlClass}
@@ -695,6 +707,15 @@ export default function ProjectsKanban(props) {
                                 <option value="">Tất cả dịch vụ</option>
                                 {serviceOptions.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
                             </select>
+                        </FilterField>
+                        <FilterField label="Nhân sự phụ trách dự án">
+                            <TagMultiSelect
+                                options={ownerFilterOptions}
+                                selectedIds={filters.owner_ids}
+                                onChange={(selectedIds) => setFilters((s) => ({ ...s, owner_ids: selectedIds }))}
+                                addPlaceholder="Tìm và thêm nhân sự phụ trách"
+                                emptyLabel="Để trống để xem toàn bộ nhân sự trong phạm vi."
+                            />
                         </FilterField>
                         <FilterActionGroup className="xl:self-end xl:justify-end">
                             <button
@@ -792,6 +813,8 @@ export default function ProjectsKanban(props) {
                                             <th className="py-2">Bàn giao</th>
                                             <th className="py-2">Phụ trách</th>
                                             <th className="py-2">Hợp đồng</th>
+                                            <th className="py-2">NV thu hợp đồng</th>
+                                            <th className="py-2">Link kho</th>
                                             <th className="py-2">Ghi chú</th>
                                             <th className="py-2">Hạn chót</th>
                                             <th className="py-2">Ngân sách</th>
@@ -878,6 +901,25 @@ export default function ProjectsKanban(props) {
                                                 <td className={`py-3 text-xs ${p.contract ? 'text-text-muted' : 'text-warning'}`}>
                                                     {p.contract?.code || 'Chưa có hợp đồng'}
                                                 </td>
+                                                <td className="py-3 text-xs text-text-muted">
+                                                    {p.contract?.collector?.name || '—'}
+                                                </td>
+                                                <td className="py-3">
+                                                    {p.repo_url ? (
+                                                        <a
+                                                            href={p.repo_url}
+                                                            target="_blank"
+                                                            rel="noreferrer"
+                                                            className="inline-block max-w-[220px] truncate text-xs font-semibold text-primary hover:underline"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            title={p.repo_url}
+                                                        >
+                                                            {p.repo_url}
+                                                        </a>
+                                                    ) : (
+                                                        <span className="text-xs text-text-muted">—</span>
+                                                    )}
+                                                </td>
                                                 <td className="py-3">
                                                     <div
                                                         className="max-w-[240px] truncate text-xs text-text-muted"
@@ -926,14 +968,14 @@ export default function ProjectsKanban(props) {
                                         ))}
                                         {loading && (
                                             <tr>
-                                                <td className="py-6 text-center text-sm text-text-muted" colSpan={canBulkActions ? 13 : 12}>
+                                                <td className="py-6 text-center text-sm text-text-muted" colSpan={canBulkActions ? 15 : 14}>
                                                     Đang tải...
                                                 </td>
                                             </tr>
                                         )}
                                         {!loading && projects.length === 0 && (
                                             <tr>
-                                                <td className="py-6 text-center text-sm text-text-muted" colSpan={canBulkActions ? 13 : 12}>
+                                                <td className="py-6 text-center text-sm text-text-muted" colSpan={canBulkActions ? 15 : 14}>
                                                     Chưa có dự án theo bộ lọc.
                                                 </td>
                                             </tr>

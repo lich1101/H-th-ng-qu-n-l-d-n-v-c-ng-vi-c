@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import { Link } from '@inertiajs/inertia-react';
 import AppIcon from '@/Components/AppIcon';
 import PageContainer from '@/Components/PageContainer';
-import TableSearch from '@/Components/TableSearch';
 import Modal from '@/Components/Modal';
+import TagMultiSelect from '@/Components/TagMultiSelect';
+import { filterControlClass } from '@/Components/FilterToolbar';
 import { useToast } from '@/Contexts/ToastContext';
 import { formatVietnamDate, formatVietnamDateTime } from '@/lib/vietnamTime';
 
@@ -44,6 +44,11 @@ const formatDate = (raw) => formatVietnamDate(raw);
 const formatDateTime = (raw) => formatVietnamDateTime(raw);
 
 const formatCurrency = (value) => Number(value || 0).toLocaleString('vi-VN');
+const numberOrNull = (value) => {
+    if (value === null || value === undefined || value === '') return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+};
 
 const serviceLabel = (project) => {
     if (!project) return '—';
@@ -81,8 +86,22 @@ function EmptyTable({ colSpan, message }) {
     );
 }
 
+function Field({ label, required = false, children, hint = '' }) {
+    return (
+        <div>
+            <label className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.16em] text-text-subtle">
+                {label}{required ? ' *' : ''}
+            </label>
+            {children}
+            {hint ? <p className="mt-1.5 text-xs text-text-muted">{hint}</p> : null}
+        </div>
+    );
+}
+
 export default function ClientFlow({ auth, clientId }) {
     const toast = useToast();
+    const userRole = String(auth?.user?.role || '').toLowerCase();
+    const canCreateOpportunity = ['admin', 'administrator', 'quan_ly', 'nhan_vien'].includes(userRole);
     const [flow, setFlow] = useState(null);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('tong_quan');
@@ -108,6 +127,23 @@ export default function ClientFlow({ auth, clientId }) {
     const [careNoteForm, setCareNoteForm] = useState({ title: '', detail: '' });
     const [submittingCareNote, setSubmittingCareNote] = useState(false);
     const [deletingCommentId, setDeletingCommentId] = useState('');
+    const [opportunityStatuses, setOpportunityStatuses] = useState([]);
+    const [opportunityProducts, setOpportunityProducts] = useState([]);
+    const [showOpportunityModal, setShowOpportunityModal] = useState(false);
+    const [savingOpportunity, setSavingOpportunity] = useState(false);
+    const [opportunityForm, setOpportunityForm] = useState({
+        title: '',
+        opportunity_type: '',
+        source: '',
+        amount: '',
+        status: '',
+        success_probability: '',
+        expected_close_date: '',
+        product_id: '',
+        assigned_to: '',
+        watcher_ids: [],
+        notes: '',
+    });
 
     const fetchFlow = async () => {
         setLoading(true);
@@ -146,14 +182,28 @@ export default function ClientFlow({ auth, clientId }) {
     const fetchLookups = async () => {
         setLoadingLookups(true);
         try {
-            const [leadRes, deptRes, userRes] = await Promise.all([
+            const [leadRes, deptRes, userRes, statusRes, productRes] = await Promise.all([
                 axios.get('/api/v1/lead-types').catch(() => ({ data: [] })),
                 axios.get('/api/v1/departments').catch(() => ({ data: [] })),
-                axios.get('/api/v1/users/lookup').catch(() => ({ data: { data: [] } })),
+                axios.get('/api/v1/users/lookup', { params: { purpose: 'operational_assignee' } }).catch(() => ({ data: { data: [] } })),
+                axios.get('/api/v1/opportunity-statuses').catch(() => ({ data: [] })),
+                axios.get('/api/v1/products', { params: { per_page: 300, page: 1 } }).catch(() => ({ data: { data: [] } })),
             ]);
-            setLeadTypes(Array.isArray(leadRes.data) ? leadRes.data : []);
-            setDepartments(Array.isArray(deptRes.data) ? deptRes.data : []);
-            setStaffUsers(Array.isArray(userRes.data?.data) ? userRes.data.data : []);
+            const nextLeadTypes = Array.isArray(leadRes.data) ? leadRes.data : [];
+            const nextDepartments = Array.isArray(deptRes.data) ? deptRes.data : [];
+            const nextUsers = Array.isArray(userRes.data?.data) ? userRes.data.data : [];
+            const nextStatuses = Array.isArray(statusRes.data) ? statusRes.data : [];
+            const nextProducts = Array.isArray(productRes.data?.data) ? productRes.data.data : [];
+
+            setLeadTypes(nextLeadTypes);
+            setDepartments(nextDepartments);
+            setStaffUsers(nextUsers);
+            setOpportunityStatuses(nextStatuses);
+            setOpportunityProducts(nextProducts);
+            return {
+                statuses: nextStatuses,
+                users: nextUsers,
+            };
         } finally {
             setLoadingLookups(false);
         }
@@ -237,6 +287,81 @@ export default function ClientFlow({ auth, clientId }) {
             toast.error(e?.response?.data?.message || 'Không thể thêm bình luận.');
         } finally {
             setSubmittingCareNote(false);
+        }
+    };
+
+    const watcherOptions = useMemo(() => (
+        staffUsers.map((user) => ({
+            id: Number(user?.id || 0),
+            label: user?.name || `Nhân sự #${user?.id}`,
+            meta: [user?.role, user?.email].filter(Boolean).join(' • '),
+        })).filter((user) => user.id > 0)
+    ), [staffUsers]);
+
+    const openCreateOpportunityModal = async () => {
+        if (loadingLookups) return;
+        let nextStatuses = opportunityStatuses;
+        let nextUsers = staffUsers;
+        if (!opportunityStatuses.length || !staffUsers.length) {
+            const loaded = await fetchLookups();
+            if (loaded?.statuses) nextStatuses = loaded.statuses;
+            if (loaded?.users) nextUsers = loaded.users;
+        }
+
+        const defaultStatusCode = String((nextStatuses[0]?.code || '').trim());
+        const currentUserId = Number(auth?.user?.id || 0);
+        setOpportunityForm({
+            title: '',
+            opportunity_type: '',
+            source: '',
+            amount: '',
+            status: defaultStatusCode,
+            success_probability: '',
+            expected_close_date: '',
+            product_id: '',
+            assigned_to: currentUserId > 0 ? String(currentUserId) : '',
+            watcher_ids: [],
+            notes: '',
+        });
+        setShowOpportunityModal(true);
+    };
+
+    const submitOpportunity = async (event) => {
+        event.preventDefault();
+        if (!flow?.client?.id) return;
+        if (!String(opportunityForm.title || '').trim()) {
+            toast.error('Vui lòng nhập tên cơ hội.');
+            return;
+        }
+
+        setSavingOpportunity(true);
+        try {
+            await axios.post('/api/v1/opportunities', {
+                title: String(opportunityForm.title || '').trim(),
+                opportunity_type: String(opportunityForm.opportunity_type || '').trim() || null,
+                client_id: Number(flow.client.id),
+                source: String(opportunityForm.source || '').trim() || null,
+                amount: numberOrNull(opportunityForm.amount),
+                status: opportunityForm.status || null,
+                success_probability: numberOrNull(opportunityForm.success_probability),
+                product_id: opportunityForm.product_id ? Number(opportunityForm.product_id) : null,
+                assigned_to: opportunityForm.assigned_to ? Number(opportunityForm.assigned_to) : null,
+                watcher_ids: (opportunityForm.watcher_ids || []).map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0),
+                expected_close_date: opportunityForm.expected_close_date || null,
+                notes: String(opportunityForm.notes || '').trim() || null,
+            });
+            toast.success('Đã thêm cơ hội mới.');
+            setShowOpportunityModal(false);
+            await fetchFlow();
+            setActiveTab('co_hoi');
+        } catch (e) {
+            const message = e?.response?.data?.message || 'Không thể tạo cơ hội.';
+            const validation = e?.response?.data?.errors
+                ? Object.values(e.response.data.errors).flat().join(' ')
+                : '';
+            toast.error(message === 'The given data was invalid.' && validation ? validation : message);
+        } finally {
+            setSavingOpportunity(false);
         }
     };
 
@@ -389,8 +514,6 @@ export default function ClientFlow({ auth, clientId }) {
                         ))}
                     </div>
 
-                    <TableSearch className="mt-4" />
-
                     {loading && (
                         <div className="mt-4 rounded-2xl border border-dashed border-slate-200/80 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
                             Đang tải dữ liệu khách hàng...
@@ -425,7 +548,19 @@ export default function ClientFlow({ auth, clientId }) {
                     )}
 
                     {!loading && activeTab === 'co_hoi' && (
-                        <div className="mt-5 overflow-x-auto">
+                        <div className="mt-5 space-y-3">
+                            <div className="flex flex-wrap items-center justify-end gap-2">
+                                {canCreateOpportunity ? (
+                                    <button
+                                        type="button"
+                                        className="rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-white"
+                                        onClick={openCreateOpportunityModal}
+                                    >
+                                        + Thêm cơ hội
+                                    </button>
+                                ) : null}
+                            </div>
+                            <div className="overflow-x-auto">
                             <table className="min-w-full text-sm">
                                 <thead>
                                     <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-[0.12em] text-slate-500">
@@ -439,7 +574,11 @@ export default function ClientFlow({ auth, clientId }) {
                                 </thead>
                                 <tbody>
                                     {opportunities.map((row) => (
-                                        <tr key={row.id} className="border-b border-slate-100">
+                                        <tr
+                                            key={row.id}
+                                            className="cursor-pointer border-b border-slate-100 hover:bg-slate-50/80"
+                                            onClick={() => navigateTo(route('opportunities.detail', row.id))}
+                                        >
                                             <td className="py-2.5 font-medium text-slate-900">{row.title || '—'}</td>
                                             <td className="py-2.5 text-xs text-slate-600">
                                                 <span
@@ -462,6 +601,7 @@ export default function ClientFlow({ auth, clientId }) {
                                     {opportunities.length === 0 && <EmptyTable colSpan={6} message="Khách hàng chưa có cơ hội nào." />}
                                 </tbody>
                             </table>
+                            </div>
                         </div>
                     )}
 
@@ -861,6 +1001,156 @@ export default function ClientFlow({ auth, clientId }) {
                             className="rounded-2xl bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90 disabled:opacity-60"
                         >
                             {savingClient ? 'Đang lưu...' : 'Lưu khách hàng'}
+                        </button>
+                    </div>
+                </form>
+            </Modal>
+
+            <Modal
+                open={showOpportunityModal}
+                onClose={() => setShowOpportunityModal(false)}
+                title="Thêm cơ hội mới"
+                description="Tạo cơ hội trực tiếp trong trang chi tiết khách hàng."
+                size="md"
+            >
+                <form className="grid gap-4 xl:grid-cols-2" onSubmit={submitOpportunity}>
+                    <Field label="Tên cơ hội" required>
+                        <input
+                            className={filterControlClass}
+                            value={opportunityForm.title}
+                            onChange={(event) => setOpportunityForm((prev) => ({ ...prev, title: event.target.value }))}
+                            placeholder="Nhập tên cơ hội"
+                        />
+                    </Field>
+                    <Field label="Nguồn cơ hội">
+                        <input
+                            className={filterControlClass}
+                            value={opportunityForm.source}
+                            onChange={(event) => setOpportunityForm((prev) => ({ ...prev, source: event.target.value }))}
+                            placeholder="Ví dụ: Facebook, Form, Telesale"
+                        />
+                    </Field>
+                    <Field label="Loại cơ hội">
+                        <input
+                            className={filterControlClass}
+                            value={opportunityForm.opportunity_type}
+                            onChange={(event) => setOpportunityForm((prev) => ({ ...prev, opportunity_type: event.target.value }))}
+                            placeholder="Ví dụ: Dịch vụ SEO, Backlink"
+                        />
+                    </Field>
+                    <Field label="Doanh số dự tính (VNĐ)">
+                        <input
+                            type="number"
+                            min="0"
+                            className={filterControlClass}
+                            value={opportunityForm.amount}
+                            onChange={(event) => setOpportunityForm((prev) => ({ ...prev, amount: event.target.value }))}
+                            placeholder="0"
+                        />
+                    </Field>
+                    <Field label="Khách hàng">
+                        <input
+                            className={filterControlClass}
+                            value={flow?.client?.name || ''}
+                            readOnly
+                        />
+                    </Field>
+                    <Field label="Khả năng thành công (%)">
+                        <select
+                            className={filterControlClass}
+                            value={opportunityForm.success_probability}
+                            onChange={(event) => setOpportunityForm((prev) => ({ ...prev, success_probability: event.target.value }))}
+                        >
+                            <option value="">Chọn tỷ lệ</option>
+                            {[10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((value) => (
+                                <option key={value} value={value}>{value}%</option>
+                            ))}
+                        </select>
+                    </Field>
+                    <Field label="Ngày kết thúc dự kiến">
+                        <input
+                            type="date"
+                            className={filterControlClass}
+                            value={opportunityForm.expected_close_date}
+                            onChange={(event) => setOpportunityForm((prev) => ({ ...prev, expected_close_date: event.target.value }))}
+                        />
+                    </Field>
+                    <Field label="Sản phẩm">
+                        <select
+                            className={filterControlClass}
+                            value={opportunityForm.product_id}
+                            onChange={(event) => setOpportunityForm((prev) => ({ ...prev, product_id: event.target.value }))}
+                        >
+                            <option value="">Chọn sản phẩm</option>
+                            {opportunityProducts.map((product) => (
+                                <option key={product.id} value={product.id}>
+                                    {product.name} {product.code ? `• ${product.code}` : ''}
+                                </option>
+                            ))}
+                        </select>
+                    </Field>
+                    <Field label="Trạng thái cơ hội">
+                        <select
+                            className={filterControlClass}
+                            value={opportunityForm.status}
+                            onChange={(event) => setOpportunityForm((prev) => ({ ...prev, status: event.target.value }))}
+                        >
+                            {opportunityStatuses.map((status) => (
+                                <option key={status.id} value={status.code}>
+                                    {status.name}
+                                </option>
+                            ))}
+                        </select>
+                    </Field>
+                    <Field label="Người quản lý/phụ trách" hint="Mặc định gán tài khoản đang tạo cơ hội.">
+                        <select
+                            className={filterControlClass}
+                            value={opportunityForm.assigned_to}
+                            onChange={(event) => setOpportunityForm((prev) => ({ ...prev, assigned_to: event.target.value }))}
+                        >
+                            <option value="">Chọn nhân sự</option>
+                            {staffUsers.map((user) => (
+                                <option key={user.id} value={user.id}>
+                                    {user.name} • {user.role}
+                                </option>
+                            ))}
+                        </select>
+                    </Field>
+                    <div className="xl:col-span-2">
+                        <Field label="Người theo dõi">
+                            <TagMultiSelect
+                                options={watcherOptions}
+                                selectedIds={opportunityForm.watcher_ids}
+                                onChange={(next) => setOpportunityForm((prev) => ({ ...prev, watcher_ids: next }))}
+                                addPlaceholder="Tìm và thêm người theo dõi"
+                                emptyLabel="Chưa chọn người theo dõi."
+                            />
+                        </Field>
+                    </div>
+                    <div className="xl:col-span-2">
+                        <Field label="Ghi chú">
+                            <textarea
+                                className={`${filterControlClass} min-h-[108px] resize-y`}
+                                value={opportunityForm.notes}
+                                onChange={(event) => setOpportunityForm((prev) => ({ ...prev, notes: event.target.value }))}
+                                placeholder="Nhập ghi chú cơ hội"
+                            />
+                        </Field>
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-3 xl:col-span-2">
+                        <button
+                            type="submit"
+                            className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white"
+                            disabled={savingOpportunity}
+                        >
+                            {savingOpportunity ? 'Đang lưu...' : 'Lưu cơ hội'}
+                        </button>
+                        <button
+                            type="button"
+                            className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700"
+                            onClick={() => setShowOpportunityModal(false)}
+                        >
+                            Đóng
                         </button>
                     </div>
                 </form>

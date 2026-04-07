@@ -125,13 +125,15 @@ class SendDeadlineReminders extends Command
         }
 
         $title = 'Nhắc deadline';
+        $resolvedTaskId = $task ? $task->id : ($item ? (int) $item->task_id : null);
+
         $result = app(NotificationService::class)->notifyUserWithResult(
             $user,
             $title,
             $message,
             [
                 'type' => 'deadline_reminder',
-                'task_id' => $task ? $task->id : null,
+                'task_id' => $resolvedTaskId,
                 'task_item_id' => $item ? $item->id : null,
             ]
         );
