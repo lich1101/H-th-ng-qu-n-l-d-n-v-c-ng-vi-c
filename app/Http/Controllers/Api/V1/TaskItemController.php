@@ -8,6 +8,7 @@ use App\Models\Task;
 use App\Models\TaskItem;
 use App\Models\User;
 use App\Services\NotificationService;
+use App\Services\TaskItemLinearPaceService;
 use App\Services\TaskProgressService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -84,6 +85,32 @@ class TaskItemController extends Controller
         }
         if ($request->filled('deadline_to')) {
             $query->whereDate('deadline', '<=', $request->input('deadline_to'));
+        }
+
+        $pace = (string) $request->input('pace', '');
+        if (in_array($pace, ['behind', 'on_track', 'ahead'], true)) {
+            $service = app(TaskItemLinearPaceService::class);
+            $candidateIds = (clone $query)->orderBy('id')->pluck('id');
+            if ($candidateIds->isEmpty()) {
+                $query->whereRaw('1 = 0');
+            } else {
+                $matched = [];
+                foreach ($candidateIds->chunk(400) as $chunk) {
+                    $rows = TaskItem::query()
+                        ->whereIn('id', $chunk)
+                        ->get(['id', 'start_date', 'deadline', 'created_at', 'progress_percent']);
+                    foreach ($rows as $row) {
+                        if ($service->matchesPace($row, $pace)) {
+                            $matched[] = $row->id;
+                        }
+                    }
+                }
+                if ($matched === []) {
+                    $query->whereRaw('1 = 0');
+                } else {
+                    $query->whereIn('id', $matched);
+                }
+            }
         }
 
         return response()->json(

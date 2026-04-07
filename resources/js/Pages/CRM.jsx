@@ -819,6 +819,15 @@ export default function CRM(props) {
         }))
     ), [clientResponsibleStaffOptions]);
 
+    /** Form thêm/sửa khách (admin): khi đã chọn phòng ban thì chỉ list nhân sự thuộc phòng đó. */
+    const clientFormAssignedStaffOptions = useMemo(() => {
+        const deptId = Number(clientForm.assigned_department_id || 0);
+        if (!isAdminRole || deptId <= 0) {
+            return staffUsers;
+        }
+        return staffUsers.filter((u) => Number(u.department_id || 0) === deptId);
+    }, [staffUsers, clientForm.assigned_department_id, isAdminRole]);
+
     return (
         <PageContainer
             auth={props.auth}
@@ -1329,12 +1338,29 @@ export default function CRM(props) {
                                         {isAdminRole && (
                                             <LabeledField
                                                 label="Phòng ban phụ trách"
-                                                hint="Dùng khi muốn giao lead theo đúng phòng ban trước khi chốt người phụ trách cụ thể."
+                                                hint="Sau khi chọn phòng, danh sách nhân sự phụ trách chỉ còn nhân viên thuộc phòng đó."
                                             >
                                                 <select
                                                     className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
                                                     value={clientForm.assigned_department_id}
-                                                    onChange={(e) => setClientForm((s) => ({ ...s, assigned_department_id: e.target.value }))}
+                                                    onChange={(e) => {
+                                                        const nextDept = e.target.value;
+                                                        setClientForm((s) => {
+                                                            const deptNum = Number(nextDept || 0);
+                                                            let nextStaff = s.assigned_staff_id;
+                                                            if (isAdminRole && deptNum > 0 && nextStaff) {
+                                                                const u = staffUsers.find((user) => String(user.id) === String(nextStaff));
+                                                                if (!u || Number(u.department_id || 0) !== deptNum) {
+                                                                    nextStaff = '';
+                                                                }
+                                                            }
+                                                            return {
+                                                                ...s,
+                                                                assigned_department_id: nextDept,
+                                                                assigned_staff_id: nextStaff,
+                                                            };
+                                                        });
+                                                    }}
                                                 >
                                                     <option value="">Chọn phòng ban phụ trách</option>
                                                     {visibleDepartmentOptions.map((dept) => (
@@ -1348,7 +1374,11 @@ export default function CRM(props) {
                                         <LabeledField
                                             label="Nhân sự phụ trách"
                                             required={!isAdminRole}
-                                            hint="Người này sẽ nhận push khi có khách hàng mới từ form, page hoặc CRM."
+                                            hint={
+                                                isAdminRole && Number(clientForm.assigned_department_id || 0) > 0
+                                                    ? 'Chỉ hiển thị nhân viên thuộc phòng ban đã chọn.'
+                                                    : 'Người này sẽ nhận push khi có khách hàng mới từ form, page hoặc CRM.'
+                                            }
                                         >
                                             <select
                                                 className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
@@ -1367,7 +1397,7 @@ export default function CRM(props) {
                                                 <option value="">
                                                     {isAdminRole ? 'Chọn nhân sự phụ trách (tuỳ chọn)' : 'Chọn nhân sự phụ trách'}
                                                 </option>
-                                                {staffUsers.map((user) => (
+                                                {clientFormAssignedStaffOptions.map((user) => (
                                                     <option key={user.id} value={user.id}>
                                                         {user.name}
                                                         {user.department_id

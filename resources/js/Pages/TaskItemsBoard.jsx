@@ -37,6 +37,7 @@ export default function TaskItemsBoard(props) {
         task_id: searchParams.get('task_id') || '',
         assignee_ids: parseMultiIds(searchParams.get('assignee_ids') || searchParams.get('assignee_id')),
         status: searchParams.get('status') || '',
+        pace: searchParams.get('pace') || '',
         search: searchParams.get('search') || '',
         start_from: searchParams.get('start_from') || '',
         start_to: searchParams.get('start_to') || '',
@@ -107,6 +108,7 @@ export default function TaskItemsBoard(props) {
                     ...(nextFilters.start_to ? { start_to: nextFilters.start_to } : {}),
                     ...(nextFilters.deadline_from ? { deadline_from: nextFilters.deadline_from } : {}),
                     ...(nextFilters.deadline_to ? { deadline_to: nextFilters.deadline_to } : {}),
+                    ...(nextFilters.pace ? { pace: nextFilters.pace } : {}),
                 },
             });
             setItems(res.data?.data || []);
@@ -212,6 +214,19 @@ export default function TaskItemsBoard(props) {
                             >
                                 <option value="">Tất cả trạng thái</option>
                                 {Object.keys(LABELS).map((key) => <option key={key} value={key}>{LABELS[key]}</option>)}
+                            </select>
+                        </FilterField>
+                        <FilterField label="So với tiến độ kỳ vọng">
+                            <select
+                                className={filterControlClass}
+                                value={filters.pace}
+                                onChange={(e) => setFilters((s) => ({ ...s, pace: e.target.value }))}
+                                title="Kỳ vọng theo đường tuyến tính từ ngày bắt đầu đến deadline (chia đều % theo ngày)."
+                            >
+                                <option value="">Tất cả</option>
+                                <option value="behind">Chậm tiến độ</option>
+                                <option value="on_track">Kịp tiến độ</option>
+                                <option value="ahead">Vượt tiến độ</option>
                             </select>
                         </FilterField>
 

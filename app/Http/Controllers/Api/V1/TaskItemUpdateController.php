@@ -10,6 +10,7 @@ use App\Models\TaskItem;
 use App\Models\TaskItemUpdate;
 use App\Models\User;
 use App\Services\NotificationService;
+use App\Services\TaskItemLinearPaceService;
 use App\Services\TaskProgressService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -471,16 +472,7 @@ class TaskItemUpdateController extends Controller
             $cursor->addDay();
         }
 
-        $expectedToday = 0;
-        if ($now->greaterThanOrEqualTo($start)) {
-        $effectiveToday = $now->lessThan($deadline) ? $now : $deadline;
-        $elapsedToday = min($totalDays, max(0, $start->diffInDays($effectiveToday, false)));
-            $expectedToday = (int) round(($elapsedToday / $totalDays) * 100);
-        }
-        $expectedToday = max(0, min(100, $expectedToday));
-
-        $actualToday = max(0, min(100, (int) ($item->progress_percent ?? 0)));
-        $lagPercent = max(0, $expectedToday - $actualToday);
+        $linear = app(TaskItemLinearPaceService::class)->summarize($item);
 
         return [
             'summary' => [
@@ -492,10 +484,10 @@ class TaskItemUpdateController extends Controller
                 'department_name' => optional($task->department)->name ?: '—',
                 'start_date' => $start->toDateString(),
                 'deadline' => $deadline->toDateString(),
-                'expected_progress_today' => $expectedToday,
-                'actual_progress_today' => $actualToday,
-                'lag_percent' => $lagPercent,
-                'is_late' => $lagPercent > 0,
+                'expected_progress_today' => $linear['expected_progress_today'],
+                'actual_progress_today' => $linear['actual_progress_today'],
+                'lag_percent' => $linear['lag_percent'],
+                'is_late' => $linear['is_late'],
                 'status' => (string) $item->status,
             ],
             'chart' => $points,

@@ -4,15 +4,18 @@ namespace App\Console\Commands;
 
 use App\Models\AppSetting;
 use App\Models\TaskItem;
-use App\Models\TaskItemReminderLog;
+use App\Models\TaskItemProgressDailyDigestLog;
+use App\Models\User;
 use App\Services\NotificationService;
+use App\Services\TaskItemLinearPaceService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 
 class SendTaskItemProgressReminders extends Command
 {
     protected $signature = 'task-items:remind-progress';
-    protected $description = 'Gửi nhắc nhở tiến độ đầu việc bị chậm theo ngày.';
+
+    protected $description = 'Gửi thông báo gộp: đầu việc chậm tiến độ (so với đường tuyến tính) theo giờ cấu hình.';
 
     public function handle(): int
     {
@@ -30,71 +33,58 @@ class SendTaskItemProgressReminders extends Command
         }
 
         $today = $now->copy()->startOfDay();
+
         $items = TaskItem::query()
             ->whereNotNull('assignee_id')
             ->where('status', '!=', 'done')
-            ->with(['task', 'task.project'])
-            ->get();
+            ->get(['id', 'assignee_id', 'start_date', 'deadline', 'created_at', 'progress_percent']);
 
         if ($items->isEmpty()) {
             return self::SUCCESS;
         }
 
+        $service = app(TaskItemLinearPaceService::class);
+        $countsByUser = [];
         foreach ($items as $item) {
-            $start = $item->start_date ? Carbon::parse($item->start_date) : $item->created_at;
-            $deadline = $item->deadline ? Carbon::parse($item->deadline) : null;
-            if (! $start || ! $deadline) {
+            $summary = $service->summarize($item);
+            if (($summary['pace'] ?? '') !== 'behind') {
                 continue;
             }
-            if ($deadline->lessThanOrEqualTo($start)) {
-                continue;
-            }
-            $totalDays = max(1, $start->diffInDays($deadline));
-            $elapsedDays = min($totalDays, $start->diffInDays($today, false));
-            $elapsedDays = max(0, $elapsedDays);
-            $expected = (int) round(($elapsedDays / $totalDays) * 100);
-            $expected = max(0, min(100, $expected));
-
-            $current = (int) ($item->progress_percent ?? 0);
-            $lag = $expected - $current;
-            if ($lag < 5) {
-                continue;
-            }
-
             $assigneeId = (int) $item->assignee_id;
             if ($assigneeId <= 0) {
                 continue;
             }
+            $countsByUser[$assigneeId] = ($countsByUser[$assigneeId] ?? 0) + 1;
+        }
 
-            $already = TaskItemReminderLog::query()
-                ->where('task_item_id', $item->id)
-                ->where('user_id', $assigneeId)
+        foreach ($countsByUser as $userId => $lateCount) {
+            if ($lateCount < 1) {
+                continue;
+            }
+
+            $already = TaskItemProgressDailyDigestLog::query()
+                ->where('user_id', $userId)
                 ->whereDate('reminder_date', $today)
                 ->exists();
             if ($already) {
                 continue;
             }
 
+            $user = User::query()->find($userId);
+            $displayName = $user ? (string) $user->name : 'Nhân sự';
+
             app(NotificationService::class)->notifyUsers(
-                [$assigneeId],
+                [$userId],
                 'Đầu việc chậm tiến độ',
-                sprintf(
-                    'Đầu việc %s của công việc %s đang chậm tiến độ %s%%',
-                    (string) $item->title,
-                    (string) optional($item->task)->title,
-                    $lag
-                ),
+                sprintf('%s, bạn có %d đầu việc đang chậm tiến độ.', $displayName, $lateCount),
                 [
                     'type' => 'task_item_progress_late',
-                    'task_id' => optional($item->task)->id,
-                    'task_item_id' => $item->id,
-                    'lag_percent' => $lag,
+                    'late_count' => $lateCount,
                 ]
             );
 
-            TaskItemReminderLog::create([
-                'task_item_id' => $item->id,
-                'user_id' => $assigneeId,
+            TaskItemProgressDailyDigestLog::create([
+                'user_id' => $userId,
                 'reminder_date' => $today->toDateString(),
             ]);
         }
