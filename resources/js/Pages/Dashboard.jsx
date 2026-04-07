@@ -1,6 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
+import FilterToolbar, {
+    FILTER_GRID_RESPONSIVE,
+    FILTER_GRID_SUBMIT_ROW,
+    FILTER_SUBMIT_BUTTON_CLASS,
+    FILTER_SUBMIT_PRIMARY_BUTTON_CLASS,
+    FilterActionGroup,
+    FilterField,
+    filterControlClass,
+} from '@/Components/FilterToolbar';
 import PageContainer from '@/Components/PageContainer';
 import DonutChart from '@/Components/DonutChart';
 import CustomerGrowthChart from '@/Components/CustomerGrowthChart';
@@ -226,32 +234,8 @@ export default function Dashboard(props) {
                 title="Bộ lọc thời gian"
                 description="Mặc định trang chủ hiển thị dữ liệu của tháng hiện tại. Bạn có thể thay đổi khoảng thời gian để quan sát chi tiết hơn."
                 onSubmitFilters={applyReportFilters}
-                actions={(
-                    <FilterActionGroup>
-                        <button
-                            type="submit"
-                            className="rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-card"
-                        >
-                            Áp dụng
-                        </button>
-                        <button
-                            type="button"
-                            onClick={viewAllTime}
-                            className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700"
-                        >
-                            Toàn thời gian
-                        </button>
-                        <button
-                            type="button"
-                            onClick={resetReportFilters}
-                            className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700"
-                        >
-                            Tháng hiện tại
-                        </button>
-                    </FilterActionGroup>
-                )}
             >
-                <div className="grid gap-3 md:grid-cols-2">
+                <div className={FILTER_GRID_RESPONSIVE}>
                     <FilterField label="Từ ngày" hint={availablePeriod.from ? `Dữ liệu từ ${availablePeriod.from}` : ''}>
                         <input
                             type="date"
@@ -268,6 +252,17 @@ export default function Dashboard(props) {
                             onChange={(event) => setDraftReportFilters((prev) => ({ ...prev, to: event.target.value }))}
                         />
                     </FilterField>
+                    <FilterActionGroup className={FILTER_GRID_SUBMIT_ROW}>
+                        <button type="submit" className={FILTER_SUBMIT_PRIMARY_BUTTON_CLASS}>
+                            Áp dụng
+                        </button>
+                        <button type="button" onClick={viewAllTime} className={FILTER_SUBMIT_BUTTON_CLASS}>
+                            Toàn thời gian
+                        </button>
+                        <button type="button" onClick={resetReportFilters} className={FILTER_SUBMIT_BUTTON_CLASS}>
+                            Tháng hiện tại
+                        </button>
+                    </FilterActionGroup>
                 </div>
             </FilterToolbar>
 

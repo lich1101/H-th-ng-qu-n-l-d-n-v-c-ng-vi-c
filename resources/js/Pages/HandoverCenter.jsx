@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import FilterToolbar, {
+    FILTER_GRID_RESPONSIVE,
+    FILTER_GRID_SUBMIT_ROW,
     FILTER_SUBMIT_BUTTON_CLASS,
     FilterActionGroup,
 } from '@/Components/FilterToolbar';
@@ -163,15 +165,16 @@ export default function HandoverCenter(props) {
                     searchValue={filters.search}
                     onSearch={handleSearch}
                     onSubmitFilters={applyHandoverFilters}
-                    actions={(
-                        <FilterActionGroup>
+                >
+                    <div className={FILTER_GRID_RESPONSIVE}>
+                        <FilterActionGroup className={FILTER_GRID_SUBMIT_ROW}>
                             <button type="submit" className={FILTER_SUBMIT_BUTTON_CLASS}>
                                 Lọc
                             </button>
                             {userRole === 'nhan_vien' && (
                                 <button
                                     type="button"
-                                    className={`rounded-xl border px-4 py-2.5 text-sm font-semibold ${
+                                    className={`inline-flex h-11 min-h-[2.75rem] items-center justify-center rounded-2xl border px-4 text-sm font-semibold ${
                                         filters.owner_only === '1'
                                             ? 'border-primary bg-primary/10 text-primary'
                                             : 'border-slate-200/80 text-slate-600'
@@ -185,8 +188,8 @@ export default function HandoverCenter(props) {
                                 </button>
                             )}
                         </FilterActionGroup>
-                    )}
-                />
+                    </div>
+                </FilterToolbar>
 
                 <div className="space-y-3">
                     {loading && (

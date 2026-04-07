@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import FilterToolbar, {
     FILTER_GRID_RESPONSIVE,
+    FILTER_GRID_SUBMIT_ROW,
+    FILTER_SUBMIT_PRIMARY_BUTTON_CLASS,
     FilterActionGroup,
     FilterField,
     filterControlClass,
@@ -383,16 +385,6 @@ export default function UserAccountsDashboard(props) {
                     searchValue={filters.search}
                     onSearch={handleSearch}
                     onSubmitFilters={applyAccountFilters}
-                    actions={(
-                        <FilterActionGroup>
-                            <button
-                                type="submit"
-                                className="rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-primary/90"
-                            >
-                                Tìm kiếm
-                            </button>
-                        </FilterActionGroup>
-                    )}
                 >
                     <div className={FILTER_GRID_RESPONSIVE}>
                         <FilterField label="Vai trò">
@@ -420,6 +412,11 @@ export default function UserAccountsDashboard(props) {
                                 <option value="inactive">Tạm khóa</option>
                             </select>
                         </FilterField>
+                        <FilterActionGroup className={FILTER_GRID_SUBMIT_ROW}>
+                            <button type="submit" className={FILTER_SUBMIT_PRIMARY_BUTTON_CLASS}>
+                                Tìm kiếm
+                            </button>
+                        </FilterActionGroup>
                     </div>
                 </FilterToolbar>
             </div>

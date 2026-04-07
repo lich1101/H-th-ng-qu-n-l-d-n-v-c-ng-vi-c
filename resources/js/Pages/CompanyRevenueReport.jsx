@@ -1,7 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import DonutChart from '@/Components/DonutChart';
-import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
+import FilterToolbar, {
+    FILTER_GRID_RESPONSIVE,
+    FILTER_GRID_SUBMIT_ROW,
+    FILTER_SUBMIT_BUTTON_CLASS,
+    FILTER_SUBMIT_PRIMARY_BUTTON_CLASS,
+    FilterActionGroup,
+    FilterField,
+    filterControlClass,
+} from '@/Components/FilterToolbar';
 import PageContainer from '@/Components/PageContainer';
 import { useToast } from '@/Contexts/ToastContext';
 
@@ -305,25 +313,8 @@ export default function CompanyRevenueReport(props) {
                 title="Bộ lọc thời gian"
                 description="Khi vừa vào trang, hệ thống mặc định lọc đúng tháng hiện tại. Bấm “Toàn thời gian” nếu bạn muốn xem toàn bộ dữ liệu."
                 onSubmitFilters={applyFilters}
-                actions={(
-                    <FilterActionGroup>
-                        <button
-                            type="submit"
-                            className="rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-card"
-                        >
-                            Áp dụng
-                        </button>
-                        <button
-                            type="button"
-                            onClick={resetFilters}
-                            className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700"
-                        >
-                            Toàn thời gian
-                        </button>
-                    </FilterActionGroup>
-                )}
             >
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(280px,0.9fr)]">
+                <div className={FILTER_GRID_RESPONSIVE}>
                     <FilterField label="Từ ngày">
                         <input
                             type="date"
@@ -349,6 +340,14 @@ export default function CompanyRevenueReport(props) {
                             onChange={(e) => setDraftFilters((prev) => ({ ...prev, target_revenue: e.target.value }))}
                         />
                     </FilterField>
+                    <FilterActionGroup className={FILTER_GRID_SUBMIT_ROW}>
+                        <button type="submit" className={FILTER_SUBMIT_PRIMARY_BUTTON_CLASS}>
+                            Áp dụng
+                        </button>
+                        <button type="button" onClick={resetFilters} className={FILTER_SUBMIT_BUTTON_CLASS}>
+                            Toàn thời gian
+                        </button>
+                    </FilterActionGroup>
                 </div>
             </FilterToolbar>
 

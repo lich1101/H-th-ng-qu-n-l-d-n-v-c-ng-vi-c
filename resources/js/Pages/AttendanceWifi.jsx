@@ -1,6 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import FilterToolbar, { FilterActionGroup, FilterField, filterControlClass } from '@/Components/FilterToolbar';
+import FilterToolbar, {
+    FILTER_GRID_RESPONSIVE,
+    FILTER_GRID_SUBMIT_ROW,
+    FILTER_SUBMIT_BUTTON_CLASS,
+    FILTER_SUBMIT_PRIMARY_BUTTON_CLASS,
+    FilterActionGroup,
+    FilterField,
+    filterControlClass,
+} from '@/Components/FilterToolbar';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import PaginationControls from '@/Components/PaginationControls';
@@ -60,8 +68,8 @@ const leaveApprovalModeOptions = [
 const cardClass = 'rounded-[28px] border border-slate-200/70 bg-white p-6 shadow-soft';
 const inputClass = 'w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm transition focus:border-primary focus:outline-none focus:ring-4 focus:ring-primary/10';
 const textAreaClass = `${inputClass} min-h-[120px] resize-y`;
-const buttonPrimaryClass = 'inline-flex items-center justify-center rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-primary/15 transition hover:-translate-y-0.5 hover:bg-primary/95';
-const buttonSecondaryClass = 'inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:-translate-y-0.5 hover:bg-slate-50';
+const buttonPrimaryClass = 'inline-flex h-11 min-h-[2.75rem] items-center justify-center rounded-2xl bg-primary px-4 text-sm font-semibold text-white shadow-lg shadow-primary/15 transition hover:-translate-y-0.5 hover:bg-primary/95';
+const buttonSecondaryClass = 'inline-flex h-11 min-h-[2.75rem] items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:-translate-y-0.5 hover:bg-slate-50';
 
 function FormField({ label, required = false, hint = '', children, className = '' }) {
     return (
@@ -780,21 +788,19 @@ export default function AttendanceWifi(props) {
                                 title="Bộ lọc bảng công"
                                 description="Chọn khoảng ngày để xem lịch sử công cá nhân theo đúng chuẩn hiển thị chung của hệ thống."
                                 onSubmitFilters={() => loadRecords(recordFilters)}
-                                actions={(
-                                    <FilterActionGroup className="xl:justify-end">
-                                        <button type="submit" className={buttonPrimaryClass}>
-                                            Xem công
-                                        </button>
-                                    </FilterActionGroup>
-                                )}
                             >
-                                <div className="grid gap-4 md:grid-cols-2">
+                                <div className={FILTER_GRID_RESPONSIVE}>
                                     <FilterField label="Từ ngày">
                                         <input type="date" className={filterControlClass} value={recordFilters.from_date} onChange={(e) => setRecordFilters((s) => ({ ...s, from_date: e.target.value }))} />
                                     </FilterField>
                                     <FilterField label="Đến ngày">
                                         <input type="date" className={filterControlClass} value={recordFilters.to_date} onChange={(e) => setRecordFilters((s) => ({ ...s, to_date: e.target.value }))} />
                                     </FilterField>
+                                    <FilterActionGroup className={FILTER_GRID_SUBMIT_ROW}>
+                                        <button type="submit" className={FILTER_SUBMIT_PRIMARY_BUTTON_CLASS}>
+                                            Xem công
+                                        </button>
+                                    </FilterActionGroup>
                                 </div>
                             </FilterToolbar>
                             <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200/80">
@@ -898,18 +904,8 @@ export default function AttendanceWifi(props) {
                                 searchValue={requestFilters.search}
                                 onSearch={handleRequestSearch}
                                 onSubmitFilters={() => loadRequests({ ...requestFilters, page: 1 })}
-                                actions={(
-                                    <FilterActionGroup className="xl:justify-end">
-                                        <button
-                                            type="submit"
-                                            className={buttonSecondaryClass}
-                                        >
-                                            Lọc
-                                        </button>
-                                    </FilterActionGroup>
-                                )}
                             >
-                                <div className="grid gap-4 md:grid-cols-1">
+                                <div className={FILTER_GRID_RESPONSIVE}>
                                     <FilterField label="Trạng thái">
                                         <select className={filterControlClass} value={requestFilters.status} onChange={(e) => {
                                             const next = { ...requestFilters, status: e.target.value, page: 1 };
@@ -921,6 +917,11 @@ export default function AttendanceWifi(props) {
                                             <option value="rejected">Từ chối</option>
                                         </select>
                                     </FilterField>
+                                    <FilterActionGroup className={FILTER_GRID_SUBMIT_ROW}>
+                                        <button type="submit" className={FILTER_SUBMIT_BUTTON_CLASS}>
+                                            Lọc
+                                        </button>
+                                    </FilterActionGroup>
                                 </div>
                             </FilterToolbar>
                             <div className="mt-4 space-y-3">
@@ -1074,18 +1075,8 @@ export default function AttendanceWifi(props) {
                             searchValue={deviceFilters.search}
                             onSearch={handleDeviceSearch}
                             onSubmitFilters={() => loadDevices({ ...deviceFilters, page: 1 })}
-                            actions={(
-                                <FilterActionGroup className="xl:justify-end">
-                                    <button
-                                        type="submit"
-                                        className={buttonSecondaryClass}
-                                    >
-                                        Lọc
-                                    </button>
-                                </FilterActionGroup>
-                            )}
                         >
-                            <div className="grid gap-4 md:grid-cols-1">
+                            <div className={FILTER_GRID_RESPONSIVE}>
                                 <FilterField label="Trạng thái">
                                     <select className={filterControlClass} value={deviceFilters.status} onChange={(e) => {
                                         const next = { ...deviceFilters, status: e.target.value, page: 1 };
@@ -1097,6 +1088,11 @@ export default function AttendanceWifi(props) {
                                         <option value="rejected">Từ chối</option>
                                     </select>
                                 </FilterField>
+                                <FilterActionGroup className={FILTER_GRID_SUBMIT_ROW}>
+                                    <button type="submit" className={FILTER_SUBMIT_BUTTON_CLASS}>
+                                        Lọc
+                                    </button>
+                                </FilterActionGroup>
                             </div>
                         </FilterToolbar>
                         <div className="mt-4 space-y-3">
@@ -1198,18 +1194,8 @@ export default function AttendanceWifi(props) {
                             searchValue={staffFilters.search}
                             onSearch={handleStaffSearch}
                             onSubmitFilters={() => loadStaff({ ...staffFilters, page: 1 })}
-                            actions={(
-                                <FilterActionGroup className="xl:justify-end">
-                                    <button
-                                        type="submit"
-                                        className={buttonSecondaryClass}
-                                    >
-                                        Lọc
-                                    </button>
-                                </FilterActionGroup>
-                            )}
                         >
-                            <div className="grid gap-4 md:grid-cols-1">
+                            <div className={FILTER_GRID_RESPONSIVE}>
                                 <FilterField label="Vai trò">
                                     <select className={filterControlClass} value={staffFilters.role} onChange={(e) => {
                                         const next = { ...staffFilters, role: e.target.value, page: 1 };
@@ -1222,6 +1208,11 @@ export default function AttendanceWifi(props) {
                                         <option value="ke_toan">Kế toán</option>
                                     </select>
                                 </FilterField>
+                                <FilterActionGroup className={FILTER_GRID_SUBMIT_ROW}>
+                                    <button type="submit" className={FILTER_SUBMIT_BUTTON_CLASS}>
+                                        Lọc
+                                    </button>
+                                </FilterActionGroup>
                             </div>
                         </FilterToolbar>
                         <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200/80">
@@ -1291,19 +1282,8 @@ export default function AttendanceWifi(props) {
                             searchValue={reportFilters.search}
                             onSearch={handleReportSearch}
                             onSubmitFilters={() => loadReport(reportFilters)}
-                            actions={(
-                                <FilterActionGroup className="xl:justify-end">
-                                    {canManualAdjust ? (
-                                        <button type="button" className={buttonSecondaryClass} onClick={() => openManualRecord()}>Sửa công tay</button>
-                                    ) : null}
-                                    <button type="submit" className={buttonSecondaryClass}>Xem báo cáo</button>
-                                    {canExport ? (
-                                        <button type="button" className={buttonPrimaryClass} onClick={openExportModal}>Xuất Excel</button>
-                                    ) : null}
-                                </FilterActionGroup>
-                            )}
                         >
-                            <div className="grid gap-4 md:grid-cols-2">
+                            <div className={FILTER_GRID_RESPONSIVE}>
                                 <FilterField label="Tháng báo cáo">
                                     <input
                                         type="month"
@@ -1319,6 +1299,17 @@ export default function AttendanceWifi(props) {
                                         readOnly
                                     />
                                 </FilterField>
+                                <FilterActionGroup className={FILTER_GRID_SUBMIT_ROW}>
+                                    <button type="submit" className={FILTER_SUBMIT_PRIMARY_BUTTON_CLASS}>
+                                        Xem báo cáo
+                                    </button>
+                                    {canManualAdjust ? (
+                                        <button type="button" className={FILTER_SUBMIT_BUTTON_CLASS} onClick={() => openManualRecord()}>Sửa công tay</button>
+                                    ) : null}
+                                    {canExport ? (
+                                        <button type="button" className={buttonPrimaryClass} onClick={openExportModal}>Xuất Excel</button>
+                                    ) : null}
+                                </FilterActionGroup>
                             </div>
                         </FilterToolbar>
                         <div className="mt-4 grid gap-4 md:grid-cols-2">

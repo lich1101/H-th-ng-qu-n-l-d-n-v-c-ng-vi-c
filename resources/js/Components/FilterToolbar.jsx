@@ -1,10 +1,19 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
-export const filterControlClass = 'w-full rounded-2xl border border-slate-200/80 bg-slate-50/70 px-3.5 py-3 text-sm text-slate-700 transition focus:border-primary focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/10';
+/**
+ * Ô lọc thống nhất (text, select, date, month, number).
+ * min-h 44px để date/select đồng cao; textarea dùng thêm min-h riêng (vd. min-h-[108px]) để không bị cắt.
+ */
+export const filterControlClass =
+    'w-full min-h-[2.75rem] rounded-2xl border border-slate-200/80 bg-slate-50/70 px-3.5 py-2.5 text-sm leading-normal text-slate-700 transition focus:border-primary focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/10 [color-scheme:light]';
 
-/** Nút "Lọc" thống nhất — dùng với type="submit" trong FilterToolbar có onSubmitFilters */
+/** Nút hành động phụ trong hàng lọc (viền) — cùng chiều cao ô lọc */
 export const FILTER_SUBMIT_BUTTON_CLASS =
-    'rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50';
+    'inline-flex h-11 min-h-[2.75rem] shrink-0 items-center justify-center rounded-2xl border border-slate-200/80 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50';
+
+/** Nút gửi lọc chính (Lọc / Áp dụng / Tìm kiếm) */
+export const FILTER_SUBMIT_PRIMARY_BUTTON_CLASS =
+    'inline-flex h-11 min-h-[2.75rem] shrink-0 items-center justify-center rounded-2xl bg-primary px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-primary/90';
 
 /**
  * Lưới bộ lọc cho laptop ~13" và màn nhỏ:
@@ -17,10 +26,10 @@ export const FILTER_GRID_RESPONSIVE =
 export const FILTER_GRID_WITH_SUBMIT = FILTER_GRID_RESPONSIVE;
 
 /**
- * Đặt sau các FilterField: full width, nút Lọc căn phải (span đủ cột lưới).
+ * Đặt sau các FilterField: full width, nút Lọc căn trái (đuôi khối lọc).
  */
 export const FILTER_GRID_SUBMIT_ROW =
-    'col-span-full mt-1 flex flex-wrap items-center justify-end gap-2.5 border-t border-slate-100/90 pt-3 sm:col-span-2 xl:col-span-3';
+    'col-span-full mt-1 flex flex-wrap items-center justify-start gap-2.5 border-t border-slate-100/90 pt-3 sm:col-span-2 xl:col-span-3';
 
 export function FilterField({
     label,
@@ -152,7 +161,7 @@ function TableSearchInput({ containerRef, searchValue, onSearchChange }) {
             <input
                 ref={inputRef}
                 type="text"
-                className="w-full rounded-2xl border border-slate-200/80 bg-slate-50/70 py-3 pl-10 pr-20 text-sm text-slate-700 placeholder-slate-400 transition focus:border-primary focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/10"
+                className="h-11 min-h-[2.75rem] w-full rounded-2xl border border-slate-200/80 bg-slate-50/70 py-2 pl-10 pr-20 text-sm leading-normal text-slate-700 placeholder-slate-400 transition focus:border-primary focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/10"
                 placeholder="Tìm nhanh trong bảng... (Enter để áp dụng lọc)"
                 value={term}
                 onChange={handleChange}

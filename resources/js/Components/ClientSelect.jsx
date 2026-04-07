@@ -298,7 +298,7 @@ export default function ClientSelect({
         </div>
     ) : null;
 
-    const rootClass = `${filterControlClass} flex min-h-[46px] items-center justify-between gap-2 text-left ${
+    const rootClass = `${filterControlClass} flex items-center justify-between gap-2 text-left ${
         disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:border-slate-300/90'
     } ${open && !disabled ? 'border-primary bg-white ring-2 ring-primary/10' : ''} ${className}`.trim();
 

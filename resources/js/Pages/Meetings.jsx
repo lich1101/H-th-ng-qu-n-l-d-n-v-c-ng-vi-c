@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import FilterToolbar, {
     FILTER_GRID_RESPONSIVE,
+    FILTER_GRID_SUBMIT_ROW,
     FILTER_SUBMIT_BUTTON_CLASS,
     FilterActionGroup,
     FilterField,
@@ -326,25 +327,17 @@ export default function Meetings(props) {
                 searchValue={filters.search}
                 onSearch={handleSearch}
                 onSubmitFilters={applyMeetingFilters}
-                actions={(
+                actions={canManage ? (
                     <FilterActionGroup className="justify-end">
-                        {canManage ? (
-                            <button
-                                type="button"
-                                className="rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-sm"
-                                onClick={openCreate}
-                            >
-                                Thêm lịch họp
-                            </button>
-                        ) : null}
-                        <button type="submit" className={FILTER_SUBMIT_BUTTON_CLASS}>
-                            Lọc
-                        </button>
-                        <button type="button" className={FILTER_SUBMIT_BUTTON_CLASS} onClick={useCurrentMonthRange}>
-                            Tháng đang xem
+                        <button
+                            type="button"
+                            className="inline-flex h-11 min-h-[2.75rem] items-center justify-center rounded-2xl bg-primary px-4 text-sm font-semibold text-white shadow-sm hover:bg-primary/90"
+                            onClick={openCreate}
+                        >
+                            Thêm lịch họp
                         </button>
                     </FilterActionGroup>
-                )}
+                ) : null}
             >
                 <div className={FILTER_GRID_RESPONSIVE}>
                     <FilterField label="Từ ngày">
@@ -377,6 +370,14 @@ export default function Meetings(props) {
                             ))}
                         </select>
                     </FilterField>
+                    <FilterActionGroup className={FILTER_GRID_SUBMIT_ROW}>
+                        <button type="submit" className={FILTER_SUBMIT_BUTTON_CLASS}>
+                            Lọc
+                        </button>
+                        <button type="button" className={FILTER_SUBMIT_BUTTON_CLASS} onClick={useCurrentMonthRange}>
+                            Tháng đang xem
+                        </button>
+                    </FilterActionGroup>
                 </div>
             </FilterToolbar>
 

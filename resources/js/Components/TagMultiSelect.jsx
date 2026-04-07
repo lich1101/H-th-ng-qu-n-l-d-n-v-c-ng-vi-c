@@ -275,7 +275,7 @@ export default function TagMultiSelect({
                 ref={triggerRef}
                 type="button"
                 disabled={disabled}
-                className={`${filterControlClass} flex min-h-[46px] items-center justify-between gap-2 text-left ${
+                className={`${filterControlClass} flex items-center justify-between gap-2 text-left ${
                     disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:border-slate-300/90'
                 } ${open && !disabled ? 'border-primary bg-white ring-2 ring-primary/10' : ''}`}
                 aria-haspopup="listbox"
