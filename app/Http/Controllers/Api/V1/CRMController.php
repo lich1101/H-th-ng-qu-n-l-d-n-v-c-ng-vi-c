@@ -117,11 +117,12 @@ class CRMController extends Controller
             if (! $canUseStaffFilter) {
                 $query->whereRaw('1 = 0');
             } else {
+                // Khớp cột «Phụ trách» trên UI: assigned_staff, hoặc sales_owner khi chưa gán phụ trách — không lọc theo chăm sóc.
                 $query->where(function ($builder) use ($staffFilterIds) {
                     $builder->whereIn('assigned_staff_id', $staffFilterIds)
-                        ->orWhereIn('sales_owner_id', $staffFilterIds)
-                        ->orWhereHas('careStaffUsers', function ($careQuery) use ($staffFilterIds) {
-                            $careQuery->whereIn('users.id', $staffFilterIds);
+                        ->orWhere(function ($q) use ($staffFilterIds) {
+                            $q->whereNull('assigned_staff_id')
+                                ->whereIn('sales_owner_id', $staffFilterIds);
                         });
                 });
             }

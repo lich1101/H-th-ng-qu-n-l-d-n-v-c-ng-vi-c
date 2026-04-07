@@ -13,13 +13,12 @@ use App\Models\TaskItem;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class StaffFilterOptionsService
 {
     /**
-     * Nhân sự xuất hiện trên khách hàng trong phạm vi CRM (phụ trách, sales owner, chăm sóc).
+     * Nhân sự hiển thị ở cột «Phụ trách» (assigned_staff; hoặc sales_owner khi chưa có người phụ trách) — không gồm đội chăm sóc.
      *
      * @return Collection<int, User>
      */
@@ -30,16 +29,13 @@ class StaffFilterOptionsService
 
         $ids = collect();
         $ids = $ids->merge((clone $base)->whereNotNull('assigned_staff_id')->distinct()->pluck('assigned_staff_id'));
-        $ids = $ids->merge((clone $base)->whereNotNull('sales_owner_id')->distinct()->pluck('sales_owner_id'));
-
-        if (Schema::hasTable('client_care_staff')) {
-            $clientIdSub = (clone $base)->select('clients.id');
-            $careIds = DB::table('client_care_staff')
-                ->whereIn('client_id', $clientIdSub)
+        $ids = $ids->merge(
+            (clone $base)
+                ->whereNull('assigned_staff_id')
+                ->whereNotNull('sales_owner_id')
                 ->distinct()
-                ->pluck('user_id');
-            $ids = $ids->merge($careIds);
-        }
+                ->pluck('sales_owner_id')
+        );
 
         return $this->usersFromIds($ids);
     }
