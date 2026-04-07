@@ -266,13 +266,9 @@ class ContractController extends Controller
         }
 
         if (($contract->approval_status ?? '') === 'pending') {
-            $accountantIds = User::query()
-                ->whereIn('role', ['admin', 'administrator', 'ke_toan'])
-                ->pluck('id')
-                ->reject(function ($id) use ($request) {
-                    return (int) $id === (int) $request->user()->id;
-                })
-                ->all();
+            $accountantIds = \App\Support\ContractApproverIds::query(
+                (int) $request->user()->id
+            );
             if (! empty($accountantIds)) {
                 try {
                     app(NotificationService::class)->notifyUsersAfterResponse(
@@ -281,7 +277,9 @@ class ContractController extends Controller
                         'Hợp đồng: '.$contract->title,
                         [
                             'type' => 'contract_approval',
+                            'category' => 'contract_approval',
                             'contract_id' => $contract->id,
+                            'approval_target' => 'contract',
                         ]
                     );
                 } catch (\Throwable $e) {
@@ -462,7 +460,7 @@ class ContractController extends Controller
 
     private function canApprove($user): bool
     {
-        return $user && in_array($user->role, ['admin', 'administrator', 'ke_toan'], true);
+        return $user && in_array($user->role, ['admin', 'ke_toan'], true);
     }
 
     private function resolveApproval(Request $request): array

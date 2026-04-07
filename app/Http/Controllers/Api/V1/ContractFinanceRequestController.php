@@ -145,7 +145,7 @@ class ContractFinanceRequestController extends Controller
 
     private function canReview(?User $user): bool
     {
-        return $user && in_array($user->role, ['admin', 'administrator', 'ke_toan'], true);
+        return $user && in_array($user->role, ['admin', 'ke_toan'], true);
     }
 
     private function canAccessContract(User $user, Contract $contract): bool
@@ -266,6 +266,7 @@ class ContractFinanceRequestController extends Controller
                 $body,
                 [
                     'type' => 'contract_finance_request_feedback',
+                    'category' => 'contract_finance',
                     'contract_id' => (int) $contract->id,
                     'contract_finance_request_id' => (int) $financeRequest->id,
                     'request_type' => (string) $financeRequest->request_type,

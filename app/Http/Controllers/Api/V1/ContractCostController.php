@@ -11,6 +11,7 @@ use App\Models\ContractCost;
 use App\Models\User;
 use App\Services\DataTransfers\ClientFinancialSyncService;
 use App\Services\NotificationService;
+use App\Support\ContractApproverIds;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -195,18 +196,7 @@ class ContractCostController extends Controller
 
     private function notifyFinanceApprovers(Contract $contract, User $actor, ContractFinanceRequest $financeRequest): void
     {
-        $targetIds = User::query()
-            ->whereIn('role', ['admin', 'administrator', 'ke_toan'])
-            ->pluck('id')
-            ->map(function ($id) use ($actor) {
-                return (int) $id;
-            })
-            ->filter(function ($id) use ($actor) {
-                return $id > 0 && $id !== (int) $actor->id;
-            })
-            ->unique()
-            ->values()
-            ->all();
+        $targetIds = ContractApproverIds::query((int) $actor->id);
 
         if (empty($targetIds)) {
             return;
@@ -219,9 +209,11 @@ class ContractCostController extends Controller
                 $actor->name.' vừa gửi yêu cầu thêm chi phí cho hợp đồng: '.$contract->title,
                 [
                     'type' => 'contract_finance_request_pending',
+                    'category' => 'contract_finance',
                     'contract_id' => (int) $contract->id,
                     'contract_finance_request_id' => (int) $financeRequest->id,
                     'request_type' => 'cost',
+                    'approval_target' => 'finance_request',
                 ]
             );
         } catch (\Throwable $e) {
