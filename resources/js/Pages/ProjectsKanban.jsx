@@ -15,6 +15,7 @@ import TagMultiSelect from '@/Components/TagMultiSelect';
 import { useToast } from '@/Contexts/ToastContext';
 import { absoluteHttpUrl } from '@/lib/externalUrl';
 import { formatVietnamDate, toDateInputValue } from '@/lib/vietnamTime';
+import { fetchStaffFilterOptions } from '@/lib/staffFilterOptions';
 
 const DEFAULT_STATUSES = [
     { value: 'moi_tao', label: 'Mới tạo' },
@@ -88,6 +89,7 @@ export default function ProjectsKanban(props) {
     const [contracts, setContracts] = useState([]);
     const [workflowTopics, setWorkflowTopics] = useState([]);
     const [owners, setOwners] = useState([]);
+    const [projectStaffFilterUsers, setProjectStaffFilterUsers] = useState([]);
     const [meta, setMeta] = useState({});
     const [paging, setPaging] = useState({ current_page: 1, last_page: 1, total: 0 });
     const [editingId, setEditingId] = useState(null);
@@ -245,6 +247,15 @@ export default function ProjectsKanban(props) {
         }
     };
 
+    const fetchProjectStaffFilterOptions = async () => {
+        try {
+            const rows = await fetchStaffFilterOptions('projects');
+            setProjectStaffFilterUsers(rows);
+        } catch {
+            setProjectStaffFilterUsers([]);
+        }
+    };
+
     const fetchWorkflowTopics = async () => {
         try {
             const res = await axios.get('/api/v1/workflow-topics', {
@@ -260,20 +271,23 @@ export default function ProjectsKanban(props) {
         () => owners.filter((owner) => !BLOCKED_ASSIGNMENT_ROLES.includes(String(owner?.role || '').toLowerCase())),
         [owners]
     );
-    const ownerFilterOptions = useMemo(
-        () => ownerOptions.map((owner) => ({
+    const ownerFilterOptions = useMemo(() => {
+        const base = projectStaffFilterUsers.length > 0
+            ? projectStaffFilterUsers.filter((owner) => !BLOCKED_ASSIGNMENT_ROLES.includes(String(owner?.role || '').toLowerCase()))
+            : ownerOptions;
+        return base.map((owner) => ({
             id: Number(owner.id || 0),
             label: owner.name || `Nhân sự #${owner.id}`,
             meta: owner.email || '',
-        })).filter((owner) => owner.id > 0),
-        [ownerOptions]
-    );
+        })).filter((owner) => owner.id > 0);
+    }, [projectStaffFilterUsers, ownerOptions]);
 
     useEffect(() => {
         fetchMeta();
         fetchProjects();
         fetchContracts();
         fetchOwners();
+        fetchProjectStaffFilterOptions();
         fetchWorkflowTopics();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);

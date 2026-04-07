@@ -15,6 +15,7 @@ import PaginationControls from '@/Components/PaginationControls';
 import TagMultiSelect from '@/Components/TagMultiSelect';
 import { useToast } from '@/Contexts/ToastContext';
 import { formatVietnamDate, formatVietnamDateTime, toDateInputValue } from '@/lib/vietnamTime';
+import { fetchStaffFilterOptions } from '@/lib/staffFilterOptions';
 
 const DEFAULT_PRIORITIES = [
     { value: 'low', label: 'Thấp' },
@@ -205,6 +206,7 @@ export default function TasksBoard(props) {
     const [projects, setProjects] = useState([]);
     const [departments, setDepartments] = useState([]);
     const [userOptions, setUserOptions] = useState([]);
+    const [taskAssigneeFilterUsers, setTaskAssigneeFilterUsers] = useState([]);
     const [meta, setMeta] = useState({});
     const [viewMode, setViewMode] = useState('list');
     const queryParams = typeof window !== 'undefined'
@@ -428,12 +430,17 @@ export default function TasksBoard(props) {
 
     const fetchUsers = async () => {
         try {
-            const res = await axios.get('/api/v1/users/lookup', {
-                params: { purpose: 'operational_assignee' },
-            });
-            setUserOptions(res.data?.data || []);
+            const [lookupRes, filterRows] = await Promise.all([
+                axios.get('/api/v1/users/lookup', {
+                    params: { purpose: 'operational_assignee' },
+                }),
+                fetchStaffFilterOptions('tasks'),
+            ]);
+            setUserOptions(lookupRes.data?.data || []);
+            setTaskAssigneeFilterUsers(filterRows);
         } catch {
             setUserOptions([]);
+            setTaskAssigneeFilterUsers([]);
         }
     };
 
@@ -1484,14 +1491,15 @@ export default function TasksBoard(props) {
         () => userOptions.filter((user) => !BLOCKED_ASSIGNMENT_ROLES.includes(String(user?.role || '').toLowerCase())),
         [userOptions]
     );
-    const assigneeFilterOptions = useMemo(
-        () => assignableUserOptions.map((user) => ({
+    const assigneeFilterOptions = useMemo(() => {
+        const base = taskAssigneeFilterUsers.length > 0 ? taskAssigneeFilterUsers : assignableUserOptions;
+        const allowed = base.filter((user) => !BLOCKED_ASSIGNMENT_ROLES.includes(String(user?.role || '').toLowerCase()));
+        return allowed.map((user) => ({
             id: Number(user.id || 0),
             label: user.name || `Nhân sự #${user.id}`,
             meta: user.email || '',
-        })).filter((user) => user.id > 0),
-        [assignableUserOptions]
-    );
+        })).filter((user) => user.id > 0);
+    }, [taskAssigneeFilterUsers, assignableUserOptions]);
 
     const siblingTaskItems = useMemo(
         () => taskItems.filter((item) => Number(item.id) !== Number(editingItemId || 0)),

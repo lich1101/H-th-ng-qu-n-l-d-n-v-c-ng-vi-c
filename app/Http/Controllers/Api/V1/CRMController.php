@@ -57,7 +57,8 @@ class CRMController extends Controller
 
         if ($request->filled('search')) {
             $search = (string) $request->input('search');
-            $query->where(function ($builder) use ($search) {
+            $phoneSvc = app(ClientPhoneDuplicateService::class);
+            $query->where(function ($builder) use ($search, $phoneSvc) {
                 $builder->where('name', 'like', "%{$search}%")
                     ->orWhere('company', 'like', "%{$search}%")
                     ->orWhere('email', 'like', "%{$search}%")
@@ -69,6 +70,7 @@ class CRMController extends Controller
                     ->orWhere('customer_level', 'like', "%{$search}%")
                     ->orWhere('company_size', 'like', "%{$search}%")
                     ->orWhere('product_categories', 'like', "%{$search}%");
+                $phoneSvc->orWherePhoneDigitsLikeSearch($builder, $search);
             });
         }
         if ($request->filled('type')) {

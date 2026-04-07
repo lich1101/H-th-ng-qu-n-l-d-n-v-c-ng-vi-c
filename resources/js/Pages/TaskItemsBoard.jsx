@@ -13,6 +13,7 @@ import PaginationControls from '@/Components/PaginationControls';
 import TagMultiSelect from '@/Components/TagMultiSelect';
 import { useToast } from '@/Contexts/ToastContext';
 import { formatVietnamDate } from '@/lib/vietnamTime';
+import { fetchStaffFilterOptions, usersToStaffTagOptions } from '@/lib/staffFilterOptions';
 
 const LABELS = {
     todo: 'Cần làm',
@@ -58,6 +59,7 @@ export default function TaskItemsBoard(props) {
     const [projects, setProjects] = useState([]);
     const [tasks, setTasks] = useState([]);
     const [users, setUsers] = useState([]);
+    const [taskItemAssigneeFilterUsers, setTaskItemAssigneeFilterUsers] = useState([]);
     const [paging, setPaging] = useState({ current_page: 1, last_page: 1, total: 0 });
     const [loading, setLoading] = useState(false);
 
@@ -78,6 +80,15 @@ export default function TaskItemsBoard(props) {
             setUsers(res.data?.data || []);
         } catch {
             setUsers([]);
+        }
+    };
+
+    const fetchTaskItemStaffFilterOptions = async () => {
+        try {
+            const rows = await fetchStaffFilterOptions('task_items');
+            setTaskItemAssigneeFilterUsers(rows);
+        } catch {
+            setTaskItemAssigneeFilterUsers([]);
         }
     };
 
@@ -144,6 +155,7 @@ export default function TaskItemsBoard(props) {
     useEffect(() => {
         fetchProjects();
         fetchUsers();
+        fetchTaskItemStaffFilterOptions();
         fetchTaskOptions(filters.project_id);
         fetchItems(1, { ...filters, page: 1 });
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -159,13 +171,12 @@ export default function TaskItemsBoard(props) {
         const doing = items.filter((item) => item.status === 'doing').length;
         return { done, doing };
     }, [items]);
-    const assigneeFilterOptions = useMemo(() => (
-        users.map((user) => ({
-            id: Number(user.id || 0),
-            label: user.name || `Nhân sự #${user.id}`,
-            meta: user.email || '',
-        })).filter((user) => user.id > 0)
-    ), [users]);
+    const assigneeFilterOptions = useMemo(() => {
+        if (taskItemAssigneeFilterUsers.length > 0) {
+            return usersToStaffTagOptions(taskItemAssigneeFilterUsers);
+        }
+        return usersToStaffTagOptions(users);
+    }, [taskItemAssigneeFilterUsers, users]);
 
     return (
         <PageContainer

@@ -1,4 +1,4 @@
-import React, { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import FilterToolbar, {
     FILTER_GRID_SUBMIT_ROW,
@@ -17,6 +17,7 @@ import TagMultiSelect from '@/Components/TagMultiSelect';
 import ClientStaffTransferPendingBanner from '@/Components/ClientStaffTransferPendingBanner';
 import { useToast } from '@/Contexts/ToastContext';
 import { formatVietnamDate } from '@/lib/vietnamTime';
+import { fetchStaffFilterOptions } from '@/lib/staffFilterOptions';
 
 const badgeStyle = (hex) => ({
     borderColor: hex,
@@ -82,6 +83,8 @@ export default function CRM(props) {
     const [leadTypes, setLeadTypes] = useState([]);
     const [revenueTiers, setRevenueTiers] = useState([]);
     const [staffUsers, setStaffUsers] = useState([]);
+    const [crmStaffFilterUsers, setCrmStaffFilterUsers] = useState([]);
+    const [crmStaffFilterReady, setCrmStaffFilterReady] = useState(false);
     const [departments, setDepartments] = useState([]);
     const [clientMeta, setClientMeta] = useState({ current_page: 1, last_page: 1, total: 0 });
     const [clientPage, setClientPage] = useState(1);
@@ -293,6 +296,19 @@ export default function CRM(props) {
         }
     };
 
+    const fetchCrmStaffFilterOptions = useCallback(async () => {
+        if (!canFilterByStaff) return;
+        setCrmStaffFilterReady(false);
+        try {
+            const rows = await fetchStaffFilterOptions('crm_clients');
+            setCrmStaffFilterUsers(rows);
+        } catch {
+            setCrmStaffFilterUsers([]);
+        } finally {
+            setCrmStaffFilterReady(true);
+        }
+    }, [canFilterByStaff]);
+
     const fetchDepartments = async () => {
         try {
             const res = await axios.get('/api/v1/departments');
@@ -392,6 +408,7 @@ export default function CRM(props) {
                         `Import hoàn tất: ${report.created || 0} tạo mới, ${report.updated || 0} cập nhật, ${report.skipped || 0} bỏ qua.`
                     );
                     await fetchClients(1, clientFilters);
+                    await fetchCrmStaffFilterOptions();
                 } else if (nextJob?.status === 'failed') {
                     window.clearInterval(timer);
                     setImportingClients(false);
@@ -414,16 +431,34 @@ export default function CRM(props) {
         poll();
 
         return () => window.clearInterval(timer);
+        // clientFilters: dùng giá trị lúc import hoàn tất (không reset interval khi đổi lọc).
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [showClientImport, clientImportJob?.id]);
+    }, [showClientImport, clientImportJob?.id, fetchCrmStaffFilterOptions]);
 
     useEffect(() => {
         fetchLookups();
         fetchStaffUsers();
+        fetchCrmStaffFilterOptions();
         fetchDepartments();
         fetchClients(1, clientFilters);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    /** Làm mới danh sách nhân sự trong bộ lọc khi quay lại tab / trang (dữ liệu khách có thể đã đổi). */
+    useEffect(() => {
+        if (!canFilterByStaff) return undefined;
+        const refetchWhenVisible = () => {
+            if (document.visibilityState === 'visible') {
+                fetchCrmStaffFilterOptions();
+            }
+        };
+        document.addEventListener('visibilitychange', refetchWhenVisible);
+        window.addEventListener('pageshow', refetchWhenVisible);
+        return () => {
+            document.removeEventListener('visibilitychange', refetchWhenVisible);
+            window.removeEventListener('pageshow', refetchWhenVisible);
+        };
+    }, [canFilterByStaff, fetchCrmStaffFilterOptions]);
 
     useEffect(() => {
         if (leadTypes.length && !clientForm.lead_type_id) {
@@ -811,15 +846,19 @@ export default function CRM(props) {
 
     const clientResponsibleStaffOptions = useMemo(() => {
         const departmentId = Number(clientFilters.assigned_department_id || 0);
-        const scopedUsers = staffUsers.length > 0
-            ? staffUsers
-            : (normalizedRole === 'nhan_vien' && userId
-                ? [{
-                    id: Number(userId),
-                    name: userName,
-                    department_id: userDepartmentId,
-                }]
-                : []);
+        const fallbackSelf = normalizedRole === 'nhan_vien' && userId
+            ? [{
+                id: Number(userId),
+                name: userName,
+                department_id: userDepartmentId,
+            }]
+            : [];
+        let scopedUsers;
+        if (crmStaffFilterReady) {
+            scopedUsers = crmStaffFilterUsers.length > 0 ? crmStaffFilterUsers : fallbackSelf;
+        } else {
+            scopedUsers = staffUsers.length > 0 ? staffUsers : fallbackSelf;
+        }
 
         return scopedUsers
             .filter((user) => {
@@ -836,6 +875,8 @@ export default function CRM(props) {
             .filter((user) => user.id > 0);
     }, [
         clientFilters.assigned_department_id,
+        crmStaffFilterUsers,
+        crmStaffFilterReady,
         staffUsers,
         visibleDepartmentOptions,
         normalizedRole,

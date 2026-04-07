@@ -16,6 +16,7 @@ use App\Models\RevenueTier;
 use App\Models\Task;
 use App\Models\User;
 use App\Jobs\ProcessImportJob;
+use App\Services\ClientPhoneDuplicateService;
 use App\Services\DataTransfers\ImportExecutionService;
 use App\Services\ProjectProgressService;
 use Carbon\Carbon;
@@ -1205,16 +1206,7 @@ class ImportController extends Controller
 
     private function normalizePhoneForStorage(?string $phone): ?string
     {
-        if (! $phone) {
-            return null;
-        }
-
-        $digits = preg_replace('/\D+/', '', (string) $phone);
-        if (! $digits) {
-            return null;
-        }
-
-        return trim((string) $digits) !== '' ? trim((string) $digits) : null;
+        return app(ClientPhoneDuplicateService::class)->normalizeForStorage($phone);
     }
 
     private function normalizedPhoneSqlExpression(string $column): string

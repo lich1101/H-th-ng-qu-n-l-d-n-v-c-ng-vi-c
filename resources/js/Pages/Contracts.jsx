@@ -15,6 +15,7 @@ import AppIcon from '@/Components/AppIcon';
 import PaginationControls from '@/Components/PaginationControls';
 import ClientSelect from '@/Components/ClientSelect';
 import TagMultiSelect from '@/Components/TagMultiSelect';
+import { fetchStaffFilterOptions, usersToStaffTagOptions } from '@/lib/staffFilterOptions';
 import { useToast } from '@/Contexts/ToastContext';
 import { formatVietnamDate, toDateInputValue } from '@/lib/vietnamTime';
 
@@ -145,14 +146,14 @@ export default function Contracts(props) {
     const toast = useToast();
     const userRole = props?.auth?.user?.role || '';
     const currentUserId = Number(props?.auth?.user?.id || 0) || null;
-    const canCreate = ['admin', 'quan_ly', 'nhan_vien', 'ke_toan'].includes(userRole);
-    const canManage = ['admin', 'quan_ly', 'ke_toan'].includes(userRole);
-    const canDelete = ['admin', 'quan_ly', 'ke_toan'].includes(userRole);
-    const canApprove = ['admin', 'ke_toan'].includes(userRole);
-    const canFinance = ['admin', 'ke_toan'].includes(userRole);
+    const canCreate = ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'].includes(userRole);
+    const canManage = ['admin', 'administrator', 'quan_ly', 'ke_toan'].includes(userRole);
+    const canDelete = ['admin', 'administrator', 'quan_ly', 'ke_toan'].includes(userRole);
+    const canApprove = ['admin', 'administrator', 'ke_toan'].includes(userRole);
+    const canFinance = ['admin', 'administrator', 'ke_toan'].includes(userRole);
     const canBulkActions = canApprove || canDelete;
     const isEmployee = userRole === 'nhan_vien';
-    const canChooseCollector = ['admin', 'quan_ly', 'ke_toan'].includes(userRole);
+    const canChooseCollector = ['admin', 'administrator', 'quan_ly', 'ke_toan'].includes(userRole);
     const defaultCollectorUserId = userRole === 'nhan_vien' || userRole === 'quan_ly'
         ? (currentUserId ? String(currentUserId) : '')
         : '';
@@ -161,6 +162,7 @@ export default function Contracts(props) {
     const [projects, setProjects] = useState([]);
     const [products, setProducts] = useState([]);
     const [collectors, setCollectors] = useState([]);
+    const [contractStaffFilterUsers, setContractStaffFilterUsers] = useState([]);
     const [careStaffUsers, setCareStaffUsers] = useState([]);
     const [loading, setLoading] = useState(false);
     const [savingContract, setSavingContract] = useState(false);
@@ -233,6 +235,12 @@ export default function Contracts(props) {
     const [importReport, setImportReport] = useState(null);
     const [importJob, setImportJob] = useState(null);
     const [editingCanManage, setEditingCanManage] = useState(true);
+    const [editingFinancePerms, setEditingFinancePerms] = useState({
+        can_manage_finance: false,
+        can_review_finance_request: false,
+        can_submit_finance_request: true,
+    });
+    const [reviewingRequestId, setReviewingRequestId] = useState(null);
     const [selectedContractIds, setSelectedContractIds] = useState([]);
     const [bulkLoading, setBulkLoading] = useState(false);
     const contractTableRef = useRef(null);
@@ -305,13 +313,12 @@ export default function Contracts(props) {
         return canManageContract(contract);
     };
 
-    const collectorFilterOptions = useMemo(() => (
-        collectors.map((collector) => ({
-            id: Number(collector.id || 0),
-            label: collector.name || `Nhân sự #${collector.id}`,
-            meta: collector.email || '',
-        })).filter((collector) => collector.id > 0)
-    ), [collectors]);
+    const collectorFilterOptions = useMemo(() => {
+        if (contractStaffFilterUsers.length > 0) {
+            return usersToStaffTagOptions(contractStaffFilterUsers);
+        }
+        return usersToStaffTagOptions(collectors);
+    }, [contractStaffFilterUsers, collectors]);
 
     const normalizeCareStaffIds = (values) => {
         return Array.from(new Set((values || [])
@@ -339,7 +346,12 @@ export default function Contracts(props) {
 
     const paymentBaseTotal = useMemo(() => {
         return payments.reduce((sum, payment) => {
-            if (editingPaymentId && Number(payment.id) === Number(editingPaymentId)) {
+            if (editingPaymentId && String(payment.id) === String(editingPaymentId)) {
+                return sum;
+            }
+            const isPending = payment.row_type === 'pending_request';
+            const isRecord = payment.row_type === 'record' || !payment.row_type;
+            if (!isPending && !isRecord) {
                 return sum;
             }
             return sum + parseNumberInput(payment.amount);
@@ -393,6 +405,15 @@ export default function Contracts(props) {
             setCareStaffUsers(res.data?.data || []);
         } catch {
             setCareStaffUsers([]);
+        }
+    };
+
+    const fetchContractStaffFilterOptions = async () => {
+        try {
+            const rows = await fetchStaffFilterOptions('contracts');
+            setContractStaffFilterUsers(rows);
+        } catch {
+            setContractStaffFilterUsers([]);
         }
     };
 
@@ -456,6 +477,7 @@ export default function Contracts(props) {
         fetchProducts();
         fetchCollectors();
         fetchCareStaffUsers();
+        fetchContractStaffFilterOptions();
         fetchContracts();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -599,6 +621,12 @@ export default function Contracts(props) {
         setItems([]);
         setPayments([]);
         setCosts([]);
+        setEditingFinancePerms({
+            can_manage_finance: false,
+            can_review_finance_request: false,
+            can_submit_finance_request: true,
+        });
+        setReviewingRequestId(null);
     };
 
     const startEdit = async (c) => {
@@ -643,8 +671,13 @@ export default function Contracts(props) {
                     note: item.note || '',
                 }))
             );
-            setPayments(detail.payments || []);
-            setCosts(detail.costs || []);
+            setPayments(detail.payments_display || detail.payments || []);
+            setCosts(detail.costs_display || detail.costs || []);
+            setEditingFinancePerms({
+                can_manage_finance: readBoolean(detail.can_manage_finance) === true,
+                can_review_finance_request: readBoolean(detail.can_review_finance_request) === true,
+                can_submit_finance_request: readBoolean(detail.can_submit_finance_request) !== false,
+            });
             setShowForm(true);
         } catch (e) {
             setEditingId(null);
@@ -703,16 +736,21 @@ export default function Contracts(props) {
         try {
             const res = await axios.get(`/api/v1/contracts/${editingId}`);
             const detail = res.data || {};
-            setPayments(detail.payments || []);
-            setCosts(detail.costs || []);
+            setPayments(detail.payments_display || detail.payments || []);
+            setCosts(detail.costs_display || detail.costs || []);
+            setEditingFinancePerms({
+                can_manage_finance: readBoolean(detail.can_manage_finance) === true,
+                can_review_finance_request: readBoolean(detail.can_review_finance_request) === true,
+                can_submit_finance_request: readBoolean(detail.can_submit_finance_request) !== false,
+            });
         } catch {
             // ignore
         }
     };
 
     const openPaymentCreate = () => {
-        if (!canFinance) {
-            toast.error('Chỉ Admin/Kế toán được quản lý thanh toán.');
+        if (!editingFinancePerms.can_submit_finance_request) {
+            toast.error('Bạn không có quyền gửi phiếu thanh toán cho hợp đồng này.');
             return;
         }
         if (!editingId) {
@@ -725,6 +763,10 @@ export default function Contracts(props) {
     };
 
     const editPayment = (payment) => {
+        if (payment.row_type === 'pending_request') {
+            toast.error('Không sửa trực tiếp phiếu đang chờ duyệt.');
+            return;
+        }
         setEditingPaymentId(payment.id);
         setPaymentForm({
             amount: payment.amount ?? '',
@@ -755,8 +797,12 @@ export default function Contracts(props) {
                 await axios.put(`/api/v1/contracts/${editingId}/payments/${editingPaymentId}`, payload);
                 toast.success('Đã cập nhật thanh toán.');
             } else {
-                await axios.post(`/api/v1/contracts/${editingId}/payments`, payload);
-                toast.success('Đã thêm thanh toán.');
+                const payRes = await axios.post(`/api/v1/contracts/${editingId}/payments`, payload);
+                const payReq = payRes?.data?.requires_approval === true;
+                toast.success(
+                    payRes?.data?.message
+                    || (payReq ? 'Đã gửi phiếu duyệt thanh toán.' : 'Đã thêm thanh toán.'),
+                );
             }
             setShowPaymentForm(false);
             setEditingPaymentId(null);
@@ -783,8 +829,8 @@ export default function Contracts(props) {
     };
 
     const openCostCreate = () => {
-        if (!canFinance) {
-            toast.error('Chỉ Admin/Kế toán được quản lý chi phí.');
+        if (!editingFinancePerms.can_submit_finance_request) {
+            toast.error('Bạn không có quyền gửi phiếu chi phí cho hợp đồng này.');
             return;
         }
         if (!editingId) {
@@ -797,6 +843,10 @@ export default function Contracts(props) {
     };
 
     const editCost = (cost) => {
+        if (cost.row_type === 'pending_request') {
+            toast.error('Không sửa trực tiếp phiếu đang chờ duyệt.');
+            return;
+        }
         setEditingCostId(cost.id);
         setCostForm({
             amount: cost.amount ?? '',
@@ -823,8 +873,12 @@ export default function Contracts(props) {
                 await axios.put(`/api/v1/contracts/${editingId}/costs/${editingCostId}`, payload);
                 toast.success('Đã cập nhật chi phí.');
             } else {
-                await axios.post(`/api/v1/contracts/${editingId}/costs`, payload);
-                toast.success('Đã thêm chi phí.');
+                const costRes = await axios.post(`/api/v1/contracts/${editingId}/costs`, payload);
+                const costReq = costRes?.data?.requires_approval === true;
+                toast.success(
+                    costRes?.data?.message
+                    || (costReq ? 'Đã gửi phiếu duyệt chi phí.' : 'Đã thêm chi phí.'),
+                );
             }
             setShowCostForm(false);
             setEditingCostId(null);
@@ -847,6 +901,45 @@ export default function Contracts(props) {
             await fetchContracts(filters);
         } catch (e) {
             toast.error(e?.response?.data?.message || 'Xóa chi phí thất bại.');
+        }
+    };
+
+    const approveFinanceRequest = async (requestId) => {
+        if (!editingId || !requestId) return;
+        if (!confirm('Duyệt ghi nhận thu/chi này?')) return;
+        setReviewingRequestId(requestId);
+        try {
+            const response = await axios.post(`/api/v1/contracts/${editingId}/finance-requests/${requestId}/approve`, {});
+            toast.success(response?.data?.message || 'Đã duyệt phiếu tài chính.');
+            await refreshContractExtras();
+            await fetchContracts(filters);
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Không thể duyệt phiếu tài chính.');
+        } finally {
+            setReviewingRequestId(null);
+        }
+    };
+
+    const rejectFinanceRequest = async (requestId) => {
+        if (!editingId || !requestId) return;
+        const reason = window.prompt('Lý do từ chối phiếu:');
+        if (reason === null) return;
+        if (!String(reason).trim()) {
+            toast.error('Vui lòng nhập lý do từ chối.');
+            return;
+        }
+        setReviewingRequestId(requestId);
+        try {
+            const response = await axios.post(`/api/v1/contracts/${editingId}/finance-requests/${requestId}/reject`, {
+                review_note: String(reason).trim(),
+            });
+            toast.success(response?.data?.message || 'Đã từ chối phiếu tài chính.');
+            await refreshContractExtras();
+            await fetchContracts(filters);
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Không thể từ chối phiếu tài chính.');
+        } finally {
+            setReviewingRequestId(null);
         }
     };
 
@@ -1654,7 +1747,7 @@ export default function Contracts(props) {
                                 <h4 className="text-sm font-semibold text-slate-900">Thanh toán hợp đồng</h4>
                                 <p className="text-xs text-text-muted">Số lần thanh toán: {form.payment_times || 1}</p>
                             </div>
-                            {canFinance && (
+                            {editingFinancePerms.can_submit_finance_request && (
                                 <button type="button" className="text-xs font-semibold text-primary" onClick={openPaymentCreate}>
                                     + Thêm thanh toán
                                 </button>
@@ -1674,12 +1767,43 @@ export default function Contracts(props) {
                                 <tbody>
                                     {payments.map((p) => (
                                         <tr key={p.id} className="border-b border-slate-100">
-                                            <td className="py-2">{p.paid_at ? formatVietnamDate(p.paid_at) : '—'}</td>
+                                            <td className="py-2">{p.paid_at ? formatDateDisplay(p.paid_at) : '—'}</td>
                                             <td className="py-2">{formatCurrency(p.amount || 0)}</td>
                                             <td className="py-2">{p.method || '—'}</td>
                                             <td className="py-2">{p.note || '—'}</td>
                                             <td className="py-2 text-right">
-                                                {canFinance ? (
+                                                {p.row_type === 'pending_request' ? (
+                                                    <div className="inline-flex flex-wrap items-center justify-end gap-2">
+                                                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                                                            Cần duyệt
+                                                        </span>
+                                                        {p.submitter?.name ? (
+                                                            <span className="max-w-[120px] truncate text-[11px] text-text-muted" title={p.submitter.name}>
+                                                                {p.submitter.name}
+                                                            </span>
+                                                        ) : null}
+                                                        {editingFinancePerms.can_review_finance_request ? (
+                                                            <>
+                                                                <button
+                                                                    type="button"
+                                                                    className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
+                                                                    onClick={() => approveFinanceRequest(p.finance_request_id)}
+                                                                    disabled={reviewingRequestId === p.finance_request_id}
+                                                                >
+                                                                    Duyệt
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-60"
+                                                                    onClick={() => rejectFinanceRequest(p.finance_request_id)}
+                                                                    disabled={reviewingRequestId === p.finance_request_id}
+                                                                >
+                                                                    Từ chối
+                                                                </button>
+                                                            </>
+                                                        ) : null}
+                                                    </div>
+                                                ) : editingFinancePerms.can_manage_finance ? (
                                                     <div className="inline-flex items-center justify-end gap-2">
                                                         <button
                                                             type="button"
@@ -1724,7 +1848,7 @@ export default function Contracts(props) {
                                 <h4 className="text-sm font-semibold text-slate-900">Chi phí hợp đồng</h4>
                                 <p className="text-xs text-text-muted">Tổng chi phí: {formatCurrency(costs.reduce((sum, c) => sum + parseNumberInput(c.amount), 0))} VNĐ</p>
                             </div>
-                            {canFinance && (
+                            {editingFinancePerms.can_submit_finance_request && (
                                 <button type="button" className="text-xs font-semibold text-primary" onClick={openCostCreate}>
                                     + Thêm chi phí
                                 </button>
@@ -1744,12 +1868,43 @@ export default function Contracts(props) {
                                 <tbody>
                                     {costs.map((c) => (
                                         <tr key={c.id} className="border-b border-slate-100">
-                                            <td className="py-2">{c.cost_date ? formatVietnamDate(c.cost_date) : '—'}</td>
+                                            <td className="py-2">{c.cost_date ? formatDateDisplay(c.cost_date) : '—'}</td>
                                             <td className="py-2">{c.cost_type || '—'}</td>
                                             <td className="py-2">{formatCurrency(c.amount || 0)}</td>
                                             <td className="py-2">{c.note || '—'}</td>
                                             <td className="py-2 text-right">
-                                                {canFinance ? (
+                                                {c.row_type === 'pending_request' ? (
+                                                    <div className="inline-flex flex-wrap items-center justify-end gap-2">
+                                                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                                                            Cần duyệt
+                                                        </span>
+                                                        {c.submitter?.name ? (
+                                                            <span className="max-w-[120px] truncate text-[11px] text-text-muted" title={c.submitter.name}>
+                                                                {c.submitter.name}
+                                                            </span>
+                                                        ) : null}
+                                                        {editingFinancePerms.can_review_finance_request ? (
+                                                            <>
+                                                                <button
+                                                                    type="button"
+                                                                    className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
+                                                                    onClick={() => approveFinanceRequest(c.finance_request_id)}
+                                                                    disabled={reviewingRequestId === c.finance_request_id}
+                                                                >
+                                                                    Duyệt
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-60"
+                                                                    onClick={() => rejectFinanceRequest(c.finance_request_id)}
+                                                                    disabled={reviewingRequestId === c.finance_request_id}
+                                                                >
+                                                                    Từ chối
+                                                                </button>
+                                                            </>
+                                                        ) : null}
+                                                    </div>
+                                                ) : editingFinancePerms.can_manage_finance ? (
                                                     <div className="inline-flex items-center justify-end gap-2">
                                                         <button
                                                             type="button"

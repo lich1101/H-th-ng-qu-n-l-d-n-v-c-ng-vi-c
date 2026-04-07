@@ -374,26 +374,26 @@ class ContractController extends Controller
             $this->syncClientRevenue($contract->client);
         }
 
-        if (($contract->approval_status ?? '') === 'pending') {
-            $accountantIds = \App\Support\ContractApproverIds::query(
-                (int) $request->user()->id
-            );
-            if (! empty($accountantIds)) {
-                try {
-                    app(NotificationService::class)->notifyUsersAfterResponse(
-                        $accountantIds,
-                        'Hợp đồng mới cần duyệt',
-                        'Hợp đồng: '.$contract->title,
-                        [
-                            'type' => 'contract_approval',
-                            'category' => 'contract_approval',
-                            'contract_id' => $contract->id,
-                            'approval_target' => 'contract',
-                        ]
-                    );
-                } catch (\Throwable $e) {
-                    report($e);
-                }
+        $approverIds = \App\Support\ContractApproverIds::query((int) $request->user()->id);
+        if (! empty($approverIds)) {
+            try {
+                $pending = ($contract->approval_status ?? '') === 'pending';
+                $actorName = (string) ($request->user()->name ?? '');
+                app(NotificationService::class)->notifyUsersAfterResponse(
+                    $approverIds,
+                    $pending ? 'Hợp đồng mới cần duyệt' : 'Hợp đồng mới đã được tạo (tự duyệt)',
+                    $pending
+                        ? 'Hợp đồng: '.$contract->title
+                        : ($actorName !== '' ? $actorName.' vừa tạo và duyệt hợp đồng: ' : 'Hợp đồng: ').$contract->title,
+                    [
+                        'type' => 'contract_approval',
+                        'category' => 'contract_approval',
+                        'contract_id' => $contract->id,
+                        'approval_target' => 'contract',
+                    ]
+                );
+            } catch (\Throwable $e) {
+                report($e);
             }
         }
 
@@ -407,6 +407,7 @@ class ContractController extends Controller
         if (! $this->canManageContract($request->user(), $contract)) {
             return response()->json(['message' => 'Không có quyền cập nhật hợp đồng.'], 403);
         }
+        $wasApproved = ($contract->approval_status ?? '') === 'approved';
         $validated = $request->validate($this->rules($contract->id, true));
         $careStaffIds = $this->extractCareStaffIds($validated);
         $client = Client::query()->find((int) $validated['client_id']);
@@ -438,14 +439,34 @@ class ContractController extends Controller
             }
         }
 
-        $contract->update($validated);
-        $this->syncCareStaff($contract, $careStaffIds, $request->user());
+        try {
+            DB::transaction(function () use ($request, $contract, $validated, $careStaffIds, $items, $wasApproved) {
+                $contract->update($validated);
+                $this->syncCareStaff($contract, $careStaffIds, $request->user());
 
-        if (! empty($items)) {
-            $this->syncItems($contract, $items);
+                if (! empty($items)) {
+                    $this->syncItems($contract, $items);
+                }
+
+                $contract->refreshFinancials();
+                $contract->refresh();
+
+                if (
+                    ! $wasApproved
+                    && ($contract->approval_status ?? '') === 'approved'
+                    && $this->canApprove($request->user())
+                ) {
+                    app(ContractFinanceRequestService::class)->approveAllPendingForContract($contract, $request->user());
+                }
+            });
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $first = collect($e->errors())->flatten()->first();
+
+            return response()->json([
+                'message' => $first ?: 'Không thể duyệt phiếu tài chính kèm theo hợp đồng.',
+                'errors' => $e->errors(),
+            ], 422);
         }
-
-        $contract->refreshFinancials();
 
         $contract->refresh();
         if ($contract->client) {
@@ -584,9 +605,10 @@ class ContractController extends Controller
         return $rules;
     }
 
+    /** Chỉ admin / administrator / kế toán được duyệt hợp đồng (trưởng phòng và nhân viên không). */
     private function canApprove($user): bool
     {
-        return $user && in_array($user->role, ['admin', 'ke_toan'], true);
+        return $user && in_array($user->role, ['admin', 'administrator', 'ke_toan'], true);
     }
 
     private function resolveApproval(Request $request): array

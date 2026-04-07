@@ -29,6 +29,41 @@ class ClientPhoneDuplicateService
         return $digits;
     }
 
+    /**
+     * Giá trị lưu DB: chỉ chữ số (đã +84→0). null nếu rỗng hoặc không hợp lệ.
+     */
+    public function normalizeForStorage(?string $raw): ?string
+    {
+        $n = $this->normalizeDigits($raw);
+
+        return $n === '' ? null : $n;
+    }
+
+    /**
+     * Thêm OR: cột phone khớp chuỗi số sau khi bỏ ký tự không phải số (cùng logic trùng SĐT).
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder|\Illuminate\Database\Query\Builder  $query
+     */
+    public function orWherePhoneDigitsLikeSearch($query, string $rawSearch): void
+    {
+        $digitSearch = $this->normalizeDigits($rawSearch);
+        if ($digitSearch === '') {
+            return;
+        }
+        $driver = $query->getConnection()->getDriverName();
+        if ($driver === 'sqlite') {
+            $query->orWhereRaw(
+                "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(IFNULL(phone,''), ' ', ''), '-', ''), '.', ''), '(', ''), ')', '') LIKE ?",
+                ['%' . $digitSearch . '%']
+            );
+        } else {
+            $query->orWhereRaw(
+                "REGEXP_REPLACE(COALESCE(phone,''), '[^0-9]', '') LIKE ?",
+                ['%' . $digitSearch . '%']
+            );
+        }
+    }
+
     public function findExistingByNormalizedPhone(string $normalized, ?int $exceptClientId = null): ?Client
     {
         if ($normalized === '') {

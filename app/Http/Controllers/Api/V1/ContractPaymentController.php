@@ -46,33 +46,26 @@ class ContractPaymentController extends Controller
             return response()->json(['message' => $error], 422);
         }
 
-        if (! $this->canManage($request->user())) {
-            $financeRequest = ContractFinanceRequest::query()->create([
-                'contract_id' => $contract->id,
-                'request_type' => 'payment',
-                'request_action' => 'create',
-                'amount' => (float) $validated['amount'],
-                'transaction_date' => $validated['paid_at'] ?? null,
-                'method' => $validated['method'] ?? null,
-                'note' => $validated['note'] ?? null,
-                'status' => 'pending',
-                'submitted_by' => $request->user()->id,
-            ]);
+        // Luôn tạo phiếu chờ duyệt (kể cả admin/kế toán): ghi nhận vào hợp đồng chỉ sau khi duyệt.
+        $financeRequest = ContractFinanceRequest::query()->create([
+            'contract_id' => $contract->id,
+            'request_type' => 'payment',
+            'request_action' => 'create',
+            'amount' => (float) $validated['amount'],
+            'transaction_date' => $validated['paid_at'] ?? null,
+            'method' => $validated['method'] ?? null,
+            'note' => $validated['note'] ?? null,
+            'status' => 'pending',
+            'submitted_by' => $request->user()->id,
+        ]);
 
-            $this->notifyFinanceApprovers($contract, $request->user(), $financeRequest);
+        $this->notifyFinanceApprovers($contract, $request->user(), $financeRequest);
 
-            return response()->json([
-                'message' => 'Đã gửi phiếu duyệt thanh toán. Admin/Kế toán cần duyệt trước khi ghi nhận vào hợp đồng.',
-                'requires_approval' => true,
-                'request' => $financeRequest,
-            ], 202);
-        }
-
-        $payment = $contract->payments()->create($validated);
-        $contract->refreshFinancials();
-        $this->syncClientFinancials($contract);
-
-        return response()->json($payment, 201);
+        return response()->json([
+            'message' => 'Đã gửi phiếu duyệt thanh toán. Admin/Kế toán cần duyệt trước khi ghi nhận vào hợp đồng.',
+            'requires_approval' => true,
+            'request' => $financeRequest,
+        ], 202);
     }
 
     public function update(Request $request, Contract $contract, ContractPayment $payment): JsonResponse

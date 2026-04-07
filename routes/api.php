@@ -39,6 +39,7 @@ use App\Http\Controllers\Api\V1\ImportController;
 use App\Http\Controllers\Api\V1\ProfileController;
 use App\Http\Controllers\Api\V1\PublicMobileController;
 use App\Http\Controllers\Api\V1\ReportController;
+use App\Http\Controllers\Api\V1\StaffFilterOptionsController;
 use App\Http\Controllers\Api\V1\ServiceWorkflowController;
 use App\Http\Controllers\Api\V1\SystemMetaController;
 use App\Http\Controllers\Api\V1\SystemStatusController;
@@ -262,6 +263,8 @@ Route::prefix('v1')->group(function () {
             ->middleware('role:admin');
         Route::get('/users/lookup', [UserLookupController::class, 'index'])
             ->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
+        Route::get('/staff-filter-options', [StaffFilterOptionsController::class, 'index'])
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
         Route::get('/users/accounts/stats', [UserAccountController::class, 'stats'])
             ->middleware('role:admin');
         Route::post('/users/accounts', [UserAccountController::class, 'store'])
@@ -315,42 +318,42 @@ Route::prefix('v1')->group(function () {
             ->middleware('role:admin');
 
         Route::get('/contracts', [ContractController::class, 'index'])
-            ->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
         Route::get('/contracts/{contract}', [ContractController::class, 'show'])
-            ->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
         Route::post('/contracts', [ContractController::class, 'store'])
-            ->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
         Route::put('/contracts/{contract}', [ContractController::class, 'update'])
-            ->middleware('role:admin,quan_ly,ke_toan');
+            ->middleware('role:admin,administrator,quan_ly,ke_toan');
         Route::delete('/contracts/{contract}', [ContractController::class, 'destroy'])
-            ->middleware('role:admin,quan_ly,ke_toan');
+            ->middleware('role:admin,administrator,quan_ly,ke_toan');
         Route::post('/contracts/{contract}/care-notes', [ContractController::class, 'storeCareNote'])
-            ->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
         Route::post('/contracts/{contract}/approve', [ContractController::class, 'approve'])
-            ->middleware('role:admin,ke_toan');
+            ->middleware('role:admin,administrator,ke_toan');
         Route::get('/contracts/{contract}/payments', [ContractPaymentController::class, 'index'])
-            ->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
         Route::post('/contracts/{contract}/payments', [ContractPaymentController::class, 'store'])
-            ->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
         Route::put('/contracts/{contract}/payments/{payment}', [ContractPaymentController::class, 'update'])
-            ->middleware('role:admin,ke_toan');
+            ->middleware('role:admin,administrator,ke_toan');
         Route::delete('/contracts/{contract}/payments/{payment}', [ContractPaymentController::class, 'destroy'])
-            ->middleware('role:admin,ke_toan');
+            ->middleware('role:admin,administrator,ke_toan');
 
         Route::get('/contracts/{contract}/costs', [ContractCostController::class, 'index'])
-            ->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
         Route::post('/contracts/{contract}/costs', [ContractCostController::class, 'store'])
-            ->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
         Route::put('/contracts/{contract}/costs/{cost}', [ContractCostController::class, 'update'])
-            ->middleware('role:admin,ke_toan');
+            ->middleware('role:admin,administrator,ke_toan');
         Route::delete('/contracts/{contract}/costs/{cost}', [ContractCostController::class, 'destroy'])
-            ->middleware('role:admin,ke_toan');
+            ->middleware('role:admin,administrator,ke_toan');
         Route::get('/contracts/{contract}/finance-requests', [ContractFinanceRequestController::class, 'index'])
-            ->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
         Route::post('/contracts/{contract}/finance-requests/{financeRequest}/approve', [ContractFinanceRequestController::class, 'approve'])
-            ->middleware('role:admin,ke_toan');
+            ->middleware('role:admin,administrator,ke_toan');
         Route::post('/contracts/{contract}/finance-requests/{financeRequest}/reject', [ContractFinanceRequestController::class, 'reject'])
-            ->middleware('role:admin,ke_toan');
+            ->middleware('role:admin,administrator,ke_toan');
 
         Route::get('/opportunities', [OpportunityController::class, 'index'])
             ->middleware('role:admin,quan_ly,nhan_vien');

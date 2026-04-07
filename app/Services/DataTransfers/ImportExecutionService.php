@@ -14,6 +14,7 @@ use App\Models\Project;
 use App\Models\RevenueTier;
 use App\Models\Task;
 use App\Models\User;
+use App\Services\ClientPhoneDuplicateService;
 use App\Services\ProjectProgressService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -1405,16 +1406,7 @@ class ImportExecutionService
 
     private function normalizePhoneForStorage(?string $phone): ?string
     {
-        if (! $phone) {
-            return null;
-        }
-
-        $normalized = trim((string) $phone);
-        if ($normalized === '') {
-            return null;
-        }
-
-        return $normalized;
+        return app(ClientPhoneDuplicateService::class)->normalizeForStorage($phone);
     }
 
     private function hasText($value): bool

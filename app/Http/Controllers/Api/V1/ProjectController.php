@@ -10,6 +10,7 @@ use App\Models\Contract;
 use App\Models\Project;
 use App\Models\ProjectMeeting;
 use App\Models\User;
+use App\Services\ClientPhoneDuplicateService;
 use App\Services\NotificationService;
 use App\Services\ProjectGscSyncService;
 use App\Services\WorkflowTopicApplierService;
@@ -43,7 +44,8 @@ class ProjectController extends Controller
 
         if ($request->filled('search')) {
             $search = trim((string) $request->input('search'));
-            $query->where(function ($builder) use ($search) {
+            $phoneSvc = app(ClientPhoneDuplicateService::class);
+            $query->where(function ($builder) use ($search, $phoneSvc) {
                 $builder->where('name', 'like', "%{$search}%")
                     ->orWhere('code', 'like', "%{$search}%")
                     ->orWhere('status', 'like', "%{$search}%")
@@ -57,11 +59,12 @@ class ProjectController extends Controller
                     ->orWhere('handover_status', 'like', "%{$search}%")
                     ->orWhere('budget', 'like', "%{$search}%")
                     ->orWhere('progress_percent', 'like', "%{$search}%")
-                    ->orWhereHas('client', function ($clientQuery) use ($search) {
+                    ->orWhereHas('client', function ($clientQuery) use ($search, $phoneSvc) {
                         $clientQuery->where('name', 'like', "%{$search}%")
                             ->orWhere('company', 'like', "%{$search}%")
                             ->orWhere('email', 'like', "%{$search}%")
                             ->orWhere('phone', 'like', "%{$search}%");
+                        $phoneSvc->orWherePhoneDigitsLikeSearch($clientQuery, $search);
                     })
                     ->orWhereHas('owner', function ($ownerQuery) use ($search) {
                         $ownerQuery->where('name', 'like', "%{$search}%")

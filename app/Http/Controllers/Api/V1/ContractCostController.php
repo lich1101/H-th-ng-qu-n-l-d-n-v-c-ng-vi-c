@@ -42,33 +42,25 @@ class ContractCostController extends Controller
         ]);
         $validated['created_by'] = $request->user()->id;
 
-        if (! $this->canManage($request->user())) {
-            $financeRequest = ContractFinanceRequest::query()->create([
-                'contract_id' => $contract->id,
-                'request_type' => 'cost',
-                'request_action' => 'create',
-                'amount' => (float) $validated['amount'],
-                'transaction_date' => $validated['cost_date'] ?? null,
-                'cost_type' => $validated['cost_type'] ?? null,
-                'note' => $validated['note'] ?? null,
-                'status' => 'pending',
-                'submitted_by' => $request->user()->id,
-            ]);
+        $financeRequest = ContractFinanceRequest::query()->create([
+            'contract_id' => $contract->id,
+            'request_type' => 'cost',
+            'request_action' => 'create',
+            'amount' => (float) $validated['amount'],
+            'transaction_date' => $validated['cost_date'] ?? null,
+            'cost_type' => $validated['cost_type'] ?? null,
+            'note' => $validated['note'] ?? null,
+            'status' => 'pending',
+            'submitted_by' => $request->user()->id,
+        ]);
 
-            $this->notifyFinanceApprovers($contract, $request->user(), $financeRequest);
+        $this->notifyFinanceApprovers($contract, $request->user(), $financeRequest);
 
-            return response()->json([
-                'message' => 'Đã gửi phiếu duyệt chi phí. Admin/Kế toán cần duyệt trước khi ghi nhận vào hợp đồng.',
-                'requires_approval' => true,
-                'request' => $financeRequest,
-            ], 202);
-        }
-
-        $cost = $contract->costs()->create($validated);
-        $contract->refreshFinancials();
-        $this->syncClientFinancials($contract);
-
-        return response()->json($cost, 201);
+        return response()->json([
+            'message' => 'Đã gửi phiếu duyệt chi phí. Admin/Kế toán cần duyệt trước khi ghi nhận vào hợp đồng.',
+            'requires_approval' => true,
+            'request' => $financeRequest,
+        ], 202);
     }
 
     public function update(Request $request, Contract $contract, ContractCost $cost): JsonResponse

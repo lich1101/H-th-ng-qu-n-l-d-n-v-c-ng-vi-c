@@ -99,9 +99,9 @@ class ContractFinanceRequestService
             ->get();
 
         $count = 0;
-        foreach ($pending as $request) {
+        foreach ($pending as $financeRequest) {
             $contract->refresh();
-            $this->approve($contract, $request, $reviewer, null);
+            $this->approve($contract, $financeRequest, $reviewer, null);
             $count++;
         }
 

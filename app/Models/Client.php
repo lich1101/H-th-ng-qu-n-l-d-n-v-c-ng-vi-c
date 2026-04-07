@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\ClientPhoneDuplicateService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -46,6 +47,17 @@ class Client extends Model
         'has_purchased' => 'boolean',
         'comments_history_json' => 'array',
     ];
+
+    public function setPhoneAttribute($value): void
+    {
+        if ($value === null || $value === '') {
+            $this->attributes['phone'] = null;
+
+            return;
+        }
+        $n = app(ClientPhoneDuplicateService::class)->normalizeDigits((string) $value);
+        $this->attributes['phone'] = $n === '' ? null : $n;
+    }
 
     public function leadType()
     {

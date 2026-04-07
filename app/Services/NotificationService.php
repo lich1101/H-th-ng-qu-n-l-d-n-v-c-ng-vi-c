@@ -481,7 +481,9 @@ class NotificationService
             'crm_notification',
             'lead_notification',
         ];
-        if (str_starts_with($type, 'crm_') || in_array($type, $crmTypes, true)) {
+        if (str_starts_with($type, 'crm_')
+            || str_starts_with($type, 'contract_finance')
+            || in_array($type, $crmTypes, true)) {
             return 'crm_realtime';
         }
 

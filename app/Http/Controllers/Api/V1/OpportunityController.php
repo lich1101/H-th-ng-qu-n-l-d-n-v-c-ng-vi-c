@@ -62,16 +62,14 @@ class OpportunityController extends Controller
             if (! $canUseStaffFilter) {
                 $query->whereRaw('1 = 0');
             } else {
+                // Khớp cột "Phụ trách" trên UI: assignee.name, hoặc creator.name khi chưa gán phụ trách.
+                // Không lọc theo nhân sự trên hồ sơ khách (sales_owner / care / assigned_staff) để tránh hiển thị sai người phụ trách cơ hội.
                 $query->where(function ($builder) use ($staffFilterIds) {
-                    $builder->whereIn('assigned_to', $staffFilterIds)
-                        ->orWhereIn('created_by', $staffFilterIds)
-                        ->orWhereHas('client', function ($clientQuery) use ($staffFilterIds) {
-                            $clientQuery->whereIn('assigned_staff_id', $staffFilterIds)
-                                ->orWhereIn('sales_owner_id', $staffFilterIds)
-                                ->orWhereHas('careStaffUsers', function ($careQuery) use ($staffFilterIds) {
-                                    $careQuery->whereIn('users.id', $staffFilterIds);
-                                });
-                        });
+                    $builder->where(function ($q) use ($staffFilterIds) {
+                        $q->whereNotNull('assigned_to')->whereIn('assigned_to', $staffFilterIds);
+                    })->orWhere(function ($q) use ($staffFilterIds) {
+                        $q->whereNull('assigned_to')->whereIn('created_by', $staffFilterIds);
+                    });
                 });
             }
         }

@@ -15,6 +15,7 @@ import ClientSelect from '@/Components/ClientSelect';
 import TagMultiSelect from '@/Components/TagMultiSelect';
 import { useToast } from '@/Contexts/ToastContext';
 import { formatVietnamDate, toDateInputValue } from '@/lib/vietnamTime';
+import { fetchStaffFilterOptions } from '@/lib/staffFilterOptions';
 
 const toColorStyle = (hex) => {
     const color = hex || '#64748B';
@@ -83,6 +84,7 @@ export default function Opportunities(props) {
     const [statuses, setStatuses] = useState([]);
     const [clients, setClients] = useState([]);
     const [users, setUsers] = useState([]);
+    const [opportunityStaffFilterUsers, setOpportunityStaffFilterUsers] = useState([]);
     const [products, setProducts] = useState([]);
 
     const [loading, setLoading] = useState(true);
@@ -110,13 +112,14 @@ export default function Opportunities(props) {
         }, {});
     }, [users]);
 
-    const staffFilterOptions = useMemo(() => (
-        users.map((user) => ({
+    const staffFilterOptions = useMemo(() => {
+        const rows = opportunityStaffFilterUsers.length > 0 ? opportunityStaffFilterUsers : users;
+        return rows.map((user) => ({
             id: Number(user.id || 0),
             label: user.name || `Nhân sự #${user.id}`,
             meta: user.email || '',
-        })).filter((user) => user.id > 0)
-    ), [users]);
+        })).filter((user) => user.id > 0);
+    }, [opportunityStaffFilterUsers, users]);
 
     const defaultStatusCode = useMemo(() => {
         return statuses.length > 0 ? String(statuses[0].code) : '';
@@ -151,7 +154,7 @@ export default function Opportunities(props) {
 
     const fetchOptions = async () => {
         try {
-            const [statusRes, clientRes, userRes, productRes] = await Promise.all([
+            const [statusRes, clientRes, userRes, productRes, staffFilterRows] = await Promise.all([
                 axios.get('/api/v1/opportunity-statuses'),
                 axios.get('/api/v1/crm/clients', {
                     params: {
@@ -170,12 +173,14 @@ export default function Opportunities(props) {
                         page: 1,
                     },
                 }),
+                fetchStaffFilterOptions('opportunities'),
             ]);
 
             const nextStatuses = statusRes.data || [];
             setStatuses(nextStatuses);
             setClients(clientRes.data?.data || []);
             setUsers(userRes.data?.data || []);
+            setOpportunityStaffFilterUsers(staffFilterRows);
             setProducts(productRes.data?.data || []);
 
             setForm((prev) => {

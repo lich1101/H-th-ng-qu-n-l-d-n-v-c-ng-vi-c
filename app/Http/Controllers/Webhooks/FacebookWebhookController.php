@@ -235,33 +235,15 @@ class FacebookWebhookController extends Controller
         $rawPhones = $matches[0] ?? [];
         $phones = [];
 
+        $phoneSvc = app(ClientPhoneDuplicateService::class);
         foreach ($rawPhones as $raw) {
-            $normalized = $this->normalizePhone($raw);
+            $normalized = $phoneSvc->normalizeDigits($raw);
             if ($normalized !== '') {
                 $phones[] = $normalized;
             }
         }
 
         return array_values(array_unique($phones));
-    }
-
-    private function normalizePhone(string $raw): string
-    {
-        $digits = preg_replace('/\D+/', '', $raw ?? '');
-        if ($digits === '') {
-            return '';
-        }
-
-        if (str_starts_with($digits, '84') && strlen($digits) >= 11) {
-            $digits = '0' . substr($digits, 2);
-        }
-
-        $length = strlen($digits);
-        if ($length < 9 || $length > 11) {
-            return '';
-        }
-
-        return $digits;
     }
 
 }
