@@ -327,6 +327,7 @@ export default function Authenticated({ auth, header, children }) {
                 label: 'CRM',
                 items: [
                     { label: 'Khách hàng', icon: 'users', routeName: 'crm.index', href: route('crm.index'), roles: ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'] },
+                    { label: 'Phiếu chuyển phụ trách', icon: 'handover', routeName: 'crm.transfers.index', href: route('crm.transfers.index'), roles: ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'] },
                     { label: 'Cơ hội', icon: 'trend', routeName: 'opportunities.index', href: route('opportunities.index'), roles: ['admin', 'quan_ly', 'nhan_vien'] },
                     { label: 'Form tư vấn', icon: 'form', routeName: 'lead-forms.index', href: route('lead-forms.index'), roles: ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'] },
                     { label: 'Facebook Pages', icon: 'facebook', routeName: 'facebook.pages', href: route('facebook.pages'), roles: ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'] },

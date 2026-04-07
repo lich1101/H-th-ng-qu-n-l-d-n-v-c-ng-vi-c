@@ -433,7 +433,8 @@ class ContractController extends Controller
                         : ($actorName !== '' ? $actorName.' vừa tạo và duyệt hợp đồng: ' : 'Hợp đồng: ').$contract->title,
                     [
                         'type' => 'contract_approval',
-                        'category' => 'system',
+                        'category' => 'crm_realtime',
+                        'force_delivery' => true,
                         'contract_id' => $contract->id,
                         'approval_target' => 'contract',
                     ]
@@ -1315,7 +1316,8 @@ class ContractController extends Controller
                 ($actor->name ?? '').' vừa gửi yêu cầu '.($isPayment ? 'thêm thanh toán' : 'thêm chi phí').' cho hợp đồng: '.$contract->title,
                 [
                     'type' => $isPayment ? 'contract_finance_request_pending_payment' : 'contract_finance_request_pending_cost',
-                    'category' => 'system',
+                    'category' => 'crm_realtime',
+                    'force_delivery' => true,
                     'contract_id' => (int) $contract->id,
                     'contract_finance_request_id' => (int) $financeRequest->id,
                     'request_type' => (string) $financeRequest->request_type,

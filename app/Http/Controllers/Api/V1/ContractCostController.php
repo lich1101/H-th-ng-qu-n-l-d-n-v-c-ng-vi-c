@@ -201,7 +201,8 @@ class ContractCostController extends Controller
                 $actor->name.' vừa gửi yêu cầu thêm chi phí cho hợp đồng: '.$contract->title,
                 [
                     'type' => 'contract_finance_request_pending_cost',
-                    'category' => 'system',
+                    'category' => 'crm_realtime',
+                    'force_delivery' => true,
                     'contract_id' => (int) $contract->id,
                     'contract_finance_request_id' => (int) $financeRequest->id,
                     'request_type' => 'cost',

@@ -451,6 +451,10 @@ class NotificationService
             return 'user_notifications_disabled';
         }
 
+        if ($this->shouldBypassCategoryPreferences($data)) {
+            return null;
+        }
+
         $category = $this->resolveCategory($data);
         if ($category === 'crm_realtime' && ! ($preference['category_crm_realtime_enabled'] ?? true)) {
             return 'user_crm_realtime_disabled';
@@ -460,6 +464,23 @@ class NotificationService
         }
 
         return null;
+    }
+
+    private function shouldBypassCategoryPreferences(array $data): bool
+    {
+        if (! array_key_exists('force_delivery', $data)) {
+            return false;
+        }
+
+        $value = $data['force_delivery'];
+        if (is_bool($value)) {
+            return $value;
+        }
+        if (is_numeric($value)) {
+            return (int) $value !== 0;
+        }
+
+        return in_array(strtolower(trim((string) $value)), ['1', 'true', 'yes', 'on'], true);
     }
 
     private function resolveCategory(array $data): string

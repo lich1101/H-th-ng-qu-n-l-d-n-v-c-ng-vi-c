@@ -389,7 +389,8 @@ class ClientStaffTransferService
 
         return [
             'type' => 'staff_transfer_request',
-            'category' => 'system',
+            'category' => 'crm_realtime',
+            'force_delivery' => true,
             'transfer_id' => (int) $transfer->id,
             'client_id' => (int) $transfer->client_id,
             'from_staff_id' => (int) ($transfer->from_staff_id ?? 0),

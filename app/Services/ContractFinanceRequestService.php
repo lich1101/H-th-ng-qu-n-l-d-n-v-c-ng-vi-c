@@ -152,7 +152,8 @@ class ContractFinanceRequestService
                 $body,
                 [
                     'type' => 'contract_finance_request_feedback',
-                    'category' => 'contract_finance',
+                    'category' => 'crm_realtime',
+                    'force_delivery' => true,
                     'contract_id' => (int) $contract->id,
                     'contract_finance_request_id' => (int) $financeRequest->id,
                     'request_type' => (string) $financeRequest->request_type,

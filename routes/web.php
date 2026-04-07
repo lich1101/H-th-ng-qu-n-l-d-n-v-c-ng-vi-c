@@ -180,6 +180,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ]);
     })->name('crm.flow')->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
 
+    Route::get('/khach-hang/chuyen-phu-trach/danh-sach', function () {
+        return Inertia::render('ClientStaffTransfers');
+    })->name('crm.transfers.index')->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
+
     Route::get('/co-hoi', function () {
         return Inertia::render('Opportunities');
     })->name('opportunities.index')->middleware('role:admin,quan_ly,nhan_vien');
