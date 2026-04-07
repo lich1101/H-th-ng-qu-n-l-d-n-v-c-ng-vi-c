@@ -8,6 +8,7 @@ use App\Models\Opportunity;
 use App\Models\OpportunityStatus;
 use App\Models\User;
 use App\Services\NotificationService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -18,13 +19,33 @@ class OpportunityController extends Controller
     public function index(Request $request): JsonResponse
     {
         $viewer = $request->user();
-        $query = Opportunity::query()->with([
+        $filtered = $this->opportunityIndexFilteredQuery($request, $viewer);
+
+        $revenueTotal = (float) ($filtered->clone()->sum('amount') ?? 0);
+
+        $query = $filtered->clone()->with([
             'client:id,name,company,email,phone,notes',
             'assignee:id,name,email,role',
             'creator:id,name,email,role',
             'product:id,name,code',
             'statusConfig:id,code,name,color_hex,sort_order',
         ]);
+
+        $result = $query
+            ->orderByDesc('id')
+            ->paginate((int) $request->input('per_page', 20));
+
+        $payload = $result->toArray();
+        $payload['aggregates'] = [
+            'revenue_total' => $revenueTotal,
+        ];
+
+        return response()->json($payload);
+    }
+
+    private function opportunityIndexFilteredQuery(Request $request, User $viewer): Builder
+    {
+        $query = Opportunity::query();
         CrmScope::applyOpportunityScope($query, $viewer);
 
         if ($request->filled('client_id')) {
@@ -70,11 +91,7 @@ class OpportunityController extends Controller
             });
         }
 
-        $result = $query
-            ->orderByDesc('id')
-            ->paginate((int) $request->input('per_page', 20));
-
-        return response()->json($result);
+        return $query;
     }
 
     public function store(Request $request): JsonResponse

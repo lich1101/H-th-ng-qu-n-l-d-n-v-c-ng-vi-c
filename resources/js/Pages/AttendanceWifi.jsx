@@ -189,6 +189,7 @@ export default function AttendanceWifi(props) {
     const toast = useToast();
     const role = props?.auth?.user?.role || '';
     const canManage = ['admin', 'administrator', 'ke_toan'].includes(role);
+    const isAdministrator = String(role).toLowerCase() === 'administrator';
     const canExport = canManage;
     const canViewReport = canManage || ['quan_ly', 'nhan_vien'].includes(role);
     const canManualAdjust = role === 'administrator';
@@ -639,6 +640,22 @@ export default function AttendanceWifi(props) {
         }
     };
 
+    const revokeDevice = async (item) => {
+        if (!isAdministrator) return;
+        const name = item.user?.name || 'nhân sự';
+        const ok = window.confirm(
+            `Gỡ thiết bị khỏi tài khoản ${name}? Người đó sẽ phải gửi phiếu đăng ký thiết bị lại trên app mobile.`,
+        );
+        if (!ok) return;
+        try {
+            await axios.delete(`/api/v1/attendance/devices/${item.id}`);
+            toast.success('Đã gỡ thiết bị. Nhân sự cần đăng ký lại trên app.');
+            await loadDevices(deviceFilters);
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Gỡ thiết bị thất bại.');
+        }
+    };
+
     const reviewDevice = async (item, status) => {
         const note = window.prompt(status === 'approved' ? 'Ghi chú duyệt thiết bị (tùy chọn)' : 'Lý do từ chối thiết bị', item.note || '');
         if (note === null) return;
@@ -1053,7 +1070,7 @@ export default function AttendanceWifi(props) {
                         <FilterToolbar enableSearch
                             className="mb-4"
                             title="Thiết bị nhân viên"
-                            description="Mỗi nhân viên chỉ dùng một thiết bị đã được duyệt để chấm công trên đúng Wi-Fi/BSSID công ty."
+                            description="Mỗi nhân viên chỉ dùng một thiết bị đã được duyệt để chấm công trên đúng Wi-Fi/BSSID công ty. Administrator có thể gỡ liên kết thiết bị — nhân sự phải gửi đăng ký lại trên app."
                             searchValue={deviceFilters.search}
                             onSearch={handleDeviceSearch}
                             onSubmitFilters={() => loadDevices({ ...deviceFilters, page: 1 })}
@@ -1098,10 +1115,23 @@ export default function AttendanceWifi(props) {
                                             <div className="mt-1 text-sm text-slate-700">Gửi yêu cầu: {formatVietnamDateTime(item.requested_at)}</div>
                                             {item.note ? <div className="mt-2 rounded-xl bg-white px-3 py-2 text-sm text-slate-700">{item.note}</div> : null}
                                         </div>
-                                        {item.status === 'pending' ? (
-                                            <div className="flex flex-wrap gap-2">
-                                                <button type="button" className={buttonPrimaryClass} onClick={() => reviewDevice(item, 'approved')}>Duyệt</button>
-                                                <button type="button" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-100" onClick={() => reviewDevice(item, 'rejected')}>Từ chối</button>
+                                        {(item.status === 'pending' || isAdministrator) ? (
+                                            <div className="flex flex-wrap justify-end gap-2">
+                                                {item.status === 'pending' ? (
+                                                    <>
+                                                        <button type="button" className={buttonPrimaryClass} onClick={() => reviewDevice(item, 'approved')}>Duyệt</button>
+                                                        <button type="button" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-100" onClick={() => reviewDevice(item, 'rejected')}>Từ chối</button>
+                                                    </>
+                                                ) : null}
+                                                {isAdministrator ? (
+                                                    <button
+                                                        type="button"
+                                                        className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-900 hover:bg-amber-100"
+                                                        onClick={() => revokeDevice(item)}
+                                                    >
+                                                        Gỡ thiết bị
+                                                    </button>
+                                                ) : null}
                                             </div>
                                         ) : null}
                                     </div>

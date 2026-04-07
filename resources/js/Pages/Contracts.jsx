@@ -173,6 +173,12 @@ export default function Contracts(props) {
     const [careNoteForm, setCareNoteForm] = useState({ title: '', detail: '' });
     const [savingCareNote, setSavingCareNote] = useState(false);
     const [contractMeta, setContractMeta] = useState({ current_page: 1, last_page: 1, total: 0 });
+    const [listAggregates, setListAggregates] = useState({
+        revenue_total: 0,
+        cashflow_total: 0,
+        debt_total: 0,
+        costs_total: 0,
+    });
     const [filters, setFilters] = useState({
         search: '',
         status: '',
@@ -421,6 +427,13 @@ export default function Contracts(props) {
             });
             const rows = res.data?.data || [];
             setContracts(rows);
+            const agg = res.data?.aggregates;
+            setListAggregates({
+                revenue_total: Number(agg?.revenue_total ?? 0),
+                cashflow_total: Number(agg?.cashflow_total ?? 0),
+                debt_total: Number(agg?.debt_total ?? 0),
+                costs_total: Number(agg?.costs_total ?? 0),
+            });
             const visibleIds = new Set(rows.map((row) => Number(row.id)));
             setSelectedContractIds((prev) => prev.filter((id) => visibleIds.has(Number(id))));
             setContractMeta({
@@ -1336,6 +1349,27 @@ export default function Contracts(props) {
                                     </tr>
                                 )}
                             </tbody>
+                            {!loading && (contractMeta.total || 0) > 0 ? (
+                                <tfoot>
+                                    <tr className="border-t-2 border-slate-200 bg-slate-50/90 text-left text-sm text-slate-800">
+                                        <td
+                                            colSpan={canBulkActions ? 9 : 8}
+                                            className="py-2.5 pr-3 text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle"
+                                        >
+                                            Tổng theo bộ lọc (tất cả trang)
+                                        </td>
+                                        <td className="py-2.5 font-semibold text-slate-900">{formatCurrency(listAggregates.revenue_total)}</td>
+                                        <td className="py-2.5 font-semibold text-slate-900">{formatCurrency(listAggregates.cashflow_total)}</td>
+                                        <td className="py-2.5 font-semibold text-slate-900">{formatCurrency(listAggregates.debt_total)}</td>
+                                        <td className="py-2.5 font-semibold text-slate-900">{formatCurrency(listAggregates.costs_total)}</td>
+                                        <td className="py-2.5 text-center text-text-muted">—</td>
+                                        <td className="py-2.5 text-text-muted">—</td>
+                                        <td className="py-2.5 text-text-muted">—</td>
+                                        <td className="py-2.5 text-text-muted">—</td>
+                                        <td className="py-2.5" aria-hidden />
+                                    </tr>
+                                </tfoot>
+                            ) : null}
                         </table>
                 </div>
                 <PaginationControls

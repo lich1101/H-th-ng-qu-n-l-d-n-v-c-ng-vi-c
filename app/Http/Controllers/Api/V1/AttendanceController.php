@@ -453,6 +453,40 @@ class AttendanceController extends Controller
         ]);
     }
 
+    /**
+     * Gỡ hoàn toàn bản ghi thiết bị khỏi tài khoản nhân sự — user phải gửi phiếu đăng ký lại trên app.
+     * Chỉ Administrator (không phải admin/kế toán).
+     */
+    public function revokeDevice(
+        Request $request,
+        AttendanceDevice $attendanceDevice,
+        NotificationService $notifications
+    ): JsonResponse {
+        if ($request->user()->role !== 'administrator') {
+            return response()->json(['message' => 'Chỉ Administrator mới gỡ liên kết thiết bị.'], 403);
+        }
+
+        $attendanceDevice->loadMissing('user:id,name');
+        $targetUserId = (int) $attendanceDevice->user_id;
+        $userLabel = $attendanceDevice->user?->name ?: 'Nhân sự';
+
+        $attendanceDevice->delete();
+
+        $notifications->notifyUsers(
+            [$targetUserId],
+            'Thiết bị chấm công đã được gỡ',
+            'Quản trị đã gỡ thiết bị đăng ký của bạn. Vui lòng mở app và gửi phiếu đăng ký thiết bị lại để tiếp tục chấm công bằng Wi‑Fi.',
+            [
+                'type' => 'attendance_device_revoked',
+                'category' => 'attendance',
+            ]
+        );
+
+        return response()->json([
+            'message' => sprintf('Đã gỡ thiết bị khỏi tài khoản %s. Nhân sự cần đăng ký lại trên app.', $userLabel),
+        ]);
+    }
+
     public function checkIn(Request $request, AttendanceService $attendance): JsonResponse
     {
         $user = $request->user();

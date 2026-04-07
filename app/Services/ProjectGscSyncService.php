@@ -31,7 +31,10 @@ class ProjectGscSyncService
         }
 
         $now = Carbon::now('Asia/Ho_Chi_Minh');
+        // Một ngày dữ liệu GSC đầy đủ: cả ngày theo lịch VN — "hôm qua" (so với thời điểm chạy job).
         $metricDate = $now->copy()->subDay()->toDateString();
+        // Ngày so sánh: ngày kế trước (T-2), cùng cách lấy 1 ngày (startDate = endDate trong API).
+        $priorDate = $now->copy()->subDays(2)->toDateString();
 
         if (! $force) {
             $existing = ProjectGscDailyStat::query()
@@ -42,17 +45,6 @@ class ProjectGscSyncService
             if ($existing && $existing->updated_at && $existing->updated_at->isToday()) {
                 return $existing;
             }
-        }
-
-        $priorDate = $now->copy()->subDays(2)->toDateString();
-        $priorStored = ProjectGscDailyStat::query()
-            ->where('project_id', $project->id)
-            ->whereDate('metric_date', '<', $metricDate)
-            ->where('site_url', $siteUrl)
-            ->orderByDesc('metric_date')
-            ->first();
-        if ($priorStored && $priorStored->metric_date) {
-            $priorDate = $priorStored->metric_date->toDateString();
         }
 
         try {

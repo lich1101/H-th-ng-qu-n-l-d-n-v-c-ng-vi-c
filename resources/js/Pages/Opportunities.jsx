@@ -66,6 +66,7 @@ export default function Opportunities(props) {
 
     const [opportunities, setOpportunities] = useState([]);
     const [opportunityMeta, setOpportunityMeta] = useState({ current_page: 1, last_page: 1, total: 0 });
+    const [listAggregates, setListAggregates] = useState({ revenue_total: 0 });
     const [filters, setFilters] = useState({
         search: '',
         status: '',
@@ -221,6 +222,10 @@ export default function Opportunities(props) {
             });
 
             setOpportunities(res.data?.data || []);
+            const agg = res.data?.aggregates;
+            setListAggregates({
+                revenue_total: Number(agg?.revenue_total ?? 0),
+            });
             setOpportunityMeta({
                 current_page: res.data?.current_page || 1,
                 last_page: res.data?.last_page || 1,
@@ -842,6 +847,22 @@ export default function Opportunities(props) {
                                 </tr>
                             ) : null}
                         </tbody>
+                        {!loading && (opportunityMeta.total || 0) > 0 ? (
+                            <tfoot>
+                                <tr className="border-t-2 border-slate-200 bg-slate-50/90 text-sm font-semibold text-slate-900">
+                                    <td colSpan={3} className="py-2.5 pr-2 text-xs uppercase tracking-[0.12em] text-text-subtle">
+                                        Tổng doanh số theo bộ lọc (tất cả trang)
+                                    </td>
+                                    <td className="py-2.5">
+                                        {Number(listAggregates.revenue_total || 0).toLocaleString('vi-VN')} VNĐ
+                                    </td>
+                                    <td className="py-2.5 text-text-muted">—</td>
+                                    <td className="py-2.5 text-text-muted">—</td>
+                                    <td className="py-2.5 text-text-muted">—</td>
+                                    <td className="py-2.5 text-text-muted">—</td>
+                                </tr>
+                            </tfoot>
+                        ) : null}
                     </table>
                 </div>
 

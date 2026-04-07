@@ -55,6 +55,79 @@ class NotificationService
         });
     }
 
+    /**
+     * Thông báo báo cáo GSC hằng ngày: 1 lần / user / dự án / metric_date (dedupe trong notifyUser).
+     * Nếu push lỗi tạm thời sau khi đã ghi in-app, chỉ gửi lại FCM (không tạo bản ghi trùng).
+     */
+    public function notifyUsersGscDailyReport(array $userIds, string $title, string $body, array $data = []): void
+    {
+        $userIds = array_values(array_filter(array_unique(array_map('intval', $userIds))));
+        if (empty($userIds)) {
+            return;
+        }
+
+        $users = User::query()->whereIn('id', $userIds)->get()->keyBy('id');
+        foreach ($userIds as $userId) {
+            $user = $users->get($userId);
+            if (! $user) {
+                continue;
+            }
+            try {
+                $result = $this->notifyUserWithResult($user, $title, $body, $data);
+                if (($result['push_sent'] ?? false) === true) {
+                    continue;
+                }
+                $err = (string) ($result['error'] ?? '');
+                if ($err === 'duplicate_suppressed') {
+                    continue;
+                }
+                $pushResult = is_array($result['push_result'] ?? null) ? $result['push_result'] : [];
+                $pushErr = (string) ($pushResult['error'] ?? '');
+                if ($pushErr === 'no_device_tokens' || $pushErr === 'push_channel_disabled') {
+                    continue;
+                }
+                $this->retryGscPushOnly($user, $title, $body, $data, 5);
+            } catch (\Throwable $e) {
+                Log::warning('GSC daily notify user failed', [
+                    'user_id' => $userId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+    }
+
+    private function retryGscPushOnly(User $user, string $title, string $body, array $data, int $maxAttempts): void
+    {
+        $settings = $this->notificationSettings();
+        if (! ($settings['push_enabled'] ?? false)) {
+            return;
+        }
+
+        $data = $this->appendCategoryToData($data);
+        $maxAttempts = max(1, min($maxAttempts, 10));
+
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            $tokens = $this->collectPushTokensForUser($user);
+            if (empty($tokens)) {
+                return;
+            }
+
+            $result = $this->safeSendPush($tokens, $title, $body, $data, $user->id);
+            if ((int) ($result['sent'] ?? 0) > 0) {
+                return;
+            }
+
+            if ($attempt < $maxAttempts) {
+                usleep((int) min(1_000_000 * (15 * $attempt), 90_000_000));
+            }
+        }
+
+        Log::warning('GSC daily push retries exhausted', [
+            'user_id' => $user->id,
+            'attempts' => $maxAttempts,
+        ]);
+    }
+
     public function notifyUser(User $user, string $title, string $body, array $data = []): void
     {
         $settings = $this->notificationSettings();

@@ -7,7 +7,9 @@ use App\Http\Helpers\CrmScope;
 use App\Models\Client;
 use App\Models\Contract;
 use App\Models\ContractCareNote;
+use App\Models\ContractCost;
 use App\Models\ContractItem;
+use App\Models\ContractPayment;
 use App\Models\Product;
 use App\Models\Project;
 use App\Models\RevenueTier;
@@ -25,7 +27,10 @@ class ContractController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = Contract::query()
+        $baseQuery = $this->contractIndexFilteredQuery($request);
+        $aggregates = $this->contractListAggregates($baseQuery);
+
+        $query = $baseQuery->clone()
             ->with([
                 'client',
                 'client.careStaffUsers:id',
@@ -46,6 +51,30 @@ class ContractController extends Controller
         if ($request->boolean('with_items')) {
             $query->with('items');
         }
+
+        $sortBy = (string) $request->input('sort_by', 'signed_at');
+        $sortDir = $this->normalizeSortDirection((string) $request->input('sort_dir', 'desc'));
+        $this->applyContractSorting($query, $sortBy, $sortDir);
+
+        /** @var \Illuminate\Pagination\LengthAwarePaginator $contracts */
+        $contracts = $query
+            ->paginate((int) $request->input('per_page', 15));
+        $contracts->setCollection($contracts->getCollection()->transform(function (Contract $contract) use ($request) {
+            return $this->appendContractPermissions($contract, $request->user());
+        }));
+
+        $payload = $contracts->toArray();
+        $payload['aggregates'] = $aggregates;
+
+        return response()->json($payload);
+    }
+
+    /**
+     * Danh sách hợp đồng sau CRM scope + filter (chưa eager load, sort, paginate).
+     */
+    private function contractIndexFilteredQuery(Request $request): Builder
+    {
+        $query = Contract::query();
         CrmScope::applyContractScope($query, $request->user());
 
         if ($request->filled('status')) {
@@ -143,18 +172,65 @@ class ContractController extends Controller
             });
         }
 
-        $sortBy = (string) $request->input('sort_by', 'signed_at');
-        $sortDir = $this->normalizeSortDirection((string) $request->input('sort_dir', 'desc'));
-        $this->applyContractSorting($query, $sortBy, $sortDir);
+        return $query;
+    }
 
-        /** @var \Illuminate\Pagination\LengthAwarePaginator $contracts */
-        $contracts = $query
-            ->paginate((int) $request->input('per_page', 15));
-        $contracts->setCollection($contracts->getCollection()->transform(function (Contract $contract) use ($request) {
-            return $this->appendContractPermissions($contract, $request->user());
-        }));
+    /**
+     * Tổng doanh thu (giá trị hiệu lực), dòng tiền (đã thu), công nợ, chi phí — toàn bộ dòng thỏa filter, không paginate.
+     * Khớp model Contract: effective_value, payments_total, debt_outstanding, costs_total.
+     */
+    private function contractListAggregates(Builder $filteredQuery): array
+    {
+        $idsSub = $filteredQuery->clone()->select('contracts.id');
 
-        return response()->json($contracts);
+        $itemsAgg = ContractItem::query()
+            ->selectRaw('contract_id, COALESCE(SUM(total_price), 0) as items_sum, COUNT(*) as items_cnt')
+            ->groupBy('contract_id');
+
+        $paymentsAgg = ContractPayment::query()
+            ->selectRaw('contract_id, COALESCE(SUM(amount), 0) as pay_sum')
+            ->groupBy('contract_id');
+
+        $costsAgg = ContractCost::query()
+            ->selectRaw('contract_id, COALESCE(SUM(amount), 0) as cost_sum')
+            ->groupBy('contract_id');
+
+        $effSql = '(CASE WHEN COALESCE(items_agg.items_cnt, 0) > 0 THEN COALESCE(items_agg.items_sum, 0) ELSE COALESCE(contracts.value, 0) END)';
+
+        $row = Contract::query()
+            ->whereIn('contracts.id', $idsSub)
+            ->leftJoinSub($itemsAgg, 'items_agg', function ($join) {
+                $join->on('items_agg.contract_id', '=', 'contracts.id');
+            })
+            ->leftJoinSub($paymentsAgg, 'pay_agg', function ($join) {
+                $join->on('pay_agg.contract_id', '=', 'contracts.id');
+            })
+            ->leftJoinSub($costsAgg, 'cost_agg', function ($join) {
+                $join->on('cost_agg.contract_id', '=', 'contracts.id');
+            })
+            ->selectRaw("
+                COALESCE(SUM({$effSql}), 0) as revenue_total,
+                COALESCE(SUM(COALESCE(pay_agg.pay_sum, 0)), 0) as cashflow_total,
+                COALESCE(SUM(CASE WHEN ({$effSql} - COALESCE(pay_agg.pay_sum, 0)) > 0 THEN ({$effSql} - COALESCE(pay_agg.pay_sum, 0)) ELSE 0 END), 0) as debt_total,
+                COALESCE(SUM(COALESCE(cost_agg.cost_sum, 0)), 0) as costs_total
+            ")
+            ->first();
+
+        if (! $row) {
+            return [
+                'revenue_total' => 0.0,
+                'cashflow_total' => 0.0,
+                'debt_total' => 0.0,
+                'costs_total' => 0.0,
+            ];
+        }
+
+        return [
+            'revenue_total' => (float) ($row->revenue_total ?? 0),
+            'cashflow_total' => (float) ($row->cashflow_total ?? 0),
+            'debt_total' => (float) ($row->debt_total ?? 0),
+            'costs_total' => (float) ($row->costs_total ?? 0),
+        ];
     }
 
     public function show(Request $request, Contract $contract): JsonResponse

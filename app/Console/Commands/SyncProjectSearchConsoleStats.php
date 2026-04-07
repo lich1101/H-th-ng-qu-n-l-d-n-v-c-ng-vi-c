@@ -127,14 +127,19 @@ class SyncProjectSearchConsoleStats extends Command
             $alertsTotal
         );
 
-        app(NotificationService::class)->notifyUsersAfterResponse(
+        $metricDateStr = optional($latest->metric_date)->toDateString() ?? '';
+
+        app(NotificationService::class)->notifyUsersGscDailyReport(
             $targetIds,
             $title,
             $body,
             [
                 'type' => 'project_gsc_daily_report',
+                'category' => 'system',
                 'project_id' => (int) $project->id,
-                'metric_date' => optional($latest->metric_date)->toDateString(),
+                'metric_date' => $metricDateStr,
+                // Khóa gộp trùng: mỗi user + dự án + ngày metric chỉ một fingerprint.
+                'gsc_idempotency_key' => (int) $project->id.'|'.$metricDateStr,
                 'delta_clicks' => $deltaClicks,
                 'delta_impressions' => $deltaImpressions,
                 'alerts_total' => $alertsTotal,

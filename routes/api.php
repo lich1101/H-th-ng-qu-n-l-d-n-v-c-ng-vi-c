@@ -122,6 +122,8 @@ Route::prefix('v1')->group(function () {
             ->middleware('role:admin,administrator,ke_toan');
         Route::post('/attendance/devices/{attendanceDevice}/review', [AttendanceController::class, 'reviewDevice'])
             ->middleware('role:admin,administrator,ke_toan');
+        Route::delete('/attendance/devices/{attendanceDevice}', [AttendanceController::class, 'revokeDevice'])
+            ->middleware('role:administrator');
         Route::post('/attendance/requests/{attendanceRequest}/review', [AttendanceController::class, 'reviewRequest'])
             ->middleware('role:admin,administrator,ke_toan');
         Route::post('/attendance/records/manual', [AttendanceController::class, 'manualUpdateRecord'])
@@ -159,11 +161,11 @@ Route::prefix('v1')->group(function () {
         Route::post('/projects/{project}/handover-review', [ProjectController::class, 'reviewHandover'])
             ->middleware('role:admin,quan_ly,nhan_vien');
         Route::post('/projects', [ProjectController::class, 'store'])
-            ->middleware('role:admin,quan_ly');
+            ->middleware('role:admin,administrator,quan_ly');
         Route::post('/projects/from-contract', [ProjectController::class, 'createFromContract'])
             ->middleware('role:admin,quan_ly,nhan_vien');
         Route::put('/projects/{project}', [ProjectController::class, 'update'])
-            ->middleware('role:admin,quan_ly');
+            ->middleware('role:admin,administrator,quan_ly');
         Route::delete('/projects/{project}', [ProjectController::class, 'destroy'])
             ->middleware('role:admin');
         Route::get('/projects/{project}/flow', [ProjectFlowController::class, 'show']);
