@@ -333,6 +333,16 @@ export default function ClientFlow({ auth, clientId }) {
             toast.error('Vui lòng nhập tên cơ hội.');
             return;
         }
+        const amountParsed = numberOrNull(opportunityForm.amount);
+        if (amountParsed === null || amountParsed < 0) {
+            toast.error('Vui lòng nhập doanh số dự kiến (số ≥ 0).');
+            return;
+        }
+        const probParsed = numberOrNull(opportunityForm.success_probability);
+        if (probParsed === null || !Number.isInteger(probParsed) || probParsed < 0 || probParsed > 100) {
+            toast.error('Vui lòng chọn tỷ lệ thành công (0–100%).');
+            return;
+        }
 
         setSavingOpportunity(true);
         try {
@@ -341,9 +351,9 @@ export default function ClientFlow({ auth, clientId }) {
                 opportunity_type: String(opportunityForm.opportunity_type || '').trim() || null,
                 client_id: Number(flow.client.id),
                 source: String(opportunityForm.source || '').trim() || null,
-                amount: numberOrNull(opportunityForm.amount),
+                amount: amountParsed,
                 status: opportunityForm.status || null,
-                success_probability: numberOrNull(opportunityForm.success_probability),
+                success_probability: probParsed,
                 product_id: opportunityForm.product_id ? Number(opportunityForm.product_id) : null,
                 assigned_to: opportunityForm.assigned_to ? Number(opportunityForm.assigned_to) : null,
                 watcher_ids: (opportunityForm.watcher_ids || []).map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0),
@@ -1038,7 +1048,7 @@ export default function ClientFlow({ auth, clientId }) {
                             placeholder="Ví dụ: Dịch vụ SEO, Backlink"
                         />
                     </Field>
-                    <Field label="Doanh số dự tính (VNĐ)">
+                    <Field label="Doanh số dự kiến (VNĐ)" required>
                         <input
                             type="number"
                             min="0"
@@ -1046,6 +1056,7 @@ export default function ClientFlow({ auth, clientId }) {
                             value={opportunityForm.amount}
                             onChange={(event) => setOpportunityForm((prev) => ({ ...prev, amount: event.target.value }))}
                             placeholder="0"
+                            required
                         />
                     </Field>
                     <Field label="Khách hàng">
@@ -1055,14 +1066,15 @@ export default function ClientFlow({ auth, clientId }) {
                             readOnly
                         />
                     </Field>
-                    <Field label="Khả năng thành công (%)">
+                    <Field label="Tỷ lệ thành công (%)" required>
                         <select
                             className={filterControlClass}
                             value={opportunityForm.success_probability}
                             onChange={(event) => setOpportunityForm((prev) => ({ ...prev, success_probability: event.target.value }))}
+                            required
                         >
                             <option value="">Chọn tỷ lệ</option>
-                            {[10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((value) => (
+                            {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((value) => (
                                 <option key={value} value={value}>{value}%</option>
                             ))}
                         </select>

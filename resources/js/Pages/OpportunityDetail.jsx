@@ -92,9 +92,11 @@ export default function OpportunityDetail({ auth, opportunityId }) {
             opportunity_type: item.opportunity_type || '',
             client_id: item.client_id ? String(item.client_id) : '',
             source: item.source || '',
-            amount: item.amount ?? '',
+            amount: item.amount !== null && item.amount !== undefined ? String(item.amount) : '',
             status: item.status || '',
-            success_probability: item.success_probability ?? '',
+            success_probability: item.success_probability != null && item.success_probability !== ''
+                ? String(item.success_probability)
+                : '',
             product_id: item.product_id ? String(item.product_id) : '',
             assigned_to: item.assigned_to ? String(item.assigned_to) : '',
             watcher_ids: Array.isArray(item.watcher_ids)
@@ -156,6 +158,16 @@ export default function OpportunityDetail({ auth, opportunityId }) {
             toast.error('Vui lòng chọn khách hàng.');
             return;
         }
+        const amountParsed = numberOrNull(form.amount);
+        if (amountParsed === null || amountParsed < 0) {
+            toast.error('Vui lòng nhập doanh số dự kiến (số ≥ 0).');
+            return;
+        }
+        const probParsed = numberOrNull(form.success_probability);
+        if (probParsed === null || !Number.isInteger(probParsed) || probParsed < 0 || probParsed > 100) {
+            toast.error('Vui lòng chọn tỷ lệ thành công (0–100%).');
+            return;
+        }
         setSaving(true);
         try {
             await axios.put(`/api/v1/opportunities/${opportunity.id}`, {
@@ -163,9 +175,9 @@ export default function OpportunityDetail({ auth, opportunityId }) {
                 opportunity_type: String(form.opportunity_type || '').trim() || null,
                 client_id: Number(form.client_id),
                 source: String(form.source || '').trim() || null,
-                amount: numberOrNull(form.amount),
+                amount: amountParsed,
                 status: form.status || null,
-                success_probability: numberOrNull(form.success_probability),
+                success_probability: probParsed,
                 product_id: form.product_id ? Number(form.product_id) : null,
                 assigned_to: form.assigned_to ? Number(form.assigned_to) : null,
                 watcher_ids: (form.watcher_ids || []).map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0),
@@ -342,13 +354,14 @@ export default function OpportunityDetail({ auth, opportunityId }) {
                             onChange={(event) => setForm((prev) => ({ ...prev, opportunity_type: event.target.value }))}
                         />
                     </Field>
-                    <Field label="Doanh số dự tính (VNĐ)">
+                    <Field label="Doanh số dự kiến (VNĐ)" required>
                         <input
                             type="number"
                             min="0"
                             className={filterControlClass}
                             value={form.amount}
                             onChange={(event) => setForm((prev) => ({ ...prev, amount: event.target.value }))}
+                            required
                         />
                     </Field>
                     <Field label="Khách hàng" required>
@@ -365,14 +378,15 @@ export default function OpportunityDetail({ auth, opportunityId }) {
                             ))}
                         </select>
                     </Field>
-                    <Field label="Khả năng thành công (%)">
+                    <Field label="Tỷ lệ thành công (%)" required>
                         <select
                             className={filterControlClass}
                             value={form.success_probability}
                             onChange={(event) => setForm((prev) => ({ ...prev, success_probability: event.target.value }))}
+                            required
                         >
                             <option value="">Chọn tỷ lệ</option>
-                            {[10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((value) => (
+                            {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((value) => (
                                 <option key={value} value={value}>{value}%</option>
                             ))}
                         </select>
