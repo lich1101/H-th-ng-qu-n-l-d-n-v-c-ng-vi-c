@@ -527,7 +527,7 @@ class ClientFlowController extends Controller
 
             app(NotificationService::class)->notifyUsersAfterResponse(
                 $recipientIds,
-                'Khách hàng có bình luận mới',
+                sprintf('Có bình luận mới cho khách hàng "%s"', $clientName),
                 sprintf('%s vừa bình luận "%s" trên khách hàng %s.', $actorName, $commentTitle, $clientName),
                 [
                     'type' => 'crm_client_comment_added',
