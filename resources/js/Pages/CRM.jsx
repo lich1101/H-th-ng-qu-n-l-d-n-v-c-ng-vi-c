@@ -1196,7 +1196,7 @@ export default function CRM(props) {
                                         <tr
                                             className={`cursor-pointer border-b border-slate-100 hover:bg-slate-50 ${selectedClientSet.has(Number(client.id)) ? 'bg-primary/5' : ''}`}
                                             onClick={() => {
-                                                window.location.href = route('crm.client.show', client.id);
+                                                window.location.href = route('crm.flow', client.id);
                                             }}
                                         >
                                             {canBulkClientActions && (
@@ -1217,9 +1217,9 @@ export default function CRM(props) {
                                                     className="text-left"
                                                     onClick={(event) => {
                                                         event.stopPropagation();
-                                                        window.location.href = route('crm.client.show', client.id);
+                                                        window.location.href = route('crm.flow', client.id);
                                                     }}
-                                                    title="Mở chi tiết khách hàng"
+                                                    title="Mở luồng khách hàng"
                                                 >
                                                     <div className="font-medium text-primary hover:underline">{client.name}</div>
                                                     <div className="text-xs text-text-muted">{client.company || '—'}</div>

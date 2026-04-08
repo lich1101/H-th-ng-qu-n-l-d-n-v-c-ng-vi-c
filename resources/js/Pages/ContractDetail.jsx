@@ -1600,76 +1600,6 @@ export default function ContractDetail(props) {
                         </div>
                     </div>
 
-                    <div className="rounded-2xl border border-slate-200/80 bg-slate-50 p-4">
-                        <div className="grid gap-4 md:grid-cols-3">
-                            <LabeledField
-                                label="Giá trị hợp đồng (VNĐ)"
-                                hint={editItems.length ? 'Đang được tự tính từ danh sách sản phẩm phía dưới.' : ''}
-                            >
-                                <input
-                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
-                                    type="text"
-                                    inputMode="numeric"
-                                    placeholder="0"
-                                    value={editItems.length ? formatMoneyInput(editItemsTotal) : editForm.value}
-                                    onChange={(e) => setEditForm((s) => ({ ...s, value: formatMoneyInput(e.target.value) }))}
-                                    disabled={editItems.length > 0}
-                                />
-                            </LabeledField>
-                            <LabeledField label="Số lần thanh toán">
-                                <input
-                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
-                                    type="number"
-                                    min="1"
-                                    placeholder="1"
-                                    value={editForm.payment_times}
-                                    onChange={(e) => setEditForm((s) => ({ ...s, payment_times: e.target.value }))}
-                                />
-                            </LabeledField>
-                            <LabeledField
-                                label="Trạng thái hợp đồng"
-                                hint="Hệ thống tự cập nhật theo duyệt, thu tiền và ngày kết thúc."
-                            >
-                                <div className={`inline-flex w-full items-center rounded-2xl border border-slate-200/80 bg-white px-3 py-2 text-sm font-semibold ${statusBadgeClass(contract?.status)}`}>
-                                    {STATUS_OPTIONS.find((s) => s.value === contract?.status)?.label || contract?.status || '—'}
-                                </div>
-                            </LabeledField>
-                            <LabeledField label="Ngày ký">
-                                <input
-                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
-                                    type="date"
-                                    value={editForm.signed_at}
-                                    onChange={(e) => setEditForm((s) => ({ ...s, signed_at: e.target.value }))}
-                                />
-                            </LabeledField>
-                            <LabeledField label="Ngày bắt đầu hiệu lực">
-                                <input
-                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
-                                    type="date"
-                                    value={editForm.start_date}
-                                    onChange={(e) => setEditForm((s) => ({ ...s, start_date: e.target.value }))}
-                                />
-                            </LabeledField>
-                            <LabeledField label="Ngày kết thúc / gia hạn">
-                                <input
-                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
-                                    type="date"
-                                    value={editForm.end_date}
-                                    onChange={(e) => setEditForm((s) => ({ ...s, end_date: e.target.value }))}
-                                />
-                            </LabeledField>
-                            <LabeledField label="Ghi chú hợp đồng" className="md:col-span-3">
-                                <textarea
-                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
-                                    rows={3}
-                                    placeholder="Ghi chú thêm về hợp đồng, điều khoản hoặc thông tin nội bộ"
-                                    value={editForm.notes}
-                                    onChange={(e) => setEditForm((s) => ({ ...s, notes: e.target.value }))}
-                                />
-                            </LabeledField>
-                        </div>
-                    </div>
-
                     <div className="rounded-2xl border border-slate-200/80 bg-slate-50 p-3">
                         <div className="mb-2 flex items-center justify-between">
                             <h4 className="text-sm font-semibold">Sản phẩm trong hợp đồng</h4>
@@ -1775,6 +1705,76 @@ export default function ContractDetail(props) {
                                     Chưa có sản phẩm. Thêm để tự tính giá trị hợp đồng.
                                 </div>
                             )}
+                        </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-200/80 bg-slate-50 p-4">
+                        <div className="grid gap-4 md:grid-cols-3">
+                            <LabeledField
+                                label="Giá trị hợp đồng (VNĐ)"
+                                hint={editItems.length ? 'Đang được tự tính từ danh sách sản phẩm phía trên.' : ''}
+                            >
+                                <input
+                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
+                                    type="text"
+                                    inputMode="numeric"
+                                    placeholder="0"
+                                    value={editItems.length ? formatMoneyInput(editItemsTotal) : editForm.value}
+                                    onChange={(e) => setEditForm((s) => ({ ...s, value: formatMoneyInput(e.target.value) }))}
+                                    disabled={editItems.length > 0}
+                                />
+                            </LabeledField>
+                            <LabeledField label="Số lần thanh toán">
+                                <input
+                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
+                                    type="number"
+                                    min="1"
+                                    placeholder="1"
+                                    value={editForm.payment_times}
+                                    onChange={(e) => setEditForm((s) => ({ ...s, payment_times: e.target.value }))}
+                                />
+                            </LabeledField>
+                            <LabeledField
+                                label="Trạng thái hợp đồng"
+                                hint="Hệ thống tự cập nhật theo duyệt, thu tiền và ngày kết thúc."
+                            >
+                                <div className={`inline-flex w-full items-center rounded-2xl border border-slate-200/80 bg-white px-3 py-2 text-sm font-semibold ${statusBadgeClass(contract?.status)}`}>
+                                    {STATUS_OPTIONS.find((s) => s.value === contract?.status)?.label || contract?.status || '—'}
+                                </div>
+                            </LabeledField>
+                            <LabeledField label="Ngày ký">
+                                <input
+                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
+                                    type="date"
+                                    value={editForm.signed_at}
+                                    onChange={(e) => setEditForm((s) => ({ ...s, signed_at: e.target.value }))}
+                                />
+                            </LabeledField>
+                            <LabeledField label="Ngày bắt đầu hiệu lực">
+                                <input
+                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
+                                    type="date"
+                                    value={editForm.start_date}
+                                    onChange={(e) => setEditForm((s) => ({ ...s, start_date: e.target.value }))}
+                                />
+                            </LabeledField>
+                            <LabeledField label="Ngày kết thúc / gia hạn">
+                                <input
+                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
+                                    type="date"
+                                    value={editForm.end_date}
+                                    onChange={(e) => setEditForm((s) => ({ ...s, end_date: e.target.value }))}
+                                />
+                            </LabeledField>
+                            <LabeledField label="Ghi chú hợp đồng" className="md:col-span-3">
+                                <textarea
+                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
+                                    rows={3}
+                                    placeholder="Ghi chú thêm về hợp đồng, điều khoản hoặc thông tin nội bộ"
+                                    value={editForm.notes}
+                                    onChange={(e) => setEditForm((s) => ({ ...s, notes: e.target.value }))}
+                                />
+                            </LabeledField>
                         </div>
                     </div>
 
