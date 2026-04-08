@@ -14,6 +14,7 @@ class Client extends Model
         'name',
         'external_code',
         'company',
+        'company_profiles',
         'email',
         'phone',
         'notes',
@@ -45,6 +46,7 @@ class Client extends Model
         'total_cash_flow' => 'float',
         'legacy_debt_amount' => 'float',
         'has_purchased' => 'boolean',
+        'company_profiles' => 'array',
         'comments_history_json' => 'array',
     ];
 

@@ -80,6 +80,32 @@ function LabeledField({ label, required = false, hint = '', className = '', chil
     );
 }
 
+function buildEmptyCompanyProfile() {
+    return {
+        id: `legal-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        company_name: '',
+        address: '',
+        tax_code: '',
+        representative: '',
+        position: '',
+        is_default: false,
+    };
+}
+
+function normalizeCompanyProfiles(profiles) {
+    return Array.isArray(profiles)
+        ? profiles.map((profile, index) => ({
+            id: profile?.id || `legal-${Date.now()}-${index}`,
+            company_name: profile?.company_name || '',
+            address: profile?.address || '',
+            tax_code: profile?.tax_code || '',
+            representative: profile?.representative || '',
+            position: profile?.position || '',
+            is_default: !!profile?.is_default,
+        }))
+        : [];
+}
+
 export default function CRM(props) {
     const toast = useToast();
     const userRole = props?.auth?.user?.role || '';
@@ -90,6 +116,7 @@ export default function CRM(props) {
     const userDepartmentId = props?.auth?.user?.department_id || null;
     const isManager = normalizedRole === 'quan_ly';
     const isAdminRole = ['admin', 'administrator'].includes(normalizedRole);
+    const canManageClientCompanyProfiles = isAdminRole;
     const canFilterByStaff = ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'].includes(normalizedRole);
     const canManageClients = ['admin', 'administrator', 'quan_ly', 'nhan_vien'].includes(normalizedRole);
     const canDeleteClients = ['admin', 'administrator'].includes(normalizedRole);
@@ -146,6 +173,7 @@ export default function CRM(props) {
     const [clientForm, setClientForm] = useState({
         name: '',
         company: '',
+        company_profiles: [],
         email: '',
         phone: '',
         notes: '',
@@ -190,6 +218,56 @@ export default function CRM(props) {
                 .filter((id) => Number.isInteger(id) && id > 0)
             : []
     );
+
+    const addClientCompanyProfile = () => {
+        setClientForm((s) => {
+            const nextProfiles = normalizeCompanyProfiles(s.company_profiles);
+            nextProfiles.push({
+                ...buildEmptyCompanyProfile(),
+                is_default: nextProfiles.length === 0,
+            });
+
+            return {
+                ...s,
+                company_profiles: nextProfiles,
+            };
+        });
+    };
+
+    const updateClientCompanyProfile = (profileId, key, value) => {
+        setClientForm((s) => ({
+            ...s,
+            company_profiles: normalizeCompanyProfiles(s.company_profiles).map((profile) => (
+                profile.id === profileId
+                    ? { ...profile, [key]: value }
+                    : profile
+            )),
+        }));
+    };
+
+    const removeClientCompanyProfile = (profileId) => {
+        setClientForm((s) => {
+            const nextProfiles = normalizeCompanyProfiles(s.company_profiles).filter((profile) => profile.id !== profileId);
+            if (nextProfiles.length > 0 && !nextProfiles.some((profile) => profile.is_default)) {
+                nextProfiles[0] = { ...nextProfiles[0], is_default: true };
+            }
+
+            return {
+                ...s,
+                company_profiles: nextProfiles,
+            };
+        });
+    };
+
+    const setDefaultClientCompanyProfile = (profileId) => {
+        setClientForm((s) => ({
+            ...s,
+            company_profiles: normalizeCompanyProfiles(s.company_profiles).map((profile) => ({
+                ...profile,
+                is_default: profile.id === profileId,
+            })),
+        }));
+    };
 
     const canShowTransferOnClientRow = (client) => {
         if (!canUseStaffTransferApi || !client?.id) return false;
@@ -528,6 +606,9 @@ export default function CRM(props) {
                 lead_channel: clientForm.lead_channel || null,
                 lead_message: clientForm.lead_message || null,
             };
+            if (canManageClientCompanyProfiles) {
+                payload.company_profiles = normalizeCompanyProfiles(clientForm.company_profiles);
+            }
             if (includeAssignment) {
                 Object.assign(payload, {
                     sales_owner_id: clientForm.sales_owner_id
@@ -559,6 +640,7 @@ export default function CRM(props) {
         setClientForm({
             name: client.name || '',
             company: client.company || '',
+            company_profiles: normalizeCompanyProfiles(client.company_profiles),
             email: client.email || '',
             phone: client.phone || '',
             notes: client.notes || '',
@@ -603,6 +685,7 @@ export default function CRM(props) {
         setClientForm({
             name: '',
             company: '',
+            company_profiles: [],
             email: '',
             phone: '',
             notes: '',
@@ -1425,6 +1508,100 @@ export default function CRM(props) {
                                             onChange={(e) => setClientForm((s) => ({ ...s, company: e.target.value }))}
                                         />
                                     </LabeledField>
+                                    {canManageClientCompanyProfiles && (
+                                        <div className="md:col-span-2 rounded-2xl border border-dashed border-slate-300 bg-white/80 p-4">
+                                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                                <div>
+                                                    <p className="text-sm font-semibold text-slate-900">Công ty pháp lý của khách hàng</p>
+                                                    <p className="mt-1 text-xs text-text-muted">
+                                                        Administrator có thể khai báo nhiều công ty để người dùng chọn đúng Bên A khi xuất hợp đồng Word.
+                                                    </p>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    className="rounded-xl border border-primary/20 bg-primary/10 px-3 py-2 text-xs font-semibold text-primary hover:bg-primary/15"
+                                                    onClick={addClientCompanyProfile}
+                                                >
+                                                    + Thêm công ty
+                                                </button>
+                                            </div>
+                                            <div className="mt-4 space-y-3">
+                                                {normalizeCompanyProfiles(clientForm.company_profiles).length === 0 && (
+                                                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-text-muted">
+                                                        Chưa có công ty pháp lý nào. Khi chưa khai báo, xuất hợp đồng sẽ không thể điền đủ thông tin Bên A.
+                                                    </div>
+                                                )}
+                                                {normalizeCompanyProfiles(clientForm.company_profiles).map((profile, index) => (
+                                                    <div key={profile.id} className="rounded-2xl border border-slate-200 bg-white p-4">
+                                                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                                            <div className="text-sm font-semibold text-slate-900">Công ty bên A #{index + 1}</div>
+                                                            <div className="flex flex-wrap items-center gap-2">
+                                                                <label className="inline-flex items-center gap-2 text-xs text-slate-600">
+                                                                    <input
+                                                                        type="radio"
+                                                                        name="default-client-company-profile"
+                                                                        checked={!!profile.is_default}
+                                                                        onChange={() => setDefaultClientCompanyProfile(profile.id)}
+                                                                    />
+                                                                    Mặc định
+                                                                </label>
+                                                                <button
+                                                                    type="button"
+                                                                    className="rounded-lg border border-rose-200 px-2.5 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50"
+                                                                    onClick={() => removeClientCompanyProfile(profile.id)}
+                                                                >
+                                                                    Xóa
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                        <div className="mt-3 grid gap-3 md:grid-cols-2">
+                                                            <LabeledField label="Tên công ty" required>
+                                                                <input
+                                                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
+                                                                    placeholder="Ví dụ: Công ty TNHH ABC"
+                                                                    value={profile.company_name}
+                                                                    onChange={(e) => updateClientCompanyProfile(profile.id, 'company_name', e.target.value)}
+                                                                />
+                                                            </LabeledField>
+                                                            <LabeledField label="Mã số thuế">
+                                                                <input
+                                                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
+                                                                    placeholder="Ví dụ: 0101234567"
+                                                                    value={profile.tax_code}
+                                                                    onChange={(e) => updateClientCompanyProfile(profile.id, 'tax_code', e.target.value)}
+                                                                />
+                                                            </LabeledField>
+                                                            <LabeledField label="Người đại diện">
+                                                                <input
+                                                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
+                                                                    placeholder="Ví dụ: Ông Nguyễn Văn A"
+                                                                    value={profile.representative}
+                                                                    onChange={(e) => updateClientCompanyProfile(profile.id, 'representative', e.target.value)}
+                                                                />
+                                                            </LabeledField>
+                                                            <LabeledField label="Chức vụ">
+                                                                <input
+                                                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
+                                                                    placeholder="Ví dụ: Giám đốc"
+                                                                    value={profile.position}
+                                                                    onChange={(e) => updateClientCompanyProfile(profile.id, 'position', e.target.value)}
+                                                                />
+                                                            </LabeledField>
+                                                            <LabeledField label="Địa chỉ công ty" className="md:col-span-2">
+                                                                <textarea
+                                                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
+                                                                    rows={3}
+                                                                    placeholder="Nhập địa chỉ pháp lý của công ty"
+                                                                    value={profile.address}
+                                                                    onChange={(e) => updateClientCompanyProfile(profile.id, 'address', e.target.value)}
+                                                                />
+                                                            </LabeledField>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
                                     <LabeledField label="Trạng thái lead">
                                         <select
                                             className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"

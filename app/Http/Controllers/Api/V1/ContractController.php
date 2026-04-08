@@ -259,8 +259,15 @@ class ContractController extends Controller
             abort(403, 'Không có quyền xem hợp đồng.');
         }
 
+        $validated = $request->validate([
+            'company_profile_id' => ['nullable', 'string', 'max:80'],
+        ]);
         $this->loadContractDetail($contract);
-        $generated = app(ContractDocumentService::class)->generate($contract);
+        $companyProfile = $this->resolveClientCompanyProfileForExport(
+            $contract,
+            $validated['company_profile_id'] ?? null
+        );
+        $generated = app(ContractDocumentService::class)->generate($contract, $companyProfile);
 
         return response()->download(
             $generated['path'],
@@ -269,6 +276,41 @@ class ContractController extends Controller
                 'Content-Type' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
             ]
         )->deleteFileAfterSend(true);
+    }
+
+    private function resolveClientCompanyProfileForExport(Contract $contract, ?string $selectedProfileId): array
+    {
+        $profiles = collect((array) data_get($contract->client, 'company_profiles', []))
+            ->filter(function ($profile) {
+                return is_array($profile) && trim((string) ($profile['company_name'] ?? '')) !== '';
+            })
+            ->values();
+
+        if ($profiles->isEmpty()) {
+            throw ValidationException::withMessages([
+                'company_profile_id' => 'Khách hàng này chưa cấu hình công ty bên A để xuất hợp đồng.',
+            ]);
+        }
+
+        if ($selectedProfileId) {
+            $selected = $profiles->first(function ($profile) use ($selectedProfileId) {
+                return (string) ($profile['id'] ?? '') === $selectedProfileId;
+            });
+
+            if (! is_array($selected)) {
+                throw ValidationException::withMessages([
+                    'company_profile_id' => 'Công ty bên A được chọn không hợp lệ.',
+                ]);
+            }
+
+            return $selected;
+        }
+
+        $defaultProfile = $profiles->first(function ($profile) {
+            return ! empty($profile['is_default']);
+        });
+
+        return is_array($defaultProfile) ? $defaultProfile : (array) $profiles->first();
     }
 
     private function normalizeSortDirection(string $direction): string

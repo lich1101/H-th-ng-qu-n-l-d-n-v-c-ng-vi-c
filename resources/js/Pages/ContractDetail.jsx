@@ -106,6 +106,12 @@ const calculateItemTotal = (item) => {
     return parseNumberInput(item.unit_price) * parseNumberInput(item.quantity);
 };
 
+const resolveClientCompanyProfiles = (client) => (
+    Array.isArray(client?.company_profiles)
+        ? client.company_profiles.filter((profile) => String(profile?.company_name || '').trim() !== '')
+        : []
+);
+
 const statusBadgeClass = (status) => {
     if (status === 'draft') return 'bg-slate-100 text-slate-700 border border-slate-200';
     if (status === 'signed') return 'bg-violet-50 text-violet-700 border border-violet-200';
@@ -250,6 +256,9 @@ export default function ContractDetail(props) {
     });
     const [reviewingRequestId, setReviewingRequestId] = useState(null);
     const [approvingContract, setApprovingContract] = useState(false);
+    const [showExportDocumentModal, setShowExportDocumentModal] = useState(false);
+    const [exportingDocument, setExportingDocument] = useState(false);
+    const [selectedCompanyProfileId, setSelectedCompanyProfileId] = useState('');
     const [editForm, setEditForm] = useState({
         title: '',
         client_id: '',
@@ -809,6 +818,15 @@ export default function ContractDetail(props) {
     const canSubmitFinanceRequest = readBoolean(contract?.can_submit_finance_request) === true;
     const canReviewFinanceRequest = readBoolean(contract?.can_review_finance_request) === true;
     const paymentDisplayRows = normalizePaymentDisplayRows(contract);
+    const resolvedCompanyProfiles = resolveClientCompanyProfiles(contract?.client);
+    const clientCompanyProfiles = {
+        rows: resolvedCompanyProfiles,
+        defaultId: String(
+            resolvedCompanyProfiles.find((profile) => profile?.is_default)?.id
+                || resolvedCompanyProfiles[0]?.id
+                || ''
+        ),
+    };
 
     const submitContractApproval = async () => {
         if (!contract?.id || !canReviewFinanceRequest) return;
@@ -826,6 +844,49 @@ export default function ContractDetail(props) {
         }
     };
     const costDisplayRows = normalizeCostDisplayRows(contract);
+
+    const openExportDocumentModal = () => {
+        if (clientCompanyProfiles.rows.length === 0) {
+            toast.error('Khách hàng chưa có công ty pháp lý để xuất hợp đồng.');
+            return;
+        }
+
+        setSelectedCompanyProfileId((current) => current || clientCompanyProfiles.defaultId);
+        setShowExportDocumentModal(true);
+    };
+
+    const downloadContractDocument = async () => {
+        if (!contract?.id) return;
+        const companyProfileId = selectedCompanyProfileId || clientCompanyProfiles.defaultId;
+        if (!companyProfileId) {
+            toast.error('Vui lòng chọn công ty bên A trước khi tải hợp đồng.');
+            return;
+        }
+
+        setExportingDocument(true);
+        try {
+            const response = await axios.get(`/api/v1/contracts/${contract.id}/document`, {
+                params: { company_profile_id: companyProfileId },
+                responseType: 'blob',
+            });
+            const blob = new Blob([response.data], {
+                type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `${(contract.code || `hop-dong-${contract.id}`).replace(/[^\w.-]+/g, '-')}.docx`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+            setShowExportDocumentModal(false);
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Không tải được file hợp đồng.');
+        } finally {
+            setExportingDocument(false);
+        }
+    };
 
     return (
         <PageContainer
@@ -865,7 +926,7 @@ export default function ContractDetail(props) {
                             </div>
                             <button
                                 type="button"
-                                onClick={() => window.open(`/api/v1/contracts/${contract.id}/document`, '_blank', 'noopener,noreferrer')}
+                                onClick={openExportDocumentModal}
                                 className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:border-primary/30 hover:text-primary"
                             >
                                 Tải hợp đồng .docx
@@ -1612,6 +1673,68 @@ export default function ContractDetail(props) {
                         </button>
                     </div>
                 </form>
+            </Modal>
+
+            <Modal
+                open={showExportDocumentModal}
+                onClose={() => !exportingDocument && setShowExportDocumentModal(false)}
+                title="Chọn công ty bên A"
+                description="Chọn đúng hồ sơ pháp lý của khách hàng để xuất hợp đồng Word."
+                size="md"
+            >
+                <div className="mt-2 space-y-4 text-sm">
+                    <LabeledField
+                        label="Công ty pháp lý"
+                        hint="Danh sách này được lấy từ cấu hình công ty của chính khách hàng trong CRM."
+                    >
+                        <select
+                            className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
+                            value={selectedCompanyProfileId || clientCompanyProfiles.defaultId}
+                            onChange={(e) => setSelectedCompanyProfileId(e.target.value)}
+                        >
+                            {clientCompanyProfiles.rows.map((profile) => (
+                                <option key={profile.id} value={profile.id}>
+                                    {profile.company_name}
+                                    {profile.is_default ? ' • Mặc định' : ''}
+                                </option>
+                            ))}
+                        </select>
+                    </LabeledField>
+                    {clientCompanyProfiles.rows.length > 0 && (
+                        <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3 text-xs text-slate-700">
+                            {(() => {
+                                const active = clientCompanyProfiles.rows.find((profile) => String(profile.id) === String(selectedCompanyProfileId || clientCompanyProfiles.defaultId))
+                                    || clientCompanyProfiles.rows[0];
+                                return (
+                                    <>
+                                        <div><span className="font-semibold">Người đại diện:</span> {active?.representative || '—'}</div>
+                                        <div className="mt-1"><span className="font-semibold">Chức vụ:</span> {active?.position || '—'}</div>
+                                        <div className="mt-1"><span className="font-semibold">MST:</span> {active?.tax_code || '—'}</div>
+                                        <div className="mt-1"><span className="font-semibold">Địa chỉ:</span> {active?.address || '—'}</div>
+                                    </>
+                                );
+                            })()}
+                        </div>
+                    )}
+                    <div className="flex items-center justify-end gap-3 pt-2">
+                        <button
+                            type="button"
+                            className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                            onClick={() => setShowExportDocumentModal(false)}
+                            disabled={exportingDocument}
+                        >
+                            Hủy
+                        </button>
+                        <button
+                            type="button"
+                            className="rounded-2xl bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90 disabled:opacity-60"
+                            onClick={downloadContractDocument}
+                            disabled={exportingDocument}
+                        >
+                            {exportingDocument ? 'Đang tạo file...' : 'Xuất hợp đồng .docx'}
+                        </button>
+                    </div>
+                </div>
             </Modal>
 
             <Modal

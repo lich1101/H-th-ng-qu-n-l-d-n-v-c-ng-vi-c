@@ -12,7 +12,7 @@ class ContractDocumentService
 {
     private const TEMPLATE_RELATIVE_PATH = 'templates/contracts/contract-template-basic-an-phat-379.docx';
 
-    public function generate(Contract $contract): array
+    public function generate(Contract $contract, ?array $companyProfile = null): array
     {
         $templatePath = public_path(self::TEMPLATE_RELATIVE_PATH);
         if (! file_exists($templatePath)) {
@@ -44,7 +44,7 @@ class ContractDocumentService
         }
 
         $documentXml = $this->replacePricingTable($documentXml, $contract);
-        $documentXml = $this->replaceStaticContent($documentXml, $contract);
+        $documentXml = $this->replaceStaticContent($documentXml, $contract, $companyProfile);
 
         $zip->addFromString('word/document.xml', $documentXml);
         $zip->close();
@@ -55,7 +55,7 @@ class ContractDocumentService
         ];
     }
 
-    private function replaceStaticContent(string $xml, Contract $contract): string
+    private function replaceStaticContent(string $xml, Contract $contract, ?array $companyProfile = null): string
     {
         $client = $contract->client;
         $project = $contract->project ?: $contract->linkedProject;
@@ -70,6 +70,11 @@ class ContractDocumentService
         $total = (float) ($contract->value ?? 0);
         $amountWords = $this->numberToVietnameseWords($total);
         $vatLabel = $this->resolveVatLabel($contract);
+        $legalCompanyName = trim((string) data_get($companyProfile, 'company_name', ''));
+        $legalRepresentative = trim((string) data_get($companyProfile, 'representative', ''));
+        $legalPosition = trim((string) data_get($companyProfile, 'position', ''));
+        $legalAddress = trim((string) data_get($companyProfile, 'address', ''));
+        $legalTaxCode = trim((string) data_get($companyProfile, 'tax_code', ''));
 
         $replacements = [
             'Số:180326HĐKT/AĐT-AP379' => 'Số:' . ($contract->code ?: ('HD-' . $contract->id)),
@@ -79,10 +84,6 @@ class ContractDocumentService
                 $signedAt->format('m'),
                 $signedAt->format('Y')
             ),
-            'CÔNG TY TNHH AN PHÁT 379' => $client->company ?: $client->name ?: '................................',
-            'Ông Trần Đăng An' => $client->name ?: '................................',
-            'Số 1 Đông Hồ, Phường Hạ Long, Tỉnh Quảng Ninh, Việt Nam' => '................................',
-            '5702086504' => '................................',
             '2.2.1. Gói dịch vụ: Dịch vụ Backlink Báo Basic' => '2.2.1. Gói dịch vụ: ' . $serviceName,
             '2.2.2. Tiến độ thực hiện: 7 ngày' => '2.2.2. Tiến độ thực hiện: ' . $this->resolveProgressLabel($startDate, $endDate),
             '2.2.3 Triển khai cho website: ahalong.vn' => '2.2.3 Triển khai cho website: ' . $website,
@@ -99,6 +100,32 @@ class ContractDocumentService
         foreach ($replacements as $search => $replace) {
             $xml = str_replace($this->escapeXmlText($search), $this->escapeXmlText($replace), $xml);
         }
+
+        $xml = $this->replaceFirstEscapedText(
+            $xml,
+            'CÔNG TY TNHH AN PHÁT 379',
+            $legalCompanyName !== '' ? $legalCompanyName : ($client->company ?: $client->name ?: '................................')
+        );
+        $xml = $this->replaceFirstEscapedText(
+            $xml,
+            'Ông Trần Đăng An',
+            $legalRepresentative !== '' ? $legalRepresentative : ($client->name ?: '................................')
+        );
+        $xml = $this->replaceFirstEscapedText(
+            $xml,
+            'Chức vụ',
+            $legalPosition !== '' ? $legalPosition : '................................'
+        );
+        $xml = $this->replaceFirstEscapedText(
+            $xml,
+            'Số 1 Đông Hồ, Phường Hạ Long, Tỉnh Quảng Ninh, Việt Nam',
+            $legalAddress !== '' ? $legalAddress : '................................'
+        );
+        $xml = $this->replaceFirstEscapedText(
+            $xml,
+            '5702086504',
+            $legalTaxCode !== '' ? $legalTaxCode : '................................'
+        );
 
         if ($subtotal > 0) {
             $xml = str_replace(
@@ -248,6 +275,13 @@ class ContractDocumentService
     private function escapeXmlText(string $value): string
     {
         return htmlspecialchars($value, ENT_XML1 | ENT_COMPAT, 'UTF-8');
+    }
+
+    private function replaceFirstEscapedText(string $xml, string $search, string $replace): string
+    {
+        $escapedSearch = '/' . preg_quote($this->escapeXmlText($search), '/') . '/u';
+
+        return preg_replace($escapedSearch, $this->escapeXmlText($replace), $xml, 1) ?: $xml;
     }
 
     private function numberToVietnameseWords(float $number): string

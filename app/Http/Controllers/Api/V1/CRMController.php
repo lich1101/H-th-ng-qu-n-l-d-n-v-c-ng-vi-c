@@ -22,6 +22,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 
 class CRMController extends Controller
 {
@@ -269,6 +270,14 @@ class CRMController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'company' => ['nullable', 'string', 'max:255'],
+            'company_profiles' => ['sometimes', 'array', 'max:20'],
+            'company_profiles.*.id' => ['nullable', 'string', 'max:80'],
+            'company_profiles.*.company_name' => ['nullable', 'string', 'max:255'],
+            'company_profiles.*.address' => ['nullable', 'string', 'max:500'],
+            'company_profiles.*.tax_code' => ['nullable', 'string', 'max:80'],
+            'company_profiles.*.representative' => ['nullable', 'string', 'max:255'],
+            'company_profiles.*.position' => ['nullable', 'string', 'max:255'],
+            'company_profiles.*.is_default' => ['nullable', 'boolean'],
             'email' => ['nullable', 'email', 'max:255'],
             'phone' => ['nullable', 'string', 'max:255'],
             'notes' => ['nullable', 'string'],
@@ -296,6 +305,12 @@ class CRMController extends Controller
         }
 
         $user = $request->user();
+        if (array_key_exists('company_profiles', $validated) && ! $this->canManageClientCompanyProfiles($user)) {
+            return response()->json(['message' => 'Chỉ administrator mới được cấu hình công ty pháp lý của khách hàng.'], 403);
+        }
+        if (array_key_exists('company_profiles', $validated)) {
+            $validated['company_profiles'] = $this->normalizeClientCompanyProfiles($validated['company_profiles']);
+        }
         $validated = $this->resolveClientAssignment($user, $validated);
 
         // Always keep a concrete assignee on create to avoid orphan/invalid rows
@@ -378,6 +393,14 @@ class CRMController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'company' => ['nullable', 'string', 'max:255'],
+            'company_profiles' => ['sometimes', 'array', 'max:20'],
+            'company_profiles.*.id' => ['nullable', 'string', 'max:80'],
+            'company_profiles.*.company_name' => ['nullable', 'string', 'max:255'],
+            'company_profiles.*.address' => ['nullable', 'string', 'max:500'],
+            'company_profiles.*.tax_code' => ['nullable', 'string', 'max:80'],
+            'company_profiles.*.representative' => ['nullable', 'string', 'max:255'],
+            'company_profiles.*.position' => ['nullable', 'string', 'max:255'],
+            'company_profiles.*.is_default' => ['nullable', 'boolean'],
             'email' => ['nullable', 'email', 'max:255'],
             'phone' => ['nullable', 'string', 'max:255'],
             'notes' => ['nullable', 'string'],
@@ -392,6 +415,12 @@ class CRMController extends Controller
             'care_staff_ids.*' => ['integer', 'exists:users,id'],
         ]);
         $user = $request->user();
+        if (array_key_exists('company_profiles', $validated) && ! $this->canManageClientCompanyProfiles($user)) {
+            return response()->json(['message' => 'Chỉ administrator mới được cấu hình công ty pháp lý của khách hàng.'], 403);
+        }
+        if (array_key_exists('company_profiles', $validated)) {
+            $validated['company_profiles'] = $this->normalizeClientCompanyProfiles($validated['company_profiles']);
+        }
 
         if ($user->role === 'nhan_vien') {
             if ($this->employeeAttemptedDirectAssignmentChange($validated, $client)) {
@@ -936,6 +965,72 @@ class CRMController extends Controller
         return Schema::hasTable('client_care_staff')
             && Schema::hasColumn('client_care_staff', 'client_id')
             && Schema::hasColumn('client_care_staff', 'user_id');
+    }
+
+    private function canManageClientCompanyProfiles(?User $user): bool
+    {
+        $role = strtolower((string) optional($user)->role);
+
+        return in_array($role, ['admin', 'administrator'], true);
+    }
+
+    private function normalizeClientCompanyProfiles(array $profiles): array
+    {
+        $rows = collect($profiles)
+            ->map(function ($profile) {
+                $row = is_array($profile) ? $profile : [];
+
+                $companyName = trim((string) ($row['company_name'] ?? ''));
+                $address = trim((string) ($row['address'] ?? ''));
+                $taxCode = trim((string) ($row['tax_code'] ?? ''));
+                $representative = trim((string) ($row['representative'] ?? ''));
+                $position = trim((string) ($row['position'] ?? ''));
+                $hasAnyValue = $companyName !== ''
+                    || $address !== ''
+                    || $taxCode !== ''
+                    || $representative !== ''
+                    || $position !== '';
+
+                if (! $hasAnyValue) {
+                    return null;
+                }
+
+                return [
+                    'id' => trim((string) ($row['id'] ?? '')) ?: Str::uuid()->toString(),
+                    'company_name' => $companyName,
+                    'address' => $address,
+                    'tax_code' => $taxCode,
+                    'representative' => $representative,
+                    'position' => $position,
+                    'is_default' => (bool) ($row['is_default'] ?? false),
+                ];
+            })
+            ->filter()
+            ->values();
+
+        if ($rows->isEmpty()) {
+            return [];
+        }
+
+        $defaultFound = false;
+        $normalized = $rows->map(function (array $row, int $index) use (&$defaultFound) {
+            if (! $defaultFound && ! empty($row['is_default'])) {
+                $defaultFound = true;
+                $row['is_default'] = true;
+
+                return $row;
+            }
+
+            $row['is_default'] = false;
+            if (! $defaultFound && $index === 0) {
+                $defaultFound = true;
+                $row['is_default'] = true;
+            }
+
+            return $row;
+        });
+
+        return $normalized->values()->all();
     }
 
     private function resolveSourceLabel(Client $client): string
