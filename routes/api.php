@@ -322,6 +322,8 @@ Route::prefix('v1')->group(function () {
             ->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
         Route::get('/contracts/{contract}', [ContractController::class, 'show'])
             ->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
+        Route::get('/contracts/{contract}/document', [ContractController::class, 'downloadDocument'])
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
         Route::post('/contracts', [ContractController::class, 'store'])
             ->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
         Route::put('/contracts/{contract}', [ContractController::class, 'update'])

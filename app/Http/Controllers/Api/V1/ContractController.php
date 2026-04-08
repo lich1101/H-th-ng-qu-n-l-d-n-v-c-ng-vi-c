@@ -16,6 +16,7 @@ use App\Models\Project;
 use App\Models\RevenueTier;
 use App\Models\User;
 use App\Services\ContractFinanceRequestService;
+use App\Services\ContractDocumentService;
 use App\Services\ContractLifecycleStatusService;
 use App\Services\DataTransfers\ClientFinancialSyncService;
 use App\Services\NotificationService;
@@ -25,6 +26,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Str;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class ContractController extends Controller
 {
@@ -249,6 +251,24 @@ class ContractController extends Controller
         return response()->json(
             $this->appendContractPermissions($contract, $request->user())
         );
+    }
+
+    public function downloadDocument(Request $request, Contract $contract): BinaryFileResponse
+    {
+        if (! $this->canViewContract($request->user(), $contract)) {
+            abort(403, 'Không có quyền xem hợp đồng.');
+        }
+
+        $this->loadContractDetail($contract);
+        $generated = app(ContractDocumentService::class)->generate($contract);
+
+        return response()->download(
+            $generated['path'],
+            $generated['filename'],
+            [
+                'Content-Type' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            ]
+        )->deleteFileAfterSend(true);
     }
 
     private function normalizeSortDirection(string $direction): string

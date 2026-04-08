@@ -865,7 +865,7 @@ export default function ContractDetail(props) {
                             </div>
                             <button
                                 type="button"
-                                onClick={() => window.open('/tai-mau-hop-dong', '_blank', 'noopener,noreferrer')}
+                                onClick={() => window.open(`/api/v1/contracts/${contract.id}/document`, '_blank', 'noopener,noreferrer')}
                                 className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:border-primary/30 hover:text-primary"
                             >
                                 Tải hợp đồng .docx
