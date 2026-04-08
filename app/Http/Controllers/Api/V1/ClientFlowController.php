@@ -243,29 +243,7 @@ class ClientFlowController extends Controller
                     ];
                 })
                 ->values(),
-            'comments_history' => collect($client->comments_history_json ?: [])
-                ->filter(function ($item) {
-                    return is_array($item)
-                        && ! empty(trim((string) ($item['detail'] ?? '')));
-                })
-                ->map(function ($item) use ($user) {
-                    $comment = is_array($item) ? $item : [];
-                    return [
-                        'id' => (string) ($comment['id'] ?? Str::uuid()),
-                        'title' => trim((string) ($comment['title'] ?? 'Bình luận')),
-                        'detail' => trim((string) ($comment['detail'] ?? '')),
-                        'created_at' => $comment['created_at'] ?? null,
-                        'user' => is_array($comment['user'] ?? null)
-                            ? [
-                                'id' => (int) (($comment['user']['id'] ?? 0)),
-                                'name' => (string) ($comment['user']['name'] ?? 'Nhân sự'),
-                                'email' => (string) ($comment['user']['email'] ?? ''),
-                            ]
-                            : null,
-                        'can_delete' => $this->canDeleteComment($user, $comment),
-                    ];
-                })
-                ->values(),
+            'comments_history' => $this->normalizedCommentsHistory($client, $user),
             'permissions' => [
                 'can_add_care_note' => $this->canAddCareNote($user, $client),
                 'can_add_comment' => $this->canAddCareNote($user, $client),
@@ -274,6 +252,23 @@ class ClientFlowController extends Controller
             ],
             'crm_access_mode' => 'full',
             'pending_staff_transfer' => $pendingTransfer ? $transferService->transferToArray($pendingTransfer) : null,
+        ]);
+    }
+
+    public function comments(Client $client, Request $request): JsonResponse
+    {
+        $user = $request->user();
+        if (! $this->canAccessClient($user, $client)) {
+            return response()->json(['message' => 'Không có quyền xem bình luận khách hàng.'], 403);
+        }
+
+        return response()->json([
+            'comments_history' => $this->normalizedCommentsHistory($client, $user),
+            'permissions' => [
+                'can_add_comment' => $this->canAddCareNote($user, $client),
+                'can_delete_any_comment' => in_array($user?->role, ['admin', 'administrator'], true),
+            ],
+            'fetched_at' => now()->toIso8601String(),
         ]);
     }
 
@@ -317,7 +312,7 @@ class ClientFlowController extends Controller
                 $history = [];
             }
 
-            array_unshift($history, $comment);
+            $history[] = $comment;
             $locked->comments_history_json = $history;
             $locked->save();
         });
@@ -469,6 +464,33 @@ class ClientFlowController extends Controller
 
         $commentUserId = (int) data_get($comment, 'user.id', 0);
         return $commentUserId > 0 && $commentUserId === (int) $user->id;
+    }
+
+    private function normalizedCommentsHistory(Client $client, ?User $user)
+    {
+        return collect($client->comments_history_json ?: [])
+            ->filter(function ($item) {
+                return is_array($item)
+                    && ! empty(trim((string) ($item['detail'] ?? '')));
+            })
+            ->map(function ($item) use ($user) {
+                $comment = is_array($item) ? $item : [];
+                return [
+                    'id' => (string) ($comment['id'] ?? Str::uuid()),
+                    'title' => trim((string) ($comment['title'] ?? 'Bình luận')),
+                    'detail' => trim((string) ($comment['detail'] ?? '')),
+                    'created_at' => $comment['created_at'] ?? null,
+                    'user' => is_array($comment['user'] ?? null)
+                        ? [
+                            'id' => (int) (($comment['user']['id'] ?? 0)),
+                            'name' => (string) ($comment['user']['name'] ?? 'Nhân sự'),
+                            'email' => (string) ($comment['user']['email'] ?? ''),
+                        ]
+                        : null,
+                    'can_delete' => $this->canDeleteComment($user, $comment),
+                ];
+            })
+            ->values();
     }
 
     /**

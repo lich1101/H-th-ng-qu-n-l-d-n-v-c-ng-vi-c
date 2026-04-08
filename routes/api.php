@@ -295,6 +295,7 @@ Route::prefix('v1')->group(function () {
         Route::post('/crm/clients/{client}/staff-transfer-requests', [ClientStaffTransferController::class, 'store'])
             ->middleware('role:admin,administrator,quan_ly,nhan_vien');
         Route::get('/crm/clients/{client}/flow', [ClientFlowController::class, 'show']);
+        Route::get('/crm/clients/{client}/comments', [ClientFlowController::class, 'comments']);
         Route::get('/crm/clients/{client}', [CRMController::class, 'showClient']);
         Route::post('/crm/clients/{client}/comments', [ClientFlowController::class, 'storeComment'])
             ->middleware('role:admin,quan_ly,nhan_vien');

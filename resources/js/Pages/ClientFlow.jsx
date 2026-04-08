@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import AppIcon from '@/Components/AppIcon';
 import PageContainer from '@/Components/PageContainer';
@@ -46,6 +46,33 @@ const formatDate = (raw) => formatVietnamDate(raw);
 const formatDateTime = (raw) => formatVietnamDateTime(raw);
 
 const formatCurrency = (value) => Number(value || 0).toLocaleString('vi-VN');
+const commentTimestamp = (comment) => {
+    const parsed = Date.parse(String(comment?.created_at || ''));
+    return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const normalizeCommentsHistoryRows = (rawRows) => (
+    (Array.isArray(rawRows) ? rawRows : [])
+        .filter((row) => row && String(row.detail || '').trim() !== '')
+        .map((row) => ({
+            id: String(row.id || ''),
+            title: String(row.title || 'Bình luận').trim() || 'Bình luận',
+            detail: String(row.detail || '').trim(),
+            created_at: row.created_at || null,
+            user: row.user || null,
+            can_delete: Boolean(row.can_delete),
+        }))
+        .sort((a, b) => {
+            const byTime = commentTimestamp(a) - commentTimestamp(b);
+            if (byTime !== 0) return byTime;
+            return String(a.id).localeCompare(String(b.id));
+        })
+);
+
+const buildCommentsSignature = (rows) => rows
+    .map((row) => `${row.id}:${row.created_at || ''}`)
+    .join('|');
+
 const userInitials = (user) => {
     const source = String(user?.name || user?.email || 'NS').trim();
     if (!source) return 'NS';
@@ -153,6 +180,9 @@ export default function ClientFlow({ auth, clientId }) {
         care_staff_ids: [],
     });
     const [careNoteForm, setCareNoteForm] = useState({ title: '', detail: '' });
+    const [commentsHistory, setCommentsHistory] = useState([]);
+    const [commentFlashIds, setCommentFlashIds] = useState([]);
+    const [sendingCommentFx, setSendingCommentFx] = useState(false);
     const [submittingCareNote, setSubmittingCareNote] = useState(false);
     const [deletingCommentId, setDeletingCommentId] = useState('');
     const [opportunityStatuses, setOpportunityStatuses] = useState([]);
@@ -179,6 +209,35 @@ export default function ClientFlow({ auth, clientId }) {
     const [transferForm, setTransferForm] = useState({ to_staff_id: '', note: '' });
     const [transferSubmitting, setTransferSubmitting] = useState(false);
     const [transferActionLoading, setTransferActionLoading] = useState(false);
+    const commentsScrollRef = useRef(null);
+    const commentsInitializedRef = useRef(false);
+    const previousCommentsCountRef = useRef(0);
+    const commentsSignatureRef = useRef('');
+    const pollingCommentsRef = useRef(false);
+    const commentsShouldStickToBottomRef = useRef(true);
+
+    const scrollCommentsToBottom = (behavior = 'auto') => {
+        const el = commentsScrollRef.current;
+        if (!el) return;
+        el.scrollTo({ top: el.scrollHeight, behavior });
+    };
+
+    const isCommentsNearBottom = () => {
+        const el = commentsScrollRef.current;
+        if (!el) return true;
+        return el.scrollHeight - el.scrollTop - el.clientHeight < 96;
+    };
+
+    const flashComments = (ids) => {
+        const normalized = (Array.isArray(ids) ? ids : [])
+            .map((id) => String(id || '').trim())
+            .filter(Boolean);
+        if (normalized.length === 0) return;
+        setCommentFlashIds((prev) => Array.from(new Set([...prev, ...normalized])));
+        window.setTimeout(() => {
+            setCommentFlashIds((prev) => prev.filter((id) => !normalized.includes(id)));
+        }, 900);
+    };
 
     const fetchTransferEligible = async () => {
         try {
@@ -243,7 +302,11 @@ export default function ClientFlow({ auth, clientId }) {
         setLoading(true);
         try {
             const res = await axios.get(`/api/v1/crm/clients/${clientId}/flow`);
-            setFlow(res.data || null);
+            const payload = res.data || null;
+            setFlow(payload);
+            const nextComments = normalizeCommentsHistoryRows(payload?.comments_history || []);
+            commentsSignatureRef.current = buildCommentsSignature(nextComments);
+            setCommentsHistory(nextComments);
         } catch (e) {
             toast.error(e?.response?.data?.message || 'Không tải được thông tin khách hàng.');
         } finally {
@@ -251,8 +314,83 @@ export default function ClientFlow({ auth, clientId }) {
         }
     };
 
+    const fetchCommentsOnly = async ({ silent = true } = {}) => {
+        if (!clientId || pollingCommentsRef.current) return;
+        pollingCommentsRef.current = true;
+        try {
+            const res = await axios.get(`/api/v1/crm/clients/${clientId}/comments`, {
+                params: { _t: Date.now() },
+            });
+            const nextComments = normalizeCommentsHistoryRows(res.data?.comments_history || []);
+            const nextSignature = buildCommentsSignature(nextComments);
+            if (nextSignature !== commentsSignatureRef.current) {
+                commentsSignatureRef.current = nextSignature;
+                setCommentsHistory(nextComments);
+            }
+        } catch (e) {
+            if (!silent) {
+                toast.error(e?.response?.data?.message || 'Không tải được bình luận.');
+            }
+        } finally {
+            pollingCommentsRef.current = false;
+        }
+    };
+
     useEffect(() => {
         fetchFlow();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [clientId]);
+
+    useEffect(() => {
+        commentsInitializedRef.current = false;
+        previousCommentsCountRef.current = 0;
+        setCommentFlashIds([]);
+    }, [clientId]);
+
+    useEffect(() => {
+        if (!commentsInitializedRef.current) {
+            commentsInitializedRef.current = true;
+            previousCommentsCountRef.current = commentsHistory.length;
+            window.requestAnimationFrame(() => scrollCommentsToBottom('auto'));
+            return;
+        }
+
+        const prevCount = previousCommentsCountRef.current;
+        if (commentsHistory.length > prevCount) {
+            const appendedRows = commentsHistory.slice(prevCount);
+            flashComments(appendedRows.map((row) => row.id));
+            if (commentsShouldStickToBottomRef.current) {
+                window.requestAnimationFrame(() => scrollCommentsToBottom('smooth'));
+            }
+        }
+        previousCommentsCountRef.current = commentsHistory.length;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [commentsHistory]);
+
+    useEffect(() => {
+        if (!clientId) return undefined;
+        let stopped = false;
+        let timerId = null;
+
+        const tick = async () => {
+            if (stopped) return;
+            if (document.visibilityState !== 'visible') {
+                timerId = window.setTimeout(tick, 1000);
+                return;
+            }
+            await fetchCommentsOnly({ silent: true });
+            if (!stopped) {
+                timerId = window.setTimeout(tick, 1000);
+            }
+        };
+
+        timerId = window.setTimeout(tick, 1000);
+        return () => {
+            stopped = true;
+            if (timerId) {
+                window.clearTimeout(timerId);
+            }
+        };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [clientId]);
 
@@ -378,7 +516,11 @@ export default function ClientFlow({ auth, clientId }) {
             return;
         }
 
+        const draft = { title, detail };
         setSubmittingCareNote(true);
+        setSendingCommentFx(true);
+        setCareNoteForm({ title: '', detail: '' });
+        window.setTimeout(() => setSendingCommentFx(false), 320);
         try {
             const res = await axios.post(`/api/v1/crm/clients/${flow.client.id}/comments`, {
                 title,
@@ -386,16 +528,17 @@ export default function ClientFlow({ auth, clientId }) {
             });
             const comment = res?.data?.comment;
             if (comment) {
-                setFlow((prev) => ({
-                    ...(prev || {}),
-                    comments_history: [comment, ...((prev?.comments_history || []))],
-                }));
+                setCommentsHistory((prev) => {
+                    const merged = normalizeCommentsHistoryRows([...prev, comment]);
+                    commentsSignatureRef.current = buildCommentsSignature(merged);
+                    return merged;
+                });
             } else {
-                await fetchFlow();
+                await fetchCommentsOnly({ silent: false });
             }
-            setCareNoteForm({ title: '', detail: '' });
             toast.success('Đã thêm bình luận.');
         } catch (e) {
+            setCareNoteForm(draft);
             toast.error(e?.response?.data?.message || 'Không thể thêm bình luận.');
         } finally {
             setSubmittingCareNote(false);
@@ -571,10 +714,11 @@ export default function ClientFlow({ auth, clientId }) {
         setDeletingCommentId(String(commentId));
         try {
             await axios.delete(`/api/v1/crm/clients/${flow.client.id}/comments/${commentId}`);
-            setFlow((prev) => ({
-                ...(prev || {}),
-                comments_history: (prev?.comments_history || []).filter((comment) => String(comment.id) !== String(commentId)),
-            }));
+            setCommentsHistory((prev) => {
+                const nextRows = prev.filter((comment) => String(comment.id) !== String(commentId));
+                commentsSignatureRef.current = buildCommentsSignature(nextRows);
+                return nextRows;
+            });
             toast.success('Đã xóa bình luận.');
         } catch (e) {
             toast.error(e?.response?.data?.message || 'Không thể xóa bình luận.');
@@ -636,8 +780,6 @@ export default function ClientFlow({ auth, clientId }) {
             { label: 'Đầu việc', value: `${summary.items.done}/${summary.items.total}` },
         ];
     }, [summary]);
-
-    const commentsHistory = flow?.comments_history || [];
 
     const pt = flow?.pending_staff_transfer;
     const transferPending = pt && pt.status === 'pending';
@@ -1014,10 +1156,23 @@ export default function ClientFlow({ auth, clientId }) {
                     </div>
 
                     <div className="mt-4 rounded-2xl border border-slate-200/80 bg-slate-50/60 p-2 sm:p-3">
-                        <div className="max-h-[380px] overflow-y-auto pr-1">
+                        <div
+                            ref={commentsScrollRef}
+                            className="max-h-[380px] overflow-y-auto pr-1"
+                            onScroll={() => {
+                                commentsShouldStickToBottomRef.current = isCommentsNearBottom();
+                            }}
+                        >
                             <div className="space-y-2">
                                 {commentsHistory.map((note) => (
-                                    <article key={note.id} className="rounded-xl border border-slate-200/80 bg-white p-3.5 shadow-sm transition hover:shadow">
+                                    <article
+                                        key={note.id}
+                                        className={`rounded-xl border bg-white p-3.5 shadow-sm transition-all duration-300 hover:shadow ${
+                                            commentFlashIds.includes(String(note.id))
+                                                ? 'border-primary/40 ring-2 ring-primary/20'
+                                                : 'border-slate-200/80'
+                                        }`}
+                                    >
                                         <div className="flex items-start justify-between gap-3">
                                             <div className="flex min-w-0 items-start gap-3">
                                                 <div className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-primary/20 bg-primary/10 text-xs font-bold text-primary">
@@ -1104,7 +1259,9 @@ export default function ClientFlow({ auth, clientId }) {
                                     </button>
                                     <button
                                         type="submit"
-                                        className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary/90"
+                                        className={`inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition ${
+                                            sendingCommentFx ? 'scale-[1.02] shadow-md' : ''
+                                        } hover:bg-primary/90`}
                                         disabled={submittingCareNote}
                                     >
                                         {submittingCareNote ? 'Đang gửi...' : 'Gửi bình luận'}

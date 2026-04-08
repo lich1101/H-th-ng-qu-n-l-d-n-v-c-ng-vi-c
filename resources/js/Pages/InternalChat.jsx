@@ -21,6 +21,7 @@ export default function InternalChat(props) {
     const [editingId, setEditingId] = useState(null);
     const [content, setContent] = useState('');
     const [participants, setParticipants] = useState([]);
+    const [participantsMeta, setParticipantsMeta] = useState(null);
     const [taggedUsers, setTaggedUsers] = useState([]);
     const [mentionQuery, setMentionQuery] = useState('');
     const [mentionOpen, setMentionOpen] = useState(false);
@@ -36,6 +37,12 @@ export default function InternalChat(props) {
         if (!user) return false;
         return comment.user_id === user.id && !comment.is_recalled;
     };
+
+    const selectedTaskChatLocked = selectedTask?.chat_enabled === false
+        || selectedTask?.project?.handover_status === 'approved';
+
+    const selectedTaskChatDisabledReason = selectedTask?.chat_disabled_reason
+        || (selectedTaskChatLocked ? 'Dự án đã bàn giao xong, chat công việc đã bị khóa.' : '');
 
     const formatTime = (raw) => {
         if (!raw) return '';
@@ -358,8 +365,25 @@ export default function InternalChat(props) {
 
     const fetchTasks = async () => {
         try {
-            const res = await axios.get('/api/v1/tasks', { params: { per_page: 200 } });
-            setTasks(res.data?.data || []);
+            const res = await axios.get('/api/v1/task-conversations', { params: { limit: 200 } });
+            const rows = (res.data?.data || []).map((row) => ({
+                id: row.task_id,
+                title: row.title,
+                status: row.task_status,
+                comments_count: row.comment_count,
+                body: row.body,
+                project: {
+                    name: row.project_name,
+                    code: row.project_code,
+                    handover_status: row.project_handover_status,
+                },
+                department_name: row.department_name,
+                assignee_name: row.assignee_name,
+                chat_enabled: row.chat_enabled !== false,
+                chat_disabled_reason: row.chat_disabled_reason || '',
+                unread_count: row.unread_count || 0,
+            }));
+            setTasks(rows);
         } catch (e) {
             toast.error(e?.response?.data?.message || 'Không tải được danh sách công việc.');
         }
@@ -412,13 +436,16 @@ export default function InternalChat(props) {
     const fetchParticipants = async (taskId) => {
         if (!taskId) {
             setParticipants([]);
+            setParticipantsMeta(null);
             return;
         }
         try {
             const res = await axios.get(`/api/v1/tasks/${taskId}/chat-participants`);
             setParticipants(res.data?.data || []);
+            setParticipantsMeta(res.data?.meta || null);
         } catch (e) {
             setParticipants([]);
+            setParticipantsMeta(null);
         }
     };
 
@@ -439,6 +466,7 @@ export default function InternalChat(props) {
         if (!selectedTaskId) {
             setComments([]);
             setParticipants([]);
+            setParticipantsMeta(null);
             setSelectedTask(null);
             return undefined;
         }
@@ -451,6 +479,9 @@ export default function InternalChat(props) {
 
         const setup = async () => {
             if (!firebaseReady) {
+                return;
+            }
+            if (task?.chat_enabled === false || task?.project?.handover_status === 'approved') {
                 return;
             }
             const authed = await ensureFirebaseAuth(firebaseToken);
@@ -519,6 +550,10 @@ export default function InternalChat(props) {
             toast.error('Công việc đã hoàn thành, không thể chỉnh sửa.');
             return;
         }
+        if (selectedTaskChatLocked) {
+            toast.error(selectedTaskChatDisabledReason);
+            return;
+        }
         setEditingId(c.id);
         setContent(c.content || '');
         if (Array.isArray(c.tagged_users) && c.tagged_users.length) {
@@ -544,6 +579,10 @@ export default function InternalChat(props) {
         }
         if (selectedTask?.status === 'done') {
             toast.error('Công việc đã hoàn thành, không thể gửi tin nhắn.');
+            return;
+        }
+        if (selectedTaskChatLocked) {
+            toast.error(selectedTaskChatDisabledReason);
             return;
         }
         if (!content.trim()) {
@@ -737,6 +776,31 @@ export default function InternalChat(props) {
                         </div>
                         {loading && <span className="text-xs text-text-muted">Đang tải...</span>}
                     </div>
+                    {selectedTask && (
+                        <div className="mb-3 space-y-2">
+                            <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                                <span className="font-semibold text-slate-800">Phạm vi chat:</span>{' '}
+                                {(participantsMeta?.scope_labels || []).join(', ')}
+                            </div>
+                            {participants.length > 0 && (
+                                <div className="flex flex-wrap gap-2">
+                                    {participants.map((participant) => (
+                                        <span
+                                            key={participant.id}
+                                            className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-700"
+                                        >
+                                            {participant.name}
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+                            {selectedTaskChatLocked && (
+                                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                                    {selectedTaskChatDisabledReason}
+                                </div>
+                            )}
+                        </div>
+                    )}
                     <div
                         ref={listRef}
                         className="flex-1 overflow-y-auto pr-2 space-y-3"
@@ -808,7 +872,7 @@ export default function InternalChat(props) {
                                         {!isRecalled && tags && (
                                             <p className="text-xs text-emerald-700 mt-1">Tag: {tags}</p>
                                         )}
-                                        {canEditOrDelete(c) && !isRecalled && (
+                                        {canEditOrDelete(c) && !isRecalled && !selectedTaskChatLocked && (
                                             <div className="mt-2 flex gap-3 text-xs justify-end">
                                                 <button className="text-primary" onClick={() => startEdit(c)} type="button">
                                                     Sửa
@@ -830,6 +894,11 @@ export default function InternalChat(props) {
                         {selectedTask?.status === 'done' && (
                             <p className="text-xs text-text-muted mb-2">
                                 Công việc đã hoàn thành, không thể gửi tin nhắn.
+                            </p>
+                        )}
+                        {selectedTaskChatLocked && (
+                            <p className="text-xs text-amber-700 mb-2">
+                                {selectedTaskChatDisabledReason}
                             </p>
                         )}
                         {taggedUsers.length > 0 && (
@@ -858,7 +927,7 @@ export default function InternalChat(props) {
                             rows={2}
                             placeholder="Nhập nội dung..."
                             value={content}
-                            disabled={!selectedTaskId || selectedTask?.status === 'done'}
+                            disabled={!selectedTaskId || selectedTask?.status === 'done' || selectedTaskChatLocked}
                             onChange={(e) => handleContentChange(e.target.value)}
                         />
                         {showMentionWarning() && (
@@ -902,7 +971,7 @@ export default function InternalChat(props) {
                                     type="button"
                                     className="rounded-xl bg-white border border-slate-200/80 px-3 py-2 text-xs font-semibold text-slate-700"
                                     onClick={() => fileInputRef.current?.click()}
-                                    disabled={!selectedTaskId || selectedTask?.status === 'done'}
+                                    disabled={!selectedTaskId || selectedTask?.status === 'done' || selectedTaskChatLocked}
                                 >
                                     Đính kèm
                                 </button>
@@ -913,6 +982,7 @@ export default function InternalChat(props) {
                                     ref={fileInputRef}
                                     className="hidden"
                                     type="file"
+                                    disabled={!selectedTaskId || selectedTask?.status === 'done' || selectedTaskChatLocked}
                                     onChange={(e) => setAttachment(e.target.files?.[0] || null)}
                                 />
                             </div>
@@ -930,7 +1000,7 @@ export default function InternalChat(props) {
                                     type="button"
                                     className="bg-primary text-white rounded-2xl px-4 py-2 text-sm font-semibold"
                                     onClick={save}
-                                    disabled={!selectedTaskId || selectedTask?.status === 'done'}
+                                    disabled={!selectedTaskId || selectedTask?.status === 'done' || selectedTaskChatLocked}
                                 >
                                     {editingId ? 'Cập nhật' : 'Gửi'}
                                 </button>

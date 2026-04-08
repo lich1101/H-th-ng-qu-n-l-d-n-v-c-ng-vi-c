@@ -34,15 +34,27 @@ class TaskCommentController extends Controller
             ->latest()
             ->paginate((int) $request->input('per_page', 20));
 
-        $this->attachTaggedUsers($comments->getCollection());
+        $commentRows = collect($comments->items());
+        $this->attachTaggedUsers($commentRows);
 
-        return response()->json($comments);
+        return response()->json([
+            'data' => $commentRows->values()->all(),
+            'current_page' => $comments->currentPage(),
+            'last_page' => $comments->lastPage(),
+            'per_page' => $comments->perPage(),
+            'total' => $comments->total(),
+            'chat_enabled' => ! $this->taskChatLocked($task),
+            'chat_disabled_reason' => $this->taskChatDisabledReason($task),
+        ]);
     }
 
     public function store(Task $task, Request $request): JsonResponse
     {
         if (! $this->canAccessTask($request->user(), $task)) {
             return response()->json(['message' => 'Không có quyền gửi trao đổi.'], 403);
+        }
+        if ($this->taskChatLocked($task)) {
+            return response()->json(['message' => $this->taskChatDisabledReason($task)], 422);
         }
         if ($task->status === 'done') {
             return response()->json(['message' => 'Công việc đã hoàn thành, không thể gửi trao đổi.'], 422);
@@ -87,6 +99,9 @@ class TaskCommentController extends Controller
     {
         if (! $this->canAccessTask($request->user(), $task)) {
             return response()->json(['message' => 'Không có quyền cập nhật trao đổi.'], 403);
+        }
+        if ($this->taskChatLocked($task)) {
+            return response()->json(['message' => $this->taskChatDisabledReason($task)], 422);
         }
         if ($task->status === 'done') {
             return response()->json(['message' => 'Công việc đã hoàn thành, không thể cập nhật trao đổi.'], 422);
@@ -150,6 +165,9 @@ class TaskCommentController extends Controller
         if (! $this->canAccessTask($request->user(), $task)) {
             return response()->json(['message' => 'Không có quyền xóa trao đổi.'], 403);
         }
+        if ($this->taskChatLocked($task)) {
+            return response()->json(['message' => $this->taskChatDisabledReason($task)], 422);
+        }
         if ($comment->task_id !== $task->id) {
             return response()->json(['message' => 'Comment does not belong to task.'], 422);
         }
@@ -209,7 +227,19 @@ class TaskCommentController extends Controller
                 ];
             });
 
-        return response()->json(['data' => $participants]);
+        return response()->json([
+            'data' => $participants,
+            'meta' => [
+                'chat_enabled' => ! $this->taskChatLocked($task),
+                'chat_disabled_reason' => $this->taskChatDisabledReason($task),
+                'scope_labels' => [
+                    'Admin / Administrator',
+                    'Người phụ trách dự án',
+                    'Người phụ trách công việc',
+                    'Tất cả người phụ trách đầu việc',
+                ],
+            ],
+        ]);
     }
 
     public function threads(Request $request): JsonResponse
@@ -285,6 +315,7 @@ class TaskCommentController extends Controller
                 'key' => 'task:'.$task->id,
                 'task_id' => (int) $task->id,
                 'title' => $task->title,
+                'task_status' => $task->status,
                 'body' => $preview,
                 'project_name' => optional($task->project)->name,
                 'project_code' => optional($task->project)->code,
@@ -296,6 +327,9 @@ class TaskCommentController extends Controller
                 'unread_count' => $unreadCount,
                 'is_read' => $unreadCount <= 0,
                 'activity_at' => optional($activityAt)->toIso8601String(),
+                'project_handover_status' => optional($task->project)->handover_status,
+                'chat_enabled' => ! $this->taskChatLocked($task),
+                'chat_disabled_reason' => $this->taskChatDisabledReason($task),
             ];
         })->values();
 
@@ -364,12 +398,12 @@ class TaskCommentController extends Controller
 
     private function canAccessTask($user, Task $task): bool
     {
-        return ProjectScope::canAccessTask($user, $task);
+        return ProjectScope::canAccessTaskChat($user, $task);
     }
 
     private function applyChatScope(Builder $query, $user): void
     {
-        ProjectScope::applyTaskScope($query, $user);
+        ProjectScope::applyTaskChatScope($query, $user);
     }
 
     private function resolveChatParticipants(Task $task)
@@ -529,6 +563,24 @@ class TaskCommentController extends Controller
         } catch (\Throwable $e) {
             report($e);
         }
+    }
+
+    private function taskChatLocked(Task $task): bool
+    {
+        $handoverStatus = $task->relationLoaded('project')
+            ? (string) optional($task->project)->handover_status
+            : (string) $task->project()->value('handover_status');
+
+        return $handoverStatus === 'approved';
+    }
+
+    private function taskChatDisabledReason(Task $task): ?string
+    {
+        if ($this->taskChatLocked($task)) {
+            return 'Dự án đã bàn giao xong, chat công việc đã bị khóa.';
+        }
+
+        return null;
     }
 
     private function storeAttachment(Task $task, Request $request): string

@@ -171,6 +171,43 @@ class ProjectScope
         )->exists();
     }
 
+    public static function applyTaskChatScope(Builder $query, ?User $user): Builder
+    {
+        if (! $user) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        if (self::isAdminRole($user)) {
+            return $query;
+        }
+
+        if ($user->role === 'ke_toan') {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query->where(function (Builder $builder) use ($user) {
+            $builder->where('assignee_id', $user->id)
+                ->orWhereHas('project', function (Builder $projectQuery) use ($user) {
+                    $projectQuery->where('owner_id', $user->id);
+                })
+                ->orWhereHas('items', function (Builder $itemQuery) use ($user) {
+                    $itemQuery->where('assignee_id', $user->id);
+                });
+        });
+    }
+
+    public static function canAccessTaskChat(?User $user, Task $task): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        return self::applyTaskChatScope(
+            Task::query()->whereKey($task->id),
+            $user
+        )->exists();
+    }
+
     public static function applyTaskItemScope(Builder $query, ?User $user): Builder
     {
         if (! $user) {
@@ -448,41 +485,14 @@ class ProjectScope
             $ids->push($ownerId);
         }
 
-        $collectorId = $task->project && $task->project->relationLoaded('contract')
-            ? (int) optional($task->project->contract)->collector_user_id
-            : (int) $task->project()->join('contracts', 'projects.contract_id', '=', 'contracts.id')
-                ->where('projects.id', $task->project_id)
-                ->value('contracts.collector_user_id');
-        if ($collectorId > 0) {
-            $ids->push($collectorId);
-        }
-
-        if ($task->department_id) {
-            $managerId = Department::query()
-                ->where('id', $task->department_id)
-                ->value('manager_id');
-            if ($managerId) {
-                $ids->push((int) $managerId);
-            }
-        }
-
         $ids = $ids->merge(
             $task->items()
                 ->whereNotNull('assignee_id')
                 ->pluck('assignee_id')
         );
 
-        $ids = $ids->merge(
-            $task->comments()
-                ->whereNotNull('user_id')
-                ->pluck('user_id')
-        );
-
         foreach ([
             $task->assignee_id,
-            $task->reviewer_id,
-            $task->created_by,
-            $task->assigned_by,
         ] as $value) {
             if ($value) {
                 $ids->push((int) $value);

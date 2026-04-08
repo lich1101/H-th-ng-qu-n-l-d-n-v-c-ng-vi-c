@@ -26,7 +26,9 @@ class TaskController extends Controller
                 },
             ]);
 
-        if ($request->filled('project_id')) {
+        if ($request->boolean('chat_scope')) {
+            ProjectScope::applyTaskChatScope($query, $user);
+        } elseif ($request->filled('project_id')) {
             ProjectScope::applyTaskScope($query, $user);
         } else {
             ProjectScope::applyTaskListScope($query, $user);

@@ -11,6 +11,7 @@ use App\Models\Project;
 use App\Models\ProjectMeeting;
 use App\Models\User;
 use App\Services\ClientPhoneDuplicateService;
+use App\Services\FirebaseService;
 use App\Services\NotificationService;
 use App\Services\ProjectGscSyncService;
 use App\Services\WorkflowTopicApplierService;
@@ -553,6 +554,7 @@ class ProjectController extends Controller
             ]);
 
             $this->markLinkedContractHandoverReceived($project, $request->user());
+            $this->cleanupProjectTaskChats($project);
         } else {
             $project->update([
                 'handover_status' => 'rejected',
@@ -917,5 +919,22 @@ class ProjectController extends Controller
         }
 
         return max(0, $creatorId);
+    }
+
+    private function cleanupProjectTaskChats(Project $project): void
+    {
+        $taskIds = $project->tasks()->pluck('id');
+        if ($taskIds->isEmpty()) {
+            return;
+        }
+
+        $firebase = app(FirebaseService::class);
+        foreach ($taskIds as $taskId) {
+            try {
+                $firebase->deleteTaskChatThread((int) $taskId);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
     }
 }

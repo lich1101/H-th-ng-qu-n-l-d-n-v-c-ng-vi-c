@@ -68,6 +68,25 @@ class FirebaseService
         return $response->ok();
     }
 
+    public function deleteTaskChatThread(int $taskId): bool
+    {
+        if (! $this->databaseEnabled()) {
+            return false;
+        }
+        $token = $this->getDatabaseAccessToken();
+        if (! $token) {
+            return false;
+        }
+        $url = rtrim((string) config('firebase.database_url'), '/')
+            ."/task_chats/{$taskId}.json";
+
+        $response = Http::timeout(10)
+            ->withOptions(['query' => ['access_token' => $token]])
+            ->delete($url);
+
+        return $response->ok();
+    }
+
     public function sendPush(array $tokens, string $title, string $body, array $data = []): array
     {
         if (! $this->enabled()) {
