@@ -43,10 +43,17 @@ Route::get('/chinh-sach-quyen-rieng-tu', function () {
 })->name('privacy.policy');
 
 Route::get('/tai-mau-hop-dong', function () {
-    $path = public_path('templates/contracts/contract-template-basic-an-phat-379.docx');
-    abort_unless(file_exists($path), 404);
-
-    return response()->download($path, 'HĐ Backlink Báo Basic An Phát 379.docx');
+    $candidates = [
+        'templates/contracts/contract-template-merge-fields.docx',
+        'templates/contracts/contract-template-basic-an-phat-379.docx',
+    ];
+    foreach ($candidates as $relative) {
+        $path = public_path($relative);
+        if (file_exists($path)) {
+            return response()->download($path, 'mau-hop-dong.docx');
+        }
+    }
+    abort(404);
 })->name('contracts.template.download');
 
 Route::get('/webhook/facebook', [FacebookWebhookController::class, 'verify'])->name('facebook.webhook.verify');

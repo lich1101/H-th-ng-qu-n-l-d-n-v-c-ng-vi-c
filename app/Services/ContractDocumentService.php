@@ -13,12 +13,13 @@ use RuntimeException;
 class ContractDocumentService
 {
     /**
-     * Thứ tự ưu tiên: cùng tên với route GET /tai-mau-hop-dong (web.php),
-     * sau đó bản v2 nếu deploy riêng. Chỉ cần một trong hai file tồn tại trên server.
+     * Ưu tiên mẫu sinh bằng PhpWord (chỉ macro + bảng có ${item_no}) — tránh số/văn tĩnh trong file cũ.
+     * Sinh lại: php scripts/generate_contract_merge_template.php
      *
      * @var list<string>
      */
     private const TEMPLATE_RELATIVE_CANDIDATES = [
+        'templates/contracts/contract-template-merge-fields.docx',
         'templates/contracts/contract-template-basic-an-phat-379.docx',
         'templates/contracts/contract-template-basic-an-phat-379-template-v2.docx',
     ];
@@ -205,9 +206,9 @@ class ContractDocumentService
         try {
             $template->cloneRowAndSetValues('item_no', $rows);
         } catch (PhpWordException $e) {
-            Log::warning('contract.document.pricing_clone_row_failed', [
+            Log::info('contract.document.pricing_clone_row_failed', [
                 'message' => $e->getMessage(),
-                'hint' => 'Mẫu Word cần ô ${item_no} trong một dòng bảng để nhân dòng, hoặc placeholder ${pricing_items_block}/${items_detail} cho danh sách dạng văn bản.',
+                'hint' => 'Ưu tiên mẫu contract-template-merge-fields.docx (php scripts/generate_contract_merge_template.php). Hoặc thêm ${pricing_items_block}/${items_detail} trong mẫu cũ.',
             ]);
             $this->fillPricingRowsWithoutTableClone($template, $rows);
         }
