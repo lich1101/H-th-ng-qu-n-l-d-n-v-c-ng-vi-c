@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { Link } from '@inertiajs/inertia-react';
 import PageContainer from '@/Components/PageContainer';
-import AppIcon from '@/Components/AppIcon';
 import { useToast } from '@/Contexts/ToastContext';
 import { formatVietnamDate } from '@/lib/vietnamTime';
 
@@ -99,22 +98,11 @@ export default function ClientStaffTransfers() {
             stats={stats}
         >
             <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
-                <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                    <div>
-                        <h3 className="text-sm font-semibold text-slate-900">Danh sách phiếu</h3>
-                        <p className="mt-1 text-xs text-text-muted">
-                            Mỗi phiếu đều dẫn về khách hàng và trang luồng để kiểm tra nghiệp vụ chi tiết.
-                        </p>
-                    </div>
-                    <button
-                        type="button"
-                        onClick={fetchRows}
-                        disabled={loading}
-                        className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
-                    >
-                        <AppIcon name="refresh" className="h-4 w-4" />
-                        {loading ? 'Đang tải...' : 'Tải lại'}
-                    </button>
+                <div className="mb-4">
+                    <h3 className="text-sm font-semibold text-slate-900">Danh sách phiếu</h3>
+                    <p className="mt-1 text-xs text-text-muted">
+                        Mỗi phiếu đều dẫn về khách hàng và trang luồng để kiểm tra nghiệp vụ chi tiết.
+                    </p>
                 </div>
 
                 <div className="overflow-x-auto">
