@@ -12,7 +12,7 @@ class ContractLifecycleStatusService
         $paymentsTotalSql = "(SELECT COALESCE(SUM(cp.amount), 0) FROM contract_payments cp WHERE cp.contract_id = {$table}.id)";
         $itemsTotalSql = "(SELECT COALESCE(SUM(ci.total_price), 0) FROM contract_items ci WHERE ci.contract_id = {$table}.id)";
         $itemsCountSql = "(SELECT COUNT(*) FROM contract_items ci2 WHERE ci2.contract_id = {$table}.id)";
-        $effectiveValueSql = "(CASE WHEN ({$itemsCountSql}) > 0 THEN {$itemsTotalSql} ELSE COALESCE({$table}.value, 0) END)";
+        $effectiveValueSql = "(CASE WHEN {$table}.value IS NOT NULL THEN COALESCE({$table}.value, 0) WHEN ({$itemsCountSql}) > 0 THEN {$itemsTotalSql} ELSE COALESCE({$table}.subtotal_value, 0) END)";
         $debtSql = "(CASE WHEN ({$effectiveValueSql} - {$paymentsTotalSql}) > 0 THEN ({$effectiveValueSql} - {$paymentsTotalSql}) ELSE 0 END)";
 
         return "
@@ -53,7 +53,7 @@ class ContractLifecycleStatusService
         if ($end instanceof Carbon) {
             $endDay = $end->copy()->startOfDay();
         } elseif ($end) {
-            $endDay = Carbon::parse($end)->startOfDay();
+            $endDay = Carbon::parse((string) $end)->startOfDay();
         } else {
             $endDay = null;
         }

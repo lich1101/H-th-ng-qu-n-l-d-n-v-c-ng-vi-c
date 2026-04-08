@@ -200,7 +200,7 @@ class ContractController extends Controller
             ->selectRaw('contract_id, COALESCE(SUM(amount), 0) as cost_sum')
             ->groupBy('contract_id');
 
-        $effSql = '(CASE WHEN COALESCE(items_agg.items_cnt, 0) > 0 THEN COALESCE(items_agg.items_sum, 0) ELSE COALESCE(contracts.value, 0) END)';
+        $effSql = '(CASE WHEN contracts.value IS NOT NULL THEN COALESCE(contracts.value, 0) WHEN COALESCE(items_agg.items_cnt, 0) > 0 THEN COALESCE(items_agg.items_sum, 0) ELSE COALESCE(contracts.subtotal_value, 0) END)';
 
         $row = Contract::query()
             ->whereIn('contracts.id', $idsSub)
@@ -378,9 +378,7 @@ class ContractController extends Controller
         unset($validated['project_id'], $validated['create_and_approve'], $validated['status']);
 
         $items = $this->normalizeItems($request->input('items', []));
-        if (! empty($items)) {
-            $validated['value'] = $this->sumItems($items);
-        }
+        $validated = $this->normalizeContractFinancialInputs($validated, $items);
 
         $validated['collector_user_id'] = $this->resolveCollectorUserId($request, $validated);
         $validated = array_merge($validated, $this->resolveApproval($request));
@@ -472,9 +470,7 @@ class ContractController extends Controller
             return response()->json(['message' => $error], 422);
         }
         $items = $this->normalizeItems($request->input('items', []));
-        if (! empty($items)) {
-            $validated['value'] = $this->sumItems($items);
-        }
+        $validated = $this->normalizeContractFinancialInputs($validated, $items, $contract);
 
         $validated['collector_user_id'] = $this->resolveCollectorUserId($request, $validated, $contract);
 
@@ -660,7 +656,12 @@ class ContractController extends Controller
             'title' => ['required', 'string', 'max:255'],
             'client_id' => ['required', 'integer', 'exists:clients,id'],
             'opportunity_id' => ['nullable', 'integer', 'exists:opportunities,id'],
+            'subtotal_value' => ['nullable', 'numeric', 'min:0'],
             'value' => ['nullable', 'numeric', 'min:0'],
+            'vat_enabled' => ['nullable', 'boolean'],
+            'vat_mode' => ['nullable', 'string', 'in:percent,amount'],
+            'vat_rate' => ['nullable', 'numeric', 'min:0', 'max:1000'],
+            'vat_amount' => ['nullable', 'numeric', 'min:0'],
             'payment_times' => ['nullable', 'integer', 'min:1', 'max:120'],
             'revenue' => ['nullable', 'numeric', 'min:0'],
             'debt' => ['nullable', 'numeric', 'min:0'],
@@ -938,6 +939,53 @@ class ContractController extends Controller
         $raw = preg_replace('/[^0-9.\-]/', '', $raw);
 
         return is_numeric($raw) ? (float) $raw : 0.0;
+    }
+
+    private function normalizeContractFinancialInputs(array $validated, array $items, ?Contract $contract = null): array
+    {
+        $vatEnabled = filter_var($validated['vat_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $vatMode = (string) ($validated['vat_mode'] ?? ($contract->vat_mode ?? 'percent'));
+        if (! in_array($vatMode, ['percent', 'amount'], true)) {
+            $vatMode = 'percent';
+        }
+
+        $fallbackSubtotal = $contract
+            ? (float) ($contract->subtotal_value ?: $contract->getRawOriginal('value') ?: 0)
+            : 0.0;
+        $subtotal = ! empty($items)
+            ? $this->sumItems($items)
+            : $this->parseNumericInput($validated['subtotal_value'] ?? ($validated['value'] ?? $fallbackSubtotal));
+
+        $vatRate = $this->parseNumericInput($validated['vat_rate'] ?? ($contract->vat_rate ?? 0));
+        $vatAmountInput = $this->parseNumericInput($validated['vat_amount'] ?? ($contract->vat_amount ?? 0));
+
+        if ($vatEnabled && $vatMode === 'percent' && $vatRate <= 0) {
+            throw ValidationException::withMessages([
+                'vat_rate' => ['Vui lòng nhập % VAT lớn hơn 0.'],
+            ]);
+        }
+
+        if ($vatEnabled && $vatMode === 'amount' && $vatAmountInput <= 0) {
+            throw ValidationException::withMessages([
+                'vat_amount' => ['Vui lòng nhập số tiền VAT lớn hơn 0.'],
+            ]);
+        }
+
+        $resolvedVatAmount = 0.0;
+        if ($vatEnabled) {
+            $resolvedVatAmount = $vatMode === 'percent'
+                ? round($subtotal * $vatRate / 100, 2)
+                : round($vatAmountInput, 2);
+        }
+
+        $validated['subtotal_value'] = round($subtotal, 2);
+        $validated['vat_enabled'] = $vatEnabled;
+        $validated['vat_mode'] = $vatEnabled ? $vatMode : null;
+        $validated['vat_rate'] = $vatEnabled && $vatMode === 'percent' ? round($vatRate, 2) : null;
+        $validated['vat_amount'] = $vatEnabled ? $resolvedVatAmount : 0;
+        $validated['value'] = round($subtotal + $resolvedVatAmount, 2);
+
+        return $validated;
     }
 
     private function sumItems(array $items): float

@@ -22,6 +22,11 @@ class Contract extends Model
         'opportunity_id',
         'project_id',
         'value',
+        'subtotal_value',
+        'vat_enabled',
+        'vat_mode',
+        'vat_rate',
+        'vat_amount',
         'payment_times',
         'revenue',
         'debt',
@@ -46,6 +51,10 @@ class Contract extends Model
         'start_date' => 'date',
         'end_date' => 'date',
         'value' => 'float',
+        'subtotal_value' => 'float',
+        'vat_enabled' => 'boolean',
+        'vat_rate' => 'float',
+        'vat_amount' => 'float',
         'payment_times' => 'integer',
         'revenue' => 'float',
         'debt' => 'float',
@@ -157,18 +166,12 @@ class Contract extends Model
 
     public function getEffectiveValueAttribute(): float
     {
-        $rawValue = (float) ($this->attributes['value'] ?? 0);
-        $itemsCount = $this->attributes['items_count'] ?? null;
-
-        if ($itemsCount !== null) {
-            return (int) $itemsCount > 0 ? $this->items_total_value : $rawValue;
+        $storedValue = $this->attributes['value'] ?? null;
+        if ($storedValue !== null && $storedValue !== '') {
+            return (float) $storedValue;
         }
 
-        if ($this->relationLoaded('items')) {
-            return $this->items->isNotEmpty() ? $this->items_total_value : $rawValue;
-        }
-
-        return $this->items()->exists() ? $this->items_total_value : $rawValue;
+        return $this->subtotal_value + $this->resolved_vat_amount;
     }
 
     public function getValueAttribute($value): float
@@ -239,12 +242,51 @@ class Contract extends Model
         return $base - $this->costs_total;
     }
 
+    public function getSubtotalValueAttribute($value): float
+    {
+        if ($value !== null && $value !== '') {
+            return (float) $value;
+        }
+
+        if ($this->relationLoaded('items') && $this->items->isNotEmpty()) {
+            return (float) $this->items->sum('total_price');
+        }
+
+        if ($this->items()->exists()) {
+            return (float) $this->items()->sum('total_price');
+        }
+
+        return (float) ($this->attributes['value'] ?? 0);
+    }
+
+    public function getResolvedVatAmountAttribute(): float
+    {
+        if (! (bool) ($this->attributes['vat_enabled'] ?? false)) {
+            return 0.0;
+        }
+
+        $subtotal = (float) $this->subtotal_value;
+        $mode = (string) ($this->attributes['vat_mode'] ?? '');
+        $rate = (float) ($this->attributes['vat_rate'] ?? 0);
+        $amount = (float) ($this->attributes['vat_amount'] ?? 0);
+
+        if ($mode === 'percent') {
+            return max(0, $subtotal * max(0, $rate) / 100);
+        }
+
+        return max(0, $amount);
+    }
+
     public function refreshFinancials(): void
     {
-        $value = (float) $this->effective_value;
+        $subtotal = (float) $this->subtotal_value;
+        $vatAmount = (float) $this->resolved_vat_amount;
+        $value = $subtotal + $vatAmount;
         $payments = (float) $this->payments()->sum('amount');
         $costs = (float) $this->costs()->sum('amount');
         $this->update([
+            'subtotal_value' => $subtotal,
+            'vat_amount' => $vatAmount,
             'value' => $value,
             'revenue' => $payments,
             'debt' => max(0, $value - $payments),

@@ -81,9 +81,25 @@ const formatCurrency = (amount) => {
 
 const formatDateDisplay = (dateString) => formatVietnamDate(dateString, '—');
 
+const hasInputValue = (value) => value !== null && value !== undefined && String(value).trim() !== '';
+const normalizeVatMode = (value) => (String(value || '').toLowerCase() === 'amount' ? 'amount' : 'percent');
+const calculateVatAmount = ({ subtotal = 0, vatEnabled = false, vatMode = 'percent', vatRate = 0, vatAmount = 0 }) => {
+    if (!vatEnabled) return 0;
+    const normalizedSubtotal = Math.max(0, parseNumberInput(subtotal));
+    if (normalizeVatMode(vatMode) === 'amount') {
+        return Math.max(0, parseNumberInput(vatAmount));
+    }
+    return Math.max(0, normalizedSubtotal * Math.max(0, parseNumberInput(vatRate)) / 100);
+};
+const resolveContractSubtotal = (contract) => {
+    if (!contract) return 0;
+    if (hasInputValue(contract.subtotal_value)) return parseNumberInput(contract.subtotal_value);
+    if ((contract?.items || []).length > 0) return parseNumberInput(contract.items_total_value);
+    return parseNumberInput(contract?.value || 0);
+};
+
 const resolveContractValue = (contract) => {
-    if ((contract?.items || []).length > 0) return contract.items_total_value || 0;
-    return contract?.value || 0;
+    return parseNumberInput(contract?.value ?? contract?.effective_value ?? contract?.items_total_value ?? contract?.subtotal_value);
 };
 
 const calculateItemTotal = (item) => {
@@ -239,6 +255,11 @@ export default function ContractDetail(props) {
         client_id: '',
         collector_user_id: '',
         value: '',
+        subtotal_value: '',
+        vat_enabled: false,
+        vat_mode: 'percent',
+        vat_rate: '',
+        vat_amount: '',
         payment_times: '1',
         signed_at: '',
         start_date: '',
@@ -284,6 +305,18 @@ export default function ContractDetail(props) {
     const editItemsTotal = useMemo(() => {
         return editItems.reduce((sum, item) => sum + calculateItemTotal(item), 0);
     }, [editItems]);
+    const editContractSubtotal = useMemo(() => (
+        editItems.length
+            ? editItemsTotal
+            : parseNumberInput(editForm.vat_enabled ? editForm.subtotal_value : editForm.value)
+    ), [editForm.subtotal_value, editForm.value, editForm.vat_enabled, editItems.length, editItemsTotal]);
+    const editVatComputedAmount = useMemo(() => calculateVatAmount({
+        subtotal: editContractSubtotal,
+        vatEnabled: editForm.vat_enabled,
+        vatMode: editForm.vat_mode,
+        vatRate: editForm.vat_rate,
+        vatAmount: editForm.vat_amount,
+    }), [editContractSubtotal, editForm.vat_amount, editForm.vat_enabled, editForm.vat_mode, editForm.vat_rate]);
     const paymentRowsNormalized = useMemo(() => normalizePaymentDisplayRows(contract), [contract]);
     const paymentBaseTotal = useMemo(() => {
         return paymentRowsNormalized.reduce((sum, row) => {
@@ -297,11 +330,11 @@ export default function ContractDetail(props) {
         }, 0);
     }, [paymentRowsNormalized, editingPaymentId]);
     const contractValueTotal = useMemo(() => {
-        if (showEditContractModal && editItems.length > 0) {
-            return editItemsTotal;
+        if (showEditContractModal) {
+            return editContractSubtotal + editVatComputedAmount;
         }
         return parseNumberInput(resolveContractValue(contract));
-    }, [contract, editItems.length, editItemsTotal, showEditContractModal]);
+    }, [contract, editContractSubtotal, editVatComputedAmount, showEditContractModal]);
     const paymentRemaining = useMemo(
         () => Math.max(0, contractValueTotal - paymentBaseTotal),
         [contractValueTotal, paymentBaseTotal]
@@ -317,7 +350,12 @@ export default function ContractDetail(props) {
             title: data.title || '',
             client_id: data.client_id ? String(data.client_id) : '',
             collector_user_id: data.collector_user_id ? String(data.collector_user_id) : '',
-            value: String(parseNumberInput(data.value || resolveContractValue(data) || 0)),
+            value: String(parseNumberInput(resolveContractValue(data) || 0)),
+            subtotal_value: String(parseNumberInput(resolveContractSubtotal(data) || 0)),
+            vat_enabled: Boolean(data.vat_enabled),
+            vat_mode: normalizeVatMode(data.vat_mode),
+            vat_rate: hasInputValue(data.vat_rate) ? String(data.vat_rate) : '',
+            vat_amount: hasInputValue(data.vat_amount) ? String(data.vat_amount) : '',
             payment_times: String(data.payment_times || 1),
             signed_at: toDateInputValue(data.signed_at),
             start_date: toDateInputValue(data.start_date),
@@ -466,7 +504,20 @@ export default function ContractDetail(props) {
                 title: (editForm.title || '').trim(),
                 client_id: Number(editForm.client_id),
                 collector_user_id: editForm.collector_user_id ? Number(editForm.collector_user_id) : null,
-                value: editItems.length ? editItemsTotal : parseNumberInput(editForm.value),
+                subtotal_value: editItems.length || editForm.vat_enabled
+                    ? editContractSubtotal
+                    : parseNumberInput(editForm.value),
+                value: editItems.length || editForm.vat_enabled
+                    ? (editContractSubtotal + editVatComputedAmount)
+                    : parseNumberInput(editForm.value),
+                vat_enabled: Boolean(editForm.vat_enabled),
+                vat_mode: editForm.vat_enabled ? normalizeVatMode(editForm.vat_mode) : null,
+                vat_rate: editForm.vat_enabled && normalizeVatMode(editForm.vat_mode) === 'percent'
+                    ? parseNumberInput(editForm.vat_rate)
+                    : null,
+                vat_amount: editForm.vat_enabled && normalizeVatMode(editForm.vat_mode) === 'amount'
+                    ? parseNumberInput(editForm.vat_amount)
+                    : null,
                 payment_times: Math.max(1, Number(editForm.payment_times || 1)),
                 signed_at: editForm.signed_at || null,
                 start_date: editForm.start_date || null,
@@ -518,21 +569,40 @@ export default function ContractDetail(props) {
     };
 
     const addEditItem = () => {
-        setEditItems((prev) => ([
-            ...prev,
-            { product_id: '', product_name: '', unit: '', unit_price: '', quantity: 1, note: '' },
-        ]));
+        setEditItems((prev) => {
+            const nextItems = [
+                ...prev,
+                { product_id: '', product_name: '', unit: '', unit_price: '', quantity: 1, note: '' },
+            ];
+            const nextSubtotal = nextItems.reduce((sum, item) => sum + calculateItemTotal(item), 0);
+            setEditForm((current) => ({ ...current, subtotal_value: String(nextSubtotal), value: String(nextSubtotal) }));
+            return nextItems;
+        });
     };
 
     const updateEditItem = (index, changes) => {
-        setEditItems((prev) => prev.map((item, idx) => {
-            if (idx !== index) return item;
-            return { ...item, ...changes };
-        }));
+        setEditItems((prev) => {
+            const nextItems = prev.map((item, idx) => {
+                if (idx !== index) return item;
+                return { ...item, ...changes };
+            });
+            const nextSubtotal = nextItems.reduce((sum, item) => sum + calculateItemTotal(item), 0);
+            setEditForm((current) => ({ ...current, subtotal_value: String(nextSubtotal), value: String(nextSubtotal) }));
+            return nextItems;
+        });
     };
 
     const removeEditItem = (index) => {
-        setEditItems((prev) => prev.filter((_, idx) => idx !== index));
+        setEditItems((prev) => {
+            const nextItems = prev.filter((_, idx) => idx !== index);
+            const nextSubtotal = nextItems.reduce((sum, item) => sum + calculateItemTotal(item), 0);
+            setEditForm((current) => ({
+                ...current,
+                subtotal_value: nextItems.length ? String(nextSubtotal) : '',
+                value: nextItems.length ? String(nextSubtotal) : (current.vat_enabled ? current.value : ''),
+            }));
+            return nextItems;
+        });
     };
 
     const openPaymentCreate = () => {
@@ -793,6 +863,13 @@ export default function ContractDetail(props) {
                                     {handoverReceiveLabel(contract.handover_receive_status)}
                                 </span>
                             </div>
+                            <button
+                                type="button"
+                                onClick={() => window.open('/tai-mau-hop-dong', '_blank', 'noopener,noreferrer')}
+                                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:border-primary/30 hover:text-primary"
+                            >
+                                Tải hợp đồng .docx
+                            </button>
                             {canManageContract && (
                                 <button
                                     onClick={openEditContractModal}
@@ -852,11 +929,13 @@ export default function ContractDetail(props) {
                     )}
                 </div>
 
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                    <DetailMetric label="Giá trị trước VAT" value={`${formatCurrency(resolveContractSubtotal(contract))} VNĐ`} tone="slate" />
+                    <DetailMetric label="VAT" value={`${formatCurrency(contract.vat_amount || 0)} VNĐ`} tone="amber" />
                     <DetailMetric label="Giá trị hợp đồng" value={`${formatCurrency(resolveContractValue(contract))} VNĐ`} tone="sky" />
                     <DetailMetric label="Đã thu" value={`${formatCurrency(contract.payments_total || 0)} VNĐ`} tone="emerald" />
                     <DetailMetric label="Còn phải thu" value={`${formatCurrency(contract.debt_outstanding || 0)} VNĐ`} tone="amber" />
-                    <DetailMetric label="Chi phí đã tính" value={`${formatCurrency(contract.costs_total || 0)} VNĐ`} />
+                    <DetailMetric label="Chi phí đã tính" value={`${formatCurrency(contract.costs_total || 0)} VNĐ`} tone="slate" />
                 </div>
 
                 <div className="grid gap-4 lg:grid-cols-2">
@@ -1709,19 +1788,104 @@ export default function ContractDetail(props) {
                     </div>
 
                     <div className="rounded-2xl border border-slate-200/80 bg-slate-50 p-4">
+                        <div className="flex items-center justify-between gap-3">
+                            <div>
+                                <h4 className="text-sm font-semibold text-slate-900">VAT</h4>
+                                <p className="mt-1 text-xs text-text-muted">Tự cộng VAT vào tổng giá trị hợp đồng.</p>
+                            </div>
+                            <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
+                                <input
+                                    type="checkbox"
+                                    checked={Boolean(editForm.vat_enabled)}
+                                    onChange={(e) => setEditForm((s) => ({
+                                        ...s,
+                                        vat_enabled: e.target.checked,
+                                        value: !e.target.checked && !editItems.length
+                                            ? (hasInputValue(s.subtotal_value) ? s.subtotal_value : s.value)
+                                            : s.value,
+                                        subtotal_value: e.target.checked && !editItems.length && !hasInputValue(s.subtotal_value)
+                                            ? s.value
+                                            : s.subtotal_value,
+                                    }))}
+                                />
+                                Áp dụng VAT
+                            </label>
+                        </div>
+                        {editForm.vat_enabled && (
+                            <div className="mt-4 grid gap-4 md:grid-cols-4">
+                                {!editItems.length && (
+                                    <LabeledField label="Giá trị trước VAT (VNĐ)" className="md:col-span-2">
+                                        <input
+                                            className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
+                                            type="text"
+                                            inputMode="numeric"
+                                            placeholder="0"
+                                            value={editForm.subtotal_value}
+                                            onChange={(e) => setEditForm((s) => ({ ...s, subtotal_value: formatMoneyInput(e.target.value) }))}
+                                        />
+                                    </LabeledField>
+                                )}
+                                <LabeledField label="Kiểu VAT">
+                                    <select
+                                        className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
+                                        value={editForm.vat_mode}
+                                        onChange={(e) => setEditForm((s) => ({ ...s, vat_mode: normalizeVatMode(e.target.value) }))}
+                                    >
+                                        <option value="percent">Theo %</option>
+                                        <option value="amount">Theo số tiền</option>
+                                    </select>
+                                </LabeledField>
+                                {normalizeVatMode(editForm.vat_mode) === 'percent' ? (
+                                    <LabeledField label="% VAT">
+                                        <input
+                                            className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
+                                            type="number"
+                                            min="0"
+                                            step="0.01"
+                                            placeholder="10"
+                                            value={editForm.vat_rate}
+                                            onChange={(e) => setEditForm((s) => ({ ...s, vat_rate: e.target.value }))}
+                                        />
+                                    </LabeledField>
+                                ) : (
+                                    <LabeledField label="Tiền VAT (VNĐ)">
+                                        <input
+                                            className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
+                                            type="text"
+                                            inputMode="numeric"
+                                            placeholder="0"
+                                            value={editForm.vat_amount}
+                                            onChange={(e) => setEditForm((s) => ({ ...s, vat_amount: formatMoneyInput(e.target.value) }))}
+                                        />
+                                    </LabeledField>
+                                )}
+                                <LabeledField label="VAT tạm tính">
+                                    <div className="rounded-2xl border border-slate-200/80 bg-white px-3 py-2 text-sm font-semibold text-slate-800">
+                                        {formatCurrency(editVatComputedAmount)} VNĐ
+                                    </div>
+                                </LabeledField>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-200/80 bg-slate-50 p-4">
                         <div className="grid gap-4 md:grid-cols-3">
                             <LabeledField
                                 label="Giá trị hợp đồng (VNĐ)"
-                                hint={editItems.length ? 'Đang được tự tính từ danh sách sản phẩm phía trên.' : ''}
+                                hint={editItems.length || editForm.vat_enabled
+                                    ? 'Đang được tự tính từ giá trị trước VAT và cấu hình VAT phía trên.'
+                                    : ''}
                             >
                                 <input
                                     className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
                                     type="text"
                                     inputMode="numeric"
                                     placeholder="0"
-                                    value={editItems.length ? formatMoneyInput(editItemsTotal) : editForm.value}
+                                    value={editItems.length || editForm.vat_enabled
+                                        ? formatMoneyInput(editContractSubtotal + editVatComputedAmount)
+                                        : editForm.value}
                                     onChange={(e) => setEditForm((s) => ({ ...s, value: formatMoneyInput(e.target.value) }))}
-                                    disabled={editItems.length > 0}
+                                    disabled={editItems.length > 0 || editForm.vat_enabled}
                                 />
                             </LabeledField>
                             <LabeledField label="Số lần thanh toán">
