@@ -409,7 +409,6 @@ class ImportExecutionService
                 $client = $this->resolveOrCreateClientForContract($data, $collectorId);
                 $this->syncClientCareStaffFromImport($client, [$collectorId], (int) $user->id);
 
-                $status = $this->normalizeContractStatus($data['status'] ?? '');
                 $approval = $this->resolveApproval($user);
                 $valueRaw = $data['value'] ?? null;
                 $value = $this->parseNumber($valueRaw);
@@ -458,7 +457,6 @@ class ImportExecutionService
                     'contract_type' => $data['contract_type'] ?? null,
                     'client_id' => $client->id,
                     'value' => $value,
-                    'status' => $status,
                     'approval_status' => $approval['approval_status'],
                     'approved_by' => $approval['approved_by'],
                     'approved_at' => $approval['approved_at'],
@@ -1301,32 +1299,6 @@ class ImportExecutionService
             'handover_status' => 'chua_ban_giao',
             'created_by' => $user->id,
         ]);
-    }
-
-    private function normalizeContractStatus(string $value): string
-    {
-        $key = preg_replace('/[^a-z0-9]/', '', Str::lower(Str::ascii($value))) ?: '';
-
-        if ($key === '') {
-            return 'draft';
-        }
-        if (strpos($key, 'hoanthanh') !== false || strpos($key, 'success') !== false || strpos($key, 'thanhcong') !== false) {
-            return 'success';
-        }
-        if (strpos($key, 'dangthuchien') !== false || strpos($key, 'danghieuluc') !== false || strpos($key, 'active') !== false) {
-            return 'active';
-        }
-        if (strpos($key, 'daky') !== false || strpos($key, 'signed') !== false) {
-            return 'signed';
-        }
-        if (strpos($key, 'hethan') !== false || strpos($key, 'expired') !== false) {
-            return 'expired';
-        }
-        if (strpos($key, 'huy') !== false || strpos($key, 'cancel') !== false || strpos($key, 'tamdung') !== false) {
-            return 'cancelled';
-        }
-
-        return 'draft';
     }
 
     private function normalizeTaskStatus(string $value): string

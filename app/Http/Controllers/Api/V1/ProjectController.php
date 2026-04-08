@@ -691,9 +691,9 @@ class ProjectController extends Controller
             'workflowTopic:id,name,code,is_active',
             'approver:id,name,email,role,avatar_url',
             'handoverRequester:id,name,email,role,avatar_url',
-            'contract:id,code,title,notes,client_id,project_id,value,status,approval_status,start_date,end_date,signed_at,collector_user_id,handover_receive_status,handover_received_by,handover_received_at',
+            'contract:id,code,title,notes,client_id,project_id,value,approval_status,start_date,end_date,signed_at,collector_user_id,handover_receive_status,handover_received_by,handover_received_at',
             'contract.collector:id,name,email,role,avatar_url,department_id',
-            'linkedContract:id,code,title,notes,client_id,project_id,value,status,approval_status,start_date,end_date,signed_at,collector_user_id,handover_receive_status,handover_received_by,handover_received_at',
+            'linkedContract:id,code,title,notes,client_id,project_id,value,approval_status,start_date,end_date,signed_at,collector_user_id,handover_receive_status,handover_received_by,handover_received_at',
             'linkedContract.collector:id,name,email,role,avatar_url,department_id',
         ];
     }

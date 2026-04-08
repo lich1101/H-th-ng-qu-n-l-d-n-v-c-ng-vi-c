@@ -1058,32 +1058,6 @@ class ImportController extends Controller
         ]);
     }
 
-    private function normalizeContractStatus(string $value): string
-    {
-        $key = preg_replace('/[^a-z0-9]/', '', Str::lower(Str::ascii($value))) ?: '';
-
-        if ($key === '') {
-            return 'draft';
-        }
-        if (strpos($key, 'hoanthanh') !== false || strpos($key, 'success') !== false || strpos($key, 'thanhcong') !== false) {
-            return 'success';
-        }
-        if (strpos($key, 'dangthuchien') !== false || strpos($key, 'danghieuluc') !== false || strpos($key, 'active') !== false) {
-            return 'active';
-        }
-        if (strpos($key, 'daky') !== false || strpos($key, 'signed') !== false) {
-            return 'signed';
-        }
-        if (strpos($key, 'hethan') !== false || strpos($key, 'expired') !== false) {
-            return 'expired';
-        }
-        if (strpos($key, 'huy') !== false || strpos($key, 'cancel') !== false || strpos($key, 'tamdung') !== false) {
-            return 'cancelled';
-        }
-
-        return 'draft';
-    }
-
     private function normalizeTaskStatus(string $value): string
     {
         $key = preg_replace('/[^a-z0-9]/', '', Str::lower(Str::ascii($value))) ?: '';

@@ -493,26 +493,25 @@ export default function ContractDetail(props) {
         }
     };
 
-    const cancelContractFromModal = async () => {
+    const rejectContract = async () => {
         if (!contract?.id || savingContract) return;
-        if (readBoolean(contract?.can_manage) !== true) {
-            toast.error('Bạn không có quyền hủy hợp đồng.');
+        if (!canReviewFinanceRequest) {
+            toast.error('Bạn không có quyền từ chối duyệt.');
             return;
         }
-        if (contract.status === 'cancelled') {
-            toast.error('Hợp đồng đã được đánh dấu hủy.');
+        if ((contract.approval_status || '') === 'rejected') {
+            toast.error('Hợp đồng đã ở trạng thái không duyệt.');
             return;
         }
-        if (!window.confirm('Đánh dấu hợp đồng là đã hủy? Trạng thái sẽ cố định là «Hủy».')) return;
-        const note = window.prompt('Lý do hủy (tuỳ chọn):') || '';
+        if (!window.confirm('Từ chối duyệt hợp đồng này? Trạng thái sẽ chuyển sang «Hủy».')) return;
+        const note = window.prompt('Lý do không duyệt (tuỳ chọn):') || '';
         setSavingContract(true);
         try {
             await axios.post(`/api/v1/contracts/${contract.id}/cancel`, { note: note.trim() || null });
-            toast.success('Đã ghi nhận hủy hợp đồng.');
-            setShowEditContractModal(false);
+            toast.success('Đã từ chối duyệt hợp đồng.');
             await loadData();
         } catch (e) {
-            toast.error(e?.response?.data?.message || 'Không thể hủy hợp đồng.');
+            toast.error(e?.response?.data?.message || 'Không thể từ chối duyệt hợp đồng.');
         } finally {
             setSavingContract(false);
         }
@@ -831,14 +830,24 @@ export default function ContractDetail(props) {
                             <p className="mt-2 text-sm text-amber-950/90">
                                 Hợp đồng đang chờ duyệt. Sau khi duyệt, dữ liệu tài chính mới được khóa theo hợp đồng.
                             </p>
-                            <button
-                                type="button"
-                                onClick={submitContractApproval}
-                                disabled={approvingContract}
-                                className="mt-3 rounded-xl bg-amber-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-amber-700 disabled:opacity-60"
-                            >
-                                {approvingContract ? 'Đang duyệt…' : 'Duyệt hợp đồng'}
-                            </button>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                                <button
+                                    type="button"
+                                    onClick={rejectContract}
+                                    disabled={approvingContract}
+                                    className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-700 shadow-sm hover:bg-rose-100 disabled:opacity-60"
+                                >
+                                    Không duyệt
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={submitContractApproval}
+                                    disabled={approvingContract}
+                                    className="rounded-xl bg-amber-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-amber-700 disabled:opacity-60"
+                                >
+                                    {approvingContract ? 'Đang duyệt…' : 'Duyệt hợp đồng'}
+                                </button>
+                            </div>
                         </div>
                     )}
                 </div>
@@ -1619,7 +1628,7 @@ export default function ContractDetail(props) {
                             </LabeledField>
                             <LabeledField
                                 label="Trạng thái hợp đồng"
-                                hint="Hệ thống tự cập nhật theo duyệt, thu tiền và ngày kết thúc. Dùng «Hủy hợp đồng» bên dưới khi cần đánh dấu hủy."
+                                hint="Hệ thống tự cập nhật theo duyệt, thu tiền và ngày kết thúc."
                             >
                                 <div className={`inline-flex w-full items-center rounded-2xl border border-slate-200/80 bg-white px-3 py-2 text-sm font-semibold ${statusBadgeClass(contract?.status)}`}>
                                     {STATUS_OPTIONS.find((s) => s.value === contract?.status)?.label || contract?.status || '—'}
@@ -1770,16 +1779,6 @@ export default function ContractDetail(props) {
                     </div>
 
                     <div className="flex flex-wrap items-center justify-end gap-3 pt-2">
-                        {readBoolean(contract?.can_manage) === true && contract?.status !== 'cancelled' && (
-                            <button
-                                type="button"
-                                onClick={cancelContractFromModal}
-                                disabled={savingContract}
-                                className="mr-auto rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-60"
-                            >
-                                Hủy hợp đồng (không hoàn tác)
-                            </button>
-                        )}
                         <button
                             type="button"
                             onClick={() => setShowEditContractModal(false)}

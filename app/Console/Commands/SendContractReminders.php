@@ -46,7 +46,6 @@ class SendContractReminders extends Command
             ->with(['client.assignedStaff', 'collector'])
             ->withSum('payments as payments_total', 'amount')
             ->where('approval_status', 'approved')
-            ->whereNotIn('status', ['cancelled'])
             ->get();
 
         $notifier = app(NotificationService::class);
@@ -102,7 +101,6 @@ class SendContractReminders extends Command
             ->with(['client.assignedStaff', 'collector'])
             ->withSum('payments as payments_total', 'amount')
             ->where('approval_status', 'approved')
-            ->whereNotIn('status', ['cancelled', 'expired'])
             ->whereNotNull('end_date')
             ->whereBetween('end_date', [$today->toDateString(), $endLimit->toDateString()])
             ->get();

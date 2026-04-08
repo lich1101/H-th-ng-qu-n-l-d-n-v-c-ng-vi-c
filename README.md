@@ -100,6 +100,12 @@ Da bo sung migration cho cac module chinh:
 - Bao cao KPI: `kpi_snapshots`.
 - Dich vu dac thu: `service_backlink_items`, `service_content_items`, `service_audit_items`, `service_website_care_items`.
 
+## Cap nhat gan day
+
+- Trang thai hop dong khong con luu/chinh tay bang cot `contracts.status`.
+- API hop dong gio tinh trang thai dong theo `approval_status`, tong da thu, cong no va `end_date`.
+- Bo loc trang thai hop dong van giu nguyen tren giao dien nhung backend loc theo dung nghiep vu thay vi loc theo cot DB cu.
+
 > Luu y: can dam bao MySQL dang chay truoc khi `php artisan migrate`.
 
 ## Huong giao dien stitch

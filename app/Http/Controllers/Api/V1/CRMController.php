@@ -12,6 +12,7 @@ use App\Models\LeadType;
 use App\Models\RevenueTier;
 use App\Models\User;
 use App\Services\ClientPhoneDuplicateService;
+use App\Services\ContractLifecycleStatusService;
 use App\Services\ClientStaffTransferService;
 use App\Services\LeadNotificationService;
 use App\Services\NotificationService;
@@ -80,12 +81,14 @@ class CRMController extends Controller
         if ($request->filled('type')) {
             if ($request->input('type') === 'potential') {
                 $query->whereDoesntHave('contracts', function ($q) {
-                    $q->whereIn('status', ['success', 'active']);
+                    $statusSql = app(ContractLifecycleStatusService::class)->sqlExpression('contracts');
+                    $q->whereRaw("({$statusSql}) in ('success', 'active')");
                 });
             }
             if ($request->input('type') === 'active') {
                 $query->whereHas('contracts', function ($q) {
-                    $q->whereIn('status', ['success', 'active']);
+                    $statusSql = app(ContractLifecycleStatusService::class)->sqlExpression('contracts');
+                    $q->whereRaw("({$statusSql}) in ('success', 'active')");
                 });
             }
         }

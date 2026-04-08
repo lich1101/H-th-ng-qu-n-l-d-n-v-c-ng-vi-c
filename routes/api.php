@@ -332,7 +332,7 @@ Route::prefix('v1')->group(function () {
         Route::post('/contracts/{contract}/approve', [ContractController::class, 'approve'])
             ->middleware('role:admin,administrator,ke_toan');
         Route::post('/contracts/{contract}/cancel', [ContractController::class, 'cancel'])
-            ->middleware('role:admin,administrator,quan_ly,ke_toan');
+            ->middleware('role:admin,administrator,ke_toan');
         Route::get('/contracts/{contract}/payments', [ContractPaymentController::class, 'index'])
             ->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
         Route::post('/contracts/{contract}/payments', [ContractPaymentController::class, 'store'])

@@ -5,21 +5,31 @@ namespace App\Services;
 use App\Models\Contract;
 use Carbon\Carbon;
 
-/**
- * Trạng thái vòng đời hợp đồng (cột contracts.status) — tự đồng bộ, không chỉnh tay.
- *
- * - cancelled: chỉ khi gắn thủ công (hủy hợp đồng), không ghi đè bởi tự động.
- * - draft: chưa duyệt (approval_status != approved).
- * - success: đã duyệt và đã thu đủ (công nợ = 0, giá trị > 0).
- * - expired: đã duyệt, còn công nợ, đã quá ngày kết thúc.
- * - signed: đã duyệt, chưa có khoản thu nào (theo bảng contract_payments).
- * - active: đã duyệt, đã có thu một phần, còn công nợ, chưa hết hạn theo ngày kết thúc.
- */
 class ContractLifecycleStatusService
 {
+    public function sqlExpression(string $table = 'contracts'): string
+    {
+        $paymentsTotalSql = "(SELECT COALESCE(SUM(cp.amount), 0) FROM contract_payments cp WHERE cp.contract_id = {$table}.id)";
+        $itemsTotalSql = "(SELECT COALESCE(SUM(ci.total_price), 0) FROM contract_items ci WHERE ci.contract_id = {$table}.id)";
+        $itemsCountSql = "(SELECT COUNT(*) FROM contract_items ci2 WHERE ci2.contract_id = {$table}.id)";
+        $effectiveValueSql = "(CASE WHEN ({$itemsCountSql}) > 0 THEN {$itemsTotalSql} ELSE COALESCE({$table}.value, 0) END)";
+        $debtSql = "(CASE WHEN ({$effectiveValueSql} - {$paymentsTotalSql}) > 0 THEN ({$effectiveValueSql} - {$paymentsTotalSql}) ELSE 0 END)";
+
+        return "
+            CASE
+                WHEN {$table}.approval_status = 'rejected' THEN 'cancelled'
+                WHEN {$table}.approval_status IS NULL OR {$table}.approval_status <> 'approved' THEN 'draft'
+                WHEN {$debtSql} <= 0 THEN 'success'
+                WHEN {$table}.end_date IS NOT NULL AND CURRENT_DATE > DATE({$table}.end_date) THEN 'expired'
+                WHEN {$paymentsTotalSql} <= 0 THEN 'signed'
+                ELSE 'active'
+            END
+        ";
+    }
+
     public function compute(Contract $contract): string
     {
-        if (($contract->getAttributes()['status'] ?? '') === 'cancelled') {
+        if (($contract->approval_status ?? '') === 'rejected') {
             return 'cancelled';
         }
 
@@ -28,8 +38,8 @@ class ContractLifecycleStatusService
         }
 
         $effective = (float) $contract->effective_value;
-        $paid = (float) $contract->payments()->sum('amount');
-        $debt = max(0, $effective - $paid);
+        $paid = (float) $contract->payments_total;
+        $debt = (float) $contract->debt_outstanding;
 
         if ($effective <= 0) {
             return $paid <= 0 ? 'signed' : 'success';
@@ -61,16 +71,6 @@ class ContractLifecycleStatusService
 
     public function sync(Contract $contract): void
     {
-        $contract->refresh();
-
-        if (($contract->getAttributes()['status'] ?? '') === 'cancelled') {
-            return;
-        }
-
-        $next = $this->compute($contract);
-
-        if (($contract->getAttributes()['status'] ?? '') !== $next) {
-            $contract->forceFill(['status' => $next])->saveQuietly();
-        }
+        // Trạng thái giờ được tính động, không còn lưu trong DB.
     }
 }

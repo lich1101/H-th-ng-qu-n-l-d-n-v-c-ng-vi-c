@@ -26,7 +26,6 @@ class Contract extends Model
         'revenue',
         'debt',
         'cash_flow',
-        'status',
         'approval_status',
         'approved_by',
         'approved_at',
@@ -58,6 +57,7 @@ class Contract extends Model
     ];
 
     protected $appends = [
+        'status',
         'items_total_value',
         'effective_value',
         'payments_total',
@@ -176,6 +176,15 @@ class Contract extends Model
         return $this->effective_value;
     }
 
+    public function getStatusAttribute($value): string
+    {
+        if (is_string($value) && $value !== '') {
+            return $value;
+        }
+
+        return app(ContractLifecycleStatusService::class)->compute($this);
+    }
+
     public function getPaymentsTotalAttribute(): float
     {
         $value = $this->attributes['payments_total'] ?? $this->attributes['payments_sum_amount'] ?? null;
@@ -241,7 +250,5 @@ class Contract extends Model
             'debt' => max(0, $value - $payments),
             'cash_flow' => $payments - $costs,
         ]);
-
-        app(ContractLifecycleStatusService::class)->sync($this->fresh());
     }
 }

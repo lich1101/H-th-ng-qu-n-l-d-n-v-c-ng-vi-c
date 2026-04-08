@@ -1159,27 +1159,30 @@ export default function Contracts(props) {
         }
     };
 
-    const cancelContract = async () => {
-        if (!editingId || savingContract) return;
-        if (!canManage) {
-            toast.error('Bạn không có quyền hủy hợp đồng.');
+    const rejectContract = async (contract) => {
+        const contractId = contract?.id || editingId;
+        if (!contractId || savingContract) return;
+        if (!canApprove) {
+            toast.error('Bạn không có quyền từ chối duyệt.');
             return;
         }
-        if (form.status_display === 'cancelled') {
-            toast.error('Hợp đồng đã được đánh dấu hủy.');
+        if ((contract?.approval_status || '') === 'rejected' || form.status_display === 'cancelled') {
+            toast.error('Hợp đồng đã ở trạng thái không duyệt.');
             return;
         }
-        if (!window.confirm('Đánh dấu hợp đồng là đã hủy? Trạng thái sẽ cố định là «Hủy».')) return;
-        const note = window.prompt('Lý do hủy (tuỳ chọn):') || '';
+        if (!window.confirm('Từ chối duyệt hợp đồng này? Trạng thái sẽ chuyển sang «Hủy».')) return;
+        const note = window.prompt('Lý do không duyệt (tuỳ chọn):') || '';
         setSavingContract(true);
         try {
-            await axios.post(`/api/v1/contracts/${editingId}/cancel`, { note: note.trim() || null });
-            toast.success('Đã ghi nhận hủy hợp đồng.');
-            setShowForm(false);
-            resetForm();
+            await axios.post(`/api/v1/contracts/${contractId}/cancel`, { note: note.trim() || null });
+            toast.success('Đã từ chối duyệt hợp đồng.');
+            if (!contract) {
+                setShowForm(false);
+                resetForm();
+            }
             await fetchContracts(filters);
         } catch (e) {
-            toast.error(getErrorMessage(e, 'Không thể hủy hợp đồng.'));
+            toast.error(getErrorMessage(e, 'Không thể từ chối duyệt hợp đồng.'));
         } finally {
             setSavingContract(false);
         }
@@ -1524,6 +1527,17 @@ export default function Contracts(props) {
                                                         <AppIcon name="pencil" className="h-4 w-4" />
                                                     </button>
                                                 )}
+                                                {canApprove && c.approval_status === 'pending' && (
+                                                    <button
+                                                        type="button"
+                                                        className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-rose-200 bg-rose-50 text-rose-600 transition hover:border-rose-300 hover:bg-rose-100 hover:text-rose-700"
+                                                        aria-label="Không duyệt hợp đồng"
+                                                        title="Không duyệt hợp đồng"
+                                                        onClick={() => rejectContract(c)}
+                                                    >
+                                                        <AppIcon name="x" className="h-4 w-4" />
+                                                    </button>
+                                                )}
                                                 {canApprove && c.approval_status !== 'approved' && (
                                                     <button
                                                         type="button"
@@ -1685,7 +1699,7 @@ export default function Contracts(props) {
                             </LabeledField>
                             <LabeledField
                                 label="Trạng thái hợp đồng"
-                                hint="Hệ thống tự cập nhật theo duyệt, thu tiền và ngày kết thúc. Dùng «Hủy hợp đồng» bên dưới khi cần đánh dấu hủy."
+                                hint="Hệ thống tự cập nhật theo duyệt, thu tiền và ngày kết thúc."
                             >
                                 <div className="rounded-2xl border border-slate-200/80 bg-white px-3 py-2 text-sm text-slate-800">
                                     {form.status_display
@@ -2083,18 +2097,6 @@ export default function Contracts(props) {
                         </div>
                     </div>
 
-                    {editingId && form.status_display !== 'cancelled' && canManage && (
-                        <div className="flex justify-end">
-                            <button
-                                type="button"
-                                className="text-xs font-semibold text-rose-600 underline decoration-rose-300 underline-offset-2 hover:text-rose-700 disabled:opacity-50"
-                                onClick={cancelContract}
-                                disabled={savingContract}
-                            >
-                                Hủy hợp đồng (không hoàn tác)
-                            </button>
-                        </div>
-                    )}
                     <div className="flex flex-col gap-3 md:flex-row">
                         <button
                             type="button"

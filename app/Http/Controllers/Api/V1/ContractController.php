@@ -16,6 +16,7 @@ use App\Models\Project;
 use App\Models\RevenueTier;
 use App\Models\User;
 use App\Services\ContractFinanceRequestService;
+use App\Services\ContractLifecycleStatusService;
 use App\Services\DataTransfers\ClientFinancialSyncService;
 use App\Services\NotificationService;
 use Illuminate\Database\Eloquent\Builder;
@@ -33,6 +34,8 @@ class ContractController extends Controller
         $aggregates = $this->contractListAggregates($baseQuery);
 
         $query = $baseQuery->clone()
+            ->select('contracts.*')
+            ->selectRaw('('.$this->contractStatusSql().') as status')
             ->with([
                 'client',
                 'client.careStaffUsers:id',
@@ -80,7 +83,7 @@ class ContractController extends Controller
         CrmScope::applyContractScope($query, $request->user());
 
         if ($request->filled('status')) {
-            $query->where('status', $request->input('status'));
+            $query->whereRaw('('.$this->contractStatusSql().') = ?', [(string) $request->input('status')]);
         }
 
         if ($request->filled('client_id')) {
@@ -319,7 +322,7 @@ class ContractController extends Controller
                 $query->orderBy('payments_count', $direction);
                 break;
             case 'status':
-                $query->orderBy('contracts.status', $direction);
+                $query->orderByRaw('('.$this->contractStatusSql().') '.$rawDirection);
                 break;
             case 'approval_status':
                 $query->orderBy('contracts.approval_status', $direction);
@@ -475,17 +478,7 @@ class ContractController extends Controller
 
         $validated['collector_user_id'] = $this->resolveCollectorUserId($request, $validated, $contract);
 
-        if (! $this->canApprove($request->user())) {
-            unset($validated['approval_status'], $validated['approved_by'], $validated['approved_at'], $validated['approval_note']);
-        } elseif (isset($validated['approval_status'])) {
-            if ($validated['approval_status'] === 'approved') {
-                $validated['approved_by'] = $request->user()->id;
-                $validated['approved_at'] = now();
-            } else {
-                $validated['approved_by'] = null;
-                $validated['approved_at'] = null;
-            }
-        }
+        unset($validated['approval_status'], $validated['approved_by'], $validated['approved_at']);
 
         try {
             DB::transaction(function () use ($request, $contract, $validated, $careStaffIds, $items, $wasApproved) {
@@ -570,8 +563,8 @@ class ContractController extends Controller
 
     public function cancel(Request $request, Contract $contract): JsonResponse
     {
-        if (! $this->canManageContract($request->user(), $contract)) {
-            return response()->json(['message' => 'Không có quyền hủy hợp đồng.'], 403);
+        if (! $this->canApprove($request->user())) {
+            return response()->json(['message' => 'Không có quyền từ chối duyệt hợp đồng.'], 403);
         }
 
         $validated = $request->validate([
@@ -580,14 +573,18 @@ class ContractController extends Controller
 
         $reason = trim((string) ($validated['note'] ?? ''));
         $prev = trim((string) ($contract->notes ?? ''));
-        $stamp = '[Hủy hợp đồng]';
+        $stamp = '[Từ chối duyệt hợp đồng]';
         $line = $reason !== '' ? "{$stamp}: {$reason}" : $stamp;
         $contract->update([
-            'status' => 'cancelled',
+            'approval_status' => 'rejected',
+            'approved_by' => null,
+            'approved_at' => null,
+            'approval_note' => $reason !== '' ? $reason : ($contract->approval_note ?? null),
             'notes' => $prev !== '' ? "{$prev}\n\n{$line}" : $line,
         ]);
 
         $contract->refresh();
+        $contract->refreshFinancials();
         if ($contract->client) {
             $this->syncClientRevenue($contract->client);
         }
@@ -668,7 +665,6 @@ class ContractController extends Controller
             'revenue' => ['nullable', 'numeric', 'min:0'],
             'debt' => ['nullable', 'numeric', 'min:0'],
             'cash_flow' => ['nullable', 'numeric'],
-            'approval_status' => ['nullable', 'string', 'in:pending,approved,rejected'],
             'signed_at' => ['nullable', 'date'],
             'start_date' => ['nullable', 'date'],
             'end_date' => ['nullable', 'date'],
@@ -1425,6 +1421,11 @@ class ContractController extends Controller
             'careStaffUsers:id,name,email,avatar_url,department_id',
             'careNotes.user:id,name,email,avatar_url',
         ]);
+    }
+
+    private function contractStatusSql(): string
+    {
+        return app(ContractLifecycleStatusService::class)->sqlExpression('contracts');
     }
 
     private function resolveAccessibleClient(Request $request, int $clientId): ?Client
