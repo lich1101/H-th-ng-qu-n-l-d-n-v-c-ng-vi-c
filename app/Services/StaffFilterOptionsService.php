@@ -13,6 +13,7 @@ use App\Models\TaskItem;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class StaffFilterOptionsService
