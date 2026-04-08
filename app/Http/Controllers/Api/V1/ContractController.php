@@ -24,6 +24,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
@@ -253,7 +254,10 @@ class ContractController extends Controller
         );
     }
 
-    public function downloadDocument(Request $request, Contract $contract): BinaryFileResponse
+    /**
+     * @return BinaryFileResponse|JsonResponse
+     */
+    public function downloadDocument(Request $request, Contract $contract)
     {
         if (! $this->canViewContract($request->user(), $contract)) {
             abort(403, 'Không có quyền xem hợp đồng.');
@@ -267,7 +271,22 @@ class ContractController extends Controller
             $contract,
             $validated['company_profile_id'] ?? null
         );
-        $generated = app(ContractDocumentService::class)->generate($contract, $companyProfile);
+
+        try {
+            $generated = app(ContractDocumentService::class)->generate($contract, $companyProfile);
+        } catch (\Throwable $e) {
+            Log::error('contract.document.generate_failed', [
+                'contract_id' => $contract->id,
+                'message' => $e->getMessage(),
+                'exception' => $e,
+            ]);
+
+            $message = $e instanceof \RuntimeException
+                ? $e->getMessage()
+                : 'Không thể tạo file hợp đồng. Vui lòng thử lại sau hoặc liên hệ quản trị.';
+
+            return response()->json(['message' => $message], 503);
+        }
 
         return response()->download(
             $generated['path'],

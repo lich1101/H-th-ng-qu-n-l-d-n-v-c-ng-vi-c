@@ -10,14 +10,20 @@ use RuntimeException;
 
 class ContractDocumentService
 {
-    private const TEMPLATE_RELATIVE_PATH = 'templates/contracts/contract-template-basic-an-phat-379-template-v2.docx';
+    /**
+     * Thứ tự ưu tiên: cùng tên với route GET /tai-mau-hop-dong (web.php),
+     * sau đó bản v2 nếu deploy riêng. Chỉ cần một trong hai file tồn tại trên server.
+     *
+     * @var list<string>
+     */
+    private const TEMPLATE_RELATIVE_CANDIDATES = [
+        'templates/contracts/contract-template-basic-an-phat-379.docx',
+        'templates/contracts/contract-template-basic-an-phat-379-template-v2.docx',
+    ];
 
     public function generate(Contract $contract, ?array $companyProfile = null): array
     {
-        $templatePath = public_path(self::TEMPLATE_RELATIVE_PATH);
-        if (! file_exists($templatePath)) {
-            throw new RuntimeException('Không tìm thấy file mẫu hợp đồng .docx.');
-        }
+        $templatePath = $this->resolveTemplatePath();
 
         $tmpDir = storage_path('app/tmp/contracts');
         if (! is_dir($tmpDir) && ! mkdir($tmpDir, 0755, true) && ! is_dir($tmpDir)) {
@@ -36,6 +42,21 @@ class ContractDocumentService
             'path' => $outputPath,
             'filename' => $outputName,
         ];
+    }
+
+    private function resolveTemplatePath(): string
+    {
+        foreach (self::TEMPLATE_RELATIVE_CANDIDATES as $relative) {
+            $path = public_path($relative);
+            if (file_exists($path)) {
+                return $path;
+            }
+        }
+
+        throw new RuntimeException(
+            'Không tìm thấy file mẫu hợp đồng .docx. Đặt một trong các file vào public/templates/contracts/: '
+            . implode(', ', self::TEMPLATE_RELATIVE_CANDIDATES)
+        );
     }
 
     private function fillStaticContent(TemplateProcessor $template, Contract $contract, ?array $companyProfile = null): void
