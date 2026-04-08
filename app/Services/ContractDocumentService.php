@@ -23,6 +23,22 @@ class ContractDocumentService
         'templates/contracts/contract-template-basic-an-phat-379-template-v2.docx',
     ];
 
+    /**
+     * Các macro tên cũ (${service_name}, ${progress_label}, …) dùng cho đoạn mô tả (vd. Điều 2):
+     * luôn để dòng chấm để ký nháy điền tay — không chèn dữ liệu CRM.
+     * Dữ liệu thật nằm ở macro data_* và bảng item_* / tiền.
+     */
+    private function narrativeFieldDots(): array
+    {
+        return [
+            'service_name' => $this->orDots('', 'xl'),
+            'service_name_inline' => $this->orDots('', 'xl'),
+            'progress_label' => $this->orDots('', 'm'),
+            'website_host' => $this->orDots('', 'xxl'),
+            'deployment_range' => $this->orDots('', 'xl'),
+        ];
+    }
+
     public function generate(Contract $contract, ?array $companyProfile = null): array
     {
         $templatePath = $this->resolveTemplatePath();
@@ -64,64 +80,125 @@ class ContractDocumentService
     private function fillStaticContent(TemplateProcessor $template, Contract $contract, ?array $companyProfile = null): void
     {
         $project = $contract->project ?: $contract->linkedProject;
-        $signedAt = $contract->signed_at ? Carbon::parse((string) $contract->signed_at) : Carbon::today();
-        $startDate = $contract->start_date ? Carbon::parse((string) $contract->start_date) : $signedAt->copy();
+        $signedAt = $contract->signed_at ? Carbon::parse((string) $contract->signed_at) : null;
+        $startDate = $contract->start_date ? Carbon::parse((string) $contract->start_date) : null;
         $endDate = $contract->end_date ? Carbon::parse((string) $contract->end_date) : null;
 
-        $serviceName = trim((string) (($contract->items->first()->product_name ?? '') ?: ($contract->title ?? 'Dịch vụ')));
+        $serviceName = $this->resolveServiceName($contract);
         $website = $this->resolveWebsite($project);
-        $subtotal = (float) ($contract->subtotal_value ?? 0);
-        $vatAmount = (float) ($contract->vat_amount ?? 0);
-        $total = (float) ($contract->value ?? 0);
+        $fin = $this->resolveExportFinancials($contract);
+        $subtotal = $fin['subtotal'];
+        $vatAmount = $fin['vat_amount'];
+        $total = $fin['total'];
         $amountWords = $this->numberToVietnameseWords($total);
         $vatLabel = $this->resolveVatLabel($contract);
-        $legalCompanyName = trim((string) data_get($companyProfile, 'company_name', ''));
-        $legalRepresentative = trim((string) data_get($companyProfile, 'representative', ''));
-        $legalPosition = trim((string) data_get($companyProfile, 'position', ''));
-        $legalAddress = trim((string) data_get($companyProfile, 'address', ''));
-        $legalTaxCode = trim((string) data_get($companyProfile, 'tax_code', ''));
-        $template->setValues([
-            'contract_code' => $contract->code ?: ('HD-' . $contract->id),
-            'signed_day' => $signedAt->format('d'),
-            'signed_month' => $signedAt->format('m'),
-            'signed_year' => $signedAt->format('Y'),
-            'service_name' => $serviceName,
-            'service_name_inline' => $serviceName,
-            'progress_label' => $this->resolveProgressLabel($startDate, $endDate),
-            'website_host' => $website,
-            'deployment_range' => $this->resolveDeploymentRange($startDate, $endDate),
-            'legal_company_name' => $this->resolveLegalPlaceholderValue($legalCompanyName, 'company_name'),
-            'legal_representative' => $this->resolveLegalPlaceholderValue($legalRepresentative, 'representative'),
-            'legal_position' => $this->resolveLegalPlaceholderValue($legalPosition, 'position'),
-            'legal_address' => $this->resolveLegalPlaceholderValue($legalAddress, 'address'),
-            'legal_tax_code' => $this->resolveLegalPlaceholderValue($legalTaxCode, 'tax_code'),
-            'vat_label' => $vatLabel,
+        $profile = is_array($companyProfile) ? $companyProfile : [];
+        $legalCompanyName = trim((string) data_get($profile, 'company_name', ''));
+        $legalRepresentative = trim((string) data_get($profile, 'representative', ''));
+        $legalPosition = trim((string) data_get($profile, 'position', ''));
+        $legalAddress = trim((string) data_get($profile, 'address', ''));
+        $legalTaxCode = trim((string) data_get($profile, 'tax_code', ''));
+        $progressLabel = $this->resolveProgressLabel($startDate, $endDate);
+        $deploymentRange = $this->resolveDeploymentRange($startDate, $endDate);
+
+        $template->setValues(array_merge($this->narrativeFieldDots(), [
+            'contract_code' => $this->orDots(trim((string) ($contract->code ?? '')), 'm'),
+            'signed_day' => $signedAt ? $signedAt->format('d') : $this->orDots('', 'xs'),
+            'signed_month' => $signedAt ? $signedAt->format('m') : $this->orDots('', 'xs'),
+            'signed_year' => $signedAt ? $signedAt->format('Y') : $this->orDots('', 's'),
+            // Giá trị từ CRM (dùng trong mẫu Word tại bảng giá / phụ lục — đặt ${data_service_name} v.v., không dùng trong đoạn Điều 2 nếu muốn chỉ đề mục)
+            'data_service_name' => $this->orDots($serviceName, 'xl'),
+            'data_progress_label' => $this->orDots($progressLabel, 'm'),
+            'data_website_host' => $this->orDots($website, 'xxl'),
+            'data_deployment_range' => $this->orDots($deploymentRange, 'xl'),
+            'legal_company_name' => $this->orDots($legalCompanyName, 'xl'),
+            'legal_representative' => $this->orDots($legalRepresentative, 'l'),
+            'legal_position' => $this->orDots($legalPosition, 'm'),
+            'legal_address' => $this->orDots($legalAddress, 'xxl'),
+            'legal_tax_code' => $this->orDots($legalTaxCode, 's'),
+            'vat_label' => $this->orDots($vatLabel, 's'),
+            'subtotal_amount' => $this->formatCurrency($subtotal),
             'vat_amount' => $this->formatCurrency($vatAmount),
             'total_amount' => $this->formatCurrency($total),
             'amount_words' => $amountWords,
             'amount_words_inline' => $amountWords,
-        ]);
+        ]));
+    }
+
+    /**
+     * Chuỗi trống → dấu chấm với độ dài gợi ý chỗ điền tay; có dữ liệu → giữ nguyên.
+     *
+     * @param  non-empty-string  $size  xxs|xs|s|m|l|xl|xxl|money|qty
+     */
+    private function orDots(?string $value, string $size = 'm'): string
+    {
+        $t = trim((string) ($value ?? ''));
+        if ($t !== '') {
+            return $t;
+        }
+
+        return match ($size) {
+            'xxs' => str_repeat('.', 6),
+            'xs' => str_repeat('.', 10),
+            's' => str_repeat('.', 18),
+            'm' => str_repeat('.', 28),
+            'l' => str_repeat('.', 42),
+            'xl' => str_repeat('.', 56),
+            'xxl' => str_repeat('.', 72),
+            'money' => str_repeat('.', 24),
+            'qty' => str_repeat('.', 12),
+            default => str_repeat('.', 28),
+        };
+    }
+
+    /**
+     * Tên dịch vụ / hợp đồng: chỉ từ DB, không chèn chữ mặc định.
+     */
+    private function resolveServiceName(Contract $contract): string
+    {
+        $fromItem = trim((string) ($contract->items->first()->product_name ?? ''));
+        if ($fromItem !== '') {
+            return $fromItem;
+        }
+
+        return trim((string) ($contract->title ?? ''));
+    }
+
+    /**
+     * Tiền xuất Word khớp với tổng dòng hàng + VAT (accessor), tránh lệch với màn hình khi cột contracts.value / vat_amount trong DB chưa đồng bộ.
+     *
+     * @return array{subtotal: float, vat_amount: float, total: float}
+     */
+    private function resolveExportFinancials(Contract $contract): array
+    {
+        $subtotal = (float) $contract->subtotal_value;
+        $vatAmount = (float) $contract->resolved_vat_amount;
+        $total = $subtotal + $vatAmount;
+
+        return [
+            'subtotal' => $subtotal,
+            'vat_amount' => $vatAmount,
+            'total' => $total,
+        ];
     }
 
     private function fillPricingRows(TemplateProcessor $template, Contract $contract): void
     {
-        $itemRows = $contract->items->isNotEmpty() ? $contract->items->values()->all() : [(object) [
-            'product_name' => $contract->title ?: 'Dịch vụ',
-            'quantity' => 1,
-            'unit_price' => (float) ($contract->subtotal_value ?? $contract->value ?? 0),
-            'total_price' => (float) ($contract->subtotal_value ?? $contract->value ?? 0),
-        ]];
+        $fin = $this->resolveExportFinancials($contract);
+        $itemRows = $contract->items->isNotEmpty()
+            ? $contract->items->values()->all()
+            : $this->syntheticItemRowWhenNoLines($contract, $fin);
 
         $duration = $this->resolveItemDuration($contract);
         $rows = [];
         foreach ($itemRows as $index => $item) {
             $rows[] = [
                 'item_no' => (string) ($index + 1),
-                'item_name' => (string) ($item->product_name ?? 'Dịch vụ'),
-                'item_qty' => (string) max(1, (int) ($item->quantity ?? 1)),
-                'item_duration' => $duration,
-                'item_unit_price' => $this->formatCurrency((float) ($item->unit_price ?? 0)),
-                'item_total' => $this->formatCurrency((float) ($item->total_price ?? 0)),
+                'item_name' => $this->orDots(trim((string) ($item->product_name ?? '')), 'xl'),
+                'item_qty' => $this->formatQuantityForExport($item->quantity ?? null),
+                'item_duration' => $this->orDots($duration, 'm'),
+                'item_unit_price' => $this->formatCurrencyOrDots($item->unit_price ?? null),
+                'item_total' => $this->formatCurrencyOrDots($item->total_price ?? null),
             ];
         }
 
@@ -176,10 +253,53 @@ class ContractDocumentService
         $template->setValues($values);
     }
 
-    private function resolveProgressLabel(Carbon $startDate, ?Carbon $endDate): string
+    /**
+     * @return list<object>
+     */
+    private function syntheticItemRowWhenNoLines(Contract $contract, array $fin): array
     {
-        if (! $endDate) {
-            return 'Theo thời gian hợp đồng';
+        $title = trim((string) ($contract->title ?? ''));
+        if ($title === '' && (float) ($fin['subtotal'] ?? 0) <= 0) {
+            return [(object) [
+                'product_name' => '',
+                'quantity' => null,
+                'unit_price' => null,
+                'total_price' => null,
+            ]];
+        }
+
+        return [(object) [
+            'product_name' => $title,
+            'quantity' => 1,
+            'unit_price' => $fin['subtotal'],
+            'total_price' => $fin['subtotal'],
+        ]];
+    }
+
+    private function formatQuantityForExport($quantity): string
+    {
+        if ($quantity === null || $quantity === '') {
+            return $this->orDots('', 'qty');
+        }
+
+        $q = (int) $quantity;
+
+        return $q > 0 ? (string) $q : $this->orDots('', 'qty');
+    }
+
+    private function formatCurrencyOrDots($value): string
+    {
+        if ($value === null || $value === '') {
+            return $this->orDots('', 'money');
+        }
+
+        return $this->formatCurrency((float) $value);
+    }
+
+    private function resolveProgressLabel(?Carbon $startDate, ?Carbon $endDate): string
+    {
+        if ($startDate === null || $endDate === null) {
+            return '';
         }
 
         $days = max(1, $startDate->diffInDays($endDate) + 1);
@@ -187,13 +307,17 @@ class ContractDocumentService
         return $days . ' ngày';
     }
 
-    private function resolveDeploymentRange(Carbon $startDate, ?Carbon $endDate): string
+    private function resolveDeploymentRange(?Carbon $startDate, ?Carbon $endDate): string
     {
-        if (! $endDate) {
-            return 'Từ ngày ' . $startDate->format('d/m/Y');
+        if ($startDate === null) {
+            return '';
         }
 
-        return 'Từ ngày ' . $startDate->format('d/m/Y') . ' đến ngày ' . $endDate->format('d/m/Y');
+        if ($endDate === null) {
+            return 'Từ ngày '.$startDate->format('d/m/Y');
+        }
+
+        return 'Từ ngày '.$startDate->format('d/m/Y').' đến ngày '.$endDate->format('d/m/Y');
     }
 
     private function resolveItemDuration(Contract $contract): string
@@ -211,29 +335,31 @@ class ContractDocumentService
             return $days . ' ngày';
         }
 
-        return 'Theo hợp đồng';
+        return '';
     }
 
     private function resolveWebsite($project): string
     {
         $websiteUrl = trim((string) data_get($project, 'website_url', ''));
         if ($websiteUrl === '') {
-            return '................................';
+            return '';
         }
 
         $host = parse_url($websiteUrl, PHP_URL_HOST);
-        return $host ?: $websiteUrl;
+
+        return $host ? (string) $host : $websiteUrl;
     }
 
     private function resolveVatLabel(Contract $contract): string
     {
         if (! $contract->vat_enabled) {
-            return 'VAT';
+            return '';
         }
 
         if (($contract->vat_mode ?? '') === 'percent' && $contract->vat_rate !== null) {
             $rate = rtrim(rtrim(number_format((float) $contract->vat_rate, 2, '.', ''), '0'), '.');
-            return 'VAT (' . $rate . '%)';
+
+            return 'VAT ('.$rate.'%)';
         }
 
         return 'VAT';
@@ -248,25 +374,6 @@ class ContractDocumentService
     {
         $base = $contract->code ?: ('hop-dong-' . $contract->id);
         return Str::slug($base) . '.docx';
-    }
-
-    private function resolveLegalPlaceholderValue(string $value, string $field): string
-    {
-        $trimmed = trim($value);
-
-        return $trimmed !== '' ? $trimmed : $this->blankPlaceholder($field);
-    }
-
-    private function blankPlaceholder(string $field): string
-    {
-        return match ($field) {
-            'company_name' => '........................................................',
-            'representative' => '................................',
-            'position' => '........................',
-            'tax_code' => '........................',
-            'address' => '........................................................................',
-            default => '................................',
-        };
     }
 
     private function numberToVietnameseWords(float $number): string
