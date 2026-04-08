@@ -46,6 +46,16 @@ const formatDate = (raw) => formatVietnamDate(raw);
 const formatDateTime = (raw) => formatVietnamDateTime(raw);
 
 const formatCurrency = (value) => Number(value || 0).toLocaleString('vi-VN');
+const userInitials = (user) => {
+    const source = String(user?.name || user?.email || 'NS').trim();
+    if (!source) return 'NS';
+    return source
+        .split(/\s+/)
+        .map((part) => part.charAt(0).toUpperCase())
+        .join('')
+        .slice(0, 2);
+};
+
 const numberOrNull = (value) => {
     if (value === null || value === undefined || value === '') return null;
     const parsed = Number(value);
@@ -994,8 +1004,8 @@ export default function ClientFlow({ auth, clientId }) {
                     <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
                             <h4 className="text-base font-semibold text-slate-900">Bình luận nội bộ</h4>
-                            <p className="mt-1 text-xs text-slate-500">
-                                Lịch sử bình luận hiển thị phía trên. Ô nhập bình luận đặt phía dưới để thao tác nhanh.
+                            <p className="mt-1 text-xs leading-5 text-slate-500">
+                                Lịch sử trao đổi nội bộ theo thứ tự mới nhất để đội ngũ nắm bối cảnh nhanh và cập nhật rõ ràng.
                             </p>
                         </div>
                         <span className="inline-flex items-center rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
@@ -1003,36 +1013,51 @@ export default function ClientFlow({ auth, clientId }) {
                         </span>
                     </div>
 
-                    <div className="mt-4 rounded-2xl border border-slate-200/80 bg-slate-50/70">
-                        <div className="max-h-[360px] overflow-y-auto p-3 sm:p-4">
-                            <div className="space-y-3">
+                    <div className="mt-4 rounded-2xl border border-slate-200/80 bg-slate-50/60 p-2 sm:p-3">
+                        <div className="max-h-[380px] overflow-y-auto pr-1">
+                            <div className="space-y-2">
                                 {commentsHistory.map((note) => (
-                                    <div key={note.id} className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 shadow-sm">
+                                    <article key={note.id} className="rounded-xl border border-slate-200/80 bg-white p-3.5 shadow-sm transition hover:shadow">
                                         <div className="flex items-start justify-between gap-3">
-                                            <div>
-                                                <div className="text-sm font-semibold text-slate-900">{note.title}</div>
-                                                <div className="mt-0.5 text-xs text-slate-500">{note.user?.name || 'Nhân sự'} • {note.user?.email || '—'}</div>
+                                            <div className="flex min-w-0 items-start gap-3">
+                                                <div className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-primary/20 bg-primary/10 text-xs font-bold text-primary">
+                                                    {userInitials(note.user)}
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <p className="line-clamp-1 text-sm font-semibold text-slate-900">{note.title || 'Trao đổi nội bộ'}</p>
+                                                    <p className="mt-0.5 line-clamp-1 text-xs text-slate-500">
+                                                        {note.user?.name || 'Nhân sự'}
+                                                        {note.user?.email ? ` • ${note.user.email}` : ''}
+                                                    </p>
+                                                </div>
                                             </div>
-                                            <div className="flex items-center gap-2">
-                                                <div className="whitespace-nowrap text-xs text-slate-500">{formatDateTime(note.created_at)}</div>
+                                            <div className="flex shrink-0 items-center gap-2">
+                                                <div className="whitespace-nowrap rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-500">
+                                                    {formatDateTime(note.created_at)}
+                                                </div>
                                                 {note?.can_delete && (
                                                     <button
                                                         type="button"
-                                                        className="rounded-lg border border-rose-200 px-2 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50"
+                                                        className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-white px-2 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50"
                                                         onClick={() => deleteComment(note.id)}
                                                         disabled={deletingCommentId === String(note.id)}
                                                     >
+                                                        <AppIcon name="trash" className="h-3.5 w-3.5" />
                                                         {deletingCommentId === String(note.id) ? 'Đang xóa...' : 'Xóa'}
                                                     </button>
                                                 )}
                                             </div>
                                         </div>
-                                        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{note.detail}</p>
-                                    </div>
+                                        <p className="mt-3 whitespace-pre-wrap rounded-lg border border-slate-100 bg-slate-50/70 px-3 py-2.5 text-sm leading-6 text-slate-700">
+                                            {note.detail}
+                                        </p>
+                                    </article>
                                 ))}
                                 {commentsHistory.length === 0 && (
-                                    <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-6 text-center text-sm text-slate-500">
-                                        Chưa có bình luận nào.
+                                    <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center">
+                                        <div className="mx-auto mb-2 inline-flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-sm font-bold text-slate-500">i</div>
+                                        <p className="text-sm font-semibold text-slate-700">Chưa có bình luận nào</p>
+                                        <p className="mt-1 text-xs text-slate-500">Thêm bình luận đầu tiên để lưu lịch sử phối hợp nội bộ.</p>
                                     </div>
                                 )}
                             </div>
@@ -1041,13 +1066,13 @@ export default function ClientFlow({ auth, clientId }) {
 
                     <div className="mt-4 rounded-2xl border border-slate-200/80 bg-white p-4">
                         {flow?.permissions?.can_add_comment ? (
-                            <form className="space-y-3" onSubmit={submitComment}>
+                            <form className="space-y-4" onSubmit={submitComment}>
                                 <div>
                                     <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.14em] text-text-subtle">
                                         Tiêu đề bình luận
                                     </label>
                                     <input
-                                        className="w-full rounded-xl border border-slate-200/80 bg-white px-3 py-2 text-sm"
+                                        className="w-full rounded-xl border border-slate-200/80 bg-white px-3 py-2.5 text-sm shadow-sm focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/20"
                                         placeholder="Ví dụ: Cập nhật sau buổi gọi sáng nay"
                                         value={careNoteForm.title}
                                         onChange={(e) => setCareNoteForm((prev) => ({ ...prev, title: e.target.value }))}
@@ -1058,19 +1083,28 @@ export default function ClientFlow({ auth, clientId }) {
                                         Nội dung
                                     </label>
                                     <textarea
-                                        className="min-h-[120px] w-full rounded-xl border border-slate-200/80 bg-white px-3 py-2 text-sm"
-                                        placeholder="Nhập nội dung bình luận..."
+                                        className="min-h-[132px] w-full rounded-xl border border-slate-200/80 bg-white px-3 py-2.5 text-sm leading-6 shadow-sm focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/20"
+                                        placeholder="Nhập nội dung bình luận...\nVí dụ: Kết quả buổi trao đổi, vấn đề cần follow-up, người chịu trách nhiệm."
                                         value={careNoteForm.detail}
                                         onChange={(e) => setCareNoteForm((prev) => ({ ...prev, detail: e.target.value }))}
                                     />
-                                    <div className="mt-1 text-right text-xs text-slate-400">
-                                        {(careNoteForm.detail || '').length} ký tự
+                                    <div className="mt-1.5 flex items-center justify-between text-xs text-slate-400">
+                                        <span>Nên ghi ngắn gọn, rõ hành động để người sau dễ theo dõi.</span>
+                                        <span>{(careNoteForm.detail || '').length} ký tự</span>
                                     </div>
                                 </div>
-                                <div className="flex items-center justify-end">
+                                <div className="flex flex-wrap items-center justify-end gap-2">
+                                    <button
+                                        type="button"
+                                        className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                                        onClick={() => setCareNoteForm({ title: '', detail: '' })}
+                                        disabled={submittingCareNote}
+                                    >
+                                        Xóa nội dung
+                                    </button>
                                     <button
                                         type="submit"
-                                        className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white"
+                                        className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary/90"
                                         disabled={submittingCareNote}
                                     >
                                         {submittingCareNote ? 'Đang gửi...' : 'Gửi bình luận'}
