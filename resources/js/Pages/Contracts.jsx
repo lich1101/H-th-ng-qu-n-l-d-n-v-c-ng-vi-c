@@ -107,13 +107,13 @@ const resolveContractValue = (contract) => {
     return parseNumberInput(contract.effective_value ?? contract.items_total_value ?? contract.value);
 };
 const statusBadgeClass = (value) => ({
-    active: 'bg-emerald-100 text-emerald-700',
-    signed: 'bg-sky-100 text-sky-700',
-    success: 'bg-emerald-100 text-emerald-700',
-    expired: 'bg-rose-100 text-rose-700',
-    cancelled: 'bg-rose-100 text-rose-700',
-    draft: 'bg-slate-100 text-slate-600',
-}[value] || 'bg-slate-100 text-slate-600');
+    draft: 'border border-slate-200 bg-slate-100 text-slate-700',
+    signed: 'border border-violet-200 bg-violet-100 text-violet-700',
+    active: 'border border-sky-200 bg-sky-100 text-sky-700',
+    success: 'border border-emerald-200 bg-emerald-100 text-emerald-700',
+    expired: 'border border-amber-200 bg-amber-100 text-amber-700',
+    cancelled: 'border border-rose-200 bg-rose-100 text-rose-700',
+}[value] || 'border border-slate-200 bg-slate-100 text-slate-700');
 const approvalBadgeClass = (value) => ({
     approved: 'bg-emerald-100 text-emerald-700',
     rejected: 'bg-rose-100 text-rose-700',

@@ -92,8 +92,8 @@ const calculateItemTotal = (item) => {
 
 const statusBadgeClass = (status) => {
     if (status === 'draft') return 'bg-slate-100 text-slate-700 border border-slate-200';
+    if (status === 'signed') return 'bg-violet-50 text-violet-700 border border-violet-200';
     if (status === 'active') return 'bg-sky-50 text-sky-700 border border-sky-200';
-    if (status === 'signed') return 'bg-emerald-50 text-emerald-700 border border-emerald-200';
     if (status === 'success') return 'bg-emerald-100 text-emerald-800 border border-emerald-200';
     if (status === 'expired') return 'bg-amber-50 text-amber-700 border border-amber-200';
     if (status === 'cancelled') return 'bg-rose-50 text-rose-700 border border-rose-200';
