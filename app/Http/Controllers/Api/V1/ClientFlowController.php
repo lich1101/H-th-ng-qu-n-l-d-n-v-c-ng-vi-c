@@ -12,6 +12,7 @@ use App\Models\Task;
 use App\Models\TaskItem;
 use App\Models\User;
 use App\Services\ClientStaffTransferService;
+use App\Services\ContractLifecycleStatusService;
 use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -78,12 +79,12 @@ class ClientFlowController extends Controller
             'careNotes.user:id,name,email',
         ]);
 
+        $contractStatusSql = app(ContractLifecycleStatusService::class)->sqlExpression('contracts');
         $contracts = $client->contracts()
             ->select([
                 'id',
                 'title',
                 'code',
-                'status',
                 'approval_status',
                 'value',
                 'start_date',
@@ -91,6 +92,7 @@ class ClientFlowController extends Controller
                 'signed_at',
                 'project_id',
             ])
+            ->selectRaw("({$contractStatusSql}) as status")
             ->orderBy('id')
             ->get();
 
