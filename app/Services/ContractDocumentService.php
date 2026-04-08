@@ -4,7 +4,9 @@ namespace App\Services;
 
 use App\Models\Contract;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use PhpOffice\PhpWord\Exception\Exception as PhpWordException;
 use PhpOffice\PhpWord\TemplateProcessor;
 use RuntimeException;
 
@@ -123,7 +125,55 @@ class ContractDocumentService
             ];
         }
 
-        $template->cloneRowAndSetValues('item_no', $rows);
+        try {
+            $template->cloneRowAndSetValues('item_no', $rows);
+        } catch (PhpWordException $e) {
+            Log::warning('contract.document.pricing_clone_row_failed', [
+                'message' => $e->getMessage(),
+                'hint' => 'Mẫu Word cần ô ${item_no} trong một dòng bảng để nhân dòng, hoặc placeholder ${pricing_items_block}/${items_detail} cho danh sách dạng văn bản.',
+            ]);
+            $this->fillPricingRowsWithoutTableClone($template, $rows);
+        }
+    }
+
+    /**
+     * Dùng khi mẫu .docx không có ${item_no} (cloneRow lỗi). Đổ nội dung vào các macro tùy chọn:
+     * ${pricing_items_block}, ${items_detail} — hoặc ${item_1_name}…${item_15_*} cho bảng tĩnh.
+     *
+     * @param  array<int, array<string, string>>  $rows
+     */
+    private function fillPricingRowsWithoutTableClone(TemplateProcessor $template, array $rows): void
+    {
+        $lines = [];
+        foreach ($rows as $r) {
+            $lines[] = sprintf(
+                '%s. %s | SL: %s | Thời hạn: %s | Đơn giá: %s đ | Thành tiền: %s đ',
+                $r['item_no'],
+                $r['item_name'],
+                $r['item_qty'],
+                $r['item_duration'],
+                $r['item_unit_price'],
+                $r['item_total']
+            );
+        }
+
+        $block = implode("\n", $lines);
+        $values = [
+            'pricing_items_block' => $block,
+            'items_detail' => $block,
+        ];
+
+        foreach (array_slice($rows, 0, 15) as $i => $r) {
+            $n = $i + 1;
+            $values['item_'.$n.'_no'] = $r['item_no'];
+            $values['item_'.$n.'_name'] = $r['item_name'];
+            $values['item_'.$n.'_qty'] = $r['item_qty'];
+            $values['item_'.$n.'_duration'] = $r['item_duration'];
+            $values['item_'.$n.'_unit_price'] = $r['item_unit_price'];
+            $values['item_'.$n.'_total'] = $r['item_total'];
+        }
+
+        $template->setValues($values);
     }
 
     private function resolveProgressLabel(Carbon $startDate, ?Carbon $endDate): string
