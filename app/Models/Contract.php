@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\ContractLifecycleStatusService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -240,5 +241,7 @@ class Contract extends Model
             'debt' => max(0, $value - $payments),
             'cash_flow' => $payments - $costs,
         ]);
+
+        app(ContractLifecycleStatusService::class)->sync($this->fresh());
     }
 }

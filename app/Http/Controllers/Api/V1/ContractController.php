@@ -372,7 +372,7 @@ class ContractController extends Controller
         }
         $validated['code'] = $this->generateContractCode();
         $validated['created_by'] = $request->user()->id;
-        unset($validated['project_id'], $validated['create_and_approve']);
+        unset($validated['project_id'], $validated['create_and_approve'], $validated['status']);
 
         $items = $this->normalizeItems($request->input('items', []));
         if (! empty($items)) {
@@ -456,6 +456,7 @@ class ContractController extends Controller
         }
         $wasApproved = ($contract->approval_status ?? '') === 'approved';
         $validated = $request->validate($this->rules($contract->id, true));
+        unset($validated['status']);
         $careStaffIds = $this->extractCareStaffIds($validated);
         $client = Client::query()->find((int) $validated['client_id']);
         if (! $client) {
@@ -557,6 +558,36 @@ class ContractController extends Controller
         }
 
         $contract->refresh();
+        $contract->refreshFinancials();
+        if ($contract->client) {
+            $this->syncClientRevenue($contract->client);
+        }
+
+        $this->loadContractDetail($contract);
+
+        return response()->json($this->appendContractPermissions($contract, $request->user()));
+    }
+
+    public function cancel(Request $request, Contract $contract): JsonResponse
+    {
+        if (! $this->canManageContract($request->user(), $contract)) {
+            return response()->json(['message' => 'Không có quyền hủy hợp đồng.'], 403);
+        }
+
+        $validated = $request->validate([
+            'note' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $reason = trim((string) ($validated['note'] ?? ''));
+        $prev = trim((string) ($contract->notes ?? ''));
+        $stamp = '[Hủy hợp đồng]';
+        $line = $reason !== '' ? "{$stamp}: {$reason}" : $stamp;
+        $contract->update([
+            'status' => 'cancelled',
+            'notes' => $prev !== '' ? "{$prev}\n\n{$line}" : $line,
+        ]);
+
+        $contract->refresh();
         if ($contract->client) {
             $this->syncClientRevenue($contract->client);
         }
@@ -637,7 +668,6 @@ class ContractController extends Controller
             'revenue' => ['nullable', 'numeric', 'min:0'],
             'debt' => ['nullable', 'numeric', 'min:0'],
             'cash_flow' => ['nullable', 'numeric'],
-            'status' => ['required', 'string', 'in:draft,signed,success,active,expired,cancelled'],
             'approval_status' => ['nullable', 'string', 'in:pending,approved,rejected'],
             'signed_at' => ['nullable', 'date'],
             'start_date' => ['nullable', 'date'],
@@ -861,7 +891,7 @@ class ContractController extends Controller
             $quantity = max(1, (int) round($this->parseNumericInput($item['quantity'] ?? 1)));
             $total = $unitPrice * $quantity;
 
-            return [
+            $row = [
                 'product_id' => $product ? $product->id : null,
                 'product_name' => $name,
                 'unit' => $unit,
@@ -870,6 +900,11 @@ class ContractController extends Controller
                 'total_price' => $total,
                 'note' => $item['note'] ?? null,
             ];
+            if (! empty($item['id'])) {
+                $row['id'] = (int) $item['id'];
+            }
+
+            return $row;
         })->values()->all();
     }
 
@@ -918,10 +953,51 @@ class ContractController extends Controller
 
     private function syncItems(Contract $contract, array $items): void
     {
-        $contract->items()->delete();
-        foreach ($items as $item) {
-            $contract->items()->create($item);
+        $hasAnyId = collect($items)->contains(function ($row) {
+            return ! empty($row['id']);
+        });
+
+        if (! $hasAnyId) {
+            $contract->items()->delete();
+            foreach ($items as $item) {
+                $data = $item;
+                unset($data['id']);
+                $contract->items()->create($data);
+            }
+
+            return;
         }
+
+        $existingIds = $contract->items()->pluck('id')->map(function ($id) {
+            return (int) $id;
+        })->all();
+        $keptIds = [];
+
+        foreach ($items as $row) {
+            $id = isset($row['id']) ? (int) $row['id'] : 0;
+            $data = [
+                'product_id' => $row['product_id'] ?? null,
+                'product_name' => $row['product_name'] ?? '',
+                'unit' => $row['unit'] ?? null,
+                'unit_price' => $row['unit_price'] ?? 0,
+                'quantity' => $row['quantity'] ?? 1,
+                'total_price' => $row['total_price'] ?? 0,
+                'note' => $row['note'] ?? null,
+            ];
+
+            if ($id > 0 && in_array($id, $existingIds, true)) {
+                ContractItem::query()
+                    ->where('id', $id)
+                    ->where('contract_id', $contract->id)
+                    ->update($data);
+                $keptIds[] = $id;
+            } else {
+                $created = $contract->items()->create($data);
+                $keptIds[] = (int) $created->id;
+            }
+        }
+
+        $contract->items()->whereNotIn('id', $keptIds)->delete();
     }
 
     private function syncClientRevenue(Client $client): void

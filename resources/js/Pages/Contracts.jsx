@@ -214,7 +214,8 @@ export default function Contracts(props) {
         care_staff_ids: [],
         value: '',
         payment_times: '1',
-        status: 'draft',
+        /** Chỉ để hiển thị (đồng bộ từ API), không gửi khi lưu */
+        status_display: '',
         signed_at: '',
         start_date: '',
         end_date: '',
@@ -603,7 +604,7 @@ export default function Contracts(props) {
             care_staff_ids: [],
             value: '',
             payment_times: '1',
-            status: 'draft',
+            status_display: '',
             signed_at: '',
             start_date: '',
             end_date: '',
@@ -646,7 +647,7 @@ export default function Contracts(props) {
                 care_staff_ids: normalizeCareStaffIds(detail.care_staff_users || []),
                 value: String(resolveContractValue(detail)),
                 payment_times: String(detail.payment_times ?? 1),
-                status: detail.status || 'draft',
+                status_display: detail.status || 'draft',
                 signed_at: toDateInputValue(detail.signed_at),
                 start_date: toDateInputValue(detail.start_date),
                 end_date: toDateInputValue(detail.end_date),
@@ -654,6 +655,7 @@ export default function Contracts(props) {
             });
             setItems(
                 (detail.items || []).map((item) => ({
+                    id: item.id,
                     product_id: item.product_id || '',
                     product_name: item.product_name || '',
                     unit: item.unit || '',
@@ -1103,12 +1105,12 @@ export default function Contracts(props) {
             collector_user_id: form.collector_user_id ? Number(form.collector_user_id) : null,
             value: items.length ? itemsTotal : form.value === '' ? null : parseNumberInput(form.value),
             payment_times: form.payment_times === '' ? 1 : Number(form.payment_times),
-            status: form.status,
             signed_at: form.signed_at || null,
             start_date: form.start_date || null,
             end_date: form.end_date || null,
             notes: form.notes || null,
             items: items.map((item) => ({
+                ...(item.id ? { id: Number(item.id) } : {}),
                 product_id: item.product_id ? Number(item.product_id) : null,
                 product_name: item.product_name || null,
                 unit: item.unit || null,
@@ -1152,6 +1154,32 @@ export default function Contracts(props) {
             await fetchContracts();
         } catch (e) {
             toast.error(e?.response?.data?.message || 'Lưu hợp đồng thất bại.');
+        } finally {
+            setSavingContract(false);
+        }
+    };
+
+    const cancelContract = async () => {
+        if (!editingId || savingContract) return;
+        if (!canManage) {
+            toast.error('Bạn không có quyền hủy hợp đồng.');
+            return;
+        }
+        if (form.status_display === 'cancelled') {
+            toast.error('Hợp đồng đã được đánh dấu hủy.');
+            return;
+        }
+        if (!window.confirm('Đánh dấu hợp đồng là đã hủy? Trạng thái sẽ cố định là «Hủy».')) return;
+        const note = window.prompt('Lý do hủy (tuỳ chọn):') || '';
+        setSavingContract(true);
+        try {
+            await axios.post(`/api/v1/contracts/${editingId}/cancel`, { note: note.trim() || null });
+            toast.success('Đã ghi nhận hủy hợp đồng.');
+            setShowForm(false);
+            resetForm();
+            await fetchContracts(filters);
+        } catch (e) {
+            toast.error(getErrorMessage(e, 'Không thể hủy hợp đồng.'));
         } finally {
             setSavingContract(false);
         }
@@ -1655,16 +1683,15 @@ export default function Contracts(props) {
                                     onChange={(e) => setForm((s) => ({ ...s, payment_times: e.target.value }))}
                                 />
                             </LabeledField>
-                            <LabeledField label="Trạng thái hợp đồng">
-                                <select
-                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
-                                    value={form.status}
-                                    onChange={(e) => setForm((s) => ({ ...s, status: e.target.value }))}
-                                >
-                                    {STATUS_OPTIONS.map((opt) => (
-                                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                    ))}
-                                </select>
+                            <LabeledField
+                                label="Trạng thái hợp đồng"
+                                hint="Hệ thống tự cập nhật theo duyệt, thu tiền và ngày kết thúc. Dùng «Hủy hợp đồng» bên dưới khi cần đánh dấu hủy."
+                            >
+                                <div className="rounded-2xl border border-slate-200/80 bg-white px-3 py-2 text-sm text-slate-800">
+                                    {form.status_display
+                                        ? (STATUS_OPTIONS.find((s) => s.value === form.status_display)?.label || form.status_display)
+                                        : '— (lưu xong sẽ cập nhật)'}
+                                </div>
                             </LabeledField>
                             <LabeledField label="Ngày ký">
                                 <input
@@ -2056,6 +2083,18 @@ export default function Contracts(props) {
                         </div>
                     </div>
 
+                    {editingId && form.status_display !== 'cancelled' && canManage && (
+                        <div className="flex justify-end">
+                            <button
+                                type="button"
+                                className="text-xs font-semibold text-rose-600 underline decoration-rose-300 underline-offset-2 hover:text-rose-700 disabled:opacity-50"
+                                onClick={cancelContract}
+                                disabled={savingContract}
+                            >
+                                Hủy hợp đồng (không hoàn tác)
+                            </button>
+                        </div>
+                    )}
                     <div className="flex flex-col gap-3 md:flex-row">
                         <button
                             type="button"

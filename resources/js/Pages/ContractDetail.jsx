@@ -10,11 +10,12 @@ import { Link } from '@inertiajs/inertia-react';
 
 // Common badges and formatters (copied from Contracts.jsx / ProjectsKanban)
 const STATUS_OPTIONS = [
-    { value: 'draft', label: 'Bản nháp' },
-    { value: 'active', label: 'Đang hiệu lực' },
+    { value: 'draft', label: 'Nháp' },
     { value: 'signed', label: 'Đã ký' },
+    { value: 'success', label: 'Thành công' },
+    { value: 'active', label: 'Đang hiệu lực' },
     { value: 'expired', label: 'Hết hạn' },
-    { value: 'cancelled', label: 'Đã hủy' },
+    { value: 'cancelled', label: 'Hủy' },
 ];
 
 const DEFAULT_STATUSES = [
@@ -93,6 +94,7 @@ const statusBadgeClass = (status) => {
     if (status === 'draft') return 'bg-slate-100 text-slate-700 border border-slate-200';
     if (status === 'active') return 'bg-sky-50 text-sky-700 border border-sky-200';
     if (status === 'signed') return 'bg-emerald-50 text-emerald-700 border border-emerald-200';
+    if (status === 'success') return 'bg-emerald-100 text-emerald-800 border border-emerald-200';
     if (status === 'expired') return 'bg-amber-50 text-amber-700 border border-amber-200';
     if (status === 'cancelled') return 'bg-rose-50 text-rose-700 border border-rose-200';
     return 'bg-slate-100 text-slate-700 border border-slate-200';
@@ -235,7 +237,6 @@ export default function ContractDetail(props) {
     const [editForm, setEditForm] = useState({
         title: '',
         client_id: '',
-        status: 'draft',
         collector_user_id: '',
         value: '',
         payment_times: '1',
@@ -315,7 +316,6 @@ export default function ContractDetail(props) {
         setEditForm({
             title: data.title || '',
             client_id: data.client_id ? String(data.client_id) : '',
-            status: data.status || 'draft',
             collector_user_id: data.collector_user_id ? String(data.collector_user_id) : '',
             value: String(parseNumberInput(data.value || resolveContractValue(data) || 0)),
             payment_times: String(data.payment_times || 1),
@@ -326,6 +326,7 @@ export default function ContractDetail(props) {
         });
         setEditItems(
             (data.items || []).map((item) => ({
+                id: item.id != null ? item.id : undefined,
                 product_id: item.product_id ? String(item.product_id) : '',
                 product_name: item.product_name || '',
                 unit: item.unit || '',
@@ -458,17 +459,12 @@ export default function ContractDetail(props) {
             toast.error('Vui lòng chọn khách hàng.');
             return;
         }
-        if (!editForm.status) {
-            toast.error('Vui lòng chọn trạng thái hợp đồng.');
-            return;
-        }
 
         setSavingContract(true);
         try {
             const payload = {
                 title: (editForm.title || '').trim(),
                 client_id: Number(editForm.client_id),
-                status: editForm.status,
                 collector_user_id: editForm.collector_user_id ? Number(editForm.collector_user_id) : null,
                 value: editItems.length ? editItemsTotal : parseNumberInput(editForm.value),
                 payment_times: Math.max(1, Number(editForm.payment_times || 1)),
@@ -477,6 +473,7 @@ export default function ContractDetail(props) {
                 end_date: editForm.end_date || null,
                 notes: (editForm.notes || '').trim() || null,
                 items: editItems.map((item) => ({
+                    ...(item.id != null && item.id !== '' ? { id: Number(item.id) } : {}),
                     product_id: item.product_id ? Number(item.product_id) : null,
                     product_name: item.product_name || null,
                     unit: item.unit || null,
@@ -491,6 +488,31 @@ export default function ContractDetail(props) {
             await loadData();
         } catch (e) {
             toast.error(e?.response?.data?.message || 'Không thể cập nhật hợp đồng.');
+        } finally {
+            setSavingContract(false);
+        }
+    };
+
+    const cancelContractFromModal = async () => {
+        if (!contract?.id || savingContract) return;
+        if (readBoolean(contract?.can_manage) !== true) {
+            toast.error('Bạn không có quyền hủy hợp đồng.');
+            return;
+        }
+        if (contract.status === 'cancelled') {
+            toast.error('Hợp đồng đã được đánh dấu hủy.');
+            return;
+        }
+        if (!window.confirm('Đánh dấu hợp đồng là đã hủy? Trạng thái sẽ cố định là «Hủy».')) return;
+        const note = window.prompt('Lý do hủy (tuỳ chọn):') || '';
+        setSavingContract(true);
+        try {
+            await axios.post(`/api/v1/contracts/${contract.id}/cancel`, { note: note.trim() || null });
+            toast.success('Đã ghi nhận hủy hợp đồng.');
+            setShowEditContractModal(false);
+            await loadData();
+        } catch (e) {
+            toast.error(e?.response?.data?.message || 'Không thể hủy hợp đồng.');
         } finally {
             setSavingContract(false);
         }
@@ -1595,18 +1617,13 @@ export default function ContractDetail(props) {
                                     onChange={(e) => setEditForm((s) => ({ ...s, payment_times: e.target.value }))}
                                 />
                             </LabeledField>
-                            <LabeledField label="Trạng thái hợp đồng" required>
-                                <select
-                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
-                                    value={editForm.status}
-                                    onChange={(e) => setEditForm((s) => ({ ...s, status: e.target.value }))}
-                                >
-                                    {STATUS_OPTIONS.map((status) => (
-                                        <option key={status.value} value={status.value}>
-                                            {status.label}
-                                        </option>
-                                    ))}
-                                </select>
+                            <LabeledField
+                                label="Trạng thái hợp đồng"
+                                hint="Hệ thống tự cập nhật theo duyệt, thu tiền và ngày kết thúc. Dùng «Hủy hợp đồng» bên dưới khi cần đánh dấu hủy."
+                            >
+                                <div className={`inline-flex w-full items-center rounded-2xl border border-slate-200/80 bg-white px-3 py-2 text-sm font-semibold ${statusBadgeClass(contract?.status)}`}>
+                                    {STATUS_OPTIONS.find((s) => s.value === contract?.status)?.label || contract?.status || '—'}
+                                </div>
                             </LabeledField>
                             <LabeledField label="Ngày ký">
                                 <input
@@ -1651,7 +1668,7 @@ export default function ContractDetail(props) {
                         </div>
                         <div className="space-y-2">
                             {editItems.map((item, index) => (
-                                <div key={index} className="rounded-xl border border-slate-200/80 bg-white p-3 space-y-2">
+                                <div key={item.id ?? `new-${index}`} className="rounded-xl border border-slate-200/80 bg-white p-3 space-y-2">
                                     <div className="flex items-center justify-between">
                                         <p className="text-xs font-semibold text-slate-600">Sản phẩm #{index + 1}</p>
                                         <button type="button" className="text-xs text-rose-500" onClick={() => removeEditItem(index)}>Xóa</button>
@@ -1752,13 +1769,23 @@ export default function ContractDetail(props) {
                         </div>
                     </div>
 
-                    <div className="flex items-center justify-end gap-3 pt-2">
+                    <div className="flex flex-wrap items-center justify-end gap-3 pt-2">
+                        {readBoolean(contract?.can_manage) === true && contract?.status !== 'cancelled' && (
+                            <button
+                                type="button"
+                                onClick={cancelContractFromModal}
+                                disabled={savingContract}
+                                className="mr-auto rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-60"
+                            >
+                                Hủy hợp đồng (không hoàn tác)
+                            </button>
+                        )}
                         <button
                             type="button"
                             onClick={() => setShowEditContractModal(false)}
                             className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                         >
-                            Hủy
+                            Đóng
                         </button>
                         <button
                             type="submit"
