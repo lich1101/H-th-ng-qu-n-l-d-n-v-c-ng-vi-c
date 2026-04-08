@@ -847,7 +847,7 @@ export default function ContractDetail(props) {
 
     const openExportDocumentModal = () => {
         if (clientCompanyProfiles.rows.length === 0) {
-            toast.error('Khách hàng chưa có công ty pháp lý để xuất hợp đồng.');
+            downloadContractDocument();
             return;
         }
 
@@ -858,15 +858,11 @@ export default function ContractDetail(props) {
     const downloadContractDocument = async () => {
         if (!contract?.id) return;
         const companyProfileId = selectedCompanyProfileId || clientCompanyProfiles.defaultId;
-        if (!companyProfileId) {
-            toast.error('Vui lòng chọn công ty bên A trước khi tải hợp đồng.');
-            return;
-        }
 
         setExportingDocument(true);
         try {
             const response = await axios.get(`/api/v1/contracts/${contract.id}/document`, {
-                params: { company_profile_id: companyProfileId },
+                params: companyProfileId ? { company_profile_id: companyProfileId } : {},
                 responseType: 'blob',
             });
             const blob = new Blob([response.data], {

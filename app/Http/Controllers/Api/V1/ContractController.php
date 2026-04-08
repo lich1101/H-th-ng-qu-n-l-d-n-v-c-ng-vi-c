@@ -287,9 +287,7 @@ class ContractController extends Controller
             ->values();
 
         if ($profiles->isEmpty()) {
-            throw ValidationException::withMessages([
-                'company_profile_id' => 'Khách hàng này chưa cấu hình công ty bên A để xuất hợp đồng.',
-            ]);
+            return [];
         }
 
         if ($selectedProfileId) {

@@ -13,6 +13,7 @@
         "laravel/sanctum": "^2.8",
         "laravel/tinker": "^2.5",
         "phpoffice/phpspreadsheet": "^1.24",
+        "phpoffice/phpword": "^1.4",
         "tightenco/ziggy": "^1.0"
     },
     "require-dev": {

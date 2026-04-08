@@ -5,12 +5,12 @@ namespace App\Services;
 use App\Models\Contract;
 use Carbon\Carbon;
 use Illuminate\Support\Str;
+use PhpOffice\PhpWord\TemplateProcessor;
 use RuntimeException;
-use ZipArchive;
 
 class ContractDocumentService
 {
-    private const TEMPLATE_RELATIVE_PATH = 'templates/contracts/contract-template-basic-an-phat-379.docx';
+    private const TEMPLATE_RELATIVE_PATH = 'templates/contracts/contract-template-basic-an-phat-379-template-v2.docx';
 
     public function generate(Contract $contract, ?array $companyProfile = null): array
     {
@@ -26,28 +26,11 @@ class ContractDocumentService
 
         $outputName = $this->buildOutputName($contract);
         $outputPath = $tmpDir . '/' . Str::uuid()->toString() . '.docx';
-        if (! copy($templatePath, $outputPath)) {
-            throw new RuntimeException('Không sao chép được file mẫu hợp đồng.');
-        }
 
-        $zip = new ZipArchive();
-        if ($zip->open($outputPath) !== true) {
-            @unlink($outputPath);
-            throw new RuntimeException('Không mở được file hợp đồng tạm.');
-        }
-
-        $documentXml = $zip->getFromName('word/document.xml');
-        if (! is_string($documentXml) || $documentXml === '') {
-            $zip->close();
-            @unlink($outputPath);
-            throw new RuntimeException('Không đọc được nội dung file hợp đồng mẫu.');
-        }
-
-        $documentXml = $this->replacePricingTable($documentXml, $contract);
-        $documentXml = $this->replaceStaticContent($documentXml, $contract, $companyProfile);
-
-        $zip->addFromString('word/document.xml', $documentXml);
-        $zip->close();
+        $template = new TemplateProcessor($templatePath);
+        $this->fillStaticContent($template, $contract, $companyProfile);
+        $this->fillPricingRows($template, $contract);
+        $template->saveAs($outputPath);
 
         return [
             'path' => $outputPath,
@@ -55,9 +38,8 @@ class ContractDocumentService
         ];
     }
 
-    private function replaceStaticContent(string $xml, Contract $contract, ?array $companyProfile = null): string
+    private function fillStaticContent(TemplateProcessor $template, Contract $contract, ?array $companyProfile = null): void
     {
-        $client = $contract->client;
         $project = $contract->project ?: $contract->linkedProject;
         $signedAt = $contract->signed_at ? Carbon::parse((string) $contract->signed_at) : Carbon::today();
         $startDate = $contract->start_date ? Carbon::parse((string) $contract->start_date) : $signedAt->copy();
@@ -75,85 +57,31 @@ class ContractDocumentService
         $legalPosition = trim((string) data_get($companyProfile, 'position', ''));
         $legalAddress = trim((string) data_get($companyProfile, 'address', ''));
         $legalTaxCode = trim((string) data_get($companyProfile, 'tax_code', ''));
-
-        $replacements = [
-            'Số:180326HĐKT/AĐT-AP379' => 'Số:' . ($contract->code ?: ('HD-' . $contract->id)),
-            'Hôm nay, ngày 18 tháng 03 năm 2026 tại Hà Nội, chúng tôi gồm có:' => sprintf(
-                'Hôm nay, ngày %s tháng %s năm %s tại Hà Nội, chúng tôi gồm có:',
-                $signedAt->format('d'),
-                $signedAt->format('m'),
-                $signedAt->format('Y')
-            ),
-            '2.2.1. Gói dịch vụ: Dịch vụ Backlink Báo Basic' => '2.2.1. Gói dịch vụ: ' . $serviceName,
-            '2.2.2. Tiến độ thực hiện: 7 ngày' => '2.2.2. Tiến độ thực hiện: ' . $this->resolveProgressLabel($startDate, $endDate),
-            '2.2.3 Triển khai cho website: ahalong.vn' => '2.2.3 Triển khai cho website: ' . $website,
-            '2.2.4. Thời gian triển khai: Từ ngày 18/03/2026 đến ngày 25/3/2026' => '2.2.4. Thời gian triển khai: ' . $this->resolveDeploymentRange($startDate, $endDate),
-            'Gói Backlink Báo Basic' => $serviceName,
-            'VAT (8%)' => $vatLabel,
-            'Bằng chữ : Mười triệu bốn trăm sáu mươi lăm nghìn hai trăm đồng ./.'
-                => 'Bằng chữ : ' . $amountWords . ' ./.',
-            'Sau khi hợp đồng được ký kết, Bên A thanh toán cho Bên B giá trị hợp đồng, tương ứng với số tiền: 10.465.200 VND (Bằng chữ: Mười triệu bốn trăm sáu mươi lăm nghìn hai trăm đồng ./.)'
-                => 'Sau khi hợp đồng được ký kết, Bên A thanh toán cho Bên B giá trị hợp đồng, tương ứng với số tiền: '
-                    . $this->formatCurrency($total) . ' VND (Bằng chữ: ' . $amountWords . ' ./.)',
-        ];
-
-        foreach ($replacements as $search => $replace) {
-            $xml = str_replace($this->escapeXmlText($search), $this->escapeXmlText($replace), $xml);
-        }
-
-        $xml = $this->replaceFirstEscapedText(
-            $xml,
-            'CÔNG TY TNHH AN PHÁT 379',
-            $legalCompanyName !== '' ? $legalCompanyName : ($client->company ?: $client->name ?: '................................')
-        );
-        $xml = $this->replaceFirstEscapedText(
-            $xml,
-            'Ông Trần Đăng An',
-            $legalRepresentative !== '' ? $legalRepresentative : ($client->name ?: '................................')
-        );
-        $xml = $this->replaceFirstEscapedText(
-            $xml,
-            'Chức vụ',
-            $legalPosition !== '' ? $legalPosition : '................................'
-        );
-        $xml = $this->replaceFirstEscapedText(
-            $xml,
-            'Số 1 Đông Hồ, Phường Hạ Long, Tỉnh Quảng Ninh, Việt Nam',
-            $legalAddress !== '' ? $legalAddress : '................................'
-        );
-        $xml = $this->replaceFirstEscapedText(
-            $xml,
-            '5702086504',
-            $legalTaxCode !== '' ? $legalTaxCode : '................................'
-        );
-
-        if ($subtotal > 0) {
-            $xml = str_replace(
-                $this->escapeXmlText('Số lượng link sẽ được cung cấp tương ứng với giá trị hợp đồ ng'),
-                $this->escapeXmlText('Số lượng link sẽ được cung cấp tương ứng với giá trị hợp đồng'),
-                $xml
-            );
-        }
-
-        return $xml;
+        $template->setValues([
+            'contract_code' => $contract->code ?: ('HD-' . $contract->id),
+            'signed_day' => $signedAt->format('d'),
+            'signed_month' => $signedAt->format('m'),
+            'signed_year' => $signedAt->format('Y'),
+            'service_name' => $serviceName,
+            'service_name_inline' => $serviceName,
+            'progress_label' => $this->resolveProgressLabel($startDate, $endDate),
+            'website_host' => $website,
+            'deployment_range' => $this->resolveDeploymentRange($startDate, $endDate),
+            'legal_company_name' => $this->resolveLegalPlaceholderValue($legalCompanyName, 'company_name'),
+            'legal_representative' => $this->resolveLegalPlaceholderValue($legalRepresentative, 'representative'),
+            'legal_position' => $this->resolveLegalPlaceholderValue($legalPosition, 'position'),
+            'legal_address' => $this->resolveLegalPlaceholderValue($legalAddress, 'address'),
+            'legal_tax_code' => $this->resolveLegalPlaceholderValue($legalTaxCode, 'tax_code'),
+            'vat_label' => $vatLabel,
+            'vat_amount' => $this->formatCurrency($vatAmount),
+            'total_amount' => $this->formatCurrency($total),
+            'amount_words' => $amountWords,
+            'amount_words_inline' => $amountWords,
+        ]);
     }
 
-    private function replacePricingTable(string $xml, Contract $contract): string
+    private function fillPricingRows(TemplateProcessor $template, Contract $contract): void
     {
-        if (! preg_match('/(<w:tr[\s\S]*?<w:t>1<\/w:t>[\s\S]*?Gói Backlink Báo Basic[\s\S]*?<\/w:tr>)/u', $xml, $itemMatch)) {
-            return $xml;
-        }
-        if (! preg_match('/(<w:tr[\s\S]*?VAT \(8%\)[\s\S]*?<\/w:tr>)/u', $xml, $vatMatch)) {
-            return $xml;
-        }
-        if (! preg_match('/(<w:tr[\s\S]*?Thanh toán[\s\S]*?<\/w:tr>)/u', $xml, $totalMatch)) {
-            return $xml;
-        }
-
-        $itemTemplate = $itemMatch[1];
-        $vatTemplate = $vatMatch[1];
-        $totalTemplate = $totalMatch[1];
-
         $itemRows = $contract->items->isNotEmpty() ? $contract->items->values()->all() : [(object) [
             'product_name' => $contract->title ?: 'Dịch vụ',
             'quantity' => 1,
@@ -161,41 +89,20 @@ class ContractDocumentService
             'total_price' => (float) ($contract->subtotal_value ?? $contract->value ?? 0),
         ]];
 
-        $builtRows = [];
+        $duration = $this->resolveItemDuration($contract);
+        $rows = [];
         foreach ($itemRows as $index => $item) {
-            $rowXml = $itemTemplate;
-            $rowXml = preg_replace('/<w:t>1<\/w:t>/u', '<w:t>'.$this->escapeXmlText((string) ($index + 1)).'</w:t>', $rowXml, 1);
-            $rowXml = preg_replace('/<w:t>Gói Backlink Báo Basic<\/w:t>/u', '<w:t>'.$this->escapeXmlText((string) ($item->product_name ?? 'Dịch vụ')).'</w:t>', $rowXml, 1);
-            $rowXml = preg_replace('/<w:t>1<\/w:t>/u', '<w:t>'.$this->escapeXmlText((string) max(1, (int) ($item->quantity ?? 1))).'</w:t>', $rowXml, 1);
-            $rowXml = preg_replace('/<w:t>12 tháng<\/w:t>/u', '<w:t>'.$this->escapeXmlText($this->resolveItemDuration($contract)).'</w:t>', $rowXml, 1);
-            $rowXml = preg_replace('/<w:t>9\.690\.000<\/w:t>/u', '<w:t>'.$this->escapeXmlText($this->formatCurrency((float) ($item->unit_price ?? 0))).'</w:t>', $rowXml, 1);
-            $rowXml = preg_replace('/<w:t>9\.690\.000<\/w:t>/u', '<w:t>'.$this->escapeXmlText($this->formatCurrency((float) ($item->total_price ?? 0))).'</w:t>', $rowXml, 1);
-            $builtRows[] = $rowXml;
+            $rows[] = [
+                'item_no' => (string) ($index + 1),
+                'item_name' => (string) ($item->product_name ?? 'Dịch vụ'),
+                'item_qty' => (string) max(1, (int) ($item->quantity ?? 1)),
+                'item_duration' => $duration,
+                'item_unit_price' => $this->formatCurrency((float) ($item->unit_price ?? 0)),
+                'item_total' => $this->formatCurrency((float) ($item->total_price ?? 0)),
+            ];
         }
 
-        $vatAmount = (float) ($contract->vat_amount ?? 0);
-        $vatRow = str_replace(
-            [
-                $this->escapeXmlText('VAT (8%)'),
-                $this->escapeXmlText('775.200'),
-            ],
-            [
-                $this->escapeXmlText($this->resolveVatLabel($contract)),
-                $this->escapeXmlText($this->formatCurrency($vatAmount)),
-            ],
-            $vatTemplate
-        );
-
-        $totalRow = str_replace(
-            $this->escapeXmlText('10.465.200'),
-            $this->escapeXmlText($this->formatCurrency((float) ($contract->value ?? 0))),
-            $totalTemplate
-        );
-
-        $replacementBlock = implode('', $builtRows) . $vatRow . $totalRow;
-        $originalBlock = $itemTemplate . $vatTemplate . $totalTemplate;
-
-        return str_replace($originalBlock, $replacementBlock, $xml);
+        $template->cloneRowAndSetValues('item_no', $rows);
     }
 
     private function resolveProgressLabel(Carbon $startDate, ?Carbon $endDate): string
@@ -272,16 +179,23 @@ class ContractDocumentService
         return Str::slug($base) . '.docx';
     }
 
-    private function escapeXmlText(string $value): string
+    private function resolveLegalPlaceholderValue(string $value, string $field): string
     {
-        return htmlspecialchars($value, ENT_XML1 | ENT_COMPAT, 'UTF-8');
+        $trimmed = trim($value);
+
+        return $trimmed !== '' ? $trimmed : $this->blankPlaceholder($field);
     }
 
-    private function replaceFirstEscapedText(string $xml, string $search, string $replace): string
+    private function blankPlaceholder(string $field): string
     {
-        $escapedSearch = '/' . preg_quote($this->escapeXmlText($search), '/') . '/u';
-
-        return preg_replace($escapedSearch, $this->escapeXmlText($replace), $xml, 1) ?: $xml;
+        return match ($field) {
+            'company_name' => '........................................................',
+            'representative' => '................................',
+            'position' => '........................',
+            'tax_code' => '........................',
+            'address' => '........................................................................',
+            default => '................................',
+        };
     }
 
     private function numberToVietnameseWords(float $number): string
