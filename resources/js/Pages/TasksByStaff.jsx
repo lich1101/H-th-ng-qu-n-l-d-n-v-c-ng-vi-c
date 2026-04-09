@@ -11,6 +11,7 @@ import FilterToolbar, {
 import PageContainer from '@/Components/PageContainer';
 import PaginationControls from '@/Components/PaginationControls';
 import { useToast } from '@/Contexts/ToastContext';
+import { progressBarFillClass } from '@/lib/progressBarFill';
 import { formatVietnamDate } from '@/lib/vietnamTime';
 
 const LABELS = {
@@ -258,7 +259,7 @@ export default function TasksByStaff(props) {
                                             <td className="py-2.5">
                                                 <div className="flex items-center gap-2">
                                                     <div className="h-1.5 w-16 rounded-full bg-slate-100">
-                                                        <div className="h-1.5 rounded-full bg-primary" style={{ width: `${Math.min(100, task.progress_percent || 0)}%` }} />
+                                                        <div className={`h-1.5 rounded-full ${progressBarFillClass(task.progress_percent)}`} style={{ width: `${Math.min(100, task.progress_percent || 0)}%` }} />
                                                     </div>
                                                     <span className="text-xs text-slate-600">{task.progress_percent ?? 0}%</span>
                                                 </div>

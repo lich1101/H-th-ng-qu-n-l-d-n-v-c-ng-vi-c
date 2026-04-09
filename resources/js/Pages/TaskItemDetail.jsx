@@ -3,6 +3,7 @@ import axios from 'axios';
 import Modal from '@/Components/Modal';
 import PageContainer from '@/Components/PageContainer';
 import { useToast } from '@/Contexts/ToastContext';
+import { progressBarFillClass } from '@/lib/progressBarFill';
 import { formatVietnamDate, formatVietnamDateTime, toDateInputValue } from '@/lib/vietnamTime';
 
 const LABELS = { todo: 'Cần làm', doing: 'Đang làm', done: 'Hoàn tất', blocked: 'Bị chặn' };
@@ -352,7 +353,7 @@ export default function TaskItemDetail(props) {
                                 <div className="text-xs text-text-muted">Tiến độ</div>
                                 <div className="mt-1 flex items-center gap-2">
                                     <div className="h-2 flex-1 rounded-full bg-slate-200">
-                                        <div className="h-2 rounded-full bg-primary transition-all" style={{ width: `${Math.min(100, item.progress_percent || 0)}%` }} />
+                                        <div className={`h-2 rounded-full ${progressBarFillClass(item.progress_percent)} transition-all`} style={{ width: `${Math.min(100, item.progress_percent || 0)}%` }} />
                                     </div>
                                     <span className="font-semibold text-slate-900">{item.progress_percent ?? 0}%</span>
                                 </div>
@@ -412,7 +413,7 @@ export default function TaskItemDetail(props) {
                                     {/* Visual bar */}
                                     <div className="mt-3 relative">
                                         <div className="h-3 rounded-full bg-slate-200 overflow-hidden">
-                                            <div className="h-3 rounded-full bg-primary/60 transition-all" style={{ width: `${progress}%` }} />
+                                            <div className={`h-3 rounded-full ${progressBarFillClass(progress)} transition-all`} style={{ width: `${progress}%` }} />
                                         </div>
                                         <div className="absolute top-0 h-3 w-0.5 bg-rose-500 rounded" style={{ left: `${Math.min(99, timePercent)}%` }} title={`Thời gian: ${timePercent}%`} />
                                     </div>

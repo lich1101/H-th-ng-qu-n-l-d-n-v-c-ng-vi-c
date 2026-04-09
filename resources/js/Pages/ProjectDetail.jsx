@@ -4,6 +4,7 @@ import Modal from '@/Components/Modal';
 import PageContainer from '@/Components/PageContainer';
 import { useToast } from '@/Contexts/ToastContext';
 import { absoluteHttpUrl } from '@/lib/externalUrl';
+import { progressBarFillClass } from '@/lib/progressBarFill';
 import { formatVietnamDate, toDateInputValue } from '@/lib/vietnamTime';
 
 const PROJECT_STATUS = {
@@ -547,7 +548,7 @@ export default function ProjectDetail(props) {
                                 <div className="text-xs text-text-muted">Tiến độ</div>
                                 <div className="mt-1 flex items-center gap-2">
                                     <div className="h-2 flex-1 rounded-full bg-slate-200">
-                                        <div className="h-2 rounded-full bg-primary transition-all" style={{ width: `${Math.min(100, project.progress_percent || 0)}%` }} />
+                                        <div className={`h-2 rounded-full ${progressBarFillClass(project.progress_percent)} transition-all`} style={{ width: `${Math.min(100, project.progress_percent || 0)}%` }} />
                                     </div>
                                     <span className="font-semibold text-slate-900">{project.progress_percent ?? 0}%</span>
                                 </div>
@@ -795,7 +796,7 @@ export default function ProjectDetail(props) {
                                                 <td className="py-2.5">
                                                     <div className="flex items-center gap-2">
                                                         <div className="h-1.5 w-16 rounded-full bg-slate-100">
-                                                            <div className="h-1.5 rounded-full bg-primary" style={{ width: `${Math.min(100, task.progress_percent || 0)}%` }} />
+                                                            <div className={`h-1.5 rounded-full ${progressBarFillClass(task.progress_percent)}`} style={{ width: `${Math.min(100, task.progress_percent || 0)}%` }} />
                                                         </div>
                                                         <span className="text-xs text-slate-600">{task.progress_percent ?? 0}%</span>
                                                     </div>

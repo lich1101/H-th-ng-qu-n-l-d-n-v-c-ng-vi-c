@@ -15,6 +15,7 @@ import TagMultiSelect from '@/Components/TagMultiSelect';
 import { useToast } from '@/Contexts/ToastContext';
 import { absoluteHttpUrl } from '@/lib/externalUrl';
 import { formatVietnamDate, toDateInputValue } from '@/lib/vietnamTime';
+import { progressBarFillClass } from '@/lib/progressBarFill';
 import { fetchStaffFilterOptions } from '@/lib/staffFilterOptions';
 
 const DEFAULT_STATUSES = [
@@ -910,7 +911,7 @@ export default function ProjectsKanban(props) {
                                                     <div className="w-24">
                                                         <div className="text-xs text-text-muted mb-1">{projectProgress(p)}%</div>
                                                         <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                                                            <div className="h-1.5 bg-primary" style={{ width: `${projectProgress(p)}%` }} />
+                                                            <div className={`h-1.5 ${progressBarFillClass(p?.progress_percent)}`} style={{ width: `${projectProgress(p)}%` }} />
                                                         </div>
                                                     </div>
                                                 </td>
@@ -1058,7 +1059,7 @@ export default function ProjectsKanban(props) {
                                                     <span>{handoverLabel(p.handover_status, p)}</span>
                                                 </div>
                                                 <div className="mt-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                                                    <div className="h-1.5 bg-primary" style={{ width: `${projectProgress(p)}%` }} />
+                                                    <div className={`h-1.5 ${progressBarFillClass(p?.progress_percent)}`} style={{ width: `${projectProgress(p)}%` }} />
                                                 </div>
                                                 <div className="mt-2 flex items-center gap-2">
                                                     {canSubmitProjectHandover(p) && (
@@ -1153,7 +1154,7 @@ export default function ProjectsKanban(props) {
                                         Tiến độ: {projectProgress(p)}% • Bàn giao: {handoverLabel(p.handover_status, p)} • {totalDays} ngày
                                     </div>
                                     <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
-                                            <div className="h-2 bg-primary" style={{ width: `${projectProgress(p)}%` }} />
+                                            <div className={`h-2 ${progressBarFillClass(p?.progress_percent)}`} style={{ width: `${projectProgress(p)}%` }} />
                                         </div>
                                     </div>
                                 );
