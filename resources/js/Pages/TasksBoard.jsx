@@ -1018,6 +1018,15 @@ export default function TasksBoard(props) {
             toast.error('Vui lòng chọn nhân sự phụ trách.');
             return;
         }
+        const taskItemDateMax = itemsTask?.deadline ? toDateInputValue(itemsTask.deadline) : '';
+        if (taskItemDateMax && itemForm.start_date && String(itemForm.start_date) > taskItemDateMax) {
+            toast.error('Ngày bắt đầu đầu việc không được sau deadline công việc.');
+            return;
+        }
+        if (taskItemDateMax && itemForm.deadline && String(itemForm.deadline) > taskItemDateMax) {
+            toast.error('Hạn đầu việc không được sau deadline công việc.');
+            return;
+        }
         savingItemRef.current = true;
         setSavingItem(true);
         try {
@@ -1422,6 +1431,9 @@ export default function TasksBoard(props) {
         () => projects.find((p) => String(p.id) === String(form.project_id)),
         [projects, form.project_id]
     );
+    const projectDeadlineInputMax = selectedProject?.deadline
+        ? toDateInputValue(selectedProject.deadline)
+        : '';
     const availableProjectOptions = useMemo(
         () => (userRole === 'admin'
             ? projects
@@ -1567,6 +1579,10 @@ export default function TasksBoard(props) {
         if (!canCreate && editingId == null) return toast.error('Bạn không có quyền tạo công việc.');
         if (editingId != null && !canManageTaskRecord(editingTask)) return toast.error('Bạn không có quyền cập nhật công việc.');
         if (!form.project_id || !form.title?.trim()) return toast.error('Vui lòng chọn dự án và nhập tiêu đề.');
+        if (projectDeadlineInputMax && form.deadline && String(form.deadline) > projectDeadlineInputMax) {
+            toast.error('Hạn công việc không được sau hạn dự án.');
+            return;
+        }
         setSavingTask(true);
         try {
             const payload = {
@@ -2346,7 +2362,13 @@ export default function TasksBoard(props) {
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <FieldLabel>Hạn chót công việc</FieldLabel>
-                            <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" type="date" value={form.deadline} onChange={(e) => setForm((s) => ({ ...s, deadline: e.target.value }))} />
+                            <input
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                type="date"
+                                max={projectDeadlineInputMax || undefined}
+                                value={form.deadline}
+                                onChange={(e) => setForm((s) => ({ ...s, deadline: e.target.value }))}
+                            />
                         </div>
                         <div>
                             <FieldLabel>Tỷ trọng trong dự án (%)</FieldLabel>
@@ -2690,6 +2712,7 @@ export default function TasksBoard(props) {
                                             <input
                                                 className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
                                                 type="date"
+                                                max={itemsTask?.deadline ? toDateInputValue(itemsTask.deadline) : undefined}
                                                 value={itemForm.start_date}
                                                 onChange={(e) => setItemForm((s) => ({ ...s, start_date: e.target.value }))}
                                             />
@@ -2725,6 +2748,7 @@ export default function TasksBoard(props) {
                                             <input
                                                 className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
                                                 type="date"
+                                                max={itemsTask?.deadline ? toDateInputValue(itemsTask.deadline) : undefined}
                                                 value={itemForm.deadline}
                                                 onChange={(e) => setItemForm((s) => ({ ...s, deadline: e.target.value }))}
                                             />

@@ -178,6 +178,45 @@ export default function TaskItemsBoard(props) {
         return usersToStaffTagOptions(users);
     }, [taskItemAssigneeFilterUsers, users]);
 
+    const currentUserId = Number(props?.auth?.user?.id || 0);
+    const userRole = (props?.auth?.user?.role || '').toString();
+
+    const selectedTaskForAddItem = useMemo(() => {
+        if (!filters.task_id) return null;
+        return tasks.find((t) => String(t.id) === String(filters.task_id)) || null;
+    }, [tasks, filters.task_id]);
+
+    const canManageTaskItemsForSelected = useMemo(() => {
+        const taskRecord = selectedTaskForAddItem;
+        if (!taskRecord) return false;
+        const projectOwnerId = Number(
+            taskRecord?.project?.owner_id
+                ?? projects.find((p) => String(p.id) === String(taskRecord?.project_id))?.owner_id
+                ?? 0,
+        );
+        const taskAssigneeId = Number(taskRecord?.assignee_id || 0);
+        return userRole === 'admin'
+            || (projectOwnerId > 0 && projectOwnerId === currentUserId)
+            || (taskAssigneeId > 0 && taskAssigneeId === currentUserId);
+    }, [selectedTaskForAddItem, projects, userRole, currentUserId]);
+
+    /** Ẩn nút khi đã chọn công việc nhưng user không thuộc phạm vi được tạo đầu việc (giống TaskDetail / TasksBoard). */
+    const hideAddTaskItemButton = Boolean(
+        filters.task_id && selectedTaskForAddItem && !canManageTaskItemsForSelected,
+    );
+
+    const addTaskItemButtonTitle = !filters.task_id
+        ? 'Chọn công việc trong bộ lọc để thêm đầu việc'
+        : !selectedTaskForAddItem
+            ? 'Đang tải hoặc không tìm thấy công việc đã chọn trong danh sách.'
+            : !canManageTaskItemsForSelected
+                ? 'Bạn không có quyền thêm đầu việc cho công việc này (admin, chủ dự án hoặc phụ trách công việc).'
+                : undefined;
+
+    const addTaskItemButtonEnabled = Boolean(
+        filters.task_id && selectedTaskForAddItem && canManageTaskItemsForSelected,
+    );
+
     return (
         <PageContainer
             auth={props.auth}
@@ -186,12 +225,27 @@ export default function TaskItemsBoard(props) {
             stats={[]}
         >
             <div className="lg:col-span-2 space-y-4">
-                <FilterToolbar enableSearch
+                <FilterToolbar
+                    enableSearch
                     title="Bộ lọc đầu việc"
                     description="Tìm nhanh đầu việc qua tiêu đề, dự án, công việc hoặc nhân sự phụ trách."
                     searchValue={filters.search}
                     onSearch={handleSearch}
                     onSubmitFilters={applyTaskItemFilters}
+                    actions={hideAddTaskItemButton ? null : (
+                        <button
+                            type="button"
+                            disabled={!addTaskItemButtonEnabled}
+                            title={addTaskItemButtonTitle}
+                            className="inline-flex h-11 min-h-[2.75rem] shrink-0 items-center justify-center rounded-2xl bg-primary px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                            onClick={() => {
+                                if (!addTaskItemButtonEnabled) return;
+                                window.location.href = `/cong-viec/${filters.task_id}?add_item=1`;
+                            }}
+                        >
+                            Thêm đầu việc
+                        </button>
+                    )}
                 >
                     <div className={FILTER_GRID_RESPONSIVE}>
                         <FilterField label="Dự án">

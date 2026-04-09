@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\NotificationService;
 use App\Services\TaskItemLinearPaceService;
 use App\Services\TaskProgressService;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Database\Eloquent\Builder;
@@ -186,6 +187,12 @@ class TaskItemController extends Controller
 
         $this->assertAssigneeInDepartment($request->user(), $task, $validated['assignee_id'] ?? null);
 
+        $this->assertTaskItemDatesWithinTask(
+            $task,
+            $validated['start_date'] ?? null,
+            $validated['deadline'] ?? null
+        );
+
         try {
             $item = $task->items()->create([
                 'title' => $validated['title'],
@@ -269,6 +276,10 @@ class TaskItemController extends Controller
             $this->assertAssigneeInDepartment($request->user(), $task, $validated['assignee_id']);
         }
 
+        $nextStart = array_key_exists('start_date', $validated) ? $validated['start_date'] : $item->start_date;
+        $nextDeadline = array_key_exists('deadline', $validated) ? $validated['deadline'] : $item->deadline;
+        $this->assertTaskItemDatesWithinTask($task, $nextStart, $nextDeadline);
+
         $oldAssigneeId = (int) ($item->assignee_id ?? 0);
         $assigneeProvided = array_key_exists('assignee_id', $validated);
         $nextAssigneeId = $assigneeProvided
@@ -318,6 +329,32 @@ class TaskItemController extends Controller
         $item->delete();
         TaskProgressService::recalc($task);
         return response()->json(['message' => 'Đã xoá đầu việc.']);
+    }
+
+    /**
+     * Ngày bắt đầu và hạn đầu việc không được sau deadline công việc (nếu có).
+     */
+    private function assertTaskItemDatesWithinTask(Task $task, $startDate, $itemDeadline): void
+    {
+        if (! $task->deadline) {
+            return;
+        }
+        $max = Carbon::parse($task->deadline)->startOfDay();
+        $labels = [
+            'Ngày bắt đầu đầu việc' => $startDate,
+            'Hạn đầu việc' => $itemDeadline,
+        ];
+        foreach ($labels as $label => $raw) {
+            if ($raw === null || $raw === '') {
+                continue;
+            }
+            $d = Carbon::parse($raw)->startOfDay();
+            if ($d->gt($max)) {
+                abort(response()->json([
+                    'message' => "{$label} không được sau deadline công việc ({$max->format('d/m/Y')}).",
+                ], 422));
+            }
+        }
     }
 
     private function assertAssigneeInDepartment(User $user, Task $task, ?int $assigneeId): void

@@ -35,7 +35,7 @@ export default function PaginationControls({
     page = 1,
     lastPage = 1,
     total = 0,
-    perPage = 10,
+    perPage = 100,
     onPageChange,
     onPerPageChange,
     loading = false,
@@ -45,7 +45,7 @@ export default function PaginationControls({
 }) {
     const safePage = Math.max(1, Number(page) || 1);
     const safeLastPage = Math.max(1, Number(lastPage) || 1);
-    const safePerPage = Math.max(1, Number(perPage) || 10);
+    const safePerPage = Math.max(1, Number(perPage) || 100);
     const pageItems = useMemo(() => buildPageItems(safePage, safeLastPage), [safeLastPage, safePage]);
     const from = total > 0 ? ((safePage - 1) * safePerPage) + 1 : 0;
     const to = total > 0 ? Math.min(total, safePage * safePerPage) : 0;

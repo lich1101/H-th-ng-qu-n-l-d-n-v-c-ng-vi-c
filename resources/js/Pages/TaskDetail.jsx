@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import Modal from '@/Components/Modal';
 import PageContainer from '@/Components/PageContainer';
@@ -43,6 +43,7 @@ export default function TaskDetail(props) {
         progress_percent: '', weight_percent: '', start_date: '', deadline: '',
         assignee_id: '', reviewer_id: '',
     });
+    const addItemFromQueryOpenedRef = useRef(false);
 
     const fetchData = async () => {
         setLoading(true);
@@ -66,6 +67,10 @@ export default function TaskDetail(props) {
     };
 
     useEffect(() => { fetchData(); fetchUsers(); }, [taskId]);
+
+    useEffect(() => {
+        addItemFromQueryOpenedRef.current = false;
+    }, [taskId]);
 
     // Group items by assignee
     const itemGroups = useMemo(() => {
@@ -93,6 +98,8 @@ export default function TaskDetail(props) {
         return items.filter((i) => String(i?.assignee?.id || 0) === activeTab);
     }, [items, activeTab]);
 
+    const taskItemDateMax = task?.deadline ? toDateInputValue(task.deadline) : '';
+
     // Item form
     const openItemForm = (item = null) => {
         setEditingItemId(item?.id || null);
@@ -114,6 +121,21 @@ export default function TaskDetail(props) {
         setShowItemForm(true);
     };
 
+    useEffect(() => {
+        if (loading || !task || !canManageItems) return;
+        if (typeof window === 'undefined') return;
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('add_item') !== '1' || addItemFromQueryOpenedRef.current) return;
+        addItemFromQueryOpenedRef.current = true;
+        openItemForm(null);
+        params.delete('add_item');
+        const q = params.toString();
+        const path = window.location.pathname;
+        window.history.replaceState({}, '', q ? `${path}?${q}` : path);
+        // Chỉ cần phiên bản mới nhất của openItemForm khi task đã tải (add_item=1).
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [loading, task, canManageItems]);
+
     const availableWeight = useMemo(() => {
         const used = items
             .filter((i) => String(i.id) !== String(editingItemId))
@@ -125,6 +147,14 @@ export default function TaskDetail(props) {
         if (!itemForm.title.trim()) { toast.error('Tiêu đề đầu việc là bắt buộc.'); return; }
         const weightVal = Number(itemForm.weight_percent) || 0;
         if (weightVal > availableWeight) { toast.error(`Tỷ trọng tối đa bạn có thể trích cho đầu việc này là ${availableWeight}%.`); return; }
+        if (taskItemDateMax && itemForm.start_date && String(itemForm.start_date) > taskItemDateMax) {
+            toast.error('Ngày bắt đầu đầu việc không được sau deadline công việc.');
+            return;
+        }
+        if (taskItemDateMax && itemForm.deadline && String(itemForm.deadline) > taskItemDateMax) {
+            toast.error('Hạn đầu việc không được sau deadline công việc.');
+            return;
+        }
 
         setSavingItem(true);
         try {
@@ -379,11 +409,23 @@ export default function TaskDetail(props) {
                         </div>
                         <div>
                             <label className="text-xs text-text-muted">Ngày bắt đầu</label>
-                            <input type="date" className="mt-2 w-full rounded-xl border border-slate-200/80 px-3 py-2" value={itemForm.start_date} onChange={(e) => setItemForm((s) => ({ ...s, start_date: e.target.value }))} />
+                            <input
+                                type="date"
+                                className="mt-2 w-full rounded-xl border border-slate-200/80 px-3 py-2"
+                                max={taskItemDateMax || undefined}
+                                value={itemForm.start_date}
+                                onChange={(e) => setItemForm((s) => ({ ...s, start_date: e.target.value }))}
+                            />
                         </div>
                         <div>
                             <label className="text-xs text-text-muted">Deadline</label>
-                            <input type="date" className="mt-2 w-full rounded-xl border border-slate-200/80 px-3 py-2" value={itemForm.deadline} onChange={(e) => setItemForm((s) => ({ ...s, deadline: e.target.value }))} />
+                            <input
+                                type="date"
+                                className="mt-2 w-full rounded-xl border border-slate-200/80 px-3 py-2"
+                                max={taskItemDateMax || undefined}
+                                value={itemForm.deadline}
+                                onChange={(e) => setItemForm((s) => ({ ...s, deadline: e.target.value }))}
+                            />
                         </div>
                     </div>
                     <div className="flex items-center gap-3 pt-2">

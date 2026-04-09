@@ -9,6 +9,7 @@ use App\Models\Task;
 use App\Models\User;
 use App\Services\NotificationService;
 use App\Services\ProjectProgressService;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -117,6 +118,12 @@ class TaskController extends Controller
         }
         $validated['weight_percent'] = $newWeight;
 
+        $this->assertTaskDatesWithinProject(
+            $project,
+            $validated['start_at'] ?? null,
+            $validated['deadline'] ?? null
+        );
+
         $task = Task::create($validated);
 
         if ($task->project) {
@@ -188,6 +195,16 @@ class TaskController extends Controller
             $validated['completed_at'] = now();
         }
 
+        $projectForDates = $task->project;
+        if (isset($validated['project_id'])) {
+            $projectForDates = Project::find($validated['project_id']) ?? $task->project;
+        }
+        if ($projectForDates) {
+            $nextStart = array_key_exists('start_at', $validated) ? $validated['start_at'] : $task->start_at;
+            $nextDeadline = array_key_exists('deadline', $validated) ? $validated['deadline'] : $task->deadline;
+            $this->assertTaskDatesWithinProject($projectForDates, $nextStart, $nextDeadline);
+        }
+
         $oldProject = $task->project;
         $oldAssigneeId = (int) ($task->assignee_id ?? 0);
         $assigneeProvided = array_key_exists('assignee_id', $validated);
@@ -243,6 +260,32 @@ class TaskController extends Controller
         return response()->json([
             'message' => 'Task deleted.',
         ]);
+    }
+
+    /**
+     * Ngày bắt đầu và deadline công việc không được sau ngày kết thúc dự án (nếu có).
+     */
+    private function assertTaskDatesWithinProject(?Project $project, $startAt, $deadline): void
+    {
+        if (! $project || ! $project->deadline) {
+            return;
+        }
+        $max = Carbon::parse($project->deadline)->startOfDay();
+        $labels = [
+            'Ngày bắt đầu' => $startAt,
+            'Deadline công việc' => $deadline,
+        ];
+        foreach ($labels as $label => $raw) {
+            if ($raw === null || $raw === '') {
+                continue;
+            }
+            $d = Carbon::parse($raw)->startOfDay();
+            if ($d->gt($max)) {
+                abort(response()->json([
+                    'message' => "{$label} không được sau ngày kết thúc dự án ({$max->format('d/m/Y')}).",
+                ], 422));
+            }
+        }
     }
 
     private function rules(bool $isUpdate = false): array
