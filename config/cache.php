@@ -9,9 +9,10 @@ return [
     | Default Cache Store
     |--------------------------------------------------------------------------
     |
-    | This option controls the default cache connection that gets used while
-    | using this caching library. This connection is used when another is
-    | not explicitly specified when executing a given caching function.
+    | API rate limit (throttle) dùng cache. Driver "file" cần quyền ghi
+    | storage/framework/cache/data (user PHP-FPM). Nếu lỗi "Unable to create
+    | lockable file": chmod/chown storage, hoặc CACHE_DRIVER=redis, hoặc
+    | database (php artisan migrate, bảng cache).
     |
     */
 
