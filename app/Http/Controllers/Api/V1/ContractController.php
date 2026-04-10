@@ -180,6 +180,13 @@ class ContractController extends Controller
             });
         }
 
+        if ($request->filled('signed_at_from')) {
+            $query->whereDate('contracts.signed_at', '>=', (string) $request->input('signed_at_from'));
+        }
+        if ($request->filled('signed_at_to')) {
+            $query->whereDate('contracts.signed_at', '<=', (string) $request->input('signed_at_to'));
+        }
+
         return $query;
     }
 
@@ -1189,7 +1196,7 @@ class ContractController extends Controller
         $contract->setAttribute('costs_display', $this->buildCostDisplayRows($contract));
 
         $canCreateProject = in_array((string) $user->role, ['admin', 'administrator'], true)
-            || (int) ($contract->collector_user_id ?? 0) === (int) $user->id 
+            || (int) ($contract->collector_user_id ?? 0) === (int) $user->id
             || (int) ($contract->created_by ?? 0) === (int) $user->id;
         $contract->setAttribute('can_create_project', $canCreateProject);
 

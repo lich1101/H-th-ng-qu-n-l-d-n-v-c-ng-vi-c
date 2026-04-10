@@ -36,8 +36,22 @@ export default function EmployeeRevenueBars({ data = [] }) {
 
     return (
         <div className="h-[min(70vh,520px)] w-full max-w-full overflow-auto rounded-[20px] border border-slate-200/80 bg-white">
+            {/* Tổng tách khỏi tbody để không cạnh tranh z-index / sticky với thead */}
+            <div className="min-w-[920px] border-b border-slate-200 bg-slate-50 px-4 py-3">
+                <div
+                    className="grid w-full items-center gap-3 text-sm font-semibold text-slate-900 sm:gap-4"
+                    style={{
+                        gridTemplateColumns: 'minmax(200px,1.1fr) minmax(160px,1fr) minmax(160px,1fr) minmax(100px,0.75fr)',
+                    }}
+                >
+                    <span>Tổng</span>
+                    <span className="tabular-nums text-right">{totals.revenueTotal.toLocaleString('vi-VN')}</span>
+                    <span className="tabular-nums text-right">{totals.cashflowTotal.toLocaleString('vi-VN')}</span>
+                    <span className="tabular-nums text-right text-slate-500">—</span>
+                </div>
+            </div>
             <table className="min-w-[920px] w-full divide-y divide-slate-200 text-sm">
-                <thead className="sticky top-0 z-10 bg-slate-100/95 text-xs uppercase tracking-[0.12em] text-slate-600 shadow-[0_1px_0_0_rgba(226,232,240,0.9)]">
+                <thead className="sticky top-0 z-20 border-b border-slate-200 bg-slate-100 text-xs uppercase tracking-[0.12em] text-slate-600 shadow-[0_2px_0_0_rgba(226,232,240,1)]">
                     <tr>
                         <th className="px-4 py-3 text-left font-semibold">Nhân viên</th>
                         <th className="px-4 py-3 text-left font-semibold">Doanh số ký</th>
@@ -46,12 +60,6 @@ export default function EmployeeRevenueBars({ data = [] }) {
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
-                    <tr className="bg-slate-100/90">
-                        <td className="px-4 py-3 text-sm font-semibold text-slate-900">Tổng</td>
-                        <td className="px-4 py-3 text-sm font-semibold text-slate-900">{totals.revenueTotal.toLocaleString('vi-VN')}</td>
-                        <td className="px-4 py-3 text-sm font-semibold text-slate-900">{totals.cashflowTotal.toLocaleString('vi-VN')}</td>
-                        <td className="px-4 py-3 text-sm font-semibold text-slate-900">—</td>
-                    </tr>
                     {data.map((item) => (
                         <tr key={item.staff_id || item.staff_name} className="odd:bg-white even:bg-slate-50/45 hover:bg-cyan-50/40">
                             <td className="px-4 py-3">

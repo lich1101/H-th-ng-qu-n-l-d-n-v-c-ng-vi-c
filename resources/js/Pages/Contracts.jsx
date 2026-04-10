@@ -94,6 +94,18 @@ const todayInputValue = () => {
     now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
     return now.toISOString().slice(0, 10);
 };
+
+/** Ngày đầu / cuối tháng hiện tại (YYYY-MM-DD) — lọc ngày ký hợp đồng */
+const currentMonthSignedRange = () => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth();
+    const pad = (n) => String(n).padStart(2, '0');
+    const from = `${y}-${pad(m + 1)}-01`;
+    const lastDay = new Date(y, m + 1, 0).getDate();
+    const to = `${y}-${pad(m + 1)}-${pad(lastDay)}`;
+    return { signed_at_from: from, signed_at_to: to };
+};
 const calculateItemTotal = (item) => {
     const price = parseNumberInput(item?.unit_price);
     const quantity = Math.max(1, parseNumberInput(item?.quantity) || 1);
@@ -209,7 +221,7 @@ export default function Contracts(props) {
         debt_total: 0,
         costs_total: 0,
     });
-    const [filters, setFilters] = useState({
+    const [filters, setFilters] = useState(() => ({
         search: '',
         status: '',
         client_id: '',
@@ -222,7 +234,8 @@ export default function Contracts(props) {
         page: 1,
         sort_by: 'signed_at',
         sort_dir: 'desc',
-    });
+        ...currentMonthSignedRange(),
+    }));
     const [form, setForm] = useState({
         title: '',
         client_id: '',
@@ -472,6 +485,8 @@ export default function Contracts(props) {
                     ...(nextFilters.has_project ? { has_project: nextFilters.has_project } : {}),
                     ...(nextFilters.project_status ? { project_status: nextFilters.project_status } : {}),
                     ...(Array.isArray(nextFilters.staff_ids) && nextFilters.staff_ids.length > 0 ? { staff_ids: nextFilters.staff_ids } : {}),
+                    ...(nextFilters.signed_at_from ? { signed_at_from: nextFilters.signed_at_from } : {}),
+                    ...(nextFilters.signed_at_to ? { signed_at_to: nextFilters.signed_at_to } : {}),
                     sort_by: nextFilters.sort_by || 'signed_at',
                     sort_dir: nextFilters.sort_dir || 'desc',
                 },
@@ -1348,7 +1363,7 @@ export default function Contracts(props) {
                 <FilterToolbar enableSearch
                     className="mb-4 border-0 p-0 shadow-none"
                     title="Danh sách hợp đồng"
-                    description="Lọc theo mã, trạng thái thực hiện và trạng thái duyệt. Ô tìm kiếm gồm cả mã/tên dự án liên kết. Nhấn Enter để áp dụng lọc."
+                    description="Lọc theo mã, trạng thái, duyệt và khoảng ngày ký (mặc định tháng hiện tại). Ô tìm kiếm gồm cả mã/tên dự án liên kết. Nhấn Enter hoặc Lọc để áp dụng."
                     searchValue={filters.search}
                     onSearch={handleContractSearch}
                     onSubmitFilters={applyFilters}
@@ -1399,6 +1414,22 @@ export default function Contracts(props) {
                                 onChange={(selectedIds) => setFilters((s) => ({ ...s, staff_ids: selectedIds }))}
                                 addPlaceholder="Tìm và thêm nhân sự"
                                 emptyLabel="Để trống để xem toàn bộ nhân sự trong phạm vi."
+                            />
+                        </FilterField>
+                        <FilterField label="Ngày ký từ">
+                            <input
+                                type="date"
+                                className={filterControlClass}
+                                value={filters.signed_at_from || ''}
+                                onChange={(e) => setFilters((s) => ({ ...s, signed_at_from: e.target.value }))}
+                            />
+                        </FilterField>
+                        <FilterField label="Ngày ký đến">
+                            <input
+                                type="date"
+                                className={filterControlClass}
+                                value={filters.signed_at_to || ''}
+                                onChange={(e) => setFilters((s) => ({ ...s, signed_at_to: e.target.value }))}
                             />
                         </FilterField>
                         <FilterActionGroup className={FILTER_GRID_SUBMIT_ROW}>
