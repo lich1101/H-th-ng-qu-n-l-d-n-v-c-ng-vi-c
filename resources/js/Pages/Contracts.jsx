@@ -13,6 +13,7 @@ import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import AppIcon from '@/Components/AppIcon';
 import PaginationControls from '@/Components/PaginationControls';
+import FilterStatusHelpIcon from '@/Components/FilterStatusHelpIcon';
 import ClientSelect from '@/Components/ClientSelect';
 import TagMultiSelect from '@/Components/TagMultiSelect';
 import { fetchStaffFilterOptions, usersToStaffTagOptions } from '@/lib/staffFilterOptions';
@@ -26,6 +27,16 @@ const STATUS_OPTIONS = [
     { value: 'active', label: 'Đang hiệu lực' },
     { value: 'expired', label: 'Hết hạn' },
     { value: 'cancelled', label: 'Hủy' },
+];
+
+/** Giải thích lọc trạng thái (vòng đời hợp đồng trên hệ thống) */
+const CONTRACT_STATUS_FILTER_HELP = [
+    { value: 'draft', label: 'Nháp', description: 'Đang soạn, chưa ghi nhận ký kết.' },
+    { value: 'signed', label: 'Đã ký', description: 'Đã ký nhưng chưa vào giai đoạn hiệu lực đầy đủ (theo quy tắc tính trạng thái).' },
+    { value: 'success', label: 'Thành công', description: 'Hoàn tất / đạt mục tiêu (doanh thu, bàn giao…) theo cấu hình vòng đời.' },
+    { value: 'active', label: 'Đang hiệu lực', description: 'Đang trong thời gian thực hiện và được coi là hiệu lực.' },
+    { value: 'expired', label: 'Hết hạn', description: 'Quá ngày kết thúc hoặc hết hiệu lực theo điều khoản.' },
+    { value: 'cancelled', label: 'Hủy', description: 'Đã hủy, không còn thực hiện.' },
 ];
 
 /** Trạng thái dự án (lọc / hiển thị cột dự án liên kết) */
@@ -1398,13 +1409,20 @@ export default function Contracts(props) {
                 <FilterToolbar enableSearch
                     className="mb-4 border-0 p-0 shadow-none"
                     title="Danh sách hợp đồng"
-                    description="Lọc theo mã, trạng thái, duyệt và khoảng ngày ký (mặc định tháng hiện tại). Ô tìm kiếm gồm cả mã/tên dự án liên kết. Nhấn Enter hoặc Lọc để áp dụng."
+                    description="Lọc theo mã, trạng thái, duyệt và khoảng ngày ký (mặc định tháng hiện tại). Ô tìm kiếm gồm mã/tên hợp đồng, khách hàng, dự án và cơ hội liên kết. Nhấn Enter hoặc Lọc để áp dụng."
                     searchValue={filters.search}
                     onSearch={handleContractSearch}
                     onSubmitFilters={applyFilters}
                 >
                     <div className={FILTER_GRID_RESPONSIVE}>
-                        <FilterField label="Trạng thái">
+                        <FilterField
+                            label={(
+                                <span className="inline-flex items-center gap-1.5">
+                                    Trạng thái
+                                    <FilterStatusHelpIcon items={CONTRACT_STATUS_FILTER_HELP} ariaLabel="Giải thích trạng thái hợp đồng" />
+                                </span>
+                            )}
+                        >
                             <select className={filterControlClass} value={filters.status} onChange={(e) => setFilters((s) => ({ ...s, status: e.target.value }))}>
                                 <option value="">Tất cả trạng thái</option>
                                 {STATUS_OPTIONS.map((opt) => (
@@ -1541,6 +1559,7 @@ export default function Contracts(props) {
                                     )}
                                     <th className="py-2" data-sort-key="code">Hợp đồng</th>
                                     <th className="py-2" data-sort-key="client_name">Khách hàng</th>
+                                    <th className="py-2" data-az-ignore>Cơ hội</th>
                                     <th className="py-2" data-az-ignore>Dự án liên kết</th>
                                     <th className="py-2" data-sort-key="client_phone">SĐT khách hàng</th>
                                     <th className="py-2" data-sort-key="signed_at">Ngày ký</th>
@@ -1586,6 +1605,24 @@ export default function Contracts(props) {
                                             </button>
                                         </td>
                                         <td className="py-2 text-slate-700">{c.client?.name || '—'}</td>
+                                        <td className="py-2 align-top text-slate-700">
+                                            {c.opportunity?.id ? (
+                                                <div className="max-w-[14rem]">
+                                                    <a
+                                                        href={`/co-hoi/${c.opportunity.id}`}
+                                                        className="font-semibold text-primary hover:underline text-xs leading-snug"
+                                                        onClick={(e) => e.stopPropagation()}
+                                                    >
+                                                        CH-{c.opportunity.id}
+                                                    </a>
+                                                    <div className="text-[11px] text-text-muted truncate" title={c.opportunity.title || ''}>
+                                                        {c.opportunity.title || '—'}
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                '—'
+                                            )}
+                                        </td>
                                         <td className="py-2 align-top text-slate-700">
                                             {(() => {
                                                 const pr = resolveLinkedProject(c);
@@ -1697,7 +1734,7 @@ export default function Contracts(props) {
                                 ))}
                                 {contracts.length === 0 && (
                                     <tr>
-                                        <td className="py-6 text-center text-sm text-text-muted" colSpan={canBulkActions ? 17 : 16}>
+                                        <td className="py-6 text-center text-sm text-text-muted" colSpan={canBulkActions ? 18 : 17}>
                                             Chưa có hợp đồng nào.
                                         </td>
                                     </tr>
@@ -1707,7 +1744,7 @@ export default function Contracts(props) {
                                 <tfoot>
                                     <tr className="border-t-2 border-slate-200 bg-slate-50/90 text-left text-sm text-slate-800">
                                         <td
-                                            colSpan={canBulkActions ? 9 : 8}
+                                            colSpan={canBulkActions ? 10 : 9}
                                             className="py-2.5 pr-3 text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle"
                                         >
                                             Tổng theo bộ lọc (tất cả trang)

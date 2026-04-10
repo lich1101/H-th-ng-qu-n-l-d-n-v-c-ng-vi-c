@@ -4,15 +4,18 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Helpers\CrmScope;
+use App\Models\Contract;
 use App\Models\Opportunity;
 use App\Models\User;
 use App\Services\NotificationService;
 use App\Services\StaffFilterOptionsService;
 use App\Support\OpportunityComputedStatus;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 
 class OpportunityController extends Controller
 {
@@ -140,7 +143,17 @@ class OpportunityController extends Controller
             'watcher_ids.*' => ['integer', 'exists:users,id'],
             'expected_close_date' => ['nullable', 'date'],
             'notes' => ['nullable', 'string'],
+            'contract_id' => ['nullable', 'integer', 'exists:contracts,id'],
         ]);
+        $contractId = null;
+        if (array_key_exists('contract_id', $validated)) {
+            $v = $validated['contract_id'];
+            unset($validated['contract_id']);
+            $contractId = $v !== null ? (int) $v : null;
+            if ($contractId !== null && $contractId <= 0) {
+                $contractId = null;
+            }
+        }
         $validated['created_by'] = $request->user()->id;
         if (empty($validated['assigned_to'])) {
             $validated['assigned_to'] = (int) $request->user()->id;
@@ -148,12 +161,13 @@ class OpportunityController extends Controller
         $validated['watcher_ids'] = $this->normalizeWatcherIds($validated['watcher_ids'] ?? []);
 
         $opportunity = Opportunity::create($validated);
+        $this->syncOpportunityContractLink($request, $opportunity, $contractId);
         $opportunity->load([
             'client:id,name,company,email,phone,notes',
             'assignee:id,name,email,role',
             'creator:id,name,email,role',
             'product:id,name,code',
-            'contract:id,code,title',
+            'contract:id,code,title,client_id,opportunity_id',
         ]);
         $s = $opportunity->computedStatusPayload();
         $opportunity->setAttribute('computed_status', $s['code']);
@@ -287,17 +301,31 @@ class OpportunityController extends Controller
             'watcher_ids.*' => ['integer', 'exists:users,id'],
             'expected_close_date' => ['nullable', 'date'],
             'notes' => ['nullable', 'string'],
+            'contract_id' => ['sometimes', 'nullable', 'integer', 'exists:contracts,id'],
         ]);
+        $shouldSyncContract = array_key_exists('contract_id', $validated);
+        $contractId = null;
+        if ($shouldSyncContract) {
+            $v = $validated['contract_id'];
+            unset($validated['contract_id']);
+            $contractId = $v !== null ? (int) $v : null;
+            if ($contractId !== null && $contractId <= 0) {
+                $contractId = null;
+            }
+        }
         if (array_key_exists('watcher_ids', $validated)) {
             $validated['watcher_ids'] = $this->normalizeWatcherIds($validated['watcher_ids'] ?? []);
         }
         $opportunity->update($validated);
+        if ($shouldSyncContract) {
+            $this->syncOpportunityContractLink($request, $opportunity->fresh(), $contractId);
+        }
         $opportunity->load([
             'client:id,name,company,email,phone,notes',
             'assignee:id,name,email,role',
             'creator:id,name,email,role',
             'product:id,name,code',
-            'contract:id,code,title',
+            'contract:id,code,title,client_id,opportunity_id',
         ]);
         $s = $opportunity->computedStatusPayload();
         $opportunity->setAttribute('computed_status', $s['code']);
@@ -318,6 +346,51 @@ class OpportunityController extends Controller
         }
         $opportunity->delete();
         return response()->json(['message' => 'Đã xóa cơ hội.']);
+    }
+
+    private function syncOpportunityContractLink(Request $request, Opportunity $opportunity, ?int $contractId): void
+    {
+        DB::transaction(function () use ($request, $opportunity, $contractId) {
+            $oppId = (int) $opportunity->id;
+
+            if ($contractId === null || $contractId <= 0) {
+                Contract::query()
+                    ->where('opportunity_id', $oppId)
+                    ->update(['opportunity_id' => null]);
+
+                return;
+            }
+
+            $scopeQuery = Contract::query()->whereKey($contractId);
+            CrmScope::applyContractScope($scopeQuery, $request->user());
+            $contract = $scopeQuery->lockForUpdate()->first();
+
+            if (! $contract) {
+                throw ValidationException::withMessages([
+                    'contract_id' => ['Không tìm thấy hợp đồng hoặc không có quyền.'],
+                ]);
+            }
+
+            if ((int) $contract->client_id !== (int) $opportunity->client_id) {
+                throw ValidationException::withMessages([
+                    'contract_id' => ['Hợp đồng phải cùng khách hàng với cơ hội.'],
+                ]);
+            }
+
+            if ($contract->opportunity_id !== null && (int) $contract->opportunity_id !== $oppId) {
+                throw ValidationException::withMessages([
+                    'contract_id' => ['Hợp đồng đã gắn cơ hội khác.'],
+                ]);
+            }
+
+            Contract::query()
+                ->where('opportunity_id', $oppId)
+                ->where('id', '!=', $contractId)
+                ->update(['opportunity_id' => null]);
+
+            $contract->refresh();
+            $contract->forceFill(['opportunity_id' => $oppId])->save();
+        });
     }
 
     private function canAccessOpportunity(User $user, Opportunity $opportunity): bool

@@ -1067,6 +1067,17 @@ export default function ContractDetail(props) {
                                 )}
                             </div>
                             <div className="flex items-center justify-between border-b border-slate-50 pb-2">
+                                <span className="text-text-muted">Cơ hội liên kết</span>
+                                {contract.opportunity?.id ? (
+                                    <Link href={`/co-hoi/${contract.opportunity.id}`} className="max-w-[min(100%,14rem)] text-right font-semibold text-primary hover:underline">
+                                        <span className="block text-xs">CH-{contract.opportunity.id}</span>
+                                        <span className="block truncate text-[11px] font-medium text-slate-700">{contract.opportunity.title || '—'}</span>
+                                    </Link>
+                                ) : (
+                                    <span className="text-text-muted text-xs">Chưa gắn cơ hội</span>
+                                )}
+                            </div>
+                            <div className="flex items-center justify-between border-b border-slate-50 pb-2">
                                 <span className="text-text-muted">Ngày ký</span>
                                 <span className="font-semibold text-slate-900">{formatDateDisplay(contract.signed_at)}</span>
                             </div>

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import FilterStatusHelpIcon from '@/Components/FilterStatusHelpIcon';
 import axios from 'axios';
 import PageContainer from '@/Components/PageContainer';
 import FilterToolbar, {
@@ -40,6 +41,14 @@ const COMPUTED_STATUS_FILTER_OPTIONS = [
     { value: 'success', label: 'Thành công' },
 ];
 
+/** Giải thích trạng thái tính toán (OpportunityComputedStatus) */
+const OPPORTUNITY_COMPUTED_STATUS_HELP = [
+    { value: 'undetermined', label: 'Chưa xác định', description: 'Chưa có ngày dự kiến chốt nên chưa phân loại thời hạn.' },
+    { value: 'open', label: 'Đang mở', description: 'Còn trong hạn đến ngày dự kiến chốt và chưa có hợp đồng liên kết.' },
+    { value: 'overdue', label: 'Quá hạn', description: 'Đã qua ngày dự kiến chốt nhưng chưa có hợp đồng liên kết.' },
+    { value: 'success', label: 'Thành công', description: 'Đã có hợp đồng gắn với cơ hội.' },
+];
+
 const computedStatusBadgeHex = (code) => ({
     undetermined: '#64748B',
     open: '#0ea5e9',
@@ -51,6 +60,7 @@ const emptyOpportunityForm = () => ({
     title: '',
     opportunity_type: '',
     client_id: '',
+    contract_id: '',
     source: '',
     amount: '',
     success_probability: '',
@@ -104,7 +114,7 @@ export default function Opportunities(props) {
     const [editingId, setEditingId] = useState(null);
     const [savingOpportunity, setSavingOpportunity] = useState(false);
     const [form, setForm] = useState(emptyOpportunityForm());
-
+    const [linkableContracts, setLinkableContracts] = useState([]);
 
     const userMap = useMemo(() => {
         return users.reduce((acc, item) => {
@@ -244,6 +254,38 @@ export default function Opportunities(props) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    useEffect(() => {
+        if (!showForm || !form.client_id) {
+            setLinkableContracts([]);
+            return;
+        }
+        const clientId = Number(form.client_id);
+        if (!clientId) {
+            setLinkableContracts([]);
+            return;
+        }
+        let cancelled = false;
+        axios.get('/api/v1/contracts', {
+            params: {
+                linkable_for_opportunity: 1,
+                client_id: clientId,
+                per_page: 200,
+                ...(editingId ? { opportunity_id: editingId } : {}),
+            },
+        }).then((res) => {
+            if (!cancelled) {
+                setLinkableContracts(res.data?.data || []);
+            }
+        }).catch(() => {
+            if (!cancelled) {
+                setLinkableContracts([]);
+            }
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [showForm, form.client_id, editingId]);
+
     const openCreateForm = () => {
         setEditingId(null);
         const nextForm = emptyOpportunityForm();
@@ -272,6 +314,7 @@ export default function Opportunities(props) {
             : [],
         expected_close_date: toDateInputValue(row.expected_close_date),
         notes: row.notes || '',
+        contract_id: row.contract?.id ? String(row.contract.id) : '',
     });
 
     const openEditForm = (item) => {
@@ -321,6 +364,7 @@ export default function Opportunities(props) {
             watcher_ids: (form.watcher_ids || []).map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0),
             expected_close_date: form.expected_close_date || null,
             notes: String(form.notes || '').trim() || null,
+            contract_id: form.contract_id ? Number(form.contract_id) : null,
         };
 
         setSavingOpportunity(true);
@@ -391,7 +435,14 @@ export default function Opportunities(props) {
                 onSubmitFilters={applyOpportunityFilters}
             >
                 <div className={FILTER_GRID_WITH_SUBMIT}>
-                    <FilterField label="Trạng thái (tính toán)">
+                    <FilterField
+                        label={(
+                            <span className="inline-flex items-center gap-1.5">
+                                Trạng thái (tính toán)
+                                <FilterStatusHelpIcon items={OPPORTUNITY_COMPUTED_STATUS_HELP} ariaLabel="Giải thích trạng thái cơ hội" />
+                            </span>
+                        )}
+                    >
                         <select
                             className={filterControlClass}
                             value={filters.computed_status}
@@ -531,10 +582,26 @@ export default function Opportunities(props) {
                         <ClientSelect
                             className="bg-white"
                             value={form.client_id}
-                            onChange={(id) => setForm((prev) => ({ ...prev, client_id: id }))}
+                            onChange={(id) => setForm((prev) => ({ ...prev, client_id: id, contract_id: '' }))}
                             placeholder="Chọn khách hàng"
                             clientPreview={editingOpportunityClient}
                         />
+                    </Field>
+
+                    <Field label="Hợp đồng liên kết" hint="Hợp đồng cùng khách, chưa gắn cơ hội khác hoặc đang gắn cơ hội này. Để trống nếu không liên kết.">
+                        <select
+                            className={filterControlClass}
+                            value={form.contract_id}
+                            onChange={(event) => setForm((prev) => ({ ...prev, contract_id: event.target.value }))}
+                            disabled={!form.client_id}
+                        >
+                            <option value="">— Không chọn —</option>
+                            {linkableContracts.map((ct) => (
+                                <option key={ct.id} value={String(ct.id)}>
+                                    {(ct.code || `CTR-${ct.id}`)} — {ct.title || '(Không tiêu đề)'}
+                                </option>
+                            ))}
+                        </select>
                     </Field>
 
                     <Field label="Tỷ lệ thành công (%)" required>

@@ -46,7 +46,7 @@ class ContractController extends Controller
                 'client.careStaffUsers:id',
                 'project',
                 'linkedProject',
-                'opportunity',
+                'opportunity:id,title,client_id',
                 'creator:id,name,email,avatar_url',
                 'approver:id,name,email,avatar_url',
                 'collector:id,name,email,avatar_url',
@@ -91,7 +91,21 @@ class ContractController extends Controller
             $query->whereRaw('('.$this->contractStatusSql().') = ?', [(string) $request->input('status')]);
         }
 
-        if ($request->filled('client_id')) {
+        if ($request->boolean('linkable_for_opportunity')) {
+            $clientId = (int) $request->input('client_id', 0);
+            if ($clientId <= 0) {
+                $query->whereRaw('1 = 0');
+            } else {
+                $query->where('contracts.client_id', $clientId);
+                $oppId = (int) $request->input('opportunity_id', 0);
+                $query->where(function (Builder $q) use ($oppId) {
+                    $q->whereNull('contracts.opportunity_id');
+                    if ($oppId > 0) {
+                        $q->orWhere('contracts.opportunity_id', $oppId);
+                    }
+                });
+            }
+        } elseif ($request->filled('client_id')) {
             $query->where('client_id', (int) $request->input('client_id'));
         }
         $staffFilterIds = $this->resolveStaffFilterIds($request);
@@ -160,7 +174,8 @@ class ContractController extends Controller
 
         if ($request->filled('search')) {
             $search = $request->input('search');
-            $query->where(function ($builder) use ($search) {
+            $searchIsNumericId = is_string($search) && preg_match('/^\d+$/', trim($search));
+            $query->where(function ($builder) use ($search, $searchIsNumericId) {
                 $builder->where('code', 'like', "%{$search}%")
                     ->orWhere('title', 'like', "%{$search}%")
                     ->orWhere('notes', 'like', "%{$search}%")
@@ -178,6 +193,13 @@ class ContractController extends Controller
                     ->orWhereHas('linkedProject', function ($projectQuery) use ($search) {
                         $projectQuery->where('name', 'like', "%{$search}%")
                             ->orWhere('code', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('opportunity', function ($oppQuery) use ($search, $searchIsNumericId) {
+                        $oppQuery->where('title', 'like', "%{$search}%")
+                            ->orWhere('notes', 'like', "%{$search}%");
+                        if ($searchIsNumericId) {
+                            $oppQuery->orWhere('id', (int) trim($search));
+                        }
                     });
             });
         }
@@ -1645,7 +1667,7 @@ class ContractController extends Controller
             'client.careStaffUsers:id,name,email,avatar_url',
             'project',
             'linkedProject',
-            'opportunity',
+            'opportunity:id,title,client_id',
             'creator:id,name,email,avatar_url',
             'approver:id,name,email,avatar_url',
             'collector:id,name,email,avatar_url',
