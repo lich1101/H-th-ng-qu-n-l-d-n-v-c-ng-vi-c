@@ -115,6 +115,8 @@ class ReportController extends Controller
         $hasItemProductName = $hasItemsTable && Schema::hasColumn('contract_items', 'product_name');
         $hasProductsTable = Schema::hasTable('products');
         $hasProductName = $hasProductsTable && Schema::hasColumn('products', 'name');
+        $hasProductCategoriesTable = Schema::hasTable('product_categories');
+        $hasProductCategoryId = $hasProductsTable && Schema::hasColumn('products', 'category_id');
 
         $contractTimelineColumns = ['client_id', 'created_at'];
         if ($hasContractApprovedAt) {
@@ -382,40 +384,101 @@ class ReportController extends Controller
             ])
             ->get();
 
-        // Product breakdown from contract_items (revenue by product)
+        $periodContractRevenueTotal = 0.0;
+        if ($hasContractValue) {
+            foreach ($contractsForCurrentPeriod as $contract) {
+                $periodContractRevenueTotal += (float) ($contract->getRawOriginal('value') ?? 0);
+            }
+        }
+
+        // Breakdown from contract_items: theo danh mục sản phẩm (hoặc theo sản phẩm nếu thiếu bảng danh mục),
+        // cộng phần chênh so với tổng giá trị HĐ kỳ — khớp logic companyRevenue.
         $productBreakdown = collect();
         if ($hasItemsTable && $hasItemTotalPrice) {
             $periodContractIds = $contractsForCurrentPeriod->pluck('id')->all();
             if (! empty($periodContractIds)) {
-                $productLabelExpr = "'Chưa gắn sản phẩm'";
-                if ($hasProductsTable && $hasProductName && $hasItemProductName) {
-                    $productLabelExpr = "COALESCE(products.name, contract_items.product_name, 'Chưa gắn sản phẩm')";
-                } elseif ($hasItemProductName) {
-                    $productLabelExpr = "COALESCE(contract_items.product_name, 'Chưa gắn sản phẩm')";
+                $useCategoryBreakdown = $hasProductsTable && $hasProductName && $hasProductCategoriesTable && $hasProductCategoryId;
+
+                if ($useCategoryBreakdown) {
+                    $categoryLabelExpr = "COALESCE(product_categories.name, CASE WHEN products.id IS NOT NULL THEN 'Chưa gắn danh mục' ELSE 'Chưa gắn sản phẩm' END)";
+                    $productBreakdown = ContractItem::query()
+                        ->whereIn('contract_items.contract_id', $periodContractIds)
+                        ->leftJoin('products', 'contract_items.product_id', '=', 'products.id')
+                        ->leftJoin('product_categories', 'products.category_id', '=', 'product_categories.id')
+                        ->selectRaw("$categoryLabelExpr as breakdown_label")
+                        ->selectRaw('SUM(contract_items.total_price) as revenue')
+                        ->groupBy(DB::raw($categoryLabelExpr))
+                        ->orderByDesc('revenue')
+                        ->get()
+                        ->map(function ($item) {
+                            return [
+                                'label' => (string) $item->breakdown_label,
+                                'value' => round((float) $item->revenue, 2),
+                            ];
+                        })
+                        ->filter(function ($item) {
+                            return $item['value'] > 0;
+                        })
+                        ->values();
+                } else {
+                    $productLabelExpr = "'Chưa gắn sản phẩm'";
+                    if ($hasProductsTable && $hasProductName && $hasItemProductName) {
+                        $productLabelExpr = "COALESCE(products.name, contract_items.product_name, 'Chưa gắn sản phẩm')";
+                    } elseif ($hasItemProductName) {
+                        $productLabelExpr = "COALESCE(contract_items.product_name, 'Chưa gắn sản phẩm')";
+                    }
+
+                    $productQuery = ContractItem::query()
+                        ->whereIn('contract_items.contract_id', $periodContractIds);
+                    if ($hasProductsTable && $hasProductName) {
+                        $productQuery->leftJoin('products', 'contract_items.product_id', '=', 'products.id');
+                    }
+
+                    $productBreakdown = $productQuery
+                        ->selectRaw("$productLabelExpr as product_name")
+                        ->selectRaw('SUM(contract_items.total_price) as revenue')
+                        ->groupBy(DB::raw($productLabelExpr))
+                        ->orderByDesc('revenue')
+                        ->get()
+                        ->map(function ($item) {
+                            return [
+                                'label' => (string) $item->product_name,
+                                'value' => round((float) $item->revenue, 2),
+                            ];
+                        })
+                        ->filter(function ($item) {
+                            return $item['value'] > 0;
+                        })
+                        ->values();
                 }
 
-                $productQuery = ContractItem::query()
-                    ->whereIn('contract_items.contract_id', $periodContractIds);
-                if ($hasProductsTable && $hasProductName) {
-                    $productQuery->leftJoin('products', 'contract_items.product_id', '=', 'products.id');
+                $coveredProductRevenue = 0.0;
+                foreach ($productBreakdown as $row) {
+                    $coveredProductRevenue += (float) ($row['value'] ?? 0);
                 }
+                $unmappedProductRevenue = round(max(0, (float) $periodContractRevenueTotal - $coveredProductRevenue), 2);
+                if ($unmappedProductRevenue > 0) {
+                    $hasChuaGanSanPham = $productBreakdown->contains(function ($row) {
+                        return ($row['label'] ?? '') === 'Chưa gắn sản phẩm';
+                    });
+                    if ($hasChuaGanSanPham) {
+                        $productBreakdown = $productBreakdown->map(function ($row) use ($unmappedProductRevenue) {
+                            if (($row['label'] ?? '') === 'Chưa gắn sản phẩm') {
+                                return [
+                                    'label' => 'Chưa gắn sản phẩm',
+                                    'value' => round((float) ($row['value'] ?? 0) + $unmappedProductRevenue, 2),
+                                ];
+                            }
 
-                $productBreakdown = $productQuery
-                    ->selectRaw("$productLabelExpr as product_name")
-                    ->selectRaw('SUM(contract_items.total_price) as revenue')
-                    ->groupBy(DB::raw($productLabelExpr))
-                    ->orderByDesc('revenue')
-                    ->get()
-                    ->map(function ($item) {
-                        return [
-                            'label' => (string) $item->product_name,
-                            'value' => round((float) $item->revenue, 2),
-                        ];
-                    })
-                    ->filter(function ($item) {
-                        return $item['value'] > 0;
-                    })
-                    ->values();
+                            return $row;
+                        })->values();
+                    } else {
+                        $productBreakdown->push([
+                            'label' => 'Chưa gắn sản phẩm',
+                            'value' => $unmappedProductRevenue,
+                        ]);
+                    }
+                }
             }
         }
 

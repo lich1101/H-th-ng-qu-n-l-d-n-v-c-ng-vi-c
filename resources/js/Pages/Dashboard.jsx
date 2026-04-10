@@ -135,7 +135,7 @@ export default function Dashboard(props) {
         const palette = ['#3B82F6', '#34D399', '#F2C94C', '#F43F5E', '#8B5CF6', '#F97316', '#14B8A6'];
         const source = report.product_breakdown || report.service_breakdown || [];
         return source.map((item, index) => ({
-            label: serviceLabels[item.label] || item.label || 'Khác',
+            label: serviceLabels[item.label] ?? item.label ?? 'Khác',
             value: Number(item.value || 0),
             color: palette[index % palette.length],
         }));
