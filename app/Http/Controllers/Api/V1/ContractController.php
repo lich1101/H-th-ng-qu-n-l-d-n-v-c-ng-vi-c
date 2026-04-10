@@ -6,7 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Http\Helpers\CrmScope;
 use App\Models\Client;
 use App\Models\Contract;
+use App\Models\Opportunity;
 use App\Models\ContractCareNote;
+use App\Models\ContractFile;
 use App\Models\ContractCost;
 use App\Models\ContractFinanceRequest;
 use App\Models\ContractItem;
@@ -16,7 +18,7 @@ use App\Models\Project;
 use App\Models\RevenueTier;
 use App\Models\User;
 use App\Services\ContractFinanceRequestService;
-use App\Services\ContractDocumentService;
+use App\Services\ContractFileStorageService;
 use App\Services\ContractLifecycleStatusService;
 use App\Services\DataTransfers\ClientFinancialSyncService;
 use App\Services\NotificationService;
@@ -24,10 +26,9 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Str;
-use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class ContractController extends Controller
 {
@@ -254,6 +255,7 @@ class ContractController extends Controller
             return response()->json(['message' => 'Không có quyền xem hợp đồng.'], 403);
         }
 
+        $contract->loadCount('contractFiles');
         $this->loadContractDetail($contract);
 
         return response()->json(
@@ -261,80 +263,112 @@ class ContractController extends Controller
         );
     }
 
-    /**
-     * @return BinaryFileResponse|JsonResponse
-     */
-    public function downloadDocument(Request $request, Contract $contract)
+    public function contractFiles(Request $request, Contract $contract): JsonResponse
     {
+        if (! $this->canViewContract($request->user(), $contract)) {
+            return response()->json(['message' => 'Không có quyền xem hợp đồng.'], 403);
+        }
+
+        $rows = ContractFile::query()
+            ->where('contract_id', $contract->id)
+            ->with('uploader:id,name,email')
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(function (ContractFile $f) {
+                return [
+                    'id' => $f->id,
+                    'original_name' => $f->original_name,
+                    'mime_type' => $f->mime_type,
+                    'size' => $f->size,
+                    'created_at' => $f->created_at?->toIso8601String(),
+                    'uploader' => $f->uploader ? [
+                        'id' => $f->uploader->id,
+                        'name' => $f->uploader->name,
+                        'email' => $f->uploader->email,
+                    ] : null,
+                ];
+            });
+
+        return response()->json(['data' => $rows]);
+    }
+
+    public function storeContractFile(Request $request, Contract $contract): JsonResponse
+    {
+        if (! $this->canManageContract($request->user(), $contract)) {
+            return response()->json(['message' => 'Không có quyền tải file lên.'], 403);
+        }
+
+        $request->validate([
+            'file' => ['required', 'file', 'max:51200'],
+        ]);
+
+        try {
+            $file = app(ContractFileStorageService::class)->store(
+                $contract,
+                $request->file('file'),
+                (int) $request->user()->id
+            );
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        $file->load('uploader:id,name,email');
+
+        return response()->json([
+            'message' => 'Đã tải file lên.',
+            'data' => [
+                'id' => $file->id,
+                'original_name' => $file->original_name,
+                'mime_type' => $file->mime_type,
+                'size' => $file->size,
+                'created_at' => $file->created_at?->toIso8601String(),
+                'uploader' => $file->uploader ? [
+                    'id' => $file->uploader->id,
+                    'name' => $file->uploader->name,
+                    'email' => $file->uploader->email,
+                ] : null,
+            ],
+        ], 201);
+    }
+
+    /**
+     * @return \Symfony\Component\HttpFoundation\StreamedResponse
+     */
+    public function downloadContractFile(Request $request, Contract $contract, ContractFile $contractFile)
+    {
+        if ((int) $contractFile->contract_id !== (int) $contract->id) {
+            abort(404);
+        }
+
         if (! $this->canViewContract($request->user(), $contract)) {
             abort(403, 'Không có quyền xem hợp đồng.');
         }
 
-        $validated = $request->validate([
-            'company_profile_id' => ['nullable', 'string', 'max:80'],
-        ]);
-        $this->loadContractDetail($contract);
-        $companyProfile = $this->resolveClientCompanyProfileForExport(
-            $contract,
-            $validated['company_profile_id'] ?? null
-        );
-
-        try {
-            $generated = app(ContractDocumentService::class)->generate($contract, $companyProfile);
-        } catch (\Throwable $e) {
-            Log::error('contract.document.generate_failed', [
-                'contract_id' => $contract->id,
-                'message' => $e->getMessage(),
-                'exception' => $e,
-            ]);
-
-            $message = $e instanceof \RuntimeException
-                ? $e->getMessage()
-                : 'Không thể tạo file hợp đồng. Vui lòng thử lại sau hoặc liên hệ quản trị.';
-
-            return response()->json(['message' => $message], 503);
+        $disk = Storage::disk($contractFile->disk);
+        if (! $disk->exists($contractFile->path)) {
+            abort(404, 'File không còn trên hệ thống.');
         }
 
-        return response()->download(
-            $generated['path'],
-            $generated['filename'],
-            [
-                'Content-Type' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            ]
-        )->deleteFileAfterSend(true);
+        $downloadName = app(ContractFileStorageService::class)->sanitizeOriginalName($contractFile->original_name);
+
+        return $disk->download($contractFile->path, $downloadName, [
+            'Content-Type' => $contractFile->mime_type ?: 'application/octet-stream',
+        ]);
     }
 
-    private function resolveClientCompanyProfileForExport(Contract $contract, ?string $selectedProfileId): array
+    public function destroyContractFile(Request $request, Contract $contract, ContractFile $contractFile): JsonResponse
     {
-        $profiles = collect((array) data_get($contract->client, 'company_profiles', []))
-            ->filter(function ($profile) {
-                return is_array($profile) && trim((string) ($profile['company_name'] ?? '')) !== '';
-            })
-            ->values();
-
-        if ($profiles->isEmpty()) {
-            return [];
+        if ((int) $contractFile->contract_id !== (int) $contract->id) {
+            return response()->json(['message' => 'Không tìm thấy file.'], 404);
         }
 
-        if ($selectedProfileId) {
-            $selected = $profiles->first(function ($profile) use ($selectedProfileId) {
-                return (string) ($profile['id'] ?? '') === $selectedProfileId;
-            });
-
-            if (! is_array($selected)) {
-                throw ValidationException::withMessages([
-                    'company_profile_id' => 'Công ty bên A được chọn không hợp lệ.',
-                ]);
-            }
-
-            return $selected;
+        if (! $this->canManageContract($request->user(), $contract)) {
+            return response()->json(['message' => 'Không có quyền xóa file.'], 403);
         }
 
-        $defaultProfile = $profiles->first(function ($profile) {
-            return ! empty($profile['is_default']);
-        });
+        app(ContractFileStorageService::class)->delete($contractFile);
 
-        return is_array($defaultProfile) ? $defaultProfile : (array) $profiles->first();
+        return response()->json(['message' => 'Đã xóa file.']);
     }
 
     private function normalizeSortDirection(string $direction): string
@@ -459,6 +493,14 @@ class ContractController extends Controller
         if ($error = $this->validateAssignableCareStaffIds($request->user(), $careStaffIds)) {
             return response()->json(['message' => $error], 422);
         }
+        $validated = $this->normalizeOpportunityIdInput($validated);
+        if ($msg = $this->validateOpportunityForContract(
+            $validated['opportunity_id'] ?? null,
+            (int) $validated['client_id'],
+            null
+        )) {
+            return response()->json(['message' => $msg], 422);
+        }
         $validated['code'] = $this->generateContractCode();
         $validated['created_by'] = $request->user()->id;
         unset($validated['project_id'], $validated['create_and_approve'], $validated['status']);
@@ -554,6 +596,14 @@ class ContractController extends Controller
         }
         if ($error = $this->validateAssignableCareStaffIds($request->user(), $careStaffIds)) {
             return response()->json(['message' => $error], 422);
+        }
+        $validated = $this->normalizeOpportunityIdInput($validated);
+        if ($msg = $this->validateOpportunityForContract(
+            $validated['opportunity_id'] ?? null,
+            (int) $validated['client_id'],
+            (int) $contract->id
+        )) {
+            return response()->json(['message' => $msg], 422);
         }
         $items = $this->normalizeItems($request->input('items', []));
         $validated = $this->normalizeContractFinancialInputs($validated, $items, $contract);
@@ -763,6 +813,44 @@ class ContractController extends Controller
             'create_and_approve' => ['nullable', 'boolean'],
         ];
         return $rules;
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     * @return array<string, mixed>
+     */
+    private function normalizeOpportunityIdInput(array $validated): array
+    {
+        if (! array_key_exists('opportunity_id', $validated)) {
+            return $validated;
+        }
+        $id = (int) $validated['opportunity_id'];
+        $validated['opportunity_id'] = $id > 0 ? $id : null;
+
+        return $validated;
+    }
+
+    private function validateOpportunityForContract(?int $opportunityId, int $clientId, ?int $currentContractId): ?string
+    {
+        if ($opportunityId === null || $opportunityId <= 0) {
+            return null;
+        }
+        $opp = Opportunity::query()->find($opportunityId);
+        if (! $opp) {
+            return 'Cơ hội không tồn tại.';
+        }
+        if ((int) $opp->client_id !== $clientId) {
+            return 'Cơ hội không thuộc khách hàng đã chọn.';
+        }
+        $q = Contract::query()->where('opportunity_id', $opportunityId);
+        if ($currentContractId) {
+            $q->where('id', '!=', $currentContractId);
+        }
+        if ($q->exists()) {
+            return 'Cơ hội đã được gắn với hợp đồng khác.';
+        }
+
+        return null;
     }
 
     /** Chỉ admin / administrator / kế toán được duyệt hợp đồng (trưởng phòng và nhân viên không). */

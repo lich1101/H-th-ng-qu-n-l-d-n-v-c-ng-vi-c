@@ -364,7 +364,6 @@ export default function Authenticated({ auth, header, children }) {
                 items: [
                     { label: 'Phòng ban', icon: 'department', routeName: 'departments.index', href: route('departments.index'), roles: ['admin', 'quan_ly'] },
                     { label: 'Trạng thái khách hàng', icon: 'tag', routeName: 'lead-types.index', href: route('lead-types.index'), roles: ['admin'] },
-                    { label: 'Trạng thái cơ hội', icon: 'trend', routeName: 'opportunity-statuses.index', href: route('opportunity-statuses.index'), roles: ['admin'] },
                     { label: 'Hạng doanh thu', icon: 'award', routeName: 'revenue-tiers.index', href: route('revenue-tiers.index'), roles: ['admin'] },
                     { label: 'Barem công việc', icon: 'workflow', routeName: 'services.workflows', href: route('services.workflows'), roles: ['admin', 'administrator', 'quan_ly', 'nhan_vien'] },
                     { label: 'Tải ứng dụng', icon: 'download', routeName: 'app-downloads.index', href: route('app-downloads.index'), roles: ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'] },

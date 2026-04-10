@@ -32,13 +32,27 @@ const numberOrNull = (value) => {
     return Number.isFinite(parsed) ? parsed : null;
 };
 
-const emptyOpportunityForm = (defaultStatus = '') => ({
+const COMPUTED_STATUS_FILTER_OPTIONS = [
+    { value: '', label: 'Tất cả trạng thái' },
+    { value: 'undetermined', label: 'Chưa xác định' },
+    { value: 'open', label: 'Đang mở' },
+    { value: 'overdue', label: 'Quá hạn' },
+    { value: 'success', label: 'Thành công' },
+];
+
+const computedStatusBadgeHex = (code) => ({
+    undetermined: '#64748B',
+    open: '#0ea5e9',
+    overdue: '#f59e0b',
+    success: '#10b981',
+}[String(code || '')] || '#64748B');
+
+const emptyOpportunityForm = () => ({
     title: '',
     opportunity_type: '',
     client_id: '',
     source: '',
     amount: '',
-    status: defaultStatus,
     success_probability: '',
     product_id: '',
     assigned_to: '',
@@ -64,7 +78,6 @@ export default function Opportunities(props) {
     const userRole = props?.auth?.user?.role || '';
     const currentUserId = Number(props?.auth?.user?.id || 0) || null;
     const canCreate = ['admin', 'administrator', 'quan_ly', 'nhan_vien'].includes(userRole);
-    const canManageStatuses = ['admin', 'administrator'].includes(userRole);
     const canDelete = canCreate;
 
     const [opportunities, setOpportunities] = useState([]);
@@ -72,7 +85,7 @@ export default function Opportunities(props) {
     const [listAggregates, setListAggregates] = useState({ revenue_total: 0 });
     const [filters, setFilters] = useState({
         search: '',
-        status: '',
+        computed_status: '',
         client_id: '',
         staff_ids: [],
         expected_close_from: '',
@@ -81,7 +94,6 @@ export default function Opportunities(props) {
         page: 1,
     });
 
-    const [statuses, setStatuses] = useState([]);
     const [clients, setClients] = useState([]);
     const [users, setUsers] = useState([]);
     const [opportunityStaffFilterUsers, setOpportunityStaffFilterUsers] = useState([]);
@@ -91,19 +103,8 @@ export default function Opportunities(props) {
     const [showForm, setShowForm] = useState(false);
     const [editingId, setEditingId] = useState(null);
     const [savingOpportunity, setSavingOpportunity] = useState(false);
-    const [form, setForm] = useState(emptyOpportunityForm(''));
+    const [form, setForm] = useState(emptyOpportunityForm());
 
-    const [showStatusModal, setShowStatusModal] = useState(false);
-    const [editingStatusId, setEditingStatusId] = useState(null);
-    const [savingStatus, setSavingStatus] = useState(false);
-    const [statusForm, setStatusForm] = useState({ name: '', color_hex: '#04BC5C', sort_order: 0 });
-
-    const statusMap = useMemo(() => {
-        return statuses.reduce((acc, item) => {
-            acc[item.code] = item;
-            return acc;
-        }, {});
-    }, [statuses]);
 
     const userMap = useMemo(() => {
         return users.reduce((acc, item) => {
@@ -121,10 +122,6 @@ export default function Opportunities(props) {
         })).filter((user) => user.id > 0);
     }, [opportunityStaffFilterUsers, users]);
 
-    const defaultStatusCode = useMemo(() => {
-        return statuses.length > 0 ? String(statuses[0].code) : '';
-    }, [statuses]);
-
     const editingOpportunityClient = useMemo(() => {
         if (!editingId) {
             return null;
@@ -133,10 +130,10 @@ export default function Opportunities(props) {
         return row?.client || null;
     }, [opportunities, editingId]);
 
-    const statusCounts = useMemo(() => {
+    const computedStatusCounts = useMemo(() => {
         const counts = {};
         opportunities.forEach((item) => {
-            const code = String(item?.status || '');
+            const code = String(item?.computed_status || '');
             if (!code) return;
             counts[code] = (counts[code] || 0) + 1;
         });
@@ -146,16 +143,15 @@ export default function Opportunities(props) {
     const stats = useMemo(() => {
         return [
             { label: 'Tổng cơ hội', value: String(opportunityMeta.total || 0) },
-            { label: 'Trạng thái', value: String(statuses.length) },
+            { label: 'Doanh số (lọc)', value: `${Number(listAggregates.revenue_total || 0).toLocaleString('vi-VN')} VNĐ` },
             { label: 'Khách hàng', value: String(clients.length) },
             { label: 'Vai trò', value: userRole || '—' },
         ];
-    }, [opportunityMeta.total, statuses.length, clients.length, userRole]);
+    }, [opportunityMeta.total, listAggregates.revenue_total, clients.length, userRole]);
 
     const fetchOptions = async () => {
         try {
-            const [statusRes, clientRes, userRes, productRes, staffFilterRows] = await Promise.all([
-                axios.get('/api/v1/opportunity-statuses'),
+            const [clientRes, userRes, productRes, staffFilterRows] = await Promise.all([
                 axios.get('/api/v1/crm/clients', {
                     params: {
                         per_page: 300,
@@ -176,21 +172,10 @@ export default function Opportunities(props) {
                 fetchStaffFilterOptions('opportunities'),
             ]);
 
-            const nextStatuses = statusRes.data || [];
-            setStatuses(nextStatuses);
             setClients(clientRes.data?.data || []);
             setUsers(userRes.data?.data || []);
             setOpportunityStaffFilterUsers(staffFilterRows);
             setProducts(productRes.data?.data || []);
-
-            setForm((prev) => {
-                if (prev.status) return prev;
-                if (!nextStatuses.length) return prev;
-                return {
-                    ...prev,
-                    status: String(nextStatuses[0].code),
-                };
-            });
         } catch (error) {
             toast.error(error?.response?.data?.message || 'Không tải được dữ liệu cấu hình cơ hội.');
         }
@@ -224,7 +209,7 @@ export default function Opportunities(props) {
                     per_page: Number(nextFilters.per_page || 20),
                     page: nextPage,
                     ...(nextFilters.search ? { search: nextFilters.search } : {}),
-                    ...(nextFilters.status ? { status: nextFilters.status } : {}),
+                    ...(nextFilters.computed_status ? { computed_status: nextFilters.computed_status } : {}),
                     ...(nextFilters.client_id ? { client_id: nextFilters.client_id } : {}),
                     ...(Array.isArray(nextFilters.staff_ids) && nextFilters.staff_ids.length > 0 ? { staff_ids: nextFilters.staff_ids } : {}),
                     ...(nextFilters.expected_close_from ? { expected_close_from: nextFilters.expected_close_from } : {}),
@@ -261,7 +246,7 @@ export default function Opportunities(props) {
 
     const openCreateForm = () => {
         setEditingId(null);
-        const nextForm = emptyOpportunityForm(defaultStatusCode);
+        const nextForm = emptyOpportunityForm();
         if (currentUserId) {
             nextForm.assigned_to = String(currentUserId);
         }
@@ -269,7 +254,7 @@ export default function Opportunities(props) {
         setShowForm(true);
     };
 
-    const mapApiToOpportunityForm = (row, statusFallback = '') => ({
+    const mapApiToOpportunityForm = (row) => ({
         title: row.title || '',
         opportunity_type: row.opportunity_type || '',
         client_id: row.client_id ? String(row.client_id) : '',
@@ -277,7 +262,6 @@ export default function Opportunities(props) {
         amount: row.amount !== null && row.amount !== undefined && row.amount !== ''
             ? String(row.amount)
             : '',
-        status: row.status || statusFallback,
         success_probability: row.success_probability != null && row.success_probability !== ''
             ? String(row.success_probability)
             : '',
@@ -292,12 +276,12 @@ export default function Opportunities(props) {
 
     const openEditForm = (item) => {
         setEditingId(item.id);
-        setForm(mapApiToOpportunityForm(item, defaultStatusCode));
+        setForm(mapApiToOpportunityForm(item));
         setShowForm(true);
         axios.get(`/api/v1/opportunities/${item.id}`)
             .then((res) => {
                 if (res.data?.id) {
-                    setForm(mapApiToOpportunityForm(res.data, defaultStatusCode));
+                    setForm(mapApiToOpportunityForm(res.data));
                 }
             })
             .catch(() => {});
@@ -331,7 +315,6 @@ export default function Opportunities(props) {
             client_id: Number(form.client_id),
             source: String(form.source || '').trim() || null,
             amount: amountParsed,
-            status: form.status || null,
             success_probability: probParsed,
             product_id: form.product_id ? Number(form.product_id) : null,
             assigned_to: form.assigned_to ? Number(form.assigned_to) : null,
@@ -374,89 +357,14 @@ export default function Opportunities(props) {
         }
     };
 
-    const openCreateStatus = () => {
-        setEditingStatusId(null);
-        setStatusForm({ name: '', color_hex: '#04BC5C', sort_order: statuses.length + 1 });
-    };
-
-    const openEditStatus = (item) => {
-        setEditingStatusId(item.id);
-        setStatusForm({
-            name: item.name || '',
-            color_hex: item.color_hex || '#04BC5C',
-            sort_order: item.sort_order ?? 0,
-        });
-    };
-
-    const saveStatus = async () => {
-        if (!canManageStatuses) return;
-        if (!String(statusForm.name || '').trim()) {
-            toast.error('Vui lòng nhập tên trạng thái cơ hội.');
-            return;
-        }
-
-        setSavingStatus(true);
-        try {
-            const payload = {
-                name: String(statusForm.name || '').trim(),
-                color_hex: statusForm.color_hex || '#6B7280',
-                sort_order: Number(statusForm.sort_order || 0),
-            };
-            if (editingStatusId) {
-                await axios.put(`/api/v1/opportunity-statuses/${editingStatusId}`, payload);
-                toast.success('Đã cập nhật trạng thái cơ hội.');
-            } else {
-                await axios.post('/api/v1/opportunity-statuses', payload);
-                toast.success('Đã tạo trạng thái cơ hội.');
-            }
-            await fetchOptions();
-            openCreateStatus();
-        } catch (error) {
-            toast.error(error?.response?.data?.message || 'Không lưu được trạng thái cơ hội.');
-        } finally {
-            setSavingStatus(false);
-        }
-    };
-
-    const removeStatus = async (item) => {
-        if (!canManageStatuses) return;
-        if (!window.confirm(`Xóa trạng thái "${item?.name || ''}"?`)) return;
-        try {
-            await axios.delete(`/api/v1/opportunity-statuses/${item.id}`);
-            toast.success('Đã xóa trạng thái cơ hội.');
-            await fetchOptions();
-            setForm((prev) => {
-                if (prev.status !== item.code) return prev;
-                return {
-                    ...prev,
-                    status: '',
-                };
-            });
-        } catch (error) {
-            toast.error(error?.response?.data?.message || 'Không xóa được trạng thái cơ hội.');
-        }
-    };
-
     return (
         <PageContainer
             auth={props.auth}
             title="Cơ hội"
-            description="Quản lý cơ hội bán hàng theo từng khách hàng, có form thêm nhanh và trạng thái màu cấu hình riêng."
+            description="Quản lý cơ hội bán hàng theo từng khách hàng; trạng thái hiển thị theo ngày chốt và hợp đồng liên kết."
             stats={stats}
         >
             <div className="mb-4 flex flex-wrap items-center justify-end gap-3">
-                {canManageStatuses ? (
-                    <button
-                        type="button"
-                        className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700"
-                        onClick={() => {
-                            setShowStatusModal(true);
-                            openCreateStatus();
-                        }}
-                    >
-                        Trạng thái cơ hội
-                    </button>
-                ) : null}
                 {canCreate ? (
                     <button
                         type="button"
@@ -477,22 +385,21 @@ export default function Opportunities(props) {
             </div>
             <FilterToolbar enableSearch
                 title="Danh sách cơ hội"
-                description="Lọc theo trạng thái, khách hàng và tìm kiếm nhanh theo tên cơ hội, ghi chú hoặc khách hàng."
+                description="Lọc theo trạng thái tính toán, khách hàng và tìm kiếm nhanh theo tên cơ hội, ghi chú hoặc khách hàng."
                 searchValue={filters.search}
                 onSearch={handleOpportunitySearch}
                 onSubmitFilters={applyOpportunityFilters}
             >
                 <div className={FILTER_GRID_WITH_SUBMIT}>
-                    <FilterField label="Trạng thái cơ hội">
+                    <FilterField label="Trạng thái (tính toán)">
                         <select
                             className={filterControlClass}
-                            value={filters.status}
-                            onChange={(event) => setFilters((prev) => ({ ...prev, status: event.target.value }))}
+                            value={filters.computed_status}
+                            onChange={(event) => setFilters((prev) => ({ ...prev, computed_status: event.target.value }))}
                         >
-                            <option value="">Tất cả trạng thái</option>
-                            {statuses.map((status) => (
-                                <option key={status.id} value={status.code}>
-                                    {status.name}
+                            {COMPUTED_STATUS_FILTER_OPTIONS.map((opt) => (
+                                <option key={opt.value || 'all'} value={opt.value}>
+                                    {opt.label}
                                 </option>
                             ))}
                         </select>
@@ -541,30 +448,30 @@ export default function Opportunities(props) {
                 <div className="mt-4 flex flex-wrap gap-2">
                     <button
                         type="button"
-                        className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${!filters.status ? 'border-primary bg-primary/10 text-primary' : 'border-slate-200 text-slate-600 bg-white'
+                        className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${!filters.computed_status ? 'border-primary bg-primary/10 text-primary' : 'border-slate-200 text-slate-600 bg-white'
                             }`}
                         onClick={() => {
-                            const next = { ...filters, status: '', page: 1 };
+                            const next = { ...filters, computed_status: '', page: 1 };
                             setFilters(next);
                             fetchOpportunities(1, next);
                         }}
                     >
-                        Tất cả ({opportunities.length})
+                        Tất cả (trang: {opportunities.length})
                     </button>
-                    {statuses.map((status) => (
+                    {COMPUTED_STATUS_FILTER_OPTIONS.filter((o) => o.value).map((opt) => (
                         <button
-                            key={status.id}
+                            key={opt.value}
                             type="button"
-                            className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${filters.status === status.code ? 'ring-2 ring-primary/30' : ''
+                            className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${filters.computed_status === opt.value ? 'ring-2 ring-primary/30' : ''
                                 }`}
-                            style={toColorStyle(status.color_hex)}
+                            style={toColorStyle(computedStatusBadgeHex(opt.value))}
                             onClick={() => {
-                                const next = { ...filters, status: status.code, page: 1 };
+                                const next = { ...filters, computed_status: opt.value, page: 1 };
                                 setFilters(next);
                                 fetchOpportunities(1, next);
                             }}
                         >
-                            {status.name} ({statusCounts[status.code] || 0})
+                            {opt.label} ({computedStatusCounts[opt.value] || 0})
                         </button>
                     ))}
                 </div>
@@ -577,7 +484,7 @@ export default function Opportunities(props) {
                     setEditingId(null);
                 }}
                 title={editingId ? `Sửa cơ hội #${editingId}` : 'Thêm cơ hội mới'}
-                description="Form cơ hội theo chuẩn CRM: khách hàng, trạng thái, doanh số dự kiến và người phụ trách."
+                description="Form cơ hội theo chuẩn CRM: khách hàng, doanh số dự kiến và người phụ trách. Trạng thái hiển thị được tính tự động."
                 size="md"
             >
                 <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
@@ -668,20 +575,6 @@ export default function Opportunities(props) {
                         </select>
                     </Field>
 
-                    <Field label="Trạng thái cơ hội">
-                        <select
-                            className={filterControlClass}
-                            value={form.status}
-                            onChange={(event) => setForm((prev) => ({ ...prev, status: event.target.value }))}
-                        >
-                            {statuses.map((status) => (
-                                <option key={status.id} value={status.code}>
-                                    {status.name}
-                                </option>
-                            ))}
-                        </select>
-                    </Field>
-
                     <Field label="Người quản lý/phụ trách" hint="Mặc định hệ thống gán tài khoản đang tạo cơ hội.">
                         <select
                             className={filterControlClass}
@@ -755,6 +648,7 @@ export default function Opportunities(props) {
                                 <th className="py-2">Tên cơ hội</th>
                                 <th className="py-2">Khách hàng</th>
                                 <th className="py-2">Trạng thái</th>
+                                <th className="py-2">Hợp đồng</th>
                                 <th className="py-2">Doanh số</th>
                                 <th className="py-2">Nguồn</th>
                                 <th className="py-2">Phụ trách</th>
@@ -764,7 +658,7 @@ export default function Opportunities(props) {
                         </thead>
                         <tbody>
                             {opportunities.map((item) => {
-                                const status = statusMap[item.status] || item.status_config || null;
+                                const cStatus = String(item.computed_status || '');
                                 const assignee = item.assignee?.name || item.creator?.name || '—';
                                 const client = item.client?.name || `KH #${item.client_id}`;
                                 const clientId = Number(item.client_id || item.client?.id || 0);
@@ -821,10 +715,26 @@ export default function Opportunities(props) {
                                         <td className="py-3">
                                             <span
                                                 className="inline-flex rounded-full border px-2 py-1 text-xs font-semibold"
-                                                style={toColorStyle(status?.color_hex || '#64748B')}
+                                                style={toColorStyle(computedStatusBadgeHex(cStatus))}
                                             >
-                                                {status?.name || item.status || '—'}
+                                                {item.computed_status_label || item.computed_status || '—'}
                                             </span>
+                                        </td>
+                                        <td className="py-3 text-xs text-slate-700">
+                                            {item.contract?.code ? (
+                                                <button
+                                                    type="button"
+                                                    className="font-semibold text-primary hover:underline"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        window.location.href = `/hop-dong/${item.contract.id}`;
+                                                    }}
+                                                >
+                                                    {item.contract.code}
+                                                </button>
+                                            ) : (
+                                                '—'
+                                            )}
                                         </td>
                                         <td className="py-3 text-xs text-slate-700">
                                             {Number(item.amount || 0).toLocaleString('vi-VN')} VNĐ
@@ -873,7 +783,7 @@ export default function Opportunities(props) {
 
                             {!loading && opportunities.length === 0 ? (
                                 <tr>
-                                    <td className="py-8 text-center text-sm text-text-muted" colSpan={8}>
+                                    <td className="py-8 text-center text-sm text-text-muted" colSpan={9}>
                                         Chưa có cơ hội nào theo bộ lọc hiện tại.
                                     </td>
                                 </tr>
@@ -881,7 +791,7 @@ export default function Opportunities(props) {
 
                             {loading ? (
                                 <tr>
-                                    <td className="py-8 text-center text-sm text-text-muted" colSpan={8}>
+                                    <td className="py-8 text-center text-sm text-text-muted" colSpan={9}>
                                         Đang tải dữ liệu cơ hội...
                                     </td>
                                 </tr>
@@ -890,7 +800,7 @@ export default function Opportunities(props) {
                         {!loading && (opportunityMeta.total || 0) > 0 ? (
                             <tfoot>
                                 <tr className="border-t-2 border-slate-200 bg-slate-50/90 text-sm font-semibold text-slate-900">
-                                    <td colSpan={3} className="py-2.5 pr-2 text-xs uppercase tracking-[0.12em] text-text-subtle">
+                                    <td colSpan={4} className="py-2.5 pr-2 text-xs uppercase tracking-[0.12em] text-text-subtle">
                                         Tổng doanh số theo bộ lọc (tất cả trang)
                                     </td>
                                     <td className="py-2.5">
@@ -921,100 +831,6 @@ export default function Opportunities(props) {
                     }}
                 />
             </div>
-
-            <Modal
-                open={showStatusModal}
-                onClose={() => setShowStatusModal(false)}
-                title="Cấu hình trạng thái cơ hội"
-                description="Quản lý danh sách trạng thái và màu thẻ hiển thị ở trang cơ hội."
-                size="md"
-            >
-                <div className="space-y-4 text-sm">
-                    <div className="rounded-2xl border border-slate-200/80 bg-slate-50/60 p-3">
-                        <div className="grid gap-3 md:grid-cols-3">
-                            <Field label="Tên trạng thái" required>
-                                <input
-                                    className={filterControlClass}
-                                    placeholder="Ví dụ: Chờ báo giá"
-                                    value={statusForm.name}
-                                    onChange={(event) => setStatusForm((prev) => ({ ...prev, name: event.target.value }))}
-                                />
-                            </Field>
-                            <Field label="Màu thẻ">
-                                <input
-                                    type="color"
-                                    className="h-[48px] w-full rounded-2xl border border-slate-200/80 bg-white px-2"
-                                    value={statusForm.color_hex}
-                                    onChange={(event) => setStatusForm((prev) => ({ ...prev, color_hex: event.target.value }))}
-                                />
-                            </Field>
-                            <Field label="Thứ tự">
-                                <input
-                                    type="number"
-                                    className={filterControlClass}
-                                    value={statusForm.sort_order}
-                                    onChange={(event) => setStatusForm((prev) => ({ ...prev, sort_order: event.target.value }))}
-                                />
-                            </Field>
-                        </div>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                            <button
-                                type="button"
-                                className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white"
-                                disabled={savingStatus}
-                                onClick={saveStatus}
-                            >
-                                {savingStatus ? 'Đang lưu...' : (editingStatusId ? 'Cập nhật trạng thái' : 'Thêm trạng thái')}
-                            </button>
-                            {editingStatusId ? (
-                                <button
-                                    type="button"
-                                    className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
-                                    onClick={openCreateStatus}
-                                >
-                                    Hủy sửa
-                                </button>
-                            ) : null}
-                        </div>
-                    </div>
-
-                    <div className="space-y-2">
-                        {statuses.map((status) => (
-                            <div key={status.id} className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-200/80 bg-white px-3 py-2.5">
-                                <div className="flex items-center gap-2">
-                                    <span className="rounded-full border px-2.5 py-1 text-xs font-semibold" style={toColorStyle(status.color_hex)}>
-                                        {status.name}
-                                    </span>
-                                    <span className="text-xs text-text-muted">Code: {status.code}</span>
-                                    <span className="text-xs text-text-muted">Thứ tự: {status.sort_order || 0}</span>
-                                </div>
-                                <div className="flex items-center gap-2 text-xs">
-                                    <button
-                                        type="button"
-                                        className="rounded-lg border border-slate-200 px-2.5 py-1.5 font-semibold text-slate-700"
-                                        onClick={() => openEditStatus(status)}
-                                    >
-                                        Sửa
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className="rounded-lg border border-rose-200 px-2.5 py-1.5 font-semibold text-rose-600"
-                                        onClick={() => removeStatus(status)}
-                                    >
-                                        Xóa
-                                    </button>
-                                </div>
-                            </div>
-                        ))}
-
-                        {statuses.length === 0 ? (
-                            <div className="rounded-2xl border border-dashed border-slate-200/80 bg-slate-50 px-4 py-6 text-center text-sm text-text-muted">
-                                Chưa có trạng thái cơ hội. Vui lòng tạo mới ít nhất 1 trạng thái.
-                            </div>
-                        ) : null}
-                    </div>
-                </div>
-            </Modal>
         </PageContainer>
     );
 }

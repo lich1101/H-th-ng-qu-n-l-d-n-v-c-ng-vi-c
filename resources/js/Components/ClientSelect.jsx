@@ -30,6 +30,8 @@ export default function ClientSelect({
     clearLabel = 'Tất cả khách hàng',
     /** Gợi ý nhãn khi đã có id nhưng chưa tải xong (vd. client embed từ API khác) */
     clientPreview = null,
+    /** Chỉ khách do user phụ trách (bỏ nhánh chăm sóc) — dùng cho form hợp đồng */
+    assignedOnly = false,
 }) {
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState('');
@@ -83,6 +85,9 @@ export default function ClientSelect({
                 per_page: 80,
                 page: 1,
             };
+            if (assignedOnly) {
+                params.assigned_only = 1;
+            }
             const s = String(searchText ?? '').trim();
             if (s) {
                 params.search = s;
@@ -95,15 +100,19 @@ export default function ClientSelect({
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [assignedOnly]);
 
     const resolveById = useCallback(async (id) => {
         if (!id) {
             return;
         }
         try {
+            const params = { ids: [id], per_page: 1, page: 1 };
+            if (assignedOnly) {
+                params.assigned_only = 1;
+            }
             const res = await axios.get('/api/v1/crm/clients', {
-                params: { ids: [id], per_page: 1, page: 1 },
+                params,
             });
             const row = (res.data?.data || [])[0];
             if (row) {
@@ -113,7 +122,7 @@ export default function ClientSelect({
         } catch {
             // ignore
         }
-    }, []);
+    }, [assignedOnly]);
 
     useEffect(() => {
         if (numericValue > 0) {

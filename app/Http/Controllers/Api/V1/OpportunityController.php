@@ -5,15 +5,14 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Http\Helpers\CrmScope;
 use App\Models\Opportunity;
-use App\Models\OpportunityStatus;
 use App\Models\User;
 use App\Services\NotificationService;
 use App\Services\StaffFilterOptionsService;
+use App\Support\OpportunityComputedStatus;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
 
 class OpportunityController extends Controller
 {
@@ -32,12 +31,20 @@ class OpportunityController extends Controller
             'assignee:id,name,email,role',
             'creator:id,name,email,role',
             'product:id,name,code',
-            'statusConfig:id,code,name,color_hex,sort_order',
+            'contract:id,code,title,client_id,opportunity_id',
         ]);
 
         $result = $query
             ->orderByDesc('id')
             ->paginate((int) $request->input('per_page', 20));
+
+        $result->getCollection()->transform(function (Opportunity $o) {
+            $s = $o->computedStatusPayload();
+            $o->setAttribute('computed_status', $s['code']);
+            $o->setAttribute('computed_status_label', $s['label']);
+
+            return $o;
+        });
 
         $payload = $result->toArray();
         $payload['aggregates'] = [
@@ -52,11 +59,27 @@ class OpportunityController extends Controller
         $query = Opportunity::query();
         CrmScope::applyOpportunityScope($query, $viewer);
 
-        if ($request->filled('client_id')) {
+        if ($request->boolean('linkable_for_contract')) {
+            $clientId = (int) $request->input('client_id', 0);
+            if ($clientId <= 0) {
+                $query->whereRaw('1 = 0');
+            } else {
+                $query->where('client_id', $clientId);
+                $excludeContractId = (int) $request->input('exclude_contract_id', 0);
+                $query->where(function ($q) use ($excludeContractId) {
+                    $q->whereDoesntHave('contract');
+                    if ($excludeContractId > 0) {
+                        $q->orWhereHas('contract', function ($c) use ($excludeContractId) {
+                            $c->where('contracts.id', $excludeContractId);
+                        });
+                    }
+                });
+            }
+        } elseif ($request->filled('client_id')) {
             $query->where('client_id', (int) $request->input('client_id'));
         }
-        if ($request->filled('status')) {
-            $query->where('status', (string) $request->input('status'));
+        if (! $request->boolean('linkable_for_contract') && $request->filled('computed_status')) {
+            OpportunityComputedStatus::applyIndexFilter($query, (string) $request->input('computed_status'));
         }
         $staffFilterIds = $this->resolveStaffFilterIds($request);
         if (! empty($staffFilterIds)) {
@@ -104,13 +127,11 @@ class OpportunityController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        $statusCodes = OpportunityStatus::query()->pluck('code')->all();
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:255'],
             'opportunity_type' => ['nullable', 'string', 'max:120'],
             'client_id' => ['required', 'integer', 'exists:clients,id'],
             'amount' => ['required', 'numeric', 'min:0'],
-            'status' => ['nullable', 'string', Rule::in($statusCodes)],
             'source' => ['nullable', 'string', 'max:120'],
             'success_probability' => ['required', 'integer', 'min:0', 'max:100'],
             'product_id' => ['nullable', 'integer', 'exists:products,id'],
@@ -120,7 +141,6 @@ class OpportunityController extends Controller
             'expected_close_date' => ['nullable', 'date'],
             'notes' => ['nullable', 'string'],
         ]);
-        $validated['status'] = $validated['status'] ?? $this->defaultStatusCode();
         $validated['created_by'] = $request->user()->id;
         if (empty($validated['assigned_to'])) {
             $validated['assigned_to'] = (int) $request->user()->id;
@@ -133,8 +153,11 @@ class OpportunityController extends Controller
             'assignee:id,name,email,role',
             'creator:id,name,email,role',
             'product:id,name,code',
-            'statusConfig:id,code,name,color_hex,sort_order',
+            'contract:id,code,title',
         ]);
+        $s = $opportunity->computedStatusPayload();
+        $opportunity->setAttribute('computed_status', $s['code']);
+        $opportunity->setAttribute('computed_status_label', $s['label']);
 
         $this->notifyOpportunityCreated($opportunity, $request->user());
 
@@ -232,14 +255,18 @@ class OpportunityController extends Controller
         if (! $this->canAccessOpportunity(request()->user(), $opportunity)) {
             return response()->json(['message' => 'Không có quyền xem cơ hội.'], 403);
         }
-        return response()->json($opportunity->load([
+        $opportunity->load([
             'client:id,name,company,email,phone,notes',
             'assignee:id,name,email,role',
             'creator:id,name,email,role',
             'product:id,name,code',
-            'statusConfig:id,code,name,color_hex,sort_order',
-            'contracts',
-        ]));
+            'contract:id,code,title,client_id,opportunity_id',
+        ]);
+        $s = $opportunity->computedStatusPayload();
+        $opportunity->setAttribute('computed_status', $s['code']);
+        $opportunity->setAttribute('computed_status_label', $s['label']);
+
+        return response()->json($opportunity);
     }
 
     public function update(Request $request, Opportunity $opportunity): JsonResponse
@@ -247,13 +274,11 @@ class OpportunityController extends Controller
         if (! $this->canAccessOpportunity($request->user(), $opportunity)) {
             return response()->json(['message' => 'Không có quyền cập nhật cơ hội.'], 403);
         }
-        $statusCodes = OpportunityStatus::query()->pluck('code')->all();
         $validated = $request->validate([
             'title' => ['sometimes', 'required', 'string', 'max:255'],
             'opportunity_type' => ['nullable', 'string', 'max:120'],
             'client_id' => ['sometimes', 'required', 'integer', 'exists:clients,id'],
             'amount' => ['required', 'numeric', 'min:0'],
-            'status' => ['nullable', 'string', Rule::in($statusCodes)],
             'source' => ['nullable', 'string', 'max:120'],
             'success_probability' => ['required', 'integer', 'min:0', 'max:100'],
             'product_id' => ['nullable', 'integer', 'exists:products,id'],
@@ -267,19 +292,29 @@ class OpportunityController extends Controller
             $validated['watcher_ids'] = $this->normalizeWatcherIds($validated['watcher_ids'] ?? []);
         }
         $opportunity->update($validated);
-        return response()->json($opportunity->load([
+        $opportunity->load([
             'client:id,name,company,email,phone,notes',
             'assignee:id,name,email,role',
             'creator:id,name,email,role',
             'product:id,name,code',
-            'statusConfig:id,code,name,color_hex,sort_order',
-        ]));
+            'contract:id,code,title',
+        ]);
+        $s = $opportunity->computedStatusPayload();
+        $opportunity->setAttribute('computed_status', $s['code']);
+        $opportunity->setAttribute('computed_status_label', $s['label']);
+
+        return response()->json($opportunity);
     }
 
     public function destroy(Opportunity $opportunity): JsonResponse
     {
         if (! $this->canAccessOpportunity(request()->user(), $opportunity)) {
             return response()->json(['message' => 'Không có quyền xóa cơ hội.'], 403);
+        }
+        if ($opportunity->contract()->exists()) {
+            return response()->json([
+                'message' => 'Cơ hội đã có hợp đồng liên kết, không thể xóa.',
+            ], 422);
         }
         $opportunity->delete();
         return response()->json(['message' => 'Đã xóa cơ hội.']);
@@ -314,16 +349,6 @@ class OpportunityController extends Controller
                 ->where('users.id', (int) $user->id)
                 ->exists()
         )) || $watchers->contains((int) $user->id);
-    }
-
-    private function defaultStatusCode(): string
-    {
-        $default = OpportunityStatus::query()
-            ->orderBy('sort_order')
-            ->orderBy('id')
-            ->value('code');
-
-        return $default ?: 'open';
     }
 
     private function canViewerFilterByStaff(User $viewer, int $staffId): bool

@@ -101,7 +101,7 @@ class ClientFlowController extends Controller
             ->with([
                 'assignee:id,name,email',
                 'creator:id,name,email',
-                'statusConfig:id,code,name,color_hex,sort_order',
+                'contract:id,code,title,opportunity_id',
             ])
             ->select([
                 'id',
@@ -109,7 +109,6 @@ class ClientFlowController extends Controller
                 'title',
                 'opportunity_type',
                 'amount',
-                'status',
                 'source',
                 'success_probability',
                 'product_id',
@@ -120,7 +119,12 @@ class ClientFlowController extends Controller
                 'notes',
             ])
             ->orderByDesc('id')
-            ->get();
+            ->get()
+            ->each(function (Opportunity $o) {
+                $s = $o->computedStatusPayload();
+                $o->setAttribute('computed_status', $s['code']);
+                $o->setAttribute('computed_status_label', $s['label']);
+            });
 
         $projects = Project::query()
             ->where('client_id', $client->id)

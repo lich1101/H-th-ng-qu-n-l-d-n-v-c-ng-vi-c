@@ -40,7 +40,14 @@ const doneStatusSet = new Set(['won', 'success', 'thanh_cong', 'hoan_thanh', 'do
 const doneContractStatusSet = new Set(['success', 'active', 'approved', 'hoan_thanh']);
 
 const statusLabel = (value) => STATUS_LABELS[String(value || '').toLowerCase()] || value || '—';
-const opportunityStatusLabel = (row) => row?.status_config?.name || statusLabel(row?.status);
+const opportunityStatusLabel = (row) => row?.computed_status_label || row?.computed_status || '—';
+
+const computedOppHex = (code) => ({
+    undetermined: '#64748B',
+    open: '#0ea5e9',
+    overdue: '#f59e0b',
+    success: '#10b981',
+}[String(code || '')] || '#64748B');
 
 const formatDate = (raw) => formatVietnamDate(raw);
 const formatDateTime = (raw) => formatVietnamDateTime(raw);
@@ -185,7 +192,6 @@ export default function ClientFlow({ auth, clientId }) {
     const [sendingCommentFx, setSendingCommentFx] = useState(false);
     const [submittingCareNote, setSubmittingCareNote] = useState(false);
     const [deletingCommentId, setDeletingCommentId] = useState('');
-    const [opportunityStatuses, setOpportunityStatuses] = useState([]);
     const [opportunityProducts, setOpportunityProducts] = useState([]);
     const [showOpportunityModal, setShowOpportunityModal] = useState(false);
     const [editingOpportunityId, setEditingOpportunityId] = useState(null);
@@ -196,7 +202,6 @@ export default function ClientFlow({ auth, clientId }) {
         opportunity_type: '',
         source: '',
         amount: '',
-        status: '',
         success_probability: '',
         expected_close_date: '',
         product_id: '',
@@ -416,26 +421,22 @@ export default function ClientFlow({ auth, clientId }) {
     const fetchLookups = async () => {
         setLoadingLookups(true);
         try {
-            const [leadRes, deptRes, userRes, statusRes, productRes] = await Promise.all([
+            const [leadRes, deptRes, userRes, productRes] = await Promise.all([
                 axios.get('/api/v1/lead-types').catch(() => ({ data: [] })),
                 axios.get('/api/v1/departments').catch(() => ({ data: [] })),
                 axios.get('/api/v1/users/lookup', { params: { purpose: 'operational_assignee' } }).catch(() => ({ data: { data: [] } })),
-                axios.get('/api/v1/opportunity-statuses').catch(() => ({ data: [] })),
                 axios.get('/api/v1/products', { params: { per_page: 300, page: 1 } }).catch(() => ({ data: { data: [] } })),
             ]);
             const nextLeadTypes = Array.isArray(leadRes.data) ? leadRes.data : [];
             const nextDepartments = Array.isArray(deptRes.data) ? deptRes.data : [];
             const nextUsers = Array.isArray(userRes.data?.data) ? userRes.data.data : [];
-            const nextStatuses = Array.isArray(statusRes.data) ? statusRes.data : [];
             const nextProducts = Array.isArray(productRes.data?.data) ? productRes.data.data : [];
 
             setLeadTypes(nextLeadTypes);
             setDepartments(nextDepartments);
             setStaffUsers(nextUsers);
-            setOpportunityStatuses(nextStatuses);
             setOpportunityProducts(nextProducts);
             return {
-                statuses: nextStatuses,
                 users: nextUsers,
             };
         } finally {
@@ -568,15 +569,10 @@ export default function ClientFlow({ auth, clientId }) {
 
     const openCreateOpportunityModal = async () => {
         if (loadingLookups) return;
-        let nextStatuses = opportunityStatuses;
-        let nextUsers = staffUsers;
-        if (!opportunityStatuses.length || !staffUsers.length) {
-            const loaded = await fetchLookups();
-            if (loaded?.statuses) nextStatuses = loaded.statuses;
-            if (loaded?.users) nextUsers = loaded.users;
+        if (!staffUsers.length) {
+            await fetchLookups();
         }
 
-        const defaultStatusCode = String((nextStatuses[0]?.code || '').trim());
         const currentUserId = Number(auth?.user?.id || 0);
         setEditingOpportunityId(null);
         setOpportunityForm({
@@ -584,7 +580,6 @@ export default function ClientFlow({ auth, clientId }) {
             opportunity_type: '',
             source: '',
             amount: '',
-            status: defaultStatusCode,
             success_probability: '',
             expected_close_date: '',
             product_id: '',
@@ -595,41 +590,35 @@ export default function ClientFlow({ auth, clientId }) {
         setShowOpportunityModal(true);
     };
 
-    const mapRowToOpportunityForm = (row, nextStatuses) => {
-        const statusCode = String((row?.status || nextStatuses[0]?.code || '').trim());
-        return {
-            title: row.title || '',
-            opportunity_type: row.opportunity_type || '',
-            source: row.source || '',
-            amount: row.amount !== null && row.amount !== undefined ? String(row.amount) : '',
-            status: statusCode,
-            success_probability: row.success_probability != null && row.success_probability !== ''
-                ? String(row.success_probability)
-                : '',
-            expected_close_date: toDateInputValue(row.expected_close_date),
-            product_id: (row.product_id ?? row.product?.id) ? String(row.product_id ?? row.product?.id) : '',
-            assigned_to: row.assigned_to ? String(row.assigned_to) : '',
-            watcher_ids: Array.isArray(row.watcher_ids)
-                ? row.watcher_ids.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)
-                : [],
-            notes: row.notes || '',
-        };
-    };
+    const mapRowToOpportunityForm = (row) => ({
+        title: row.title || '',
+        opportunity_type: row.opportunity_type || '',
+        source: row.source || '',
+        amount: row.amount !== null && row.amount !== undefined ? String(row.amount) : '',
+        success_probability: row.success_probability != null && row.success_probability !== ''
+            ? String(row.success_probability)
+            : '',
+        expected_close_date: toDateInputValue(row.expected_close_date),
+        product_id: (row.product_id ?? row.product?.id) ? String(row.product_id ?? row.product?.id) : '',
+        assigned_to: row.assigned_to ? String(row.assigned_to) : '',
+        watcher_ids: Array.isArray(row.watcher_ids)
+            ? row.watcher_ids.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)
+            : [],
+        notes: row.notes || '',
+    });
 
     const openEditOpportunityModal = async (row) => {
         if (!row?.id || loadingLookups) return;
-        let nextStatuses = opportunityStatuses;
-        if (!opportunityStatuses.length || !staffUsers.length) {
-            const loaded = await fetchLookups();
-            if (loaded?.statuses) nextStatuses = loaded.statuses;
+        if (!staffUsers.length) {
+            await fetchLookups();
         }
         setEditingOpportunityId(row.id);
-        setOpportunityForm(mapRowToOpportunityForm(row, nextStatuses));
+        setOpportunityForm(mapRowToOpportunityForm(row));
         setShowOpportunityModal(true);
         try {
             const res = await axios.get(`/api/v1/opportunities/${row.id}`);
             if (res.data?.id) {
-                setOpportunityForm(mapRowToOpportunityForm(res.data, nextStatuses));
+                setOpportunityForm(mapRowToOpportunityForm(res.data));
             }
         } catch {
             // giữ dữ liệu từ tab
@@ -675,7 +664,6 @@ export default function ClientFlow({ auth, clientId }) {
             client_id: Number(flow.client.id),
             source: String(opportunityForm.source || '').trim() || null,
             amount: amountParsed,
-            status: opportunityForm.status || null,
             success_probability: probParsed,
             product_id: opportunityForm.product_id ? Number(opportunityForm.product_id) : null,
             assigned_to: opportunityForm.assigned_to ? Number(opportunityForm.assigned_to) : null,
@@ -746,7 +734,7 @@ export default function ClientFlow({ auth, clientId }) {
     }, [tasks]);
 
     const summary = useMemo(() => {
-        const completedOpportunities = opportunities.filter((row) => doneStatusSet.has(String(row.status || '').toLowerCase())).length;
+        const completedOpportunities = opportunities.filter((row) => String(row.computed_status || '') === 'success').length;
         const completedContracts = contracts.filter((row) => {
             const status = String(row.status || '').toLowerCase();
             const approval = String(row.approval_status || '').toLowerCase();
@@ -955,9 +943,9 @@ export default function ClientFlow({ auth, clientId }) {
                                                 <span
                                                     className="inline-flex rounded-full border px-2 py-1 font-semibold"
                                                     style={{
-                                                        borderColor: row?.status_config?.color_hex || '#CBD5E1',
-                                                        color: row?.status_config?.color_hex || '#475569',
-                                                        backgroundColor: `${row?.status_config?.color_hex || '#CBD5E1'}20`,
+                                                        borderColor: computedOppHex(row?.computed_status),
+                                                        color: computedOppHex(row?.computed_status),
+                                                        backgroundColor: `${computedOppHex(row?.computed_status)}20`,
                                                     }}
                                                 >
                                                     {opportunityStatusLabel(row)}
@@ -1645,19 +1633,6 @@ export default function ClientFlow({ auth, clientId }) {
                             {opportunityProducts.map((product) => (
                                 <option key={product.id} value={product.id}>
                                     {product.name} {product.code ? `• ${product.code}` : ''}
-                                </option>
-                            ))}
-                        </select>
-                    </Field>
-                    <Field label="Trạng thái cơ hội">
-                        <select
-                            className={filterControlClass}
-                            value={opportunityForm.status}
-                            onChange={(event) => setOpportunityForm((prev) => ({ ...prev, status: event.target.value }))}
-                        >
-                            {opportunityStatuses.map((status) => (
-                                <option key={status.id} value={status.code}>
-                                    {status.name}
                                 </option>
                             ))}
                         </select>

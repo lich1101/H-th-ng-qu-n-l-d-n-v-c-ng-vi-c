@@ -46,7 +46,11 @@ class CRMController extends Controller
         $query = Client::query()
             ->with($clientRelations)
             ->withCount(['opportunities', 'contracts']);
-        CrmScope::applyClientScope($query, $request->user());
+        if ($request->boolean('assigned_only')) {
+            CrmScope::applyClientScopeAssignedOnly($query, $request->user());
+        } else {
+            CrmScope::applyClientScope($query, $request->user());
+        }
 
         if ($request->filled('ids')) {
             $rawIds = $request->input('ids');

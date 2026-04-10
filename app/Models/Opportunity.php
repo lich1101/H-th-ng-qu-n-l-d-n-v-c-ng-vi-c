@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\OpportunityComputedStatus;
 use Illuminate\Database\Eloquent\Model;
 
 class Opportunity extends Model
@@ -11,7 +12,6 @@ class Opportunity extends Model
         'opportunity_type',
         'client_id',
         'amount',
-        'status',
         'source',
         'success_probability',
         'product_id',
@@ -44,18 +44,24 @@ class Opportunity extends Model
         return $this->belongsTo(Product::class, 'product_id');
     }
 
-    public function statusConfig()
-    {
-        return $this->belongsTo(OpportunityStatus::class, 'status', 'code');
-    }
-
     public function creator()
     {
         return $this->belongsTo(User::class, 'created_by');
     }
 
-    public function contracts()
+    /**
+     * Quan hệ 1-1: tối đa một hợp đồng gắn cơ hội (contracts.opportunity_id).
+     */
+    public function contract()
     {
-        return $this->hasMany(Contract::class, 'opportunity_id');
+        return $this->hasOne(Contract::class, 'opportunity_id');
+    }
+
+    /**
+     * @return array{code: string, label: string}
+     */
+    public function computedStatusPayload(): array
+    {
+        return OpportunityComputedStatus::compute($this);
     }
 }

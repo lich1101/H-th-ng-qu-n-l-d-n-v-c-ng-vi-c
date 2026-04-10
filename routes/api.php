@@ -22,7 +22,6 @@ use App\Http\Controllers\Api\V1\LeadTypeController;
 use App\Http\Controllers\Api\V1\FacebookPageController;
 use App\Http\Controllers\Api\V1\FirebaseTokenController;
 use App\Http\Controllers\Api\V1\OpportunityController;
-use App\Http\Controllers\Api\V1\OpportunityStatusController;
 use App\Http\Controllers\Api\V1\ProductController;
 use App\Http\Controllers\Api\V1\ProductCategoryController;
 use App\Http\Controllers\Api\V1\PushTestController;
@@ -322,8 +321,14 @@ Route::prefix('v1')->group(function () {
             ->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
         Route::get('/contracts/{contract}', [ContractController::class, 'show'])
             ->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
-        Route::get('/contracts/{contract}/document', [ContractController::class, 'downloadDocument'])
+        Route::get('/contracts/{contract}/files', [ContractController::class, 'contractFiles'])
             ->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
+        Route::post('/contracts/{contract}/files', [ContractController::class, 'storeContractFile'])
+            ->middleware('role:admin,administrator,quan_ly,ke_toan');
+        Route::get('/contracts/{contract}/files/{contractFile}/download', [ContractController::class, 'downloadContractFile'])
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
+        Route::delete('/contracts/{contract}/files/{contractFile}', [ContractController::class, 'destroyContractFile'])
+            ->middleware('role:admin,administrator,quan_ly,ke_toan');
         Route::post('/contracts', [ContractController::class, 'store'])
             ->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
         Route::put('/contracts/{contract}', [ContractController::class, 'update'])
@@ -369,14 +374,6 @@ Route::prefix('v1')->group(function () {
         Route::put('/opportunities/{opportunity}', [OpportunityController::class, 'update'])
             ->middleware('role:admin,quan_ly,nhan_vien');
         Route::delete('/opportunities/{opportunity}', [OpportunityController::class, 'destroy'])
-            ->middleware('role:admin');
-        Route::get('/opportunity-statuses', [OpportunityStatusController::class, 'index'])
-            ->middleware('role:admin,quan_ly,nhan_vien');
-        Route::post('/opportunity-statuses', [OpportunityStatusController::class, 'store'])
-            ->middleware('role:admin');
-        Route::put('/opportunity-statuses/{opportunityStatus}', [OpportunityStatusController::class, 'update'])
-            ->middleware('role:admin');
-        Route::delete('/opportunity-statuses/{opportunityStatus}', [OpportunityStatusController::class, 'destroy'])
             ->middleware('role:admin');
 
         Route::get('/products', [ProductController::class, 'index'])

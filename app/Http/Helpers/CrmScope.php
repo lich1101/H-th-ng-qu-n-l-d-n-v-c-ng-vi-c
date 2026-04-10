@@ -98,6 +98,26 @@ class CrmScope
         });
     }
 
+    /**
+     * Nhân viên chỉ thấy khách theo phụ trách (assigned_staff / sales_owner), không theo nhóm chăm sóc.
+     * Quản lý / admin / kế toán: giữ nguyên logic như applyClientScope.
+     */
+    public static function applyClientScopeAssignedOnly(Builder $query, User $user): Builder
+    {
+        if (self::hasGlobalScope($user)) {
+            return $query;
+        }
+
+        if ($user->role === 'quan_ly') {
+            return self::applyClientScope($query, $user);
+        }
+
+        return $query->where(function (Builder $builder) use ($user) {
+            $builder->where('assigned_staff_id', (int) $user->id)
+                ->orWhere('sales_owner_id', (int) $user->id);
+        });
+    }
+
     public static function applyContractScope(Builder $query, User $user): Builder
     {
         if (self::hasGlobalScope($user)) {

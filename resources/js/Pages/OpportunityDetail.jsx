@@ -29,7 +29,6 @@ const emptyForm = {
     client_id: '',
     source: '',
     amount: '',
-    status: '',
     success_probability: '',
     product_id: '',
     assigned_to: '',
@@ -63,14 +62,13 @@ export default function OpportunityDetail({ auth, opportunityId }) {
     const [showEditModal, setShowEditModal] = useState(false);
 
     const [opportunity, setOpportunity] = useState(null);
-    const [statuses, setStatuses] = useState([]);
     const [users, setUsers] = useState([]);
     const [products, setProducts] = useState([]);
     const [form, setForm] = useState(emptyForm);
 
     const stats = useMemo(() => ([
         { label: 'Khách hàng', value: opportunity?.client?.name || '—' },
-        { label: 'Trạng thái', value: opportunity?.statusConfig?.name || opportunity?.status || '—' },
+        { label: 'Trạng thái', value: opportunity?.computed_status_label || opportunity?.computed_status || '—' },
         { label: 'Phụ trách', value: opportunity?.assignee?.name || opportunity?.creator?.name || '—' },
         { label: 'Doanh số', value: formatCurrency(opportunity?.amount || 0) },
     ]), [opportunity]);
@@ -94,7 +92,6 @@ export default function OpportunityDetail({ auth, opportunityId }) {
             client_id: item.client_id ? String(item.client_id) : '',
             source: item.source || '',
             amount: item.amount !== null && item.amount !== undefined ? String(item.amount) : '',
-            status: item.status || '',
             success_probability: item.success_probability != null && item.success_probability !== ''
                 ? String(item.success_probability)
                 : '',
@@ -123,12 +120,10 @@ export default function OpportunityDetail({ auth, opportunityId }) {
 
     const fetchLookups = async () => {
         try {
-            const [statusRes, userRes, productRes] = await Promise.all([
-                axios.get('/api/v1/opportunity-statuses'),
+            const [userRes, productRes] = await Promise.all([
                 axios.get('/api/v1/users/lookup', { params: { purpose: 'operational_assignee' } }),
                 axios.get('/api/v1/products', { params: { per_page: 300, page: 1 } }),
             ]);
-            setStatuses(statusRes.data || []);
             setUsers(userRes.data?.data || []);
             setProducts(productRes.data?.data || []);
         } catch {
@@ -175,7 +170,6 @@ export default function OpportunityDetail({ auth, opportunityId }) {
                 client_id: Number(form.client_id),
                 source: String(form.source || '').trim() || null,
                 amount: amountParsed,
-                status: form.status || null,
                 success_probability: probParsed,
                 product_id: form.product_id ? Number(form.product_id) : null,
                 assigned_to: form.assigned_to ? Number(form.assigned_to) : null,
@@ -240,8 +234,15 @@ export default function OpportunityDetail({ auth, opportunityId }) {
                             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                                 <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">
                                     <div className="text-xs uppercase tracking-[0.14em] text-text-subtle">Trạng thái</div>
-                                    <span className="mt-2 inline-flex rounded-full border px-2 py-1 text-xs font-semibold" style={toColorStyle(opportunity?.statusConfig?.color_hex || '#64748B')}>
-                                        {opportunity?.statusConfig?.name || opportunity?.status || '—'}
+                                    <span className="mt-2 inline-flex rounded-full border px-2 py-1 text-xs font-semibold" style={toColorStyle(
+                                        {
+                                            undetermined: '#64748B',
+                                            open: '#0ea5e9',
+                                            overdue: '#f59e0b',
+                                            success: '#10b981',
+                                        }[String(opportunity?.computed_status || '')] || '#64748B'
+                                    )}>
+                                        {opportunity?.computed_status_label || opportunity?.computed_status || '—'}
                                     </span>
                                 </div>
                                 <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">
@@ -287,36 +288,18 @@ export default function OpportunityDetail({ auth, opportunityId }) {
                             </div>
 
                             <div className="rounded-2xl border border-slate-200/80 p-4">
-                                <div className="mb-2 text-xs uppercase tracking-[0.14em] text-text-subtle">Hợp đồng liên quan</div>
-                                {(opportunity.contracts || []).length > 0 ? (
-                                    <div className="overflow-x-auto">
-                                        <table className="min-w-full text-sm">
-                                            <thead>
-                                                <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-[0.12em] text-slate-500">
-                                                    <th className="py-2">Mã hợp đồng</th>
-                                                    <th className="py-2">Tên hợp đồng</th>
-                                                    <th className="py-2">Trạng thái</th>
-                                                    <th className="py-2">Giá trị</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {(opportunity.contracts || []).map((contract) => (
-                                                    <tr
-                                                        key={contract.id}
-                                                        className="cursor-pointer border-b border-slate-100 hover:bg-slate-50/70"
-                                                        onClick={() => { window.location.href = route('contracts.detail', contract.id); }}
-                                                    >
-                                                        <td className="py-2.5 text-xs text-slate-700">{contract.code || `HD-${contract.id}`}</td>
-                                                        <td className="py-2.5 text-sm font-semibold text-slate-900">{contract.title || '—'}</td>
-                                                        <td className="py-2.5 text-xs text-slate-700">{contract.status || '—'}</td>
-                                                        <td className="py-2.5 text-xs text-slate-700">{formatCurrency(contract.value || 0)}</td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
+                                <div className="mb-2 text-xs uppercase tracking-[0.14em] text-text-subtle">Hợp đồng liên kết</div>
+                                {opportunity.contract?.id ? (
+                                    <button
+                                        type="button"
+                                        className="text-left text-sm font-semibold text-primary hover:underline"
+                                        onClick={() => { window.location.href = route('contracts.detail', opportunity.contract.id); }}
+                                    >
+                                        {opportunity.contract.code || `HD-${opportunity.contract.id}`}
+                                        {opportunity.contract.title ? ` — ${opportunity.contract.title}` : ''}
+                                    </button>
                                 ) : (
-                                    <div className="text-sm text-text-muted">Chưa có hợp đồng liên quan.</div>
+                                    <div className="text-sm text-text-muted">Chưa có hợp đồng liên kết.</div>
                                 )}
                             </div>
                         </div>
@@ -403,19 +386,6 @@ export default function OpportunityDetail({ auth, opportunityId }) {
                             {products.map((product) => (
                                 <option key={product.id} value={product.id}>
                                     {product.name} {product.code ? `• ${product.code}` : ''}
-                                </option>
-                            ))}
-                        </select>
-                    </Field>
-                    <Field label="Trạng thái cơ hội">
-                        <select
-                            className={filterControlClass}
-                            value={form.status}
-                            onChange={(event) => setForm((prev) => ({ ...prev, status: event.target.value }))}
-                        >
-                            {statuses.map((status) => (
-                                <option key={status.id} value={status.code}>
-                                    {status.name}
                                 </option>
                             ))}
                         </select>

@@ -208,6 +208,7 @@ export default function Contracts(props) {
     const [savingCost, setSavingCost] = useState(false);
     const [editingId, setEditingId] = useState(null);
     const [contractClientPreview, setContractClientPreview] = useState(null);
+    const [linkableOpportunities, setLinkableOpportunities] = useState([]);
     const [showForm, setShowForm] = useState(false);
     const [showDetail, setShowDetail] = useState(false);
     const [detailLoading, setDetailLoading] = useState(false);
@@ -254,6 +255,7 @@ export default function Contracts(props) {
         start_date: todayInputValue(),
         end_date: '',
         notes: '',
+        opportunity_id: '',
     });
     const [items, setItems] = useState([]);
     const [payments, setPayments] = useState([]);
@@ -525,6 +527,36 @@ export default function Contracts(props) {
     }, []);
 
     useEffect(() => {
+        const clientId = Number(form.client_id || 0);
+        if (!clientId || !showForm) {
+            setLinkableOpportunities([]);
+            return undefined;
+        }
+        let cancelled = false;
+        (async () => {
+            try {
+                const params = {
+                    linkable_for_contract: 1,
+                    client_id: clientId,
+                    per_page: 80,
+                    page: 1,
+                };
+                if (editingId) {
+                    params.exclude_contract_id = editingId;
+                }
+                const res = await axios.get('/api/v1/opportunities', { params });
+                if (cancelled) return;
+                setLinkableOpportunities(res.data?.data || []);
+            } catch {
+                if (!cancelled) setLinkableOpportunities([]);
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [form.client_id, showForm, editingId]);
+
+    useEffect(() => {
         const table = contractTableRef.current;
         if (!table) return undefined;
 
@@ -664,6 +696,7 @@ export default function Contracts(props) {
             start_date: todayInputValue(),
             end_date: '',
             notes: '',
+            opportunity_id: '',
         });
         setItems([]);
         setPayments([]);
@@ -712,6 +745,7 @@ export default function Contracts(props) {
                 start_date: toDateInputValue(detail.start_date),
                 end_date: toDateInputValue(detail.end_date),
                 notes: detail.notes || '',
+                opportunity_id: detail.opportunity_id ? String(detail.opportunity_id) : '',
             });
             setItems(
                 (detail.items || []).map((item) => ({
@@ -1189,6 +1223,7 @@ export default function Contracts(props) {
             start_date: form.start_date || null,
             end_date: form.end_date || null,
             notes: form.notes || null,
+            opportunity_id: form.opportunity_id ? Number(form.opportunity_id) : null,
             items: items.map((item) => ({
                 ...(item.id ? { id: Number(item.id) } : {}),
                 product_id: item.product_id ? Number(item.product_id) : null,
@@ -1730,12 +1765,28 @@ export default function Contracts(props) {
                             </LabeledField>
                             <LabeledField label="Khách hàng" required className="md:col-span-2">
                                 <ClientSelect
+                                    assignedOnly
                                     className="bg-white"
                                     value={form.client_id}
-                                    onChange={(id) => setForm((s) => ({ ...s, client_id: id }))}
+                                    onChange={(id) => setForm((s) => ({ ...s, client_id: id, opportunity_id: '' }))}
                                     placeholder="Chọn khách hàng do bạn đang quản lý"
                                     clientPreview={contractClientPreview}
                                 />
+                            </LabeledField>
+                            <LabeledField label="Cơ hội liên kết (tuỳ chọn)" hint="Chỉ hiển thị cơ hội chưa gắn hợp đồng khác (khi sửa, cơ hội hiện tại vẫn có trong danh sách)." className="md:col-span-2">
+                                <select
+                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
+                                    value={form.opportunity_id}
+                                    disabled={!form.client_id}
+                                    onChange={(e) => setForm((s) => ({ ...s, opportunity_id: e.target.value }))}
+                                >
+                                    <option value="">Không chọn cơ hội</option>
+                                    {linkableOpportunities.map((o) => (
+                                        <option key={o.id} value={String(o.id)}>
+                                            {o.title || `Cơ hội #${o.id}`}
+                                        </option>
+                                    ))}
+                                </select>
                             </LabeledField>
                         </div>
                     </div>

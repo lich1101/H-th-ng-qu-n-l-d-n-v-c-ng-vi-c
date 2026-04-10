@@ -30,7 +30,7 @@ class SendOpportunityReminders extends Command
             ->with(['client:id,name,company'])
             ->whereNotNull('expected_close_date')
             ->whereBetween('expected_close_date', [$fromDate, $toDate])
-            ->whereNotIn('status', ['won', 'lost', 'done', 'completed', 'cancelled'])
+            ->whereDoesntHave('contract')
             ->get();
 
         foreach ($opportunities as $opportunity) {

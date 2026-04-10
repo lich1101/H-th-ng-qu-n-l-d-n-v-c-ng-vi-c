@@ -208,10 +208,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ]);
     })->name('opportunities.detail')->middleware('role:admin,quan_ly,nhan_vien');
 
-    Route::get('/trang-thai-co-hoi', function () {
-        return Inertia::render('OpportunityStatuses');
-    })->name('opportunity-statuses.index')->middleware('role:admin');
-
     Route::get('/hop-dong', function () {
         return Inertia::render('Contracts');
     })->name('contracts.index')->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
