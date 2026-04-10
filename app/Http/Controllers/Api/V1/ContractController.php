@@ -26,6 +26,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Str;
@@ -255,7 +256,11 @@ class ContractController extends Controller
             return response()->json(['message' => 'Không có quyền xem hợp đồng.'], 403);
         }
 
-        $contract->loadCount('contractFiles');
+        if (Schema::hasTable('contract_files')) {
+            $contract->loadCount('contractFiles');
+        } else {
+            $contract->setAttribute('contract_files_count', 0);
+        }
         $this->loadContractDetail($contract);
 
         return response()->json(
@@ -267,6 +272,10 @@ class ContractController extends Controller
     {
         if (! $this->canViewContract($request->user(), $contract)) {
             return response()->json(['message' => 'Không có quyền xem hợp đồng.'], 403);
+        }
+
+        if (! Schema::hasTable('contract_files')) {
+            return response()->json(['data' => []]);
         }
 
         $rows = ContractFile::query()
@@ -296,6 +305,12 @@ class ContractController extends Controller
     {
         if (! $this->canManageContract($request->user(), $contract)) {
             return response()->json(['message' => 'Không có quyền tải file lên.'], 403);
+        }
+
+        if (! Schema::hasTable('contract_files')) {
+            return response()->json([
+                'message' => 'Chưa có bảng contract_files. Chạy php artisan migrate trên server.',
+            ], 503);
         }
 
         $request->validate([
