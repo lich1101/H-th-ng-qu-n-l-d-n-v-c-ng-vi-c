@@ -106,16 +106,22 @@ const todayInputValue = () => {
     return now.toISOString().slice(0, 10);
 };
 
-/** Ngày đầu / cuối tháng hiện tại (YYYY-MM-DD) — lọc ngày ký hợp đồng */
+/** Mặc định ngày kết thúc hợp đồng mới (N ngày sau hôm nay). */
+const dateInputAddDays = (days) => {
+    const d = new Date();
+    d.setDate(d.getDate() + Number(days));
+    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+    return d.toISOString().slice(0, 10);
+};
+
+/** Ngày đầu tháng hiện tại — lọc «Ngày ký từ»; «Ngày ký đến» để trống ban đầu. */
 const currentMonthSignedRange = () => {
     const now = new Date();
     const y = now.getFullYear();
     const m = now.getMonth();
     const pad = (n) => String(n).padStart(2, '0');
     const from = `${y}-${pad(m + 1)}-01`;
-    const lastDay = new Date(y, m + 1, 0).getDate();
-    const to = `${y}-${pad(m + 1)}-${pad(lastDay)}`;
-    return { signed_at_from: from, signed_at_to: to };
+    return { signed_at_from: from, signed_at_to: '' };
 };
 const calculateItemTotal = (item) => {
     const price = parseNumberInput(item?.unit_price);
@@ -271,7 +277,7 @@ export default function Contracts(props) {
         status_display: '',
         signed_at: todayInputValue(),
         start_date: todayInputValue(),
-        end_date: '',
+        end_date: dateInputAddDays(30),
         notes: '',
         opportunity_id: '',
     });
@@ -711,7 +717,7 @@ export default function Contracts(props) {
             status_display: '',
             signed_at: todayInputValue(),
             start_date: todayInputValue(),
-            end_date: '',
+            end_date: dateInputAddDays(30),
             notes: '',
             opportunity_id: '',
         });
@@ -1216,6 +1222,9 @@ export default function Contracts(props) {
         if (!form.title?.trim() || !form.client_id) {
             return toast.error('Vui lòng chọn khách hàng và nhập tiêu đề hợp đồng.');
         }
+        if (!form.signed_at?.trim() || !form.start_date?.trim() || !form.end_date?.trim()) {
+            return toast.error('Vui lòng nhập đủ ngày ký, ngày bắt đầu hiệu lực và ngày kết thúc.');
+        }
         const payload = {
             title: form.title,
             client_id: Number(form.client_id),
@@ -1235,9 +1244,9 @@ export default function Contracts(props) {
                 ? parseNumberInput(form.vat_amount)
                 : null,
             payment_times: form.payment_times === '' ? 1 : Number(form.payment_times),
-            signed_at: form.signed_at || null,
-            start_date: form.start_date || null,
-            end_date: form.end_date || null,
+            signed_at: form.signed_at,
+            start_date: form.start_date,
+            end_date: form.end_date,
             notes: form.notes || null,
             opportunity_id: form.opportunity_id ? Number(form.opportunity_id) : null,
             items: items.map((item) => ({
@@ -2105,26 +2114,29 @@ export default function Contracts(props) {
                                         : '— (lưu xong sẽ cập nhật)'}
                                 </div>
                             </LabeledField>
-                            <LabeledField label="Ngày ký">
+                            <LabeledField label="Ngày ký" required>
                                 <input
                                     className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
                                     type="date"
+                                    required
                                     value={form.signed_at}
                                     onChange={(e) => setForm((s) => ({ ...s, signed_at: e.target.value }))}
                                 />
                             </LabeledField>
-                            <LabeledField label="Ngày bắt đầu hiệu lực">
+                            <LabeledField label="Ngày bắt đầu hiệu lực" required>
                                 <input
                                     className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
                                     type="date"
+                                    required
                                     value={form.start_date}
                                     onChange={(e) => setForm((s) => ({ ...s, start_date: e.target.value }))}
                                 />
                             </LabeledField>
-                            <LabeledField label="Ngày kết thúc / gia hạn">
+                            <LabeledField label="Ngày kết thúc / gia hạn" required>
                                 <input
                                     className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
                                     type="date"
+                                    required
                                     value={form.end_date}
                                     onChange={(e) => setForm((s) => ({ ...s, end_date: e.target.value }))}
                                 />

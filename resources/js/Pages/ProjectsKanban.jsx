@@ -978,7 +978,17 @@ export default function ProjectsKanban(props) {
                                                     {p.owner?.name || '—'}
                                                 </td>
                                                 <td className={`py-3 text-xs ${p.contract ? 'text-text-muted' : 'text-warning'}`}>
-                                                    {p.contract?.code || 'Chưa có hợp đồng'}
+                                                    {p.contract?.id && p.contract?.code ? (
+                                                        <a
+                                                            href={`/hop-dong/${p.contract.id}`}
+                                                            className="font-semibold text-primary hover:underline"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                        >
+                                                            {p.contract.code}
+                                                        </a>
+                                                    ) : (
+                                                        'Chưa có hợp đồng'
+                                                    )}
                                                 </td>
                                                 <td className="py-3 text-xs text-text-muted">
                                                     {p.contract?.collector?.name || '—'}
@@ -1102,7 +1112,18 @@ export default function ProjectsKanban(props) {
                                                 <h3 className="mt-3 font-semibold text-slate-900">{p.name}</h3>
                                                 <p className="text-xs text-text-muted mt-1">{p.code} • {p.deadline ? `Hạn chót ${formatVietnamDate(p.deadline)}` : 'Chưa có hạn chót'}</p>
                                                 <p className={`text-xs mt-1 ${p.contract ? 'text-text-muted' : 'text-warning'}`}>
-                                                    Hợp đồng: {p.contract?.code || 'Chưa có hợp đồng'}
+                                                    Hợp đồng:{' '}
+                                                    {p.contract?.id && p.contract?.code ? (
+                                                        <a
+                                                            href={`/hop-dong/${p.contract.id}`}
+                                                            className="font-semibold text-primary hover:underline"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                        >
+                                                            {p.contract.code}
+                                                        </a>
+                                                    ) : (
+                                                        'Chưa có hợp đồng'
+                                                    )}
                                                 </p>
                                                 <div className="mt-2 flex items-center justify-between text-xs text-text-muted">
                                                     <span>Tiến độ: {projectProgress(p)}%</span>
@@ -1167,7 +1188,18 @@ export default function ProjectsKanban(props) {
                                         </div>
                                         <p className="text-xs text-text-muted mt-1">{p.code} • {serviceLabel(p)}</p>
                                         <p className={`text-xs mt-1 ${p.contract ? 'text-text-muted' : 'text-warning'}`}>
-                                            Hợp đồng: {p.contract?.code || 'Chưa có hợp đồng'}
+                                            Hợp đồng:{' '}
+                                            {p.contract?.id && p.contract?.code ? (
+                                                <a
+                                                    href={`/hop-dong/${p.contract.id}`}
+                                                    className="font-semibold text-primary hover:underline"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                >
+                                                    {p.contract.code}
+                                                </a>
+                                            ) : (
+                                                'Chưa có hợp đồng'
+                                            )}
                                         </p>
                                         <div className="mt-2 text-xs text-text-muted">Trạng thái: {LABELS[p.status] || p.status}</div>
                                         <div className="mt-1 text-xs text-text-muted">Tiến độ: {projectProgress(p)}%</div>
@@ -1198,7 +1230,18 @@ export default function ProjectsKanban(props) {
                                         <span>{formatDate(p.deadline) || 'Chưa có hạn chót'}</span>
                                     </div>
                                     <div className={`text-xs mb-2 ${p.contract ? 'text-text-muted' : 'text-warning'}`}>
-                                        Hợp đồng: {p.contract?.code || 'Chưa có hợp đồng'}
+                                        Hợp đồng:{' '}
+                                        {p.contract?.id && p.contract?.code ? (
+                                            <a
+                                                href={`/hop-dong/${p.contract.id}`}
+                                                className="font-semibold text-primary hover:underline"
+                                                onClick={(e) => e.stopPropagation()}
+                                            >
+                                                {p.contract.code}
+                                            </a>
+                                        ) : (
+                                            'Chưa có hợp đồng'
+                                        )}
                                     </div>
                                     <div className="mb-2 text-xs text-text-muted">
                                         Tiến độ: {projectProgress(p)}% • Bàn giao: {handoverLabel(p.handover_status, p)} • {totalDays} ngày
