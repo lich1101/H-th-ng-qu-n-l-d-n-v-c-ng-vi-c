@@ -1594,6 +1594,7 @@ export default function Contracts(props) {
                                     <th className="py-2" data-az-ignore>Dự án liên kết</th>
                                     <th className="py-2" data-sort-key="client_phone">SĐT khách hàng</th>
                                     <th className="py-2" data-sort-key="signed_at">Ngày ký</th>
+                                    <th className="py-2" data-sort-key="start_date">Ngày bắt đầu hiệu lực</th>
                                     <th className="py-2" data-sort-key="end_date">Ngày kết thúc</th>
                                     <th className="py-2" data-sort-key="notes">Ghi chú</th>
                                     <th className="py-2" data-sort-key="collector_name">Nhân viên thu</th>
@@ -1679,6 +1680,7 @@ export default function Contracts(props) {
                                         </td>
                                         <td className="py-2 text-slate-700">{c.client?.phone || '—'}</td>
                                         <td className="py-2 text-slate-700">{formatDateDisplay(c.signed_at)}</td>
+                                        <td className="py-2 text-slate-700">{formatDateDisplay(c.start_date)}</td>
                                         <td className="py-2 text-slate-700">{formatDateDisplay(c.end_date)}</td>
                                         <td className="allow-wrap py-2 text-slate-700">{c.notes || '—'}</td>
                                         <td className="py-2 text-slate-700">{c.collector?.name || '—'}</td>

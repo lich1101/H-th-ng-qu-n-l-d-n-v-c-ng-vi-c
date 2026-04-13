@@ -448,6 +448,10 @@ class ContractController extends Controller
                 $query->orderByRaw('CASE WHEN contracts.signed_at IS NULL THEN 1 ELSE 0 END')
                     ->orderBy('contracts.signed_at', $direction);
                 break;
+            case 'start_date':
+                $query->orderByRaw('CASE WHEN contracts.start_date IS NULL THEN 1 ELSE 0 END')
+                    ->orderBy('contracts.start_date', $direction);
+                break;
             case 'end_date':
                 $query->orderByRaw('CASE WHEN contracts.end_date IS NULL THEN 1 ELSE 0 END')
                     ->orderBy('contracts.end_date', $direction);
