@@ -24,11 +24,16 @@ const paceTone = {
     },
     on_track: {
         label: 'Kịp tiến độ',
-        chip: 'bg-blue-100 text-blue-700 border border-blue-200',
-        bar: 'bg-blue-500',
+        chip: 'bg-amber-100 text-amber-700 border border-amber-200',
+        bar: 'bg-amber-400',
     },
     ahead: {
         label: 'Vượt tiến độ',
+        chip: 'bg-blue-100 text-blue-700 border border-blue-200',
+        bar: 'bg-blue-500',
+    },
+    handover_completed: {
+        label: 'Đã hoàn thành bàn giao',
         chip: 'bg-emerald-100 text-emerald-700 border border-emerald-200',
         bar: 'bg-emerald-500',
     },
@@ -43,6 +48,34 @@ const projectStatusTone = {
 };
 
 const cardClass = 'rounded-[28px] border border-slate-200/80 bg-white p-5 shadow-card';
+
+function formatDateInputValue(date) {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+function getCurrentMonthDateRange() {
+    const now = new Date();
+    const rangeStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const rangeEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    return {
+        start_date_from: formatDateInputValue(rangeStart),
+        start_date_to: formatDateInputValue(rangeEnd),
+    };
+}
+
+function createDefaultFilters() {
+    return {
+        search: '',
+        staff_ids: [],
+        project_statuses: [],
+        pace_statuses: [],
+        ...getCurrentMonthDateRange(),
+    };
+}
 
 function toInt(value, fallback = 0) {
     const parsed = Number(value || 0);
@@ -95,11 +128,26 @@ function normalizeFilters(filters) {
         .filter(Boolean)))
         .sort((a, b) => a.localeCompare(b));
 
+    const normalizeDate = (value) => {
+        const normalized = String(value || '').trim();
+        return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : '';
+    };
+
+    let startDateFrom = normalizeDate(filters?.start_date_from);
+    let startDateTo = normalizeDate(filters?.start_date_to);
+    if (startDateFrom && startDateTo && startDateFrom > startDateTo) {
+        const swap = startDateFrom;
+        startDateFrom = startDateTo;
+        startDateTo = swap;
+    }
+
     return {
         search: String(filters?.search || '').trim(),
         staff_ids: normalizeIds(filters?.staff_ids),
         project_statuses: normalizeStrings(filters?.project_statuses),
         pace_statuses: normalizeStrings(filters?.pace_statuses),
+        start_date_from: startDateFrom,
+        start_date_to: startDateTo,
     };
 }
 
@@ -125,6 +173,7 @@ function SegmentedPaceBar({ summary }) {
     const behind = Math.max(0, Number(rates.behind || 0));
     const onTrack = Math.max(0, Number(rates.on_track || 0));
     const ahead = Math.max(0, Number(rates.ahead || 0));
+    const handoverCompleted = Math.max(0, Number(rates.handover_completed || 0));
     const baseSegments = [
         {
             key: 'behind',
@@ -138,13 +187,20 @@ function SegmentedPaceBar({ summary }) {
             label: 'Kịp tiến độ',
             rate: onTrack,
             count: toInt(paceCounts.on_track),
-            colorClass: 'bg-blue-500',
+            colorClass: 'bg-amber-400',
         },
         {
             key: 'ahead',
             label: 'Vượt tiến độ',
             rate: ahead,
             count: toInt(paceCounts.ahead),
+            colorClass: 'bg-blue-500',
+        },
+        {
+            key: 'handover_completed',
+            label: 'Đã hoàn thành bàn giao',
+            rate: handoverCompleted,
+            count: toInt(paceCounts.handover_completed),
             colorClass: 'bg-emerald-500',
         },
     ];
@@ -160,7 +216,7 @@ function SegmentedPaceBar({ summary }) {
     });
     const activeSegment = segments.find((segment) => segment.key === activeSegmentKey && segment.rate > 0) || null;
 
-    if ((behind + onTrack + ahead) <= 0) {
+    if ((behind + onTrack + ahead + handoverCompleted) <= 0) {
         return <div className="h-2 w-full rounded-full bg-slate-100" />;
     }
 
@@ -251,18 +307,22 @@ function SummaryCard({ title, summary, icon, note, href = '' }) {
                 <div className="mt-2.5">
                     <SegmentedPaceBar summary={summary} />
                 </div>
-                <div className="mt-2 grid grid-cols-3 gap-2 text-[11px] text-text-muted">
+                <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-text-muted xl:grid-cols-4">
                     <span className="inline-flex items-center gap-1">
                         <span className="h-2 w-2 rounded-full bg-rose-500" />
                         Chậm: {toInt(paceCounts.behind).toLocaleString('vi-VN')}
                     </span>
                     <span className="inline-flex items-center gap-1">
-                        <span className="h-2 w-2 rounded-full bg-blue-500" />
+                        <span className="h-2 w-2 rounded-full bg-amber-400" />
                         Kịp: {toInt(paceCounts.on_track).toLocaleString('vi-VN')}
                     </span>
                     <span className="inline-flex items-center gap-1">
-                        <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                        <span className="h-2 w-2 rounded-full bg-blue-500" />
                         Vượt: {toInt(paceCounts.ahead).toLocaleString('vi-VN')}
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                        <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                        Bàn giao: {toInt(paceCounts.handover_completed).toLocaleString('vi-VN')}
                     </span>
                 </div>
             </div>
@@ -380,18 +440,8 @@ export default function ProjectDashboard(props) {
     const [staffRows, setStaffRows] = useState([]);
     const [projectSpotlight, setProjectSpotlight] = useState([]);
 
-    const [draftFilters, setDraftFilters] = useState({
-        search: '',
-        staff_ids: [],
-        project_statuses: [],
-        pace_statuses: [],
-    });
-    const [appliedFilters, setAppliedFilters] = useState({
-        search: '',
-        staff_ids: [],
-        project_statuses: [],
-        pace_statuses: [],
-    });
+    const [draftFilters, setDraftFilters] = useState(() => createDefaultFilters());
+    const [appliedFilters, setAppliedFilters] = useState(() => createDefaultFilters());
 
     const loadDashboard = async (nextFilters) => {
         const normalized = normalizeFilters(nextFilters);
@@ -417,8 +467,9 @@ export default function ProjectDashboard(props) {
             });
             setStaffRows(Array.isArray(data?.staff_rows) ? data.staff_rows : []);
             setProjectSpotlight(Array.isArray(data?.project_spotlight) ? data.project_spotlight : []);
-            setAppliedFilters(normalized);
-            setDraftFilters(normalized);
+            const serverApplied = normalizeFilters(data?.filters?.applied || normalized);
+            setAppliedFilters(serverApplied);
+            setDraftFilters(serverApplied);
         } catch (error) {
             console.error(error);
             toast.error(error?.response?.data?.message || 'Không tải được dashboard quản lý dự án.');
@@ -447,17 +498,17 @@ export default function ProjectDashboard(props) {
 
         return [
             {
-                label: 'Dự án đang theo dõi',
+                label: 'Dự án trong bộ lọc',
                 value: `${toInt(projects.total).toLocaleString('vi-VN')}`,
                 note: `Hoàn thành ${toPercent(projects.completion_rate)}`,
             },
             {
-                label: 'Công việc đang theo dõi',
+                label: 'Công việc trong bộ lọc',
                 value: `${toInt(tasks.total).toLocaleString('vi-VN')}`,
                 note: `Hoàn thành ${toPercent(tasks.completion_rate)}`,
             },
             {
-                label: 'Đầu việc đang theo dõi',
+                label: 'Đầu việc trong bộ lọc',
                 value: `${toInt(items.total).toLocaleString('vi-VN')}`,
                 note: `Hoàn thành ${toPercent(items.completion_rate)}`,
             },
@@ -495,6 +546,11 @@ export default function ProjectDashboard(props) {
         if ((appliedFilters.pace_statuses || []).length > 0) {
             parts.push(`${appliedFilters.pace_statuses.length} trạng thái tiến độ`);
         }
+        if (appliedFilters.start_date_from || appliedFilters.start_date_to) {
+            const fromText = appliedFilters.start_date_from ? formatVietnamDate(appliedFilters.start_date_from) : 'không giới hạn';
+            const toText = appliedFilters.start_date_to ? formatVietnamDate(appliedFilters.start_date_to) : 'không giới hạn';
+            parts.push(`Ngày bắt đầu từ ${fromText} đến ${toText}`);
+        }
         if (appliedFilters.search) {
             parts.push(`Từ khóa "${appliedFilters.search}"`);
         }
@@ -520,11 +576,11 @@ export default function ProjectDashboard(props) {
             value: toInt(completedArchive.projects).toLocaleString('vi-VN'),
         },
         {
-            label: 'Công việc đã hoàn thành',
+            label: 'Công việc thuộc dự án bàn giao',
             value: toInt(completedArchive.tasks).toLocaleString('vi-VN'),
         },
         {
-            label: 'Đầu việc đã hoàn thành',
+            label: 'Đầu việc thuộc dự án bàn giao',
             value: toInt(completedArchive.task_items).toLocaleString('vi-VN'),
         },
     ]), [completedArchive]);
@@ -536,7 +592,7 @@ export default function ProjectDashboard(props) {
         <PageContainer
             auth={props.auth}
             title="Dashboard quản lý dự án"
-            description="Theo dõi ngay tình trạng dự án, công việc và đầu việc theo từng nhân sự phụ trách. Hệ thống tự so sánh tiến độ thực tế với tiến độ kỳ vọng theo ngày để phân loại chậm, kịp hoặc vượt tiến độ."
+            description="Theo dõi ngay tình trạng dự án, công việc và đầu việc theo từng nhân sự phụ trách. Hệ thống tự so sánh tiến độ thực tế với tiến độ kỳ vọng theo ngày và phân loại 4 nhóm: chậm, kịp, vượt, đã hoàn thành bàn giao."
             stats={summaryStats}
         >
             <div className="mb-4 rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm text-slate-600 shadow-card">
@@ -546,7 +602,7 @@ export default function ProjectDashboard(props) {
             <FilterToolbar
                 enableSearch={false}
                 title="Bộ lọc dashboard dự án"
-                description="Lọc theo nhân sự phụ trách, trạng thái dự án và tình trạng so với tiến độ kỳ vọng. Nhấn Lọc để áp dụng."
+                description="Lọc theo nhân sự phụ trách, trạng thái dự án, tình trạng so với tiến độ kỳ vọng và khoảng ngày bắt đầu. Khi vào trang sẽ mặc định theo tháng hiện tại."
                 onSubmitFilters={() => loadDashboard(draftFilters)}
             >
                 <div className={FILTER_GRID_RESPONSIVE}>
@@ -568,6 +624,24 @@ export default function ProjectDashboard(props) {
                             value={draftFilters.search}
                             placeholder="Tên dự án, mã dự án, tên/email phụ trách..."
                             onChange={(event) => setDraftFilters((prev) => ({ ...prev, search: event.target.value }))}
+                        />
+                    </FilterField>
+
+                    <FilterField label="Ngày bắt đầu từ">
+                        <input
+                            type="date"
+                            className={filterControlClass}
+                            value={draftFilters.start_date_from || ''}
+                            onChange={(event) => setDraftFilters((prev) => ({ ...prev, start_date_from: event.target.value }))}
+                        />
+                    </FilterField>
+
+                    <FilterField label="Ngày bắt đầu đến">
+                        <input
+                            type="date"
+                            className={filterControlClass}
+                            value={draftFilters.start_date_to || ''}
+                            onChange={(event) => setDraftFilters((prev) => ({ ...prev, start_date_to: event.target.value }))}
                         />
                     </FilterField>
                 </div>
@@ -598,12 +672,7 @@ export default function ProjectDashboard(props) {
                         type="button"
                         className={FILTER_SUBMIT_BUTTON_CLASS}
                         onClick={() => {
-                            const cleared = {
-                                search: '',
-                                staff_ids: [],
-                                project_statuses: [],
-                                pace_statuses: [],
-                            };
+                            const cleared = createDefaultFilters();
                             setDraftFilters(cleared);
                             loadDashboard(cleared);
                         }}
@@ -618,7 +687,7 @@ export default function ProjectDashboard(props) {
                     <div>
                         <h3 className="text-lg font-semibold text-slate-900">Khối đã hoàn thành bàn giao</h3>
                         <p className="mt-1 text-sm text-text-muted">
-                            Các dự án đã bàn giao thành công đã được loại khỏi thống kê tiến độ bên dưới, chỉ giữ lại số lượng hoàn thành.
+                            Nhóm này đã được tính trực tiếp vào biểu đồ tiến độ với màu xanh lá để bạn nhìn toàn cảnh ngay trên dashboard.
                         </p>
                     </div>
                 </div>
@@ -661,7 +730,7 @@ export default function ProjectDashboard(props) {
                     <div>
                         <h3 className="text-lg font-semibold text-slate-900">Thống kê theo nhân sự phụ trách</h3>
                         <p className="mt-1 text-sm text-text-muted">
-                            Vào màn là thấy ngay nhân sự nào đang chậm, kịp hay vượt tiến độ ở cả dự án, công việc và đầu việc.
+                            Vào màn là thấy ngay nhân sự nào đang chậm, kịp, vượt tiến độ hoặc đã hoàn thành bàn giao ở cả dự án, công việc và đầu việc.
                         </p>
                     </div>
                     <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">

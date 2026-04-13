@@ -28,6 +28,7 @@ class ProjectDashboardController extends Controller
         'behind' => 'Chậm tiến độ',
         'on_track' => 'Kịp tiến độ',
         'ahead' => 'Vượt tiến độ',
+        'handover_completed' => 'Đã hoàn thành bàn giao',
     ];
 
     public function overview(Request $request): JsonResponse
@@ -47,6 +48,10 @@ class ProjectDashboardController extends Controller
             array_keys(self::PACE_LABELS)
         );
         $search = trim((string) $request->input('search', ''));
+        [$startDateFrom, $startDateTo] = $this->parseDateRange(
+            $request->input('start_date_from'),
+            $request->input('start_date_to')
+        );
 
         $projectScopeQuery = Project::query()
             ->with([
@@ -69,6 +74,7 @@ class ProjectDashboardController extends Controller
                     });
             });
         }
+        $this->applyDateRangeFilter($projectScopeQuery, 'start_date', $startDateFrom, $startDateTo);
 
         /** @var Collection<int, Project> $projectsInScope */
         $projectsInScope = $projectScopeQuery->orderByDesc('id')->get([
@@ -84,40 +90,40 @@ class ProjectDashboardController extends Controller
             'created_at',
         ]);
 
-        $completedHandoverProjects = $projectsInScope
+        $completedProjectLookup = $projectsInScope
             ->filter(function (Project $project) {
                 return $this->isHandoverCompletedProject($project);
             })
-            ->values();
-
-        $activeProjectsInScope = $projectsInScope
-            ->reject(function (Project $project) {
-                return $this->isHandoverCompletedProject($project);
+            ->pluck('id')
+            ->map(function ($id) {
+                return (int) $id;
             })
-            ->values();
-
-        $completedProjectCount = $completedHandoverProjects
-            ->when(! empty($staffIds), function (Collection $items) use ($staffIds) {
-                return $items->filter(function (Project $project) use ($staffIds) {
-                    return $project->owner_id && in_array((int) $project->owner_id, $staffIds, true);
-                });
+            ->filter(function (int $id) {
+                return $id > 0;
             })
-            ->count();
+            ->flip()
+            ->all();
 
-        $projectRows = $activeProjectsInScope
+        $projectRows = $projectsInScope
             ->when(! empty($staffIds), function (Collection $items) use ($staffIds) {
                 return $items->filter(function (Project $project) use ($staffIds) {
                     return $project->owner_id && in_array((int) $project->owner_id, $staffIds, true);
                 });
             })
             ->map(function (Project $project) {
-                $isCompleted = $this->isCompleted((string) ($project->status ?? ''), (int) ($project->progress_percent ?? 0));
-                $pace = $this->buildPaceSummary(
-                    $project->start_date,
-                    $project->deadline,
-                    $isCompleted ? 100 : (int) ($project->progress_percent ?? 0),
-                    $project->created_at
-                );
+                $isHandoverCompleted = $this->isHandoverCompletedProject($project);
+                $isCompleted = $isHandoverCompleted
+                    ? true
+                    : $this->isCompleted((string) ($project->status ?? ''), (int) ($project->progress_percent ?? 0));
+                $progressPercent = $isCompleted ? 100 : (int) ($project->progress_percent ?? 0);
+                $pace = $isHandoverCompleted
+                    ? $this->buildHandoverCompletedPace()
+                    : $this->buildPaceSummary(
+                        $project->start_date,
+                        $project->deadline,
+                        $progressPercent,
+                        $project->created_at
+                    );
 
                 return [
                     'id' => (int) $project->id,
@@ -130,9 +136,10 @@ class ProjectDashboardController extends Controller
                     'owner_email' => optional($project->owner)->email ?: '',
                     'start_date' => $project->start_date ? $project->start_date->toDateString() : null,
                     'deadline' => $project->deadline ? $project->deadline->toDateString() : null,
-                    'progress_percent' => $isCompleted ? 100 : (int) ($project->progress_percent ?? 0),
+                    'progress_percent' => $progressPercent,
                     'pace' => $pace,
                     'is_completed' => $isCompleted,
+                    'is_handover_completed' => $isHandoverCompleted,
                 ];
             })
             ->values();
@@ -143,18 +150,7 @@ class ProjectDashboardController extends Controller
             })->values();
         }
 
-        $activeProjectIdsInScope = $activeProjectsInScope
-            ->pluck('id')
-            ->map(function ($id) {
-                return (int) $id;
-            })
-            ->filter(function (int $id) {
-                return $id > 0;
-            })
-            ->values()
-            ->all();
-
-        $completedProjectIdsInScope = $completedHandoverProjects
+        $projectIdsInScope = $projectsInScope
             ->pluck('id')
             ->map(function ($id) {
                 return (int) $id;
@@ -166,19 +162,20 @@ class ProjectDashboardController extends Controller
             ->all();
 
         $taskRows = collect();
-        if (! empty($activeProjectIdsInScope)) {
+        if (! empty($projectIdsInScope)) {
             $taskQuery = Task::query()
                 ->with([
                     'assignee:id,name,email,role,department_id,avatar_url',
                     'assignee.departmentRelation:id,name',
                 ])
-                ->whereIn('project_id', $activeProjectIdsInScope);
+                ->whereIn('project_id', $projectIdsInScope);
 
             if (! empty($staffIds)) {
                 $taskQuery->whereIn('assignee_id', $staffIds);
             }
 
             $this->applyTaskSearchFilter($taskQuery, $search);
+            $this->applyDateRangeFilter($taskQuery, 'start_at', $startDateFrom, $startDateTo);
 
             /** @var Collection<int, Task> $tasks */
             $tasks = $taskQuery->orderByDesc('id')->get([
@@ -193,14 +190,20 @@ class ProjectDashboardController extends Controller
                 'created_at',
             ]);
 
-            $taskRows = $tasks->map(function (Task $task) {
-                $isCompleted = $this->isCompleted((string) ($task->status ?? ''), (int) ($task->progress_percent ?? 0));
-                $pace = $this->buildPaceSummary(
-                    $task->start_at,
-                    $task->deadline,
-                    $isCompleted ? 100 : (int) ($task->progress_percent ?? 0),
-                    $task->created_at
-                );
+            $taskRows = $tasks->map(function (Task $task) use ($completedProjectLookup) {
+                $isHandoverCompleted = isset($completedProjectLookup[(int) $task->project_id]);
+                $isCompleted = $isHandoverCompleted
+                    ? true
+                    : $this->isCompleted((string) ($task->status ?? ''), (int) ($task->progress_percent ?? 0));
+                $progressPercent = $isCompleted ? 100 : (int) ($task->progress_percent ?? 0);
+                $pace = $isHandoverCompleted
+                    ? $this->buildHandoverCompletedPace()
+                    : $this->buildPaceSummary(
+                        $task->start_at,
+                        $task->deadline,
+                        $progressPercent,
+                        $task->created_at
+                    );
 
                 return [
                     'id' => (int) $task->id,
@@ -212,9 +215,10 @@ class ProjectDashboardController extends Controller
                     'assignee_email' => optional($task->assignee)->email ?: '',
                     'start_at' => $task->start_at ? $task->start_at->toDateString() : null,
                     'deadline' => $task->deadline ? $task->deadline->toDateString() : null,
-                    'progress_percent' => $isCompleted ? 100 : (int) ($task->progress_percent ?? 0),
+                    'progress_percent' => $progressPercent,
                     'pace' => $pace,
                     'is_completed' => $isCompleted,
+                    'is_handover_completed' => $isHandoverCompleted,
                 ];
             })->values();
 
@@ -225,33 +229,16 @@ class ProjectDashboardController extends Controller
             }
         }
 
-        $completedTaskCount = 0;
-        if (! empty($completedProjectIdsInScope)) {
-            $completedTaskQuery = Task::query()
-                ->whereIn('project_id', $completedProjectIdsInScope);
-
-            if (! empty($staffIds)) {
-                $completedTaskQuery->whereIn('assignee_id', $staffIds);
-            }
-
-            $this->applyTaskSearchFilter($completedTaskQuery, $search);
-
-            $completedTaskCount = $completedTaskQuery
-                ->get(['status', 'progress_percent'])
-                ->reduce(function (int $carry, Task $task) {
-                    return $carry + ($this->isCompleted((string) ($task->status ?? ''), (int) ($task->progress_percent ?? 0)) ? 1 : 0);
-                }, 0);
-        }
-
         $taskItemRows = collect();
-        if (! empty($activeProjectIdsInScope)) {
+        if (! empty($projectIdsInScope)) {
             $taskItemQuery = TaskItem::query()
                 ->with([
                     'assignee:id,name,email,role,department_id,avatar_url',
                     'assignee.departmentRelation:id,name',
+                    'task:id,project_id',
                 ])
-                ->whereHas('task', function ($taskQuery) use ($activeProjectIdsInScope) {
-                    $taskQuery->whereIn('project_id', $activeProjectIdsInScope);
+                ->whereHas('task', function ($taskQuery) use ($projectIdsInScope) {
+                    $taskQuery->whereIn('project_id', $projectIdsInScope);
                 });
 
             if (! empty($staffIds)) {
@@ -259,6 +246,7 @@ class ProjectDashboardController extends Controller
             }
 
             $this->applyTaskItemSearchFilter($taskItemQuery, $search);
+            $this->applyDateRangeFilter($taskItemQuery, 'start_date', $startDateFrom, $startDateTo);
 
             /** @var Collection<int, TaskItem> $taskItems */
             $taskItems = $taskItemQuery->orderByDesc('id')->get([
@@ -273,14 +261,21 @@ class ProjectDashboardController extends Controller
                 'created_at',
             ]);
 
-            $taskItemRows = $taskItems->map(function (TaskItem $item) {
-                $isCompleted = $this->isCompleted((string) ($item->status ?? ''), (int) ($item->progress_percent ?? 0));
-                $pace = $this->buildPaceSummary(
-                    $item->start_date,
-                    $item->deadline,
-                    $isCompleted ? 100 : (int) ($item->progress_percent ?? 0),
-                    $item->created_at
-                );
+            $taskItemRows = $taskItems->map(function (TaskItem $item) use ($completedProjectLookup) {
+                $projectId = (int) optional($item->task)->project_id;
+                $isHandoverCompleted = $projectId > 0 && isset($completedProjectLookup[$projectId]);
+                $isCompleted = $isHandoverCompleted
+                    ? true
+                    : $this->isCompleted((string) ($item->status ?? ''), (int) ($item->progress_percent ?? 0));
+                $progressPercent = $isCompleted ? 100 : (int) ($item->progress_percent ?? 0);
+                $pace = $isHandoverCompleted
+                    ? $this->buildHandoverCompletedPace()
+                    : $this->buildPaceSummary(
+                        $item->start_date,
+                        $item->deadline,
+                        $progressPercent,
+                        $item->created_at
+                    );
 
                 return [
                     'id' => (int) $item->id,
@@ -292,9 +287,10 @@ class ProjectDashboardController extends Controller
                     'assignee_email' => optional($item->assignee)->email ?: '',
                     'start_date' => $item->start_date ? $item->start_date->toDateString() : null,
                     'deadline' => $item->deadline ? $item->deadline->toDateString() : null,
-                    'progress_percent' => $isCompleted ? 100 : (int) ($item->progress_percent ?? 0),
+                    'progress_percent' => $progressPercent,
                     'pace' => $pace,
                     'is_completed' => $isCompleted,
+                    'is_handover_completed' => $isHandoverCompleted,
                 ];
             })->values();
 
@@ -303,26 +299,6 @@ class ProjectDashboardController extends Controller
                     return in_array((string) ($row['pace']['status'] ?? ''), $paceStatuses, true);
                 })->values();
             }
-        }
-
-        $completedTaskItemCount = 0;
-        if (! empty($completedProjectIdsInScope)) {
-            $completedTaskItemQuery = TaskItem::query()
-                ->whereHas('task', function ($taskQuery) use ($completedProjectIdsInScope) {
-                    $taskQuery->whereIn('project_id', $completedProjectIdsInScope);
-                });
-
-            if (! empty($staffIds)) {
-                $completedTaskItemQuery->whereIn('assignee_id', $staffIds);
-            }
-
-            $this->applyTaskItemSearchFilter($completedTaskItemQuery, $search);
-
-            $completedTaskItemCount = $completedTaskItemQuery
-                ->get(['status', 'progress_percent'])
-                ->reduce(function (int $carry, TaskItem $item) {
-                    return $carry + ($this->isCompleted((string) ($item->status ?? ''), (int) ($item->progress_percent ?? 0)) ? 1 : 0);
-                }, 0);
         }
 
         $allStaffIds = collect()
@@ -355,8 +331,16 @@ class ProjectDashboardController extends Controller
             'tasks' => $this->summarizeRows($taskRows),
             'task_items' => $this->summarizeRows($taskItemRows),
         ];
+        $completedArchive = [
+            'projects' => (int) (($overview['projects']['pace_counts']['handover_completed'] ?? 0)),
+            'tasks' => (int) (($overview['tasks']['pace_counts']['handover_completed'] ?? 0)),
+            'task_items' => (int) (($overview['task_items']['pace_counts']['handover_completed'] ?? 0)),
+        ];
 
         $projectSpotlight = $projectRows
+            ->filter(function (array $row) {
+                return (string) ($row['pace']['status'] ?? '') !== 'handover_completed';
+            })
             ->sortBy([
                 ['pace.sort_order', 'asc'],
                 ['pace.lag_percent', 'desc'],
@@ -373,6 +357,8 @@ class ProjectDashboardController extends Controller
                     'project_statuses' => $projectStatuses,
                     'pace_statuses' => $paceStatuses,
                     'search' => $search,
+                    'start_date_from' => $startDateFrom ? $startDateFrom->toDateString() : null,
+                    'start_date_to' => $startDateTo ? $startDateTo->toDateString() : null,
                 ],
                 'project_status_options' => collect(self::PROJECT_STATUS_LABELS)
                     ->map(function ($label, $value) {
@@ -389,11 +375,7 @@ class ProjectDashboardController extends Controller
                 'staff_options' => $this->buildStaffOptions(),
             ],
             'overview' => $overview,
-            'completed_archive' => [
-                'projects' => (int) $completedProjectCount,
-                'tasks' => (int) $completedTaskCount,
-                'task_items' => (int) $completedTaskItemCount,
-            ],
+            'completed_archive' => $completedArchive,
             'staff_rows' => $staffRows,
             'project_spotlight' => $projectSpotlight,
             'generated_at' => now('Asia/Ho_Chi_Minh')->toIso8601String(),
@@ -495,6 +477,7 @@ class ProjectDashboardController extends Controller
                 'behind' => 0,
                 'on_track' => 0,
                 'ahead' => 0,
+                'handover_completed' => 0,
             ],
             'actual_progress_sum' => 0.0,
             'expected_progress_sum' => 0.0,
@@ -532,6 +515,7 @@ class ProjectDashboardController extends Controller
         $behind = (int) ($paceCounts['behind'] ?? 0);
         $onTrack = (int) ($paceCounts['on_track'] ?? 0);
         $ahead = (int) ($paceCounts['ahead'] ?? 0);
+        $handoverCompleted = (int) ($paceCounts['handover_completed'] ?? 0);
 
         return [
             'total' => $total,
@@ -541,11 +525,13 @@ class ProjectDashboardController extends Controller
                 'behind' => $behind,
                 'on_track' => $onTrack,
                 'ahead' => $ahead,
+                'handover_completed' => $handoverCompleted,
             ],
             'pace_rates' => [
                 'behind' => $total > 0 ? round(($behind / $total) * 100, 1) : 0,
                 'on_track' => $total > 0 ? round(($onTrack / $total) * 100, 1) : 0,
                 'ahead' => $total > 0 ? round(($ahead / $total) * 100, 1) : 0,
+                'handover_completed' => $total > 0 ? round(($handoverCompleted / $total) * 100, 1) : 0,
             ],
             'avg_actual_progress' => $total > 0 ? round($actualSum / $total, 1) : 0,
             'avg_expected_progress' => $total > 0 ? round($expectedSum / $total, 1) : 0,
@@ -557,6 +543,43 @@ class ProjectDashboardController extends Controller
     {
         $handoverStatus = mb_strtolower(trim((string) ($project->handover_status ?? '')));
         return $handoverStatus === 'approved';
+    }
+
+    private function buildHandoverCompletedPace(): array
+    {
+        return [
+            'status' => 'handover_completed',
+            'label' => self::PACE_LABELS['handover_completed'],
+            'actual_progress' => 100.0,
+            'expected_progress' => 100.0,
+            'lag_percent' => 0.0,
+            'ahead_percent' => 0.0,
+            'delta_percent' => 0.0,
+            'is_late' => false,
+            'sort_order' => 3,
+        ];
+    }
+
+    private function parseDateRange($fromInput, $toInput): array
+    {
+        $from = $this->parseDateToDay($fromInput);
+        $to = $this->parseDateToDay($toInput);
+
+        if ($from && $to && $from->greaterThan($to)) {
+            return [$to, $from];
+        }
+
+        return [$from, $to];
+    }
+
+    private function applyDateRangeFilter($query, string $column, ?Carbon $from, ?Carbon $to): void
+    {
+        if ($from) {
+            $query->whereDate($column, '>=', $from->toDateString());
+        }
+        if ($to) {
+            $query->whereDate($column, '<=', $to->toDateString());
+        }
     }
 
     private function applyTaskSearchFilter($query, string $search): void
