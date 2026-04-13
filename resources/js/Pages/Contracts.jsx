@@ -16,7 +16,7 @@ import PaginationControls from '@/Components/PaginationControls';
 import FilterStatusHelpIcon from '@/Components/FilterStatusHelpIcon';
 import ClientSelect from '@/Components/ClientSelect';
 import TagMultiSelect from '@/Components/TagMultiSelect';
-import { fetchStaffFilterOptions, usersToStaffTagOptions } from '@/lib/staffFilterOptions';
+import { usersToStaffTagOptions } from '@/lib/staffFilterOptions';
 import { useToast } from '@/Contexts/ToastContext';
 import { formatVietnamDate, toDateInputValue } from '@/lib/vietnamTime';
 
@@ -212,7 +212,6 @@ export default function Contracts(props) {
     const [projects, setProjects] = useState([]);
     const [products, setProducts] = useState([]);
     const [collectors, setCollectors] = useState([]);
-    const [contractStaffFilterUsers, setContractStaffFilterUsers] = useState([]);
     const [loading, setLoading] = useState(false);
     const [savingContract, setSavingContract] = useState(false);
     const [savingPayment, setSavingPayment] = useState(false);
@@ -226,7 +225,14 @@ export default function Contracts(props) {
     const [detailContract, setDetailContract] = useState(null);
     const [careNoteForm, setCareNoteForm] = useState({ title: '', detail: '' });
     const [savingCareNote, setSavingCareNote] = useState(false);
-    const [contractMeta, setContractMeta] = useState({ current_page: 1, last_page: 1, total: 0 });
+    const [contractMeta, setContractMeta] = useState({
+        current_page: 1,
+        last_page: 1,
+        total: 0,
+        per_page: 20,
+        from: null,
+        to: null,
+    });
     const [listAggregates, setListAggregates] = useState({
         revenue_total: 0,
         cashflow_total: 0,
@@ -242,6 +248,7 @@ export default function Contracts(props) {
         has_project: '',
         project_status: '',
         staff_ids: [],
+        include_unsigned_signed_at: false,
         per_page: 20,
         page: 1,
         sort_by: 'signed_at',
@@ -339,44 +346,44 @@ export default function Contracts(props) {
     };
 
     const canManageContract = (contract) => {
-        if (!canManage) return false;
-
         const apiPermission = readBoolean(contract?.can_manage);
         if (apiPermission !== null) {
             return apiPermission;
         }
 
-        if (userRole !== 'nhan_vien') {
+        if (['admin', 'administrator', 'quan_ly', 'ke_toan'].includes(userRole)) {
             return true;
+        }
+
+        if (userRole !== 'nhan_vien') {
+            return false;
         }
 
         const uid = Number(currentUserId || 0);
         if (!uid) return false;
 
         const client = contract?.client || {};
-        return Number(contract?.created_by || 0) === uid
-            || Number(contract?.collector_user_id || 0) === uid
-            || Number(client?.assigned_staff_id || 0) === uid
-            || Number(client?.sales_owner_id || 0) === uid;
+        return Number(client?.assigned_staff_id || 0) === uid;
     };
 
     const canDeleteContract = (contract) => {
-        if (!canDelete) return false;
-
         const apiPermission = readBoolean(contract?.can_delete);
         if (apiPermission !== null) {
             return apiPermission;
         }
 
-        return canManageContract(contract);
+        if (['admin', 'administrator', 'quan_ly', 'ke_toan'].includes(userRole)) {
+            return canManageContract(contract);
+        }
+
+        if (userRole === 'nhan_vien') {
+            return canManageContract(contract);
+        }
+
+        return false;
     };
 
-    const collectorFilterOptions = useMemo(() => {
-        if (contractStaffFilterUsers.length > 0) {
-            return usersToStaffTagOptions(contractStaffFilterUsers);
-        }
-        return usersToStaffTagOptions(collectors);
-    }, [contractStaffFilterUsers, collectors]);
+    const collectorFilterOptions = useMemo(() => usersToStaffTagOptions(collectors), [collectors]);
 
     const normalizeCareStaffIds = (values) => {
         return Array.from(new Set((values || [])
@@ -462,15 +469,6 @@ export default function Contracts(props) {
         }
     };
 
-    const fetchContractStaffFilterOptions = async () => {
-        try {
-            const rows = await fetchStaffFilterOptions('contracts');
-            setContractStaffFilterUsers(rows);
-        } catch {
-            setContractStaffFilterUsers([]);
-        }
-    };
-
     const handleContractSearch = (val) => {
         const next = { ...filters, search: val, page: 1 };
         setFilters(next);
@@ -500,6 +498,7 @@ export default function Contracts(props) {
                     ...(Array.isArray(nextFilters.staff_ids) && nextFilters.staff_ids.length > 0 ? { staff_ids: nextFilters.staff_ids } : {}),
                     ...(nextFilters.signed_at_from ? { signed_at_from: nextFilters.signed_at_from } : {}),
                     ...(nextFilters.signed_at_to ? { signed_at_to: nextFilters.signed_at_to } : {}),
+                    ...(nextFilters.include_unsigned_signed_at ? { include_unsigned_signed_at: 1 } : {}),
                     sort_by: nextFilters.sort_by || 'signed_at',
                     sort_dir: nextFilters.sort_dir || 'desc',
                 },
@@ -515,12 +514,20 @@ export default function Contracts(props) {
             });
             const visibleIds = new Set(rows.map((row) => Number(row.id)));
             setSelectedContractIds((prev) => prev.filter((id) => visibleIds.has(Number(id))));
+            const metaPerPage = Number(res.data?.per_page) || nextFilters.per_page || 20;
             setContractMeta({
                 current_page: res.data?.current_page || 1,
                 last_page: res.data?.last_page || 1,
                 total: res.data?.total || 0,
+                per_page: metaPerPage,
+                from: res.data?.from ?? null,
+                to: res.data?.to ?? null,
             });
-            setFilters((prev) => ({ ...prev, page: res.data?.current_page || nextPage }));
+            setFilters((prev) => ({
+                ...prev,
+                page: res.data?.current_page || nextPage,
+                per_page: metaPerPage,
+            }));
         } catch (e) {
             toast.error(e?.response?.data?.message || 'Không tải được danh sách hợp đồng.');
         } finally {
@@ -532,7 +539,6 @@ export default function Contracts(props) {
         fetchProjects();
         fetchProducts();
         fetchCollectors();
-        fetchContractStaffFilterOptions();
         fetchContracts();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -869,8 +875,8 @@ export default function Contracts(props) {
             return;
         }
         if (payment.row_type === 'create_draft') {
-            setEditingPaymentId(payment.id);
-            setPaymentForm({
+        setEditingPaymentId(payment.id);
+        setPaymentForm({
                 amount: formatMoneyInput(payment.amount),
                 paid_at: toDateInputValue(payment.paid_at),
                 method: payment.method || '',
@@ -988,8 +994,8 @@ export default function Contracts(props) {
             return;
         }
         if (cost.row_type === 'create_draft') {
-            setEditingCostId(cost.id);
-            setCostForm({
+        setEditingCostId(cost.id);
+        setCostForm({
                 amount: formatMoneyInput(cost.amount),
                 cost_date: toDateInputValue(cost.cost_date),
                 cost_type: cost.cost_type || '',
@@ -1204,7 +1210,6 @@ export default function Contracts(props) {
     const save = async (createAndApprove = false) => {
         if (savingContract) return;
         if (!editingId && !canCreate) return toast.error('Bạn không có quyền tạo hợp đồng.');
-        if (editingId && !canManage) return toast.error('Bạn không có quyền quản lý hợp đồng.');
         if (editingId && !editingCanManage) {
             return toast.error('Bạn chỉ có quyền xem hợp đồng này.');
         }
@@ -1460,13 +1465,13 @@ export default function Contracts(props) {
                                 ))}
                             </select>
                         </FilterField>
-                        <FilterField label="Nhân sự phụ trách">
+                        <FilterField label="Nhân viên thu" hint="Lọc theo cột «Nhân viên thu» (người thu hợp đồng).">
                             <TagMultiSelect
                                 options={collectorFilterOptions}
                                 selectedIds={filters.staff_ids}
                                 onChange={(selectedIds) => setFilters((s) => ({ ...s, staff_ids: selectedIds }))}
-                                addPlaceholder="Tìm và thêm nhân sự"
-                                emptyLabel="Để trống để xem toàn bộ nhân sự trong phạm vi."
+                                addPlaceholder="Tìm và thêm nhân viên thu"
+                                emptyLabel="Để trống để xem toàn bộ trong phạm vi."
                             />
                         </FilterField>
                         <FilterField label="Ngày ký từ">
@@ -1484,6 +1489,20 @@ export default function Contracts(props) {
                                 value={filters.signed_at_to || ''}
                                 onChange={(e) => setFilters((s) => ({ ...s, signed_at_to: e.target.value }))}
                             />
+                        </FilterField>
+                        <FilterField
+                            label="Hợp đồng chưa có ngày ký"
+                            hint="Khi bật, danh sách gồm cả hợp đồng chưa nhập ngày ký (để sửa), cùng với hợp đồng trong khoảng ngày đã chọn."
+                        >
+                            <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+                                <input
+                                    type="checkbox"
+                                    className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary/40"
+                                    checked={!!filters.include_unsigned_signed_at}
+                                    onChange={(e) => setFilters((s) => ({ ...s, include_unsigned_signed_at: e.target.checked }))}
+                                />
+                                Bao gồm chưa có ngày ký
+                            </label>
                         </FilterField>
                         <FilterActionGroup className={FILTER_GRID_SUBMIT_ROW}>
                             <button type="submit" className={FILTER_SUBMIT_BUTTON_CLASS}>Lọc</button>
@@ -1767,7 +1786,9 @@ export default function Contracts(props) {
                     page={contractMeta.current_page}
                     lastPage={contractMeta.last_page}
                     total={contractMeta.total}
-                    perPage={filters.per_page}
+                    perPage={contractMeta.per_page ?? filters.per_page ?? 20}
+                    rangeFrom={contractMeta.from}
+                    rangeTo={contractMeta.to}
                     label="hợp đồng"
                     loading={loading}
                     onPageChange={(page) => fetchContracts(page, filters)}

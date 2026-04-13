@@ -3,7 +3,8 @@
 namespace App\Support;
 
 /**
- * Chuẩn hóa URL cho link ngoài / website dự án (tránh domain thiếu scheme bị coi là path tương đối).
+ * Giữ đúng chuỗi URL người dùng nhập (chỉ trim). Không tự thêm https:// hay sửa dấu /.
+ * Chuẩn hóa cho GSC/API vẫn nằm ở ProjectGscSyncService::normalizeSiteUrl.
  */
 final class ExternalUrl
 {
@@ -18,18 +19,6 @@ final class ExternalUrl
             return null;
         }
 
-        if (preg_match('/^[a-z][a-z0-9+.-]*:/i', $value)) {
-            return $value;
-        }
-
-        if (str_starts_with($value, '//')) {
-            return 'https:'.$value;
-        }
-
-        if (str_starts_with($value, '/') || str_starts_with($value, '#') || str_starts_with($value, '?')) {
-            return $value;
-        }
-
-        return 'https://'.$value;
+        return $value;
     }
 }

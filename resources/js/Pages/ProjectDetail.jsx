@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import Modal from '@/Components/Modal';
+import ProjectWebsiteGscField from '@/Components/ProjectWebsiteGscField';
 import PageContainer from '@/Components/PageContainer';
 import { useToast } from '@/Contexts/ToastContext';
 import { absoluteHttpUrl } from '@/lib/externalUrl';
@@ -1041,15 +1042,11 @@ export default function ProjectDetail(props) {
                             onChange={(e) => setProjectForm((s) => ({ ...s, repo_url: e.target.value }))}
                         />
                     </div>
-                    <div>
-                        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Website dự án (Google Search Console)</label>
-                        <input
-                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                            placeholder="VD: https://example.com/"
-                            value={projectForm.website_url}
-                            onChange={(e) => setProjectForm((s) => ({ ...s, website_url: e.target.value }))}
-                        />
-                    </div>
+                    <ProjectWebsiteGscField
+                        active={showProjectForm}
+                        value={projectForm.website_url}
+                        onChange={(url) => setProjectForm((s) => ({ ...s, website_url: url }))}
+                    />
                     <div>
                         <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Trạng thái dự án</label>
                         <select className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" value={projectForm.status} onChange={(e) => setProjectForm((s) => ({ ...s, status: e.target.value }))}>

@@ -9,6 +9,7 @@ use App\Models\AppSetting;
 use App\Models\Contract;
 use App\Models\Project;
 use App\Models\ProjectMeeting;
+use App\Models\TaskItem;
 use App\Models\User;
 use App\Services\ClientPhoneDuplicateService;
 use App\Services\FirebaseService;
@@ -404,6 +405,96 @@ class ProjectController extends Controller
         $project->load($this->baseRelations());
 
         return response()->json($this->transformProject($project, $request->user()));
+    }
+
+    /**
+     * Ghi đè ngày bắt đầu / hạn chót của dự án, công việc và đầu việc theo hợp đồng liên kết (contract_id hoặc linkedContract).
+     */
+    public function bulkSyncContractDates(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'project_ids' => ['required', 'array', 'min:1'],
+            'project_ids.*' => ['integer', 'exists:projects,id'],
+        ]);
+
+        $user = $request->user();
+        $ids = array_values(array_unique(array_map('intval', $validated['project_ids'])));
+
+        $synced = [];
+        $skipped = [];
+
+        DB::transaction(function () use ($user, $ids, &$synced, &$skipped) {
+            foreach ($ids as $projectId) {
+                $project = Project::query()
+                    ->with(['contract', 'linkedContract'])
+                    ->find($projectId);
+
+                if (! $project) {
+                    $skipped[] = ['id' => $projectId, 'reason' => 'Không tìm thấy dự án.'];
+
+                    continue;
+                }
+
+                if (! ProjectScope::canAccessProject($user, $project)) {
+                    $skipped[] = ['id' => $projectId, 'reason' => 'Không có quyền truy cập dự án.'];
+
+                    continue;
+                }
+
+                $perms = $this->projectPermissions($project, $user);
+                if (! ($perms['can_edit'] ?? false)) {
+                    $skipped[] = ['id' => $projectId, 'reason' => 'Không có quyền chỉnh sửa dự án.'];
+
+                    continue;
+                }
+
+                $contract = $project->contract ?: $project->linkedContract;
+                if (! $contract) {
+                    $skipped[] = ['id' => $projectId, 'reason' => 'Dự án không gắn hợp đồng.'];
+
+                    continue;
+                }
+
+                if (empty($contract->start_date) || empty($contract->end_date)) {
+                    $skipped[] = ['id' => $projectId, 'reason' => 'Hợp đồng thiếu ngày bắt đầu hoặc ngày kết thúc.'];
+
+                    continue;
+                }
+
+                $start = $contract->start_date->copy()->startOfDay();
+                $end = $contract->end_date->copy()->endOfDay();
+
+                $project->update([
+                    'start_date' => $contract->start_date->toDateString(),
+                    'deadline' => $contract->end_date->toDateString(),
+                ]);
+
+                $taskIds = $project->tasks()->pluck('id');
+                if ($taskIds->isNotEmpty()) {
+                    $project->tasks()->update([
+                        'start_at' => $start,
+                        'deadline' => $end,
+                    ]);
+
+                    TaskItem::query()
+                        ->whereIn('task_id', $taskIds->all())
+                        ->update([
+                            'start_date' => $contract->start_date->toDateString(),
+                            'deadline' => $end,
+                        ]);
+                }
+
+                $synced[] = [
+                    'id' => $project->id,
+                    'contract_id' => (int) $contract->id,
+                ];
+            }
+        });
+
+        return response()->json([
+            'synced' => $synced,
+            'skipped' => $skipped,
+        ]);
     }
 
     public function destroy(Project $project, Request $request): JsonResponse

@@ -36,6 +36,9 @@ export default function PaginationControls({
     lastPage = 1,
     total = 0,
     perPage = 100,
+    /** Khi có (ví dụ từ Laravel paginator), dùng thay cho công thức client để khớp số bản ghi thực tế */
+    rangeFrom = null,
+    rangeTo = null,
     onPageChange,
     onPerPageChange,
     loading = false,
@@ -47,8 +50,11 @@ export default function PaginationControls({
     const safeLastPage = Math.max(1, Number(lastPage) || 1);
     const safePerPage = Math.max(1, Number(perPage) || 100);
     const pageItems = useMemo(() => buildPageItems(safePage, safeLastPage), [safeLastPage, safePage]);
-    const from = total > 0 ? ((safePage - 1) * safePerPage) + 1 : 0;
-    const to = total > 0 ? Math.min(total, safePage * safePerPage) : 0;
+    const computedFrom = total > 0 ? ((safePage - 1) * safePerPage) + 1 : 0;
+    const computedTo = total > 0 ? Math.min(total, safePage * safePerPage) : 0;
+    const hasServerRange = total > 0 && rangeFrom != null && rangeTo != null;
+    const from = hasServerRange ? Number(rangeFrom) : computedFrom;
+    const to = hasServerRange ? Number(rangeTo) : computedTo;
 
     const goToPage = (nextPage) => {
         if (loading) return;

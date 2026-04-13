@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Helpers\CrmScope;
+use App\Models\Client;
 use App\Models\Contract;
 use App\Models\Opportunity;
 use App\Models\User;
@@ -30,7 +31,7 @@ class OpportunityController extends Controller
         $revenueTotal = (float) ($filtered->clone()->sum('amount') ?? 0);
 
         $query = $filtered->clone()->with([
-            'client:id,name,company,email,phone,notes',
+            'client:id,name,company,email,phone,notes,assigned_staff_id',
             'assignee:id,name,email,role',
             'creator:id,name,email,role',
             'product:id,name,code',
@@ -145,6 +146,15 @@ class OpportunityController extends Controller
             'notes' => ['nullable', 'string'],
             'contract_id' => ['nullable', 'integer', 'exists:contracts,id'],
         ]);
+        $client = Client::query()->find((int) $validated['client_id']);
+        if (! $client) {
+            return response()->json(['message' => 'Khách hàng không tồn tại.'], 422);
+        }
+        if (! $this->canMutateOpportunityForClient($request->user(), $client)) {
+            return response()->json([
+                'message' => 'Chỉ nhân viên phụ trách khách hàng (hoặc quản lý/admin) mới được tạo cơ hội cho khách này.',
+            ], 403);
+        }
         $contractId = null;
         if (array_key_exists('contract_id', $validated)) {
             $v = $validated['contract_id'];
@@ -163,7 +173,7 @@ class OpportunityController extends Controller
         $opportunity = Opportunity::create($validated);
         $this->syncOpportunityContractLink($request, $opportunity, $contractId);
         $opportunity->load([
-            'client:id,name,company,email,phone,notes',
+            'client:id,name,company,email,phone,notes,assigned_staff_id',
             'assignee:id,name,email,role',
             'creator:id,name,email,role',
             'product:id,name,code',
@@ -270,7 +280,7 @@ class OpportunityController extends Controller
             return response()->json(['message' => 'Không có quyền xem cơ hội.'], 403);
         }
         $opportunity->load([
-            'client:id,name,company,email,phone,notes',
+            'client:id,name,company,email,phone,notes,assigned_staff_id',
             'assignee:id,name,email,role',
             'creator:id,name,email,role',
             'product:id,name,code',
@@ -285,8 +295,14 @@ class OpportunityController extends Controller
 
     public function update(Request $request, Opportunity $opportunity): JsonResponse
     {
-        if (! $this->canAccessOpportunity($request->user(), $opportunity)) {
-            return response()->json(['message' => 'Không có quyền cập nhật cơ hội.'], 403);
+        $user = $request->user();
+        if (! $this->canAccessOpportunity($user, $opportunity)) {
+            return response()->json(['message' => 'Không có quyền xem cơ hội.'], 403);
+        }
+        if (! $this->canMutateOpportunity($user, $opportunity)) {
+            return response()->json([
+                'message' => 'Chỉ nhân viên phụ trách khách hàng (hoặc quản lý/admin) mới được sửa cơ hội này.',
+            ], 403);
         }
         $validated = $request->validate([
             'title' => ['sometimes', 'required', 'string', 'max:255'],
@@ -316,12 +332,20 @@ class OpportunityController extends Controller
         if (array_key_exists('watcher_ids', $validated)) {
             $validated['watcher_ids'] = $this->normalizeWatcherIds($validated['watcher_ids'] ?? []);
         }
+        if (array_key_exists('client_id', $validated)) {
+            $targetClient = Client::query()->find((int) $validated['client_id']);
+            if (! $targetClient || ! $this->canMutateOpportunityForClient($user, $targetClient)) {
+                return response()->json([
+                    'message' => 'Không có quyền gắn cơ hội cho khách hàng đã chọn.',
+                ], 403);
+            }
+        }
         $opportunity->update($validated);
         if ($shouldSyncContract) {
             $this->syncOpportunityContractLink($request, $opportunity->fresh(), $contractId);
         }
         $opportunity->load([
-            'client:id,name,company,email,phone,notes',
+            'client:id,name,company,email,phone,notes,assigned_staff_id',
             'assignee:id,name,email,role',
             'creator:id,name,email,role',
             'product:id,name,code',
@@ -336,8 +360,14 @@ class OpportunityController extends Controller
 
     public function destroy(Opportunity $opportunity): JsonResponse
     {
-        if (! $this->canAccessOpportunity(request()->user(), $opportunity)) {
-            return response()->json(['message' => 'Không có quyền xóa cơ hội.'], 403);
+        $user = request()->user();
+        if (! $this->canAccessOpportunity($user, $opportunity)) {
+            return response()->json(['message' => 'Không có quyền xem cơ hội.'], 403);
+        }
+        if (! $this->canMutateOpportunity($user, $opportunity)) {
+            return response()->json([
+                'message' => 'Chỉ nhân viên phụ trách khách hàng (hoặc quản lý/admin) mới được xóa cơ hội này.',
+            ], 403);
         }
         if ($opportunity->contract()->exists()) {
             return response()->json([
@@ -391,6 +421,44 @@ class OpportunityController extends Controller
             $contract->refresh();
             $contract->forceFill(['opportunity_id' => $oppId])->save();
         });
+    }
+
+    /**
+     * Ghi (tạo/sửa/xóa): nhân viên chỉ khi là assigned_staff của khách; admin/kế toán/QL giữ quyền rộng.
+     */
+    private function canMutateOpportunityForClient(User $user, Client $client): bool
+    {
+        if (CrmScope::hasGlobalScope($user)) {
+            return true;
+        }
+
+        if ($user->role === 'quan_ly') {
+            return CrmScope::canManagerAccessClient($user, $client);
+        }
+
+        if ($user->role === 'nhan_vien') {
+            return (int) ($client->assigned_staff_id ?? 0) === (int) $user->id;
+        }
+
+        return false;
+    }
+
+    private function canMutateOpportunity(User $user, Opportunity $opportunity): bool
+    {
+        if (CrmScope::hasGlobalScope($user)) {
+            return true;
+        }
+
+        if ($user->role === 'quan_ly') {
+            return CrmScope::canManagerAccessOpportunity($user, $opportunity);
+        }
+
+        $opportunity->loadMissing('client');
+        if (! $opportunity->client) {
+            return false;
+        }
+
+        return $this->canMutateOpportunityForClient($user, $opportunity->client);
     }
 
     private function canAccessOpportunity(User $user, Opportunity $opportunity): bool

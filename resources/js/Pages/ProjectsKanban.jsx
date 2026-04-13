@@ -9,6 +9,7 @@ import FilterToolbar, {
     filterControlClass,
 } from '@/Components/FilterToolbar';
 import PageContainer from '@/Components/PageContainer';
+import ProjectWebsiteGscField from '@/Components/ProjectWebsiteGscField';
 import Modal from '@/Components/Modal';
 import PaginationControls from '@/Components/PaginationControls';
 import TagMultiSelect from '@/Components/TagMultiSelect';
@@ -620,6 +621,45 @@ export default function ProjectsKanban(props) {
         }
     };
 
+    const bulkSyncContractDates = async () => {
+        if (!canUpdate) {
+            toast.error('Bạn không có quyền cập nhật dự án hàng loạt.');
+            return;
+        }
+        if (!selectedProjectIds.length) {
+            toast.error('Vui lòng chọn dự án cần xử lý.');
+            return;
+        }
+        if (!window.confirm(
+            'Đồng bộ ngày theo hợp đồng?\n\n'
+            + 'Thao tác này sẽ GHI ĐÈ ngày bắt đầu và hạn chót của từng dự án đã chọn, toàn bộ công việc và đầu việc thuộc các dự án đó, '
+            + 'theo ngày bắt đầu và ngày kết thúc của hợp đồng liên kết (hợp đồng gắn trực tiếp hoặc hợp đồng trỏ vào dự án).\n\n'
+            + 'Dự án không gắn được hợp đồng hoặc hợp đồng thiếu ngày sẽ bị bỏ qua và được báo trong thông báo kết quả.'
+        )) {
+            return;
+        }
+
+        setBulkLoading(true);
+        try {
+            const { data } = await axios.post('/api/v1/projects/bulk-sync-contract-dates', {
+                project_ids: selectedProjectIds.map((id) => Number(id)),
+            });
+            const syncedCount = data?.synced?.length ?? 0;
+            const skipped = Array.isArray(data?.skipped) ? data.skipped : [];
+            let msg = `Đã đồng bộ timeline theo hợp đồng cho ${syncedCount} dự án.`;
+            if (skipped.length) {
+                msg += ` Bỏ qua ${skipped.length} dự án (không đủ hợp đồng/ngày hoặc không có quyền).`;
+            }
+            toast.success(msg);
+            setSelectedProjectIds([]);
+            await fetchProjects(filters.page, filters);
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Đồng bộ timeline theo hợp đồng thất bại.');
+        } finally {
+            setBulkLoading(false);
+        }
+    };
+
     const bulkDeleteProjects = async () => {
         if (!canDelete) {
             toast.error('Bạn không có quyền xóa dự án.');
@@ -804,6 +844,15 @@ export default function ProjectsKanban(props) {
                                                     disabled={bulkLoading}
                                                 >
                                                     {bulkLoading ? 'Đang xử lý...' : 'Tạm dừng'}
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="rounded-xl border border-violet-300 bg-violet-100 px-3 py-2 text-xs font-semibold text-violet-900"
+                                                    onClick={bulkSyncContractDates}
+                                                    disabled={bulkLoading}
+                                                    title="Ghi đè ngày dự án, công việc và đầu việc theo ngày trên hợp đồng liên kết"
+                                                >
+                                                    {bulkLoading ? 'Đang xử lý...' : 'Đồng bộ ngày theo HĐ'}
                                                 </button>
                                             </>
                                         )}
@@ -1304,18 +1353,11 @@ export default function ProjectsKanban(props) {
                             onChange={(e) => setForm((s) => ({ ...s, repo_url: e.target.value }))}
                         />
                     </div>
-                    <div>
-                        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Website dự án (Google Search Console)</label>
-                        <input
-                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                            placeholder="VD: https://clickon.vn/"
-                            value={form.website_url}
-                            onChange={(e) => setForm((s) => ({ ...s, website_url: e.target.value }))}
-                        />
-                        <p className="mt-1 text-xs text-text-muted">
-                            Sau khi nhập URL, vào chi tiết dự án để bật thông báo GSC. Khi bật, hệ thống sẽ tự lấy dữ liệu hằng ngày theo giờ cấu hình.
-                        </p>
-                    </div>
+                    <ProjectWebsiteGscField
+                        active={showForm}
+                        value={form.website_url}
+                        onChange={(url) => setForm((s) => ({ ...s, website_url: url }))}
+                    />
                     <div>
                         <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Trạng thái dự án</label>
                         <select className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" value={form.status} onChange={(e) => setForm((s) => ({ ...s, status: e.target.value }))}>

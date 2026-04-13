@@ -85,10 +85,23 @@ function Field({ label, required = false, children, hint = '' }) {
 
 export default function Opportunities(props) {
     const toast = useToast();
-    const userRole = props?.auth?.user?.role || '';
+    const userRole = String(props?.auth?.user?.role || '').toLowerCase();
     const currentUserId = Number(props?.auth?.user?.id || 0) || null;
-    const canCreate = ['admin', 'administrator', 'quan_ly', 'nhan_vien'].includes(userRole);
+    const canCreate = ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'].includes(userRole);
     const canDelete = canCreate;
+
+    const canMutateOpportunityRow = (row) => {
+        if (['admin', 'administrator', 'ke_toan', 'quan_ly'].includes(userRole)) {
+            return true;
+        }
+        if (userRole !== 'nhan_vien') {
+            return false;
+        }
+        const uid = Number(currentUserId || 0);
+        if (!uid) return false;
+        const assignedId = Number(row?.client?.assigned_staff_id ?? 0);
+        return assignedId > 0 && assignedId === uid;
+    };
 
     const [opportunities, setOpportunities] = useState([]);
     const [opportunityMeta, setOpportunityMeta] = useState({ current_page: 1, last_page: 1, total: 0 });
@@ -333,6 +346,16 @@ export default function Opportunities(props) {
     const submitOpportunity = async () => {
         if (!canCreate) return;
 
+        if (userRole === 'nhan_vien') {
+            const client = clients.find((c) => String(c.id) === String(form.client_id));
+            const uid = Number(currentUserId || 0);
+            const assignedId = Number(client?.assigned_staff_id ?? 0);
+            if (!client || !uid || assignedId !== uid) {
+                toast.error('Chỉ nhân viên phụ trách khách hàng (phụ trách KH) mới được tạo hoặc sửa cơ hội cho khách đó.');
+                return;
+            }
+        }
+
         if (!String(form.title || '').trim()) {
             toast.error('Vui lòng nhập tên cơ hội.');
             return;
@@ -391,6 +414,10 @@ export default function Opportunities(props) {
 
     const deleteOpportunity = async (item) => {
         if (!canDelete) return;
+        if (!canMutateOpportunityRow(item)) {
+            toast.error('Bạn không có quyền xóa cơ hội này.');
+            return;
+        }
         if (!window.confirm(`Xóa cơ hội "${item?.title || '#' + item?.id}"?`)) return;
         try {
             await axios.delete(`/api/v1/opportunities/${item.id}`);
@@ -818,7 +845,7 @@ export default function Opportunities(props) {
                                         </td>
                                         <td className="py-3">
                                             <div className="flex justify-end gap-2 text-xs">
-                                                {canCreate ? (
+                                                {canCreate && canMutateOpportunityRow(item) ? (
                                                     <button
                                                         type="button"
                                                         className="rounded-lg border border-slate-200 px-2.5 py-1.5 font-semibold text-slate-700"
@@ -830,7 +857,7 @@ export default function Opportunities(props) {
                                                         Sửa
                                                     </button>
                                                 ) : null}
-                                                {canDelete ? (
+                                                {canDelete && canMutateOpportunityRow(item) ? (
                                                     <button
                                                         type="button"
                                                         className="rounded-lg border border-rose-200 px-2.5 py-1.5 font-semibold text-rose-600"

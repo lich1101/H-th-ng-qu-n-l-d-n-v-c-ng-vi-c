@@ -34,6 +34,7 @@ use App\Http\Controllers\Api\V1\ProjectController;
 use App\Http\Controllers\Api\V1\ProjectFileController;
 use App\Http\Controllers\Api\V1\ProjectFlowController;
 use App\Http\Controllers\Api\V1\ProjectSearchConsoleController;
+use App\Http\Controllers\Api\V1\SearchConsoleSitesController;
 use App\Http\Controllers\Api\V1\ImportController;
 use App\Http\Controllers\Api\V1\ProfileController;
 use App\Http\Controllers\Api\V1\PublicMobileController;
@@ -149,6 +150,8 @@ Route::prefix('v1')->group(function () {
             ->middleware('role:administrator');
         Route::post('/notifications/in-app/read-task-chat', [NotificationCenterController::class, 'markTaskChatRead']);
 
+        Route::get('/search-console/sites', [SearchConsoleSitesController::class, 'index'])
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien');
         Route::get('/projects', [ProjectController::class, 'index']);
         Route::get('/projects/{project}', [ProjectController::class, 'show']);
         Route::get('/projects/{project}/search-console', [ProjectSearchConsoleController::class, 'show']);
@@ -165,6 +168,8 @@ Route::prefix('v1')->group(function () {
             ->middleware('role:admin,administrator,quan_ly');
         Route::post('/projects/from-contract', [ProjectController::class, 'createFromContract'])
             ->middleware('role:admin,quan_ly,nhan_vien');
+        Route::post('/projects/bulk-sync-contract-dates', [ProjectController::class, 'bulkSyncContractDates'])
+            ->middleware('role:admin,administrator,quan_ly');
         Route::put('/projects/{project}', [ProjectController::class, 'update'])
             ->middleware('role:admin,administrator,quan_ly');
         Route::delete('/projects/{project}', [ProjectController::class, 'destroy'])

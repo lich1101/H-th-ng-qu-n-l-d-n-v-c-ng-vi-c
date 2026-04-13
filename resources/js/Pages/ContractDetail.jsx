@@ -5,6 +5,7 @@ import ClientSelect from '@/Components/ClientSelect';
 import Modal from '@/Components/Modal';
 import AppIcon from '@/Components/AppIcon';
 import { useToast } from '@/Contexts/ToastContext';
+import { datesFromContract } from '@/lib/timelineDefaults';
 import { formatVietnamDate, toDateInputValue } from '@/lib/vietnamTime';
 import { Link } from '@inertiajs/inertia-react';
 
@@ -510,6 +511,17 @@ export default function ContractDetail(props) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [contractId]);
 
+    /** Khi mở form tạo dự án: luôn lấy mốc ngày từ hợp đồng (đồng bộ với timelineDefaults / Flutter). */
+    useEffect(() => {
+        if (!showProjectForm || !contract) return;
+        const { start, end } = datesFromContract(contract);
+        setProjectForm((prev) => ({
+            ...prev,
+            start_date: start || prev.start_date,
+            deadline: end || prev.deadline,
+        }));
+    }, [showProjectForm, contract]);
+
     const submitCareNote = async () => {
         if (!careNoteForm.title?.trim() || !careNoteForm.detail?.trim()) {
             toast.error('Vui lòng nhập cả tiêu đề và nội dung chăm sóc.');
@@ -658,8 +670,8 @@ export default function ContractDetail(props) {
     const addEditItem = () => {
         setEditItems((prev) => {
             const nextItems = [
-                ...prev,
-                { product_id: '', product_name: '', unit: '', unit_price: '', quantity: 1, note: '' },
+            ...prev,
+            { product_id: '', product_name: '', unit: '', unit_price: '', quantity: 1, note: '' },
             ];
             const nextSubtotal = nextItems.reduce((sum, item) => sum + calculateItemTotal(item), 0);
             setEditForm((current) => ({ ...current, subtotal_value: String(nextSubtotal), value: String(nextSubtotal) }));
@@ -670,8 +682,8 @@ export default function ContractDetail(props) {
     const updateEditItem = (index, changes) => {
         setEditItems((prev) => {
             const nextItems = prev.map((item, idx) => {
-                if (idx !== index) return item;
-                return { ...item, ...changes };
+            if (idx !== index) return item;
+            return { ...item, ...changes };
             });
             const nextSubtotal = nextItems.reduce((sum, item) => sum + calculateItemTotal(item), 0);
             setEditForm((current) => ({ ...current, subtotal_value: String(nextSubtotal), value: String(nextSubtotal) }));

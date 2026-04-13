@@ -77,6 +77,57 @@ class GoogleSearchConsoleService
         return is_array($rows) ? $rows : [];
     }
 
+    /**
+     * Danh sách property trong Google Search Console (sites.list).
+     *
+     * @return array<int, array{site_url: string, permission_level: string|null}>
+     */
+    public function listSites(AppSetting $setting): array
+    {
+        $accessToken = $this->getAccessToken($setting);
+        if ($accessToken === null || $accessToken === '') {
+            throw new \RuntimeException('Không lấy được access token Google Search Console. Kiểm tra client_id/client_secret/refresh_token.');
+        }
+
+        $url = 'https://searchconsole.googleapis.com/webmasters/v3/sites';
+        $response = Http::timeout(30)
+            ->withToken($accessToken)
+            ->get($url);
+
+        if (! $response->successful()) {
+            $payload = $response->json();
+            $message = data_get($payload, 'error.message')
+                ?: $response->body()
+                ?: 'Không lấy được danh sách site Google Search Console.';
+
+            throw new \RuntimeException($message);
+        }
+
+        $data = $response->json();
+        $entries = data_get($data, 'siteEntry', []);
+        if (! is_array($entries)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($entries as $entry) {
+            if (! is_array($entry)) {
+                continue;
+            }
+            $siteUrl = trim((string) ($entry['siteUrl'] ?? ''));
+            if ($siteUrl === '') {
+                continue;
+            }
+            $perm = $entry['permissionLevel'] ?? null;
+            $out[] = [
+                'site_url' => $siteUrl,
+                'permission_level' => is_string($perm) ? $perm : null,
+            ];
+        }
+
+        return $out;
+    }
+
     private function refreshAccessToken(AppSetting $setting): ?string
     {
         $response = Http::asForm()

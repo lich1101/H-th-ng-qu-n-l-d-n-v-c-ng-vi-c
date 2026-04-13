@@ -15,6 +15,7 @@ import PaginationControls from '@/Components/PaginationControls';
 import TagMultiSelect from '@/Components/TagMultiSelect';
 import { useToast } from '@/Contexts/ToastContext';
 import { formatVietnamDate, formatVietnamDateTime, toDateInputValue } from '@/lib/vietnamTime';
+import { taskDefaultsFromProject, taskItemDefaults } from '@/lib/timelineDefaults';
 import { fetchStaffFilterOptions } from '@/lib/staffFilterOptions';
 
 const DEFAULT_PRIORITIES = [
@@ -252,6 +253,7 @@ export default function TasksBoard(props) {
         description: '',
         priority: 'medium',
         status: 'todo',
+        start_at: '',
         deadline: '',
         weight_percent: 100,
         assignee_id: '',
@@ -972,6 +974,7 @@ export default function TasksBoard(props) {
 
     const resetItemForm = (taskRecord = itemsTask) => {
         setEditingItemId(null);
+        const defaults = taskItemDefaults(taskRecord, taskRecord?.project || null);
         setItemForm({
             title: '',
             description: taskRecord?.description || '',
@@ -979,8 +982,8 @@ export default function TasksBoard(props) {
             status: taskRecord?.status || statusOptions[0] || 'todo',
             progress_percent: '',
             weight_percent: 100,
-            start_date: taskRecord?.start_at ? toDateInputValue(taskRecord.start_at) : '',
-            deadline: taskRecord?.deadline ? toDateInputValue(taskRecord.deadline) : '',
+            start_date: defaults.start || '',
+            deadline: defaults.end || '',
             assignee_id: taskRecord?.assignee_id || '',
         });
     };
@@ -1395,6 +1398,7 @@ export default function TasksBoard(props) {
             description: '',
             priority: 'medium',
             status: statusOptions[0] || 'todo',
+            start_at: '',
             deadline: '',
             weight_percent: 100,
             assignee_id: '',
@@ -1408,12 +1412,14 @@ export default function TasksBoard(props) {
         if (urlProjectId) {
             const proj = availableProjectOptions.find((p) => String(p.id) === String(urlProjectId));
             if (proj) {
+                const td = taskDefaultsFromProject(proj);
                 setForm((prev) => ({
                     ...prev,
                     project_id: String(proj.id),
                     department_id: proj.department_id ? String(proj.department_id) : prev.department_id,
                     assignee_id: proj.owner_id ? String(proj.owner_id) : prev.assignee_id,
-                    deadline: proj.deadline ? toDateInputValue(proj.deadline) : prev.deadline,
+                    start_at: td.start || prev.start_at,
+                    deadline: td.end || (proj.deadline ? toDateInputValue(proj.deadline) : prev.deadline),
                     description: prev.description || proj.customer_requirement || '',
                 }));
             }
@@ -1566,6 +1572,7 @@ export default function TasksBoard(props) {
             description: t.description || '',
             priority: t.priority || 'medium',
             status: t.status || statusOptions[0] || 'todo',
+            start_at: t.start_at ? toDateInputValue(t.start_at) : '',
             deadline: t.deadline ? toDateInputValue(t.deadline) : '',
             weight_percent: t.weight_percent ?? 100,
             assignee_id: t.assignee_id || '',
@@ -1579,8 +1586,16 @@ export default function TasksBoard(props) {
         if (!canCreate && editingId == null) return toast.error('Bạn không có quyền tạo công việc.');
         if (editingId != null && !canManageTaskRecord(editingTask)) return toast.error('Bạn không có quyền cập nhật công việc.');
         if (!form.project_id || !form.title?.trim()) return toast.error('Vui lòng chọn dự án và nhập tiêu đề.');
+        if (form.start_at && form.deadline && String(form.start_at) > String(form.deadline)) {
+            toast.error('Ngày bắt đầu không được sau hạn chót công việc.');
+            return;
+        }
         if (projectDeadlineInputMax && form.deadline && String(form.deadline) > projectDeadlineInputMax) {
             toast.error('Hạn công việc không được sau hạn dự án.');
+            return;
+        }
+        if (projectDeadlineInputMax && form.start_at && String(form.start_at) > projectDeadlineInputMax) {
+            toast.error('Ngày bắt đầu không được sau hạn dự án.');
             return;
         }
         setSavingTask(true);
@@ -1592,6 +1607,7 @@ export default function TasksBoard(props) {
                 description: form.description || null,
                 priority: form.priority,
                 status: form.status,
+                start_at: form.start_at || null,
                 deadline: form.deadline || null,
                 weight_percent: form.weight_percent === '' ? null : Number(form.weight_percent),
                 assignee_id: form.assignee_id ? Number(form.assignee_id) : null,
@@ -2305,7 +2321,21 @@ export default function TasksBoard(props) {
                 <div className="space-y-5 text-sm">
                     <div>
                         <FieldLabel>Dự án liên kết</FieldLabel>
-                        <select className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" value={form.project_id} onChange={(e) => setForm((s) => ({ ...s, project_id: e.target.value }))}>
+                        <select
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            value={form.project_id}
+                            onChange={(e) => {
+                                const id = e.target.value;
+                                const proj = availableProjectOptions.find((p) => String(p.id) === String(id));
+                                const td = proj ? taskDefaultsFromProject(proj) : { start: '', end: '' };
+                                setForm((s) => ({
+                                    ...s,
+                                    project_id: id,
+                                    start_at: td.start || '',
+                                    deadline: td.end || '',
+                                }));
+                            }}
+                        >
                             <option value="">-- Chọn dự án * --</option>
                             {availableProjectOptions.map((p) => <option key={p.id} value={p.id}>{p.code} - {p.name}</option>)}
                         </select>
@@ -2361,6 +2391,16 @@ export default function TasksBoard(props) {
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                         <div>
+                            <FieldLabel>Ngày bắt đầu</FieldLabel>
+                            <input
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                type="date"
+                                max={projectDeadlineInputMax || undefined}
+                                value={form.start_at}
+                                onChange={(e) => setForm((s) => ({ ...s, start_at: e.target.value }))}
+                            />
+                        </div>
+                        <div>
                             <FieldLabel>Hạn chót công việc</FieldLabel>
                             <input
                                 className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
@@ -2370,6 +2410,8 @@ export default function TasksBoard(props) {
                                 onChange={(e) => setForm((s) => ({ ...s, deadline: e.target.value }))}
                             />
                         </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
                         <div>
                             <FieldLabel>Tỷ trọng trong dự án (%)</FieldLabel>
                             <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" type="number" min="1" max="100" value={form.weight_percent} onChange={(e) => setForm((s) => ({ ...s, weight_percent: e.target.value }))} />

@@ -55,7 +55,7 @@ const formatCurrency = (value) => `${Number(value || 0).toLocaleString('vi-VN')}
 export default function OpportunityDetail({ auth, opportunityId }) {
     const toast = useToast();
     const userRole = String(auth?.user?.role || '').toLowerCase();
-    const canEdit = ['admin', 'administrator', 'quan_ly', 'nhan_vien'].includes(userRole);
+    const currentUserId = Number(auth?.user?.id || 0) || null;
 
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -65,6 +65,19 @@ export default function OpportunityDetail({ auth, opportunityId }) {
     const [users, setUsers] = useState([]);
     const [products, setProducts] = useState([]);
     const [form, setForm] = useState(emptyForm);
+
+    const canEdit = useMemo(() => {
+        if (['admin', 'administrator', 'ke_toan', 'quan_ly'].includes(userRole)) {
+            return true;
+        }
+        if (userRole !== 'nhan_vien') {
+            return false;
+        }
+        const uid = Number(currentUserId || 0);
+        if (!uid) return false;
+        const assignedId = Number(opportunity?.client?.assigned_staff_id ?? 0);
+        return assignedId > 0 && assignedId === uid;
+    }, [userRole, opportunity, currentUserId]);
 
     const stats = useMemo(() => ([
         { label: 'Khách hàng', value: opportunity?.client?.name || '—' },

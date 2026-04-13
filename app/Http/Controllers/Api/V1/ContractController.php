@@ -66,9 +66,12 @@ class ContractController extends Controller
         $sortDir = $this->normalizeSortDirection((string) $request->input('sort_dir', 'desc'));
         $this->applyContractSorting($query, $sortBy, $sortDir);
 
+        $perPage = (int) $request->input('per_page', 20);
+        $perPage = $perPage > 0 ? $perPage : 20;
+        $perPage = max(5, min(200, $perPage));
+
         /** @var \Illuminate\Pagination\LengthAwarePaginator $contracts */
-        $contracts = $query
-            ->paginate((int) $request->input('per_page', 15));
+        $contracts = $query->paginate($perPage);
         $contracts->setCollection($contracts->getCollection()->transform(function (Contract $contract) use ($request) {
             return $this->appendContractPermissions($contract, $request->user());
         }));
@@ -110,21 +113,8 @@ class ContractController extends Controller
         }
         $staffFilterIds = $this->resolveStaffFilterIds($request);
         if (! empty($staffFilterIds)) {
-            $query->where(function (Builder $builder) use ($staffFilterIds) {
-                $builder->whereIn('collector_user_id', $staffFilterIds)
-                    ->orWhereIn('created_by', $staffFilterIds)
-                    ->orWhereIn('handover_received_by', $staffFilterIds)
-                    ->orWhereHas('careStaffUsers', function (Builder $careStaffQuery) use ($staffFilterIds) {
-                        $careStaffQuery->whereIn('users.id', $staffFilterIds);
-                    })
-                    ->orWhereHas('client', function (Builder $clientQuery) use ($staffFilterIds) {
-                        $clientQuery->whereIn('assigned_staff_id', $staffFilterIds)
-                            ->orWhereIn('sales_owner_id', $staffFilterIds)
-                            ->orWhereHas('careStaffUsers', function (Builder $careStaffQuery) use ($staffFilterIds) {
-                                $careStaffQuery->whereIn('users.id', $staffFilterIds);
-                            });
-                    });
-            });
+            // Khớp cột «Nhân viên thu» (collector), không OR theo KH/người tạo để tránh kết quả lệch UI.
+            $query->whereIn('contracts.collector_user_id', $staffFilterIds);
         }
         if ($request->filled('approval_status')) {
             $query->where('approval_status', (string) $request->input('approval_status'));
@@ -204,11 +194,21 @@ class ContractController extends Controller
             });
         }
 
-        if ($request->filled('signed_at_from')) {
-            $query->whereDate('contracts.signed_at', '>=', (string) $request->input('signed_at_from'));
-        }
-        if ($request->filled('signed_at_to')) {
-            $query->whereDate('contracts.signed_at', '<=', (string) $request->input('signed_at_to'));
+        if ($request->filled('signed_at_from') || $request->filled('signed_at_to')) {
+            $includeUnsigned = $request->boolean('include_unsigned_signed_at');
+            $query->where(function (Builder $outer) use ($request, $includeUnsigned) {
+                $outer->where(function (Builder $inner) use ($request) {
+                    if ($request->filled('signed_at_from')) {
+                        $inner->whereDate('contracts.signed_at', '>=', (string) $request->input('signed_at_from'));
+                    }
+                    if ($request->filled('signed_at_to')) {
+                        $inner->whereDate('contracts.signed_at', '<=', (string) $request->input('signed_at_to'));
+                    }
+                });
+                if ($includeUnsigned) {
+                    $outer->orWhereNull('contracts.signed_at');
+                }
+            });
         }
 
         return $query;
@@ -325,7 +325,7 @@ class ContractController extends Controller
 
     public function storeContractFile(Request $request, Contract $contract): JsonResponse
     {
-        if (! $this->canManageContract($request->user(), $contract)) {
+        if (! $this->canEditContract($request->user(), $contract)) {
             return response()->json(['message' => 'Không có quyền tải file lên.'], 403);
         }
 
@@ -399,7 +399,7 @@ class ContractController extends Controller
             return response()->json(['message' => 'Không tìm thấy file.'], 404);
         }
 
-        if (! $this->canManageContract($request->user(), $contract)) {
+        if (! $this->canEditContract($request->user(), $contract)) {
             return response()->json(['message' => 'Không có quyền xóa file.'], 403);
         }
 
@@ -524,8 +524,8 @@ class ContractController extends Controller
         if (! $client) {
             return response()->json(['message' => 'Khách hàng không tồn tại.'], 422);
         }
-        if (! $this->canManageContractClient($request->user(), $client)) {
-            return response()->json(['message' => 'Nhân viên chăm sóc chỉ có quyền xem hợp đồng, không được tạo/cập nhật/xóa.'], 403);
+        if (! $this->canMutateContractForClient($request->user(), $client)) {
+            return response()->json(['message' => 'Chỉ nhân viên phụ trách khách hàng (hoặc quản lý/admin) mới được tạo hợp đồng cho khách này.'], 403);
         }
         if ($error = $this->validateAssignableCareStaffIds($request->user(), $careStaffIds)) {
             return response()->json(['message' => $error], 422);
@@ -617,7 +617,7 @@ class ContractController extends Controller
 
     public function update(Request $request, Contract $contract): JsonResponse
     {
-        if (! $this->canManageContract($request->user(), $contract)) {
+        if (! $this->canEditContract($request->user(), $contract)) {
             return response()->json(['message' => 'Không có quyền cập nhật hợp đồng.'], 403);
         }
         $wasApproved = ($contract->approval_status ?? '') === 'approved';
@@ -628,8 +628,8 @@ class ContractController extends Controller
         if (! $client) {
             return response()->json(['message' => 'Khách hàng không tồn tại.'], 422);
         }
-        if (! $this->canManageContractClient($request->user(), $client, $contract)) {
-            return response()->json(['message' => 'Nhân viên chăm sóc chỉ có quyền xem hợp đồng, không được tạo/cập nhật/xóa.'], 403);
+        if (! $this->canMutateContractForClient($request->user(), $client, $contract)) {
+            return response()->json(['message' => 'Chỉ nhân viên phụ trách khách hàng (hoặc quản lý/admin) mới được cập nhật hợp đồng cho khách này.'], 403);
         }
         if ($error = $this->validateAssignableCareStaffIds($request->user(), $careStaffIds)) {
             return response()->json(['message' => $error], 422);
@@ -765,7 +765,7 @@ class ContractController extends Controller
 
     public function destroy(Request $request, Contract $contract): JsonResponse
     {
-        if (! $this->canManageContract($request->user(), $contract)) {
+        if (! $this->canEditContract($request->user(), $contract)) {
             return response()->json(['message' => 'Không có quyền xóa hợp đồng.'], 403);
         }
         if ($contract->project_id) {
@@ -1311,8 +1311,8 @@ class ContractController extends Controller
     private function appendContractPermissions(Contract $contract, User $user): Contract
     {
         $contract->setAttribute('can_view', $this->canViewContract($user, $contract));
-        $contract->setAttribute('can_manage', $this->canManageContract($user, $contract));
-        $contract->setAttribute('can_delete', $this->canManageContract($user, $contract));
+        $contract->setAttribute('can_manage', $this->canEditContract($user, $contract));
+        $contract->setAttribute('can_delete', $this->canEditContract($user, $contract));
         $contract->setAttribute('can_add_care_note', $this->canAddCareNote($user, $contract));
         $contract->setAttribute('can_review_finance_request', $this->canApprove($user));
         $contract->setAttribute('can_manage_finance', $this->canApprove($user));
@@ -1358,7 +1358,10 @@ class ContractController extends Controller
         return false;
     }
 
-    private function canManageContractClient(User $user, Client $client, ?Contract $contract = null): bool
+    /**
+     * Tạo / sửa / xóa hợp đồng: nhân viên chỉ khi là người phụ trách khách (assigned_staff_id), không gồm sales_owner / chăm sóc.
+     */
+    private function canMutateContractForClient(User $user, Client $client, ?Contract $contract = null): bool
     {
         if (in_array($user->role, ['admin', 'administrator', 'ke_toan'], true)) {
             return true;
@@ -1373,10 +1376,25 @@ class ContractController extends Controller
         }
 
         if ($user->role === 'nhan_vien') {
-            return $this->isEmployeeLinkedToClient($user, $client);
+            return (int) ($client->assigned_staff_id ?? 0) === (int) $user->id;
         }
 
         return false;
+    }
+
+    /** Admin / kế toán / QL phòng ban hoặc nhân viên phụ trách khách (assigned_staff). */
+    private function canEditContract(User $user, Contract $contract): bool
+    {
+        if ($this->canManageContract($user, $contract)) {
+            return true;
+        }
+
+        $contract->loadMissing('client');
+        if (! $contract->client) {
+            return false;
+        }
+
+        return $this->canMutateContractForClient($user, $contract->client, $contract);
     }
 
     private function isManagerOfContractDepartment(User $user, Contract $contract): bool
