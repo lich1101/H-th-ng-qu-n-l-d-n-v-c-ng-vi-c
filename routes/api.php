@@ -31,6 +31,7 @@ use App\Http\Controllers\Api\V1\DeviceTokenController;
 use App\Http\Controllers\Api\V1\MeetingController;
 use App\Http\Controllers\Api\V1\NotificationCenterController;
 use App\Http\Controllers\Api\V1\ProjectController;
+use App\Http\Controllers\Api\V1\ProjectDashboardController;
 use App\Http\Controllers\Api\V1\ProjectFileController;
 use App\Http\Controllers\Api\V1\ProjectFlowController;
 use App\Http\Controllers\Api\V1\ProjectSearchConsoleController;
@@ -153,6 +154,8 @@ Route::prefix('v1')->group(function () {
         Route::get('/search-console/sites', [SearchConsoleSitesController::class, 'index'])
             ->middleware('role:admin,administrator,quan_ly,nhan_vien');
         Route::get('/projects', [ProjectController::class, 'index']);
+        Route::get('/project-dashboard/overview', [ProjectDashboardController::class, 'overview'])
+            ->middleware('role:admin,administrator');
         Route::get('/projects/{project}', [ProjectController::class, 'show']);
         Route::get('/projects/{project}/search-console', [ProjectSearchConsoleController::class, 'show']);
         Route::put('/projects/{project}/search-console/notification', [ProjectSearchConsoleController::class, 'updateNotification']);

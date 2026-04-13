@@ -71,6 +71,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/dashboard/report-data', [ReportController::class, 'dashboardSummary'])
         ->name('dashboard.report-data');
 
+    Route::get('/dashboard/quan-ly-du-an', function () {
+        return Inertia::render('ProjectDashboard');
+    })->name('projects.dashboard')->middleware('role:admin,administrator');
+
     Route::get('/du-an', function () {
         return Inertia::render('ProjectsKanban');
     })->name('projects.kanban')->middleware('role:admin,quan_ly,nhan_vien');
