@@ -162,7 +162,6 @@ function PaceBadge({ pace }) {
 
 function SegmentedPaceBar({ summary }) {
     const [activeSegmentKey, setActiveSegmentKey] = useState('');
-    const rates = summary?.pace_rates || {};
     const paceCounts = summary?.pace_counts || {};
     const total = Math.max(0, toInt(summary?.total));
     const completed = Math.max(0, toInt(summary?.completed));
@@ -170,40 +169,58 @@ function SegmentedPaceBar({ summary }) {
     const avgActual = toPercent(summary?.avg_actual_progress);
     const avgExpected = toPercent(summary?.avg_expected_progress);
     const avgLag = toPercent(summary?.avg_lag_percent);
-    const behind = Math.max(0, Number(rates.behind || 0));
-    const onTrack = Math.max(0, Number(rates.on_track || 0));
-    const ahead = Math.max(0, Number(rates.ahead || 0));
-    const handoverCompleted = Math.max(0, Number(rates.handover_completed || 0));
-    const baseSegments = [
+    const behindCount = Math.max(0, toInt(paceCounts.behind));
+    const onTrackCount = Math.max(0, toInt(paceCounts.on_track));
+    const aheadCount = Math.max(0, toInt(paceCounts.ahead));
+    const handoverCompletedCount = Math.max(0, toInt(paceCounts.handover_completed));
+    const countTotal = behindCount + onTrackCount + aheadCount + handoverCompletedCount;
+    const denominator = Math.max(0, total || countTotal);
+    const rawSegments = [
         {
             key: 'behind',
             label: 'Chậm tiến độ',
-            rate: behind,
-            count: toInt(paceCounts.behind),
+            count: behindCount,
             colorClass: 'bg-rose-500',
         },
         {
             key: 'on_track',
             label: 'Kịp tiến độ',
-            rate: onTrack,
-            count: toInt(paceCounts.on_track),
+            count: onTrackCount,
             colorClass: 'bg-amber-400',
         },
         {
             key: 'ahead',
             label: 'Vượt tiến độ',
-            rate: ahead,
-            count: toInt(paceCounts.ahead),
+            count: aheadCount,
             colorClass: 'bg-blue-500',
         },
         {
             key: 'handover_completed',
             label: 'Đã hoàn thành bàn giao',
-            rate: handoverCompleted,
-            count: toInt(paceCounts.handover_completed),
+            count: handoverCompletedCount,
             colorClass: 'bg-emerald-500',
         },
     ];
+
+    if (denominator <= 0) {
+        return <div className="h-2 w-full rounded-full bg-slate-100" />;
+    }
+
+    let accumulatedRate = 0;
+    const baseSegments = rawSegments.map((segment, index) => {
+        let rate = (segment.count / denominator) * 100;
+        if (index === rawSegments.length - 1) {
+            // Chặn sai số làm tròn floating-point để tổng luôn đầy 100%.
+            rate = Math.max(0, 100 - accumulatedRate);
+        }
+        accumulatedRate += rate;
+        return {
+            ...segment,
+            rate,
+            shareRate: segment.count > 0 ? (segment.count / denominator) * 100 : 0,
+        };
+    });
+
     let rangeStart = 0;
     const segments = baseSegments.map((segment) => {
         const start = rangeStart;
@@ -216,7 +233,7 @@ function SegmentedPaceBar({ summary }) {
     });
     const activeSegment = segments.find((segment) => segment.key === activeSegmentKey && segment.rate > 0) || null;
 
-    if ((behind + onTrack + ahead + handoverCompleted) <= 0) {
+    if (countTotal <= 0) {
         return <div className="h-2 w-full rounded-full bg-slate-100" />;
     }
 
@@ -261,7 +278,7 @@ function SegmentedPaceBar({ summary }) {
                         </span>
                     </div>
                     <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-slate-600">
-                        <span>Tỷ trọng: {toPercent(activeSegment.rate)}</span>
+                        <span>Tỷ trọng: {toPercent(activeSegment.shareRate)}</span>
                         <span>Hoàn thành: {completionRate}</span>
                         <span>Đã xong: {completed.toLocaleString('vi-VN')} / {total.toLocaleString('vi-VN')}</span>
                         <span>Thực tế TB: {avgActual}</span>
@@ -490,6 +507,14 @@ export default function ProjectDashboard(props) {
             meta: item?.meta || '',
         })).filter((item) => item.id > 0)
     ), [filtersMeta.staff_options]);
+    const staffHeadline = useMemo(() => {
+        const realStaffCount = staffRows.filter((row) => Number(row?.staff?.id || 0) > 0).length;
+        const hasUnassignedRow = staffRows.some((row) => Number(row?.staff?.id || 0) <= 0);
+        return {
+            realStaffCount,
+            hasUnassignedRow,
+        };
+    }, [staffRows]);
 
     const summaryStats = useMemo(() => {
         const projects = overview?.projects || {};
@@ -514,11 +539,13 @@ export default function ProjectDashboard(props) {
             },
             {
                 label: 'Nhân sự trong báo cáo',
-                value: `${staffRows.length.toLocaleString('vi-VN')}`,
-                note: 'Gộp theo phụ trách dự án / công việc / đầu việc',
+                value: `${staffHeadline.realStaffCount.toLocaleString('vi-VN')}`,
+                note: staffHeadline.hasUnassignedRow
+                    ? 'Bao gồm thêm 1 nhóm "Chưa phân công" để khớp tổng số liệu.'
+                    : 'Gộp theo phụ trách dự án / công việc / đầu việc',
             },
         ];
-    }, [overview, staffRows.length]);
+    }, [overview, staffHeadline]);
 
     const toggleFilterValue = (key, value) => {
         setDraftFilters((prev) => {
@@ -734,7 +761,8 @@ export default function ProjectDashboard(props) {
                         </p>
                     </div>
                     <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
-                        {staffRows.length.toLocaleString('vi-VN')} nhân sự
+                        {staffHeadline.realStaffCount.toLocaleString('vi-VN')} nhân sự
+                        {staffHeadline.hasUnassignedRow ? ' + 1 chưa phân công' : ''}
                     </span>
                 </div>
 

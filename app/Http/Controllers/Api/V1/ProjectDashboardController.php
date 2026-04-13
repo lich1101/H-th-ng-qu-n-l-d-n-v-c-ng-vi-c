@@ -387,21 +387,27 @@ class ProjectDashboardController extends Controller
         $rows = [];
 
         $ensureRow = function (int $staffId) use (&$rows, $staffMap): void {
-            if ($staffId <= 0 || isset($rows[$staffId])) {
+            if (isset($rows[$staffId])) {
                 return;
             }
 
-            /** @var User|null $user */
-            $user = $staffMap->get($staffId);
+            $isUnassigned = $staffId <= 0;
+            $user = null;
+            if (! $isUnassigned) {
+                /** @var User|null $user */
+                $user = $staffMap->get($staffId);
+            }
+
             $rows[$staffId] = [
                 'staff' => [
-                    'id' => $staffId,
-                    'name' => $user ? (string) ($user->name ?? '') : "Nhân sự #{$staffId}",
-                    'email' => $user ? (string) ($user->email ?? '') : '',
-                    'role' => $user ? (string) ($user->role ?? '') : '',
-                    'department_name' => $user ? (string) optional($user->departmentRelation)->name : '',
-                    'avatar_url' => $user ? (string) ($user->avatar_url ?? '') : '',
+                    'id' => $isUnassigned ? 0 : $staffId,
+                    'name' => $isUnassigned ? 'Chưa phân công' : ($user ? (string) ($user->name ?? '') : "Nhân sự #{$staffId}"),
+                    'email' => $isUnassigned ? '' : ($user ? (string) ($user->email ?? '') : ''),
+                    'role' => $isUnassigned ? '' : ($user ? (string) ($user->role ?? '') : ''),
+                    'department_name' => $isUnassigned ? '' : ($user ? (string) optional($user->departmentRelation)->name : ''),
+                    'avatar_url' => $isUnassigned ? '' : ($user ? (string) ($user->avatar_url ?? '') : ''),
                 ],
+                'is_unassigned' => $isUnassigned,
                 'projects' => $this->emptySummary(),
                 'tasks' => $this->emptySummary(),
                 'task_items' => $this->emptySummary(),
@@ -411,27 +417,18 @@ class ProjectDashboardController extends Controller
 
         foreach ($projectRows as $row) {
             $staffId = (int) ($row['owner_id'] ?? 0);
-            if ($staffId <= 0) {
-                continue;
-            }
             $ensureRow($staffId);
             $this->applyRowToSummary($rows[$staffId]['projects'], $row);
         }
 
         foreach ($taskRows as $row) {
             $staffId = (int) ($row['assignee_id'] ?? 0);
-            if ($staffId <= 0) {
-                continue;
-            }
             $ensureRow($staffId);
             $this->applyRowToSummary($rows[$staffId]['tasks'], $row);
         }
 
         foreach ($taskItemRows as $row) {
             $staffId = (int) ($row['assignee_id'] ?? 0);
-            if ($staffId <= 0) {
-                continue;
-            }
             $ensureRow($staffId);
             $this->applyRowToSummary($rows[$staffId]['task_items'], $row);
         }
@@ -451,6 +448,7 @@ class ProjectDashboardController extends Controller
         return collect($rows)
             ->values()
             ->sortBy([
+                ['is_unassigned', 'asc'],
                 ['total_entities', 'desc'],
                 ['staff.name', 'asc'],
             ])
