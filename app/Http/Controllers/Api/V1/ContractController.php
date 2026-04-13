@@ -28,6 +28,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Carbon;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Str;
 
@@ -691,6 +692,132 @@ class ContractController extends Controller
         $this->loadContractDetail($contract);
 
         return response()->json($this->appendContractPermissions($contract, $request->user()));
+    }
+
+    /**
+     * Đồng bộ ngày cho các hợp đồng đã chọn: chỉ xử lý bản ghi **chưa có ngày bắt đầu hiệu lực** (start_date null).
+     *
+     * - Có ngày ký: gán start_date = ngày ký.
+     * - Không có ngày ký: gán signed_at và start_date = ngày tạo hợp đồng (theo múi Asia/Ho_Chi_Minh).
+     * - Nếu ngày kết thúc hiện có ≤ ngày bắt đầu mới: đẩy end_date sang ngày sau ngày bắt đầu (để thỏa end > start).
+     */
+    public function syncDates(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'contract_ids' => ['required', 'array', 'min:1', 'max:500'],
+            'contract_ids.*' => ['integer', 'exists:contracts,id'],
+        ]);
+
+        $ids = array_values(array_unique(array_map('intval', $validated['contract_ids'])));
+        $tz = 'Asia/Ho_Chi_Minh';
+
+        $updated = [];
+        $skipped = [];
+        $failed = [];
+
+        foreach ($ids as $id) {
+            $contract = Contract::query()->find($id);
+            if (! $contract) {
+                $failed[] = ['id' => $id, 'message' => 'Không tìm thấy hợp đồng.'];
+
+                continue;
+            }
+
+            if (! $this->canEditContract($request->user(), $contract)) {
+                $failed[] = ['id' => $id, 'message' => 'Không có quyền cập nhật hợp đồng.'];
+
+                continue;
+            }
+
+            $contract->loadMissing('client');
+            if (! $contract->client) {
+                $failed[] = ['id' => $id, 'message' => 'Hợp đồng thiếu khách hàng.'];
+
+                continue;
+            }
+
+            if (! $this->canMutateContractForClient($request->user(), $contract->client, $contract)) {
+                $failed[] = ['id' => $id, 'message' => 'Không có quyền theo phạm vi khách hàng.'];
+
+                continue;
+            }
+
+            if ($contract->start_date !== null) {
+                $skipped[] = [
+                    'id' => $id,
+                    'code' => $contract->code,
+                    'reason' => 'already_has_start_date',
+                ];
+
+                continue;
+            }
+
+            $createdDateStr = $contract->created_at
+                ? $contract->created_at->copy()->timezone($tz)->format('Y-m-d')
+                : null;
+
+            $payload = [];
+
+            if ($contract->signed_at !== null) {
+                $payload['start_date'] = $contract->signed_at->format('Y-m-d');
+            } else {
+                if ($createdDateStr === null) {
+                    $failed[] = ['id' => $id, 'message' => 'Không có ngày ký và không có ngày tạo để gán.'];
+
+                    continue;
+                }
+                $payload['signed_at'] = $createdDateStr;
+                $payload['start_date'] = $createdDateStr;
+            }
+
+            $newStart = Carbon::parse($payload['start_date'], $tz)->startOfDay();
+
+            if ($contract->end_date !== null) {
+                $end = Carbon::parse($contract->end_date->format('Y-m-d'), $tz)->startOfDay();
+                if ($end->lte($newStart)) {
+                    $payload['end_date'] = $newStart->copy()->addDay()->format('Y-m-d');
+                }
+            }
+
+            try {
+                DB::transaction(function () use ($contract, $payload) {
+                    $contract->update($payload);
+                    $contract->refreshFinancials();
+                });
+                $contract->refresh();
+                if ($contract->client) {
+                    $this->syncClientRevenue($contract->client);
+                }
+                $updated[] = [
+                    'id' => $id,
+                    'code' => $contract->code,
+                    'start_date' => $payload['start_date'],
+                    'signed_at_filled' => array_key_exists('signed_at', $payload),
+                    'end_date_adjusted' => array_key_exists('end_date', $payload),
+                ];
+            } catch (\Throwable $e) {
+                report($e);
+                $failed[] = ['id' => $id, 'message' => 'Lỗi khi lưu: '.($e->getMessage() ?: 'Không xác định.')];
+            }
+        }
+
+        $parts = [];
+        if (count($updated) > 0) {
+            $parts[] = 'Đã cập nhật '.count($updated).' hợp đồng.';
+        }
+        if (count($skipped) > 0) {
+            $parts[] = 'Bỏ qua '.count($skipped).' hợp đồng (đã có ngày bắt đầu hiệu lực).';
+        }
+        if (count($failed) > 0) {
+            $parts[] = count($failed).' hợp đồng không xử lý được.';
+        }
+
+        return response()->json([
+            'message' => count($parts) > 0 ? implode(' ', $parts) : 'Không có thay đổi.',
+            'updated' => $updated,
+            'skipped' => $skipped,
+            'failed' => $failed,
+        ]);
     }
 
     public function approve(Request $request, Contract $contract): JsonResponse

@@ -336,6 +336,8 @@ Route::prefix('v1')->group(function () {
             ->middleware('role:admin,administrator,quan_ly,ke_toan');
         Route::post('/contracts', [ContractController::class, 'store'])
             ->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
+        Route::post('/contracts/sync-dates', [ContractController::class, 'syncDates'])
+            ->middleware('role:admin,administrator,quan_ly,ke_toan');
         Route::put('/contracts/{contract}', [ContractController::class, 'update'])
             ->middleware('role:admin,administrator,quan_ly,ke_toan');
         Route::delete('/contracts/{contract}', [ContractController::class, 'destroy'])

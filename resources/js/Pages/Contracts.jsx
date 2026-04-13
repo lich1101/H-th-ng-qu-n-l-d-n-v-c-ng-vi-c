@@ -699,6 +699,49 @@ export default function Contracts(props) {
         }
     };
 
+    const bulkSyncContractDates = async () => {
+        if (!canManage) {
+            toast.error('Bạn không có quyền cập nhật hợp đồng.');
+            return;
+        }
+        if (!selectedContractIds.length) {
+            toast.error('Vui lòng chọn ít nhất một hợp đồng.');
+            return;
+        }
+        const msg = [
+            'Đồng bộ ngày cho các hợp đồng đã chọn (chỉ áp dụng khi hợp đồng chưa có «Ngày bắt đầu hiệu lực»):',
+            '',
+            '• Đã có ngày ký: gán ngày bắt đầu = ngày ký.',
+            '• Chưa có ngày ký: gán ngày ký và ngày bắt đầu = ngày tạo hợp đồng (theo múi Việt Nam).',
+            '• Nếu ngày kết thúc hiện có không sau ngày bắt đầu mới: đẩy ngày kết thúc sang ngày liền sau ngày bắt đầu.',
+            '',
+            `Thực hiện cho ${selectedContractIds.length} hợp đồng đã chọn?`,
+        ].join('\n');
+        if (!window.confirm(msg)) return;
+
+        setBulkLoading(true);
+        try {
+            const res = await axios.post('/api/v1/contracts/sync-dates', {
+                contract_ids: selectedContractIds.map((id) => Number(id)),
+            });
+            const { data } = res;
+            toast.success(data?.message || 'Đã đồng bộ.');
+            const failed = data?.failed || [];
+            if (failed.length > 0) {
+                const first = failed[0];
+                toast.error(
+                    `Một số hợp đồng không xử lý được (ví dụ #${first.id ?? '?'}): ${first.message || 'Lỗi'}.`,
+                );
+            }
+            setSelectedContractIds([]);
+            await fetchContracts(filters);
+        } catch (error) {
+            toast.error(getErrorMessage(error, 'Không thể đồng bộ ngày hợp đồng.'));
+        } finally {
+            setBulkLoading(false);
+        }
+    };
+
     const resetForm = () => {
         setEditingId(null);
         setContractClientPreview(null);
@@ -1530,7 +1573,7 @@ export default function Contracts(props) {
                                 ? 'Admin và Kế toán có thể theo dõi toàn bộ hợp đồng, duyệt nhanh, gắn nhóm chăm sóc và quản lý công nợ trên cùng một màn.'
                                 : 'Theo dõi hợp đồng theo phạm vi khách hàng bạn đang quản lý.'}
                 </div>
-                {canBulkActions && selectedContractIds.length > 0 && (
+                            {canBulkActions && selectedContractIds.length > 0 && (
                     <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3">
                         <div className="text-sm font-medium text-cyan-900">
                             Đã chọn {selectedContractIds.length} hợp đồng.
@@ -1544,6 +1587,17 @@ export default function Contracts(props) {
                             >
                                 Bỏ chọn
                             </button>
+                            {canManage && (
+                                <button
+                                    type="button"
+                                    className="rounded-xl border border-sky-300 bg-sky-100 px-3 py-2 text-xs font-semibold text-sky-900"
+                                    onClick={bulkSyncContractDates}
+                                    disabled={bulkLoading}
+                                    title="Chỉ cập nhật hợp đồng chưa có ngày bắt đầu hiệu lực"
+                                >
+                                    {bulkLoading ? 'Đang xử lý...' : 'Đồng bộ ngày đã chọn'}
+                                </button>
+                            )}
                             {canApprove && (
                                 <button
                                     type="button"
@@ -1767,7 +1821,7 @@ export default function Contracts(props) {
                                 ))}
                                 {contracts.length === 0 && (
                                     <tr>
-                                        <td className="py-6 text-center text-sm text-text-muted" colSpan={canBulkActions ? 18 : 17}>
+                                        <td className="py-6 text-center text-sm text-text-muted" colSpan={canBulkActions ? 19 : 18}>
                                             Chưa có hợp đồng nào.
                                         </td>
                                     </tr>
@@ -1777,7 +1831,7 @@ export default function Contracts(props) {
                                 <tfoot>
                                     <tr className="border-t-2 border-slate-200 bg-slate-50/90 text-left text-sm text-slate-800">
                                         <td
-                                            colSpan={canBulkActions ? 10 : 9}
+                                            colSpan={canBulkActions ? 11 : 10}
                                             className="py-2.5 pr-3 text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle"
                                         >
                                             Tổng theo bộ lọc (tất cả trang)
