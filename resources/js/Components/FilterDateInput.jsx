@@ -4,7 +4,7 @@ import { Vietnamese } from 'flatpickr/dist/l10n/vn.js';
 import 'flatpickr/dist/flatpickr.min.css';
 
 /**
- * Ô chọn ngày cho bộ lọc: popup Flatpickr locale tiếng Việt, giá trị `YYYY-MM-DD` (tương thích API / input type="date").
+ * Ô chọn ngày cho bộ lọc: hiển thị dd/MM/yyyy (giống bảng), giá trị gửi state/API vẫn `YYYY-MM-DD`.
  */
 export default function FilterDateInput({
     className,
@@ -23,25 +23,32 @@ export default function FilterDateInput({
 
     useEffect(() => {
         if (!ref.current) return;
-        fpRef.current = flatpickr(ref.current, {
+        const fpOptions = {
             locale: Vietnamese,
             dateFormat: 'Y-m-d',
+            altInput: true,
+            altFormat: 'd/m/Y',
             allowInput: true,
             clickOpens: true,
             // Tránh dropdown tháng (<select>) bị @tailwindcss/forms làm vỡ layout (chồng lên lưới ngày).
             monthSelectorType: 'static',
             appendTo: typeof document !== 'undefined' ? document.body : undefined,
+            disableMobile: true,
             minDate: minDate || undefined,
             maxDate: maxDate || undefined,
             onChange: (_selectedDates, dateStr) => {
                 onChangeRef.current?.({ target: { value: dateStr } });
             },
-        });
+        };
+        if (className) {
+            fpOptions.altInputClass = className;
+        }
+        fpRef.current = flatpickr(ref.current, fpOptions);
         return () => {
             fpRef.current?.destroy();
             fpRef.current = null;
         };
-    }, []);
+    }, [className]);
 
     useEffect(() => {
         if (!fpRef.current) return;
