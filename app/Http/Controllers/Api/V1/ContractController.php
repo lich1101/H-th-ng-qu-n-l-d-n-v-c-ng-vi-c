@@ -63,7 +63,7 @@ class ContractController extends Controller
             $query->with('items');
         }
 
-        $sortBy = (string) $request->input('sort_by', 'signed_at');
+        $sortBy = (string) $request->input('sort_by', 'approved_at');
         $sortDir = $this->normalizeSortDirection((string) $request->input('sort_dir', 'desc'));
         $this->applyContractSorting($query, $sortBy, $sortDir);
 
@@ -196,19 +196,19 @@ class ContractController extends Controller
             });
         }
 
-        if ($request->filled('signed_at_from') || $request->filled('signed_at_to')) {
-            $includeUnsigned = $request->boolean('include_unsigned_signed_at');
-            $query->where(function (Builder $outer) use ($request, $includeUnsigned) {
+        if ($request->filled('approved_at_from') || $request->filled('approved_at_to')) {
+            $includeWithoutApproved = $request->boolean('include_without_approved_at');
+            $query->where(function (Builder $outer) use ($request, $includeWithoutApproved) {
                 $outer->where(function (Builder $inner) use ($request) {
-                    if ($request->filled('signed_at_from')) {
-                        $inner->whereDate('contracts.signed_at', '>=', (string) $request->input('signed_at_from'));
+                    if ($request->filled('approved_at_from')) {
+                        $inner->whereDate('contracts.approved_at', '>=', (string) $request->input('approved_at_from'));
                     }
-                    if ($request->filled('signed_at_to')) {
-                        $inner->whereDate('contracts.signed_at', '<=', (string) $request->input('signed_at_to'));
+                    if ($request->filled('approved_at_to')) {
+                        $inner->whereDate('contracts.approved_at', '<=', (string) $request->input('approved_at_to'));
                     }
                 });
-                if ($includeUnsigned) {
-                    $outer->orWhereNull('contracts.signed_at');
+                if ($includeWithoutApproved) {
+                    $outer->orWhereNull('contracts.approved_at');
                 }
             });
         }
@@ -450,6 +450,10 @@ class ContractController extends Controller
                 $query->orderByRaw('CASE WHEN contracts.signed_at IS NULL THEN 1 ELSE 0 END')
                     ->orderBy('contracts.signed_at', $direction);
                 break;
+            case 'approved_at':
+                $query->orderByRaw('CASE WHEN contracts.approved_at IS NULL THEN 1 ELSE 0 END')
+                    ->orderBy('contracts.approved_at', $direction);
+                break;
             case 'start_date':
                 $query->orderByRaw('CASE WHEN contracts.start_date IS NULL THEN 1 ELSE 0 END')
                     ->orderBy('contracts.start_date', $direction);
@@ -495,8 +499,8 @@ class ContractController extends Controller
                 $query->orderBy('contracts.handover_receive_status', $direction);
                 break;
             default:
-                $query->orderByRaw('CASE WHEN contracts.signed_at IS NULL THEN 1 ELSE 0 END')
-                    ->orderByDesc('contracts.signed_at');
+                $query->orderByRaw('CASE WHEN contracts.approved_at IS NULL THEN 1 ELSE 0 END')
+                    ->orderByDesc('contracts.approved_at');
                 $direction = 'desc';
                 break;
         }

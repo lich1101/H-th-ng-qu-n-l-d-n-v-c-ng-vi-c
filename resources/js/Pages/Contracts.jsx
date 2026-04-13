@@ -115,14 +115,14 @@ const dateInputAddDays = (days) => {
     return d.toISOString().slice(0, 10);
 };
 
-/** Ngày đầu tháng hiện tại — lọc «Ngày ký từ»; «Ngày ký đến» để trống ban đầu. */
-const currentMonthSignedRange = () => {
+/** Ngày đầu tháng hiện tại — lọc «Ngày duyệt từ»; «Ngày duyệt đến» để trống ban đầu. */
+const currentMonthApprovedRange = () => {
     const now = new Date();
     const y = now.getFullYear();
     const m = now.getMonth();
     const pad = (n) => String(n).padStart(2, '0');
     const from = `${y}-${pad(m + 1)}-01`;
-    return { signed_at_from: from, signed_at_to: '' };
+    return { approved_at_from: from, approved_at_to: '' };
 };
 const calculateItemTotal = (item) => {
     const price = parseNumberInput(item?.unit_price);
@@ -255,12 +255,12 @@ export default function Contracts(props) {
         has_project: '',
         project_status: '',
         staff_ids: [],
-        include_unsigned_signed_at: false,
+        include_without_approved_at: false,
         per_page: 20,
         page: 1,
-        sort_by: 'signed_at',
+        sort_by: 'approved_at',
         sort_dir: 'desc',
-        ...currentMonthSignedRange(),
+        ...currentMonthApprovedRange(),
     }));
     const [form, setForm] = useState({
         title: '',
@@ -503,10 +503,10 @@ export default function Contracts(props) {
                     ...(nextFilters.has_project ? { has_project: nextFilters.has_project } : {}),
                     ...(nextFilters.project_status ? { project_status: nextFilters.project_status } : {}),
                     ...(Array.isArray(nextFilters.staff_ids) && nextFilters.staff_ids.length > 0 ? { staff_ids: nextFilters.staff_ids } : {}),
-                    ...(nextFilters.signed_at_from ? { signed_at_from: nextFilters.signed_at_from } : {}),
-                    ...(nextFilters.signed_at_to ? { signed_at_to: nextFilters.signed_at_to } : {}),
-                    ...(nextFilters.include_unsigned_signed_at ? { include_unsigned_signed_at: 1 } : {}),
-                    sort_by: nextFilters.sort_by || 'signed_at',
+                    ...(nextFilters.approved_at_from ? { approved_at_from: nextFilters.approved_at_from } : {}),
+                    ...(nextFilters.approved_at_to ? { approved_at_to: nextFilters.approved_at_to } : {}),
+                    ...(nextFilters.include_without_approved_at ? { include_without_approved_at: 1 } : {}),
+                    sort_by: nextFilters.sort_by || 'approved_at',
                     sort_dir: nextFilters.sort_dir || 'desc',
                 },
             });
@@ -1531,32 +1531,32 @@ export default function Contracts(props) {
                                 emptyLabel="Để trống để xem toàn bộ trong phạm vi."
                             />
                         </FilterField>
-                        <FilterField label="Ngày ký từ">
+                        <FilterField label="Ngày duyệt từ">
                             <FilterDateInput
                                 className={filterControlClass}
-                                value={filters.signed_at_from || ''}
-                                onChange={(e) => setFilters((s) => ({ ...s, signed_at_from: e.target.value }))}
+                                value={filters.approved_at_from || ''}
+                                onChange={(e) => setFilters((s) => ({ ...s, approved_at_from: e.target.value }))}
                             />
                         </FilterField>
-                        <FilterField label="Ngày ký đến">
+                        <FilterField label="Ngày duyệt đến">
                             <FilterDateInput
                                 className={filterControlClass}
-                                value={filters.signed_at_to || ''}
-                                onChange={(e) => setFilters((s) => ({ ...s, signed_at_to: e.target.value }))}
+                                value={filters.approved_at_to || ''}
+                                onChange={(e) => setFilters((s) => ({ ...s, approved_at_to: e.target.value }))}
                             />
                         </FilterField>
                         <FilterField
-                            label="Hợp đồng chưa có ngày ký"
-                            hint="Khi bật, danh sách gồm cả hợp đồng chưa nhập ngày ký (để sửa), cùng với hợp đồng trong khoảng ngày đã chọn."
+                            label="Hợp đồng chưa có ngày duyệt"
+                            hint="Khi bật, danh sách gồm cả hợp đồng chưa có ngày duyệt (chờ duyệt, từ chối hoặc dữ liệu cũ), cùng với hợp đồng có ngày duyệt trong khoảng đã chọn."
                         >
                             <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
                                 <input
                                     type="checkbox"
                                     className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary/40"
-                                    checked={!!filters.include_unsigned_signed_at}
-                                    onChange={(e) => setFilters((s) => ({ ...s, include_unsigned_signed_at: e.target.checked }))}
+                                    checked={!!filters.include_without_approved_at}
+                                    onChange={(e) => setFilters((s) => ({ ...s, include_without_approved_at: e.target.checked }))}
                                 />
-                                Bao gồm chưa có ngày ký
+                                Bao gồm chưa có ngày duyệt
                             </label>
                         </FilterField>
                         <FilterActionGroup className={FILTER_GRID_SUBMIT_ROW}>
@@ -1625,7 +1625,7 @@ export default function Contracts(props) {
                     <table
                         ref={contractTableRef}
                         data-sort-scope="remote"
-                        data-sort-by={filters.sort_by || 'signed_at'}
+                        data-sort-by={filters.sort_by || 'approved_at'}
                         data-sort-dir={filters.sort_dir || 'desc'}
                         className="table-spacious min-w-full text-sm"
                     >
@@ -1648,6 +1648,7 @@ export default function Contracts(props) {
                                     <th className="py-2" data-az-ignore>Dự án liên kết</th>
                                     <th className="py-2" data-sort-key="client_phone">SĐT khách hàng</th>
                                     <th className="py-2" data-sort-key="signed_at">Ngày ký</th>
+                                    <th className="py-2" data-sort-key="approved_at">Ngày duyệt</th>
                                     <th className="py-2" data-sort-key="start_date">Ngày bắt đầu hiệu lực</th>
                                     <th className="py-2" data-sort-key="end_date">Ngày kết thúc</th>
                                     <th className="py-2" data-sort-key="notes">Ghi chú</th>
@@ -1734,6 +1735,7 @@ export default function Contracts(props) {
                                         </td>
                                         <td className="py-2 text-slate-700">{c.client?.phone || '—'}</td>
                                         <td className="py-2 text-slate-700">{formatDateDisplay(c.signed_at)}</td>
+                                        <td className="py-2 text-slate-700">{formatDateDisplay(c.approved_at)}</td>
                                         <td className="py-2 text-slate-700">{formatDateDisplay(c.start_date)}</td>
                                         <td className="py-2 text-slate-700">{formatDateDisplay(c.end_date)}</td>
                                         <td className="allow-wrap py-2 text-slate-700">{c.notes || '—'}</td>
