@@ -372,6 +372,11 @@ export default function ProjectDashboard(props) {
         tasks: null,
         task_items: null,
     });
+    const [completedArchive, setCompletedArchive] = useState({
+        projects: 0,
+        tasks: 0,
+        task_items: 0,
+    });
     const [staffRows, setStaffRows] = useState([]);
     const [projectSpotlight, setProjectSpotlight] = useState([]);
 
@@ -404,6 +409,11 @@ export default function ProjectDashboard(props) {
                 projects: data?.overview?.projects || null,
                 tasks: data?.overview?.tasks || null,
                 task_items: data?.overview?.task_items || null,
+            });
+            setCompletedArchive({
+                projects: toInt(data?.completed_archive?.projects),
+                tasks: toInt(data?.completed_archive?.tasks),
+                task_items: toInt(data?.completed_archive?.task_items),
             });
             setStaffRows(Array.isArray(data?.staff_rows) ? data.staff_rows : []);
             setProjectSpotlight(Array.isArray(data?.project_spotlight) ? data.project_spotlight : []);
@@ -504,6 +514,23 @@ export default function ProjectDashboard(props) {
         () => buildRouteUrl('task-items.board'),
         []
     );
+    const completedSummaryCards = useMemo(() => ([
+        {
+            label: 'Dự án đã hoàn thành bàn giao',
+            value: toInt(completedArchive.projects).toLocaleString('vi-VN'),
+        },
+        {
+            label: 'Công việc đã hoàn thành',
+            value: toInt(completedArchive.tasks).toLocaleString('vi-VN'),
+        },
+        {
+            label: 'Đầu việc đã hoàn thành',
+            value: toInt(completedArchive.task_items).toLocaleString('vi-VN'),
+        },
+    ]), [completedArchive]);
+    const projectSpotlightTitle = useMemo(() => (
+        `${toInt(projectSpotlight.length).toLocaleString('vi-VN')} dự án`
+    ), [projectSpotlight.length]);
 
     return (
         <PageContainer
@@ -585,6 +612,25 @@ export default function ProjectDashboard(props) {
                     </button>
                 </FilterActionGroup>
             </FilterToolbar>
+
+            <div className={`${cardClass} mb-5`}>
+                <div className="flex items-start justify-between gap-4">
+                    <div>
+                        <h3 className="text-lg font-semibold text-slate-900">Khối đã hoàn thành bàn giao</h3>
+                        <p className="mt-1 text-sm text-text-muted">
+                            Các dự án đã bàn giao thành công đã được loại khỏi thống kê tiến độ bên dưới, chỉ giữ lại số lượng hoàn thành.
+                        </p>
+                    </div>
+                </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                    {completedSummaryCards.map((item) => (
+                        <div key={item.label} className="rounded-2xl border border-emerald-200/80 bg-emerald-50/70 px-4 py-3">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700/80">{item.label}</p>
+                            <p className="mt-2 text-2xl font-semibold text-emerald-800">{item.value}</p>
+                        </div>
+                    ))}
+                </div>
+            </div>
 
             <div className="grid gap-4 lg:grid-cols-3">
                 <SummaryCard
@@ -682,7 +728,7 @@ export default function ProjectDashboard(props) {
                         </p>
                     </div>
                     <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
-                        {projectSpotlight.length.toLocaleString('vi-VN')} dự án
+                        {projectSpotlightTitle}
                     </span>
                 </div>
 
@@ -707,7 +753,13 @@ export default function ProjectDashboard(props) {
                             </thead>
                             <tbody>
                                 {projectSpotlight.map((project) => (
-                                    <tr key={project.id} className="border-t border-slate-100 text-slate-700">
+                                    <tr
+                                        key={project.id}
+                                        className="cursor-pointer border-t border-slate-100 text-slate-700 transition hover:bg-slate-50/80"
+                                        onClick={() => {
+                                            window.location.href = route('projects.detail', project.id);
+                                        }}
+                                    >
                                         <td className="px-3 py-2.5">
                                             <div className="font-semibold text-slate-900">{project.name || 'Dự án'}</div>
                                             <div className="text-xs text-text-muted">{project.code || `#${project.id}`}</div>

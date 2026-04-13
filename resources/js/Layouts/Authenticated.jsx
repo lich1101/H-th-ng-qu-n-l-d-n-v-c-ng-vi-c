@@ -322,7 +322,7 @@ export default function Authenticated({ auth, header, children }) {
                         roles: ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'],
                     },
                     {
-                        label: 'Quản lý dự án',
+                        label: 'Tổng quan dự án',
                         icon: 'chart',
                         routeName: 'projects.dashboard',
                         href: route('projects.dashboard'),

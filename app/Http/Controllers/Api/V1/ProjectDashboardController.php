@@ -77,13 +77,34 @@ class ProjectDashboardController extends Controller
             'name',
             'owner_id',
             'status',
+            'handover_status',
             'start_date',
             'deadline',
             'progress_percent',
             'created_at',
         ]);
 
-        $projectRows = $projectsInScope
+        $completedHandoverProjects = $projectsInScope
+            ->filter(function (Project $project) {
+                return $this->isHandoverCompletedProject($project);
+            })
+            ->values();
+
+        $activeProjectsInScope = $projectsInScope
+            ->reject(function (Project $project) {
+                return $this->isHandoverCompletedProject($project);
+            })
+            ->values();
+
+        $completedProjectCount = $completedHandoverProjects
+            ->when(! empty($staffIds), function (Collection $items) use ($staffIds) {
+                return $items->filter(function (Project $project) use ($staffIds) {
+                    return $project->owner_id && in_array((int) $project->owner_id, $staffIds, true);
+                });
+            })
+            ->count();
+
+        $projectRows = $activeProjectsInScope
             ->when(! empty($staffIds), function (Collection $items) use ($staffIds) {
                 return $items->filter(function (Project $project) use ($staffIds) {
                     return $project->owner_id && in_array((int) $project->owner_id, $staffIds, true);
@@ -122,7 +143,18 @@ class ProjectDashboardController extends Controller
             })->values();
         }
 
-        $projectIdsInScope = $projectsInScope
+        $activeProjectIdsInScope = $activeProjectsInScope
+            ->pluck('id')
+            ->map(function ($id) {
+                return (int) $id;
+            })
+            ->filter(function (int $id) {
+                return $id > 0;
+            })
+            ->values()
+            ->all();
+
+        $completedProjectIdsInScope = $completedHandoverProjects
             ->pluck('id')
             ->map(function ($id) {
                 return (int) $id;
@@ -134,33 +166,19 @@ class ProjectDashboardController extends Controller
             ->all();
 
         $taskRows = collect();
-        if (! empty($projectIdsInScope)) {
+        if (! empty($activeProjectIdsInScope)) {
             $taskQuery = Task::query()
                 ->with([
                     'assignee:id,name,email,role,department_id,avatar_url',
                     'assignee.departmentRelation:id,name',
                 ])
-                ->whereIn('project_id', $projectIdsInScope);
+                ->whereIn('project_id', $activeProjectIdsInScope);
 
             if (! empty($staffIds)) {
                 $taskQuery->whereIn('assignee_id', $staffIds);
             }
 
-            if ($search !== '') {
-                $taskQuery->where(function ($builder) use ($search) {
-                    $builder->where('title', 'like', "%{$search}%")
-                        ->orWhere('description', 'like', "%{$search}%")
-                        ->orWhereHas('project', function ($projectQuery) use ($search) {
-                            $projectQuery->where('name', 'like', "%{$search}%")
-                                ->orWhere('code', 'like', "%{$search}%")
-                                ->orWhere('status', 'like', "%{$search}%");
-                        })
-                        ->orWhereHas('assignee', function ($assigneeQuery) use ($search) {
-                            $assigneeQuery->where('name', 'like', "%{$search}%")
-                                ->orWhere('email', 'like', "%{$search}%");
-                        });
-                });
-            }
+            $this->applyTaskSearchFilter($taskQuery, $search);
 
             /** @var Collection<int, Task> $tasks */
             $tasks = $taskQuery->orderByDesc('id')->get([
@@ -207,39 +225,40 @@ class ProjectDashboardController extends Controller
             }
         }
 
+        $completedTaskCount = 0;
+        if (! empty($completedProjectIdsInScope)) {
+            $completedTaskQuery = Task::query()
+                ->whereIn('project_id', $completedProjectIdsInScope);
+
+            if (! empty($staffIds)) {
+                $completedTaskQuery->whereIn('assignee_id', $staffIds);
+            }
+
+            $this->applyTaskSearchFilter($completedTaskQuery, $search);
+
+            $completedTaskCount = $completedTaskQuery
+                ->get(['status', 'progress_percent'])
+                ->reduce(function (int $carry, Task $task) {
+                    return $carry + ($this->isCompleted((string) ($task->status ?? ''), (int) ($task->progress_percent ?? 0)) ? 1 : 0);
+                }, 0);
+        }
+
         $taskItemRows = collect();
-        if (! empty($projectIdsInScope)) {
+        if (! empty($activeProjectIdsInScope)) {
             $taskItemQuery = TaskItem::query()
                 ->with([
                     'assignee:id,name,email,role,department_id,avatar_url',
                     'assignee.departmentRelation:id,name',
                 ])
-                ->whereHas('task', function ($taskQuery) use ($projectIdsInScope) {
-                    $taskQuery->whereIn('project_id', $projectIdsInScope);
+                ->whereHas('task', function ($taskQuery) use ($activeProjectIdsInScope) {
+                    $taskQuery->whereIn('project_id', $activeProjectIdsInScope);
                 });
 
             if (! empty($staffIds)) {
                 $taskItemQuery->whereIn('assignee_id', $staffIds);
             }
 
-            if ($search !== '') {
-                $taskItemQuery->where(function ($builder) use ($search) {
-                    $builder->where('title', 'like', "%{$search}%")
-                        ->orWhere('description', 'like', "%{$search}%")
-                        ->orWhereHas('task', function ($taskQuery) use ($search) {
-                            $taskQuery->where('title', 'like', "%{$search}%")
-                                ->orWhereHas('project', function ($projectQuery) use ($search) {
-                                    $projectQuery->where('name', 'like', "%{$search}%")
-                                        ->orWhere('code', 'like', "%{$search}%")
-                                        ->orWhere('status', 'like', "%{$search}%");
-                                });
-                        })
-                        ->orWhereHas('assignee', function ($assigneeQuery) use ($search) {
-                            $assigneeQuery->where('name', 'like', "%{$search}%")
-                                ->orWhere('email', 'like', "%{$search}%");
-                        });
-                });
-            }
+            $this->applyTaskItemSearchFilter($taskItemQuery, $search);
 
             /** @var Collection<int, TaskItem> $taskItems */
             $taskItems = $taskItemQuery->orderByDesc('id')->get([
@@ -284,6 +303,26 @@ class ProjectDashboardController extends Controller
                     return in_array((string) ($row['pace']['status'] ?? ''), $paceStatuses, true);
                 })->values();
             }
+        }
+
+        $completedTaskItemCount = 0;
+        if (! empty($completedProjectIdsInScope)) {
+            $completedTaskItemQuery = TaskItem::query()
+                ->whereHas('task', function ($taskQuery) use ($completedProjectIdsInScope) {
+                    $taskQuery->whereIn('project_id', $completedProjectIdsInScope);
+                });
+
+            if (! empty($staffIds)) {
+                $completedTaskItemQuery->whereIn('assignee_id', $staffIds);
+            }
+
+            $this->applyTaskItemSearchFilter($completedTaskItemQuery, $search);
+
+            $completedTaskItemCount = $completedTaskItemQuery
+                ->get(['status', 'progress_percent'])
+                ->reduce(function (int $carry, TaskItem $item) {
+                    return $carry + ($this->isCompleted((string) ($item->status ?? ''), (int) ($item->progress_percent ?? 0)) ? 1 : 0);
+                }, 0);
         }
 
         $allStaffIds = collect()
@@ -350,6 +389,11 @@ class ProjectDashboardController extends Controller
                 'staff_options' => $this->buildStaffOptions(),
             ],
             'overview' => $overview,
+            'completed_archive' => [
+                'projects' => (int) $completedProjectCount,
+                'tasks' => (int) $completedTaskCount,
+                'task_items' => (int) $completedTaskItemCount,
+            ],
             'staff_rows' => $staffRows,
             'project_spotlight' => $projectSpotlight,
             'generated_at' => now('Asia/Ho_Chi_Minh')->toIso8601String(),
@@ -507,6 +551,57 @@ class ProjectDashboardController extends Controller
             'avg_expected_progress' => $total > 0 ? round($expectedSum / $total, 1) : 0,
             'avg_lag_percent' => $total > 0 ? round($lagSum / $total, 1) : 0,
         ];
+    }
+
+    private function isHandoverCompletedProject(Project $project): bool
+    {
+        $handoverStatus = mb_strtolower(trim((string) ($project->handover_status ?? '')));
+        return $handoverStatus === 'approved';
+    }
+
+    private function applyTaskSearchFilter($query, string $search): void
+    {
+        if ($search === '') {
+            return;
+        }
+
+        $query->where(function ($builder) use ($search) {
+            $builder->where('title', 'like', "%{$search}%")
+                ->orWhere('description', 'like', "%{$search}%")
+                ->orWhereHas('project', function ($projectQuery) use ($search) {
+                    $projectQuery->where('name', 'like', "%{$search}%")
+                        ->orWhere('code', 'like', "%{$search}%")
+                        ->orWhere('status', 'like', "%{$search}%");
+                })
+                ->orWhereHas('assignee', function ($assigneeQuery) use ($search) {
+                    $assigneeQuery->where('name', 'like', "%{$search}%")
+                        ->orWhere('email', 'like', "%{$search}%");
+                });
+        });
+    }
+
+    private function applyTaskItemSearchFilter($query, string $search): void
+    {
+        if ($search === '') {
+            return;
+        }
+
+        $query->where(function ($builder) use ($search) {
+            $builder->where('title', 'like', "%{$search}%")
+                ->orWhere('description', 'like', "%{$search}%")
+                ->orWhereHas('task', function ($taskQuery) use ($search) {
+                    $taskQuery->where('title', 'like', "%{$search}%")
+                        ->orWhereHas('project', function ($projectQuery) use ($search) {
+                            $projectQuery->where('name', 'like', "%{$search}%")
+                                ->orWhere('code', 'like', "%{$search}%")
+                                ->orWhere('status', 'like', "%{$search}%");
+                        });
+                })
+                ->orWhereHas('assignee', function ($assigneeQuery) use ($search) {
+                    $assigneeQuery->where('name', 'like', "%{$search}%")
+                        ->orWhere('email', 'like', "%{$search}%");
+                });
+        });
     }
 
     private function buildPaceSummary($startValue, $deadlineValue, int $actualProgress, $createdAt = null): array
