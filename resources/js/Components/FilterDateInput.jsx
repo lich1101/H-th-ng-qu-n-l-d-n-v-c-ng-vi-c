@@ -28,6 +28,9 @@ export default function FilterDateInput({
             dateFormat: 'Y-m-d',
             allowInput: true,
             clickOpens: true,
+            // Tránh dropdown tháng (<select>) bị @tailwindcss/forms làm vỡ layout (chồng lên lưới ngày).
+            monthSelectorType: 'static',
+            appendTo: typeof document !== 'undefined' ? document.body : undefined,
             minDate: minDate || undefined,
             maxDate: maxDate || undefined,
             onChange: (_selectedDates, dateStr) => {

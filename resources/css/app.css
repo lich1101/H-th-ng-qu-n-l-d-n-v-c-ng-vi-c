@@ -579,3 +579,10 @@
         padding: 0.5rem 0.6rem;
     }
 }
+
+/* Flatpickr: @tailwindcss/forms style toàn cục `select` khiến dropdown tháng/năm trong lịch vỡ layout. */
+.flatpickr-calendar select {
+    appearance: auto;
+    -webkit-appearance: menulist;
+    background-image: none;
+}
