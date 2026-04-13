@@ -9,6 +9,7 @@ import FilterToolbar, {
     FilterField,
     filterControlClass,
 } from '@/Components/FilterToolbar';
+import FilterDateInput from '@/Components/FilterDateInput';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import PaginationControls from '@/Components/PaginationControls';
@@ -1656,14 +1657,6 @@ export default function TasksBoard(props) {
         }));
     }, [tasks, statusOptions]);
 
-    const formatDate = (raw) => {
-        if (!raw) return '';
-        const full = formatVietnamDate(raw, '');
-        if (!full) return '';
-        const parts = full.split('/');
-        return parts.length >= 2 ? `${parts[0]}/${parts[1]}` : full;
-    };
-
     const sortedByDeadline = useMemo(() => (
         [...tasks].sort((a, b) => {
             const da = a.deadline ? new Date(a.deadline).getTime() : 0;
@@ -1864,16 +1857,14 @@ export default function TasksBoard(props) {
                             />
                         </FilterField>
                         <FilterField label="Từ hạn">
-                            <input
-                                type="date"
+                            <FilterDateInput
                                 className={filterControlClass}
                                 value={filters.deadline_from}
                                 onChange={(e) => setFilters((s) => ({ ...s, deadline_from: e.target.value }))}
                             />
                         </FilterField>
                         <FilterField label="Đến hạn">
-                            <input
-                                type="date"
+                            <FilterDateInput
                                 className={filterControlClass}
                                 value={filters.deadline_to}
                                 onChange={(e) => setFilters((s) => ({ ...s, deadline_to: e.target.value }))}
@@ -2056,7 +2047,7 @@ export default function TasksBoard(props) {
                                     <div className="flex-1">
                                         <div className="flex items-center justify-between">
                                             <h3 className="font-semibold text-slate-900">{t.title}</h3>
-                                            <span className="text-xs text-text-muted">{formatDate(t.deadline)}</span>
+                                            <span className="text-xs text-text-muted">{formatVietnamDate(t.deadline, '')}</span>
                                         </div>
                                         <p className="text-xs text-text-muted mt-1">{t.project?.name || 'Chưa gán dự án'}</p>
                                         <div className="mt-2 text-xs text-text-muted">Trạng thái: {LABELS[t.status] || t.status}</div>
@@ -2083,7 +2074,7 @@ export default function TasksBoard(props) {
                                     <div key={t.id} className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-card">
                                         <div className="flex items-center justify-between text-xs text-text-muted mb-2">
                                             <span>{t.title}</span>
-                                            <span>{formatDate(t.deadline) || 'Chưa có hạn chót'}</span>
+                                            <span>{formatVietnamDate(t.deadline, '') || 'Chưa có hạn chót'}</span>
                                         </div>
                                         <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
                                             <div className="h-2 bg-primary" style={{ width: `${Math.min(100, totalDays * 10)}%` }} />

@@ -8,6 +8,7 @@ import FilterToolbar, {
     FilterField,
     filterControlClass,
 } from '@/Components/FilterToolbar';
+import FilterDateInput from '@/Components/FilterDateInput';
 import PageContainer from '@/Components/PageContainer';
 import PaginationControls from '@/Components/PaginationControls';
 import { useToast } from '@/Contexts/ToastContext';
@@ -185,16 +186,14 @@ export default function TasksByStaff(props) {
                             </select>
                         </FilterField>
                         <FilterField label="Từ hạn chót">
-                            <input
-                                type="date"
+                            <FilterDateInput
                                 className={filterControlClass}
                                 value={filters.deadline_from}
                                 onChange={(e) => setFilters((s) => ({ ...s, deadline_from: e.target.value }))}
                             />
                         </FilterField>
                         <FilterField label="Đến hạn chót">
-                            <input
-                                type="date"
+                            <FilterDateInput
                                 className={filterControlClass}
                                 value={filters.deadline_to}
                                 onChange={(e) => setFilters((s) => ({ ...s, deadline_to: e.target.value }))}

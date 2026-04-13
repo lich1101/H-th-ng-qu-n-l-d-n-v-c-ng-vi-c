@@ -8,6 +8,7 @@ import FilterToolbar, {
     FilterField,
     filterControlClass,
 } from '@/Components/FilterToolbar';
+import FilterDateInput from '@/Components/FilterDateInput';
 import PageContainer from '@/Components/PageContainer';
 import PaginationControls from '@/Components/PaginationControls';
 import TagMultiSelect from '@/Components/TagMultiSelect';
@@ -302,32 +303,28 @@ export default function TaskItemsBoard(props) {
                         </FilterField>
 
                         <FilterField label="Từ ngày bắt đầu">
-                            <input
-                                type="date"
+                            <FilterDateInput
                                 className={filterControlClass}
                                 value={filters.start_from}
                                 onChange={(e) => setFilters((s) => ({ ...s, start_from: e.target.value }))}
                             />
                         </FilterField>
                         <FilterField label="Đến ngày bắt đầu">
-                            <input
-                                type="date"
+                            <FilterDateInput
                                 className={filterControlClass}
                                 value={filters.start_to}
                                 onChange={(e) => setFilters((s) => ({ ...s, start_to: e.target.value }))}
                             />
                         </FilterField>
                         <FilterField label="Từ hạn chót">
-                            <input
-                                type="date"
+                            <FilterDateInput
                                 className={filterControlClass}
                                 value={filters.deadline_from}
                                 onChange={(e) => setFilters((s) => ({ ...s, deadline_from: e.target.value }))}
                             />
                         </FilterField>
                         <FilterField label="Đến hạn chót">
-                            <input
-                                type="date"
+                            <FilterDateInput
                                 className={filterControlClass}
                                 value={filters.deadline_to}
                                 onChange={(e) => setFilters((s) => ({ ...s, deadline_to: e.target.value }))}

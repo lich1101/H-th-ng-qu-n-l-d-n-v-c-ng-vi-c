@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import DonutChart from '@/Components/DonutChart';
+import FilterDateInput from '@/Components/FilterDateInput';
 import FilterToolbar, {
     FILTER_GRID_RESPONSIVE,
     FILTER_GRID_SUBMIT_ROW,
@@ -316,16 +317,14 @@ export default function CompanyRevenueReport(props) {
             >
                 <div className={FILTER_GRID_RESPONSIVE}>
                     <FilterField label="Từ ngày">
-                        <input
-                            type="date"
+                        <FilterDateInput
                             className={filterControlClass}
                             value={draftFilters.from}
                             onChange={(e) => setDraftFilters((prev) => ({ ...prev, from: e.target.value }))}
                         />
                     </FilterField>
                     <FilterField label="Đến ngày">
-                        <input
-                            type="date"
+                        <FilterDateInput
                             className={filterControlClass}
                             value={draftFilters.to}
                             onChange={(e) => setDraftFilters((prev) => ({ ...prev, to: e.target.value }))}

@@ -6,7 +6,7 @@ import Modal from '@/Components/Modal';
 import AppIcon from '@/Components/AppIcon';
 import { useToast } from '@/Contexts/ToastContext';
 import { datesFromContract } from '@/lib/timelineDefaults';
-import { formatVietnamDate, toDateInputValue } from '@/lib/vietnamTime';
+import { formatVietnamDate, toDateInputValue, validateContractDateOrder } from '@/lib/vietnamTime';
 import { Link } from '@inertiajs/inertia-react';
 
 // Common badges and formatters (copied from Contracts.jsx / ProjectsKanban)
@@ -594,6 +594,19 @@ export default function ContractDetail(props) {
         }
         if (!editForm.client_id) {
             toast.error('Vui lòng chọn khách hàng.');
+            return;
+        }
+        if (!editForm.signed_at?.trim() || !editForm.start_date?.trim() || !editForm.end_date?.trim()) {
+            toast.error('Vui lòng nhập đủ ngày ký, ngày bắt đầu hiệu lực và ngày kết thúc.');
+            return;
+        }
+        const dateOrderError = validateContractDateOrder(
+            editForm.signed_at,
+            editForm.start_date,
+            editForm.end_date,
+        );
+        if (dateOrderError) {
+            toast.error(dateOrderError);
             return;
         }
 

@@ -1,3 +1,7 @@
+/**
+ * Hiển thị ngày trong app: chỉ dùng `formatVietnamDate`, `formatVietnamDateTime`; khi chỗ hẹp dùng `formatVietnamDateShort`.
+ * Không tự split/slice chuỗi ngày để hiển thị.
+ */
 export const VIETNAM_TIME_ZONE = 'Asia/Ho_Chi_Minh';
 
 const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -95,6 +99,30 @@ export const formatVietnamDate = (value, fallback = '—') => {
         month: '2-digit',
         year: 'numeric',
     }).format(date);
+};
+
+/** Nhãn ngắn dd/MM (không năm); dùng `title`/`tooltip` với `formatVietnamDate` đầy đủ khi cần. */
+export const formatVietnamDateShort = (value, fallback = '—') => {
+    const date = normalizeVietnamDateInput(value);
+    if (!date) return fallback;
+    return getFormatter({
+        day: '2-digit',
+        month: '2-digit',
+    }).format(date);
+};
+
+/**
+ * Kiểm tra thứ tự ngày hợp đồng (cùng logic API): start ≥ signed, end > start.
+ * @returns {string|null} Chuỗi lỗi tiếng Việt hoặc null nếu hợp lệ.
+ */
+export const validateContractDateOrder = (signedAt, startDate, endDate) => {
+    const s = String(signedAt ?? '').trim().slice(0, 10);
+    const a = String(startDate ?? '').trim().slice(0, 10);
+    const e = String(endDate ?? '').trim().slice(0, 10);
+    if (!s || !a || !e) return null;
+    if (a < s) return 'Ngày bắt đầu hiệu lực phải từ ngày ký trở đi.';
+    if (e <= a) return 'Ngày kết thúc phải sau ngày bắt đầu hiệu lực.';
+    return null;
 };
 
 export const formatVietnamTime = (value, fallback = '—') => {

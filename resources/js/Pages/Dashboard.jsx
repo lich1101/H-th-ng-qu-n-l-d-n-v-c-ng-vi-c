@@ -9,6 +9,7 @@ import FilterToolbar, {
     FilterField,
     filterControlClass,
 } from '@/Components/FilterToolbar';
+import FilterDateInput from '@/Components/FilterDateInput';
 import PageContainer from '@/Components/PageContainer';
 import DonutChart from '@/Components/DonutChart';
 import CustomerGrowthChart from '@/Components/CustomerGrowthChart';
@@ -237,16 +238,14 @@ export default function Dashboard(props) {
             >
                 <div className={FILTER_GRID_RESPONSIVE}>
                     <FilterField label="Từ ngày" hint={availablePeriod.from ? `Dữ liệu từ ${availablePeriod.from}` : ''}>
-                        <input
-                            type="date"
+                        <FilterDateInput
                             className={filterControlClass}
                             value={draftReportFilters.from}
                             onChange={(event) => setDraftReportFilters((prev) => ({ ...prev, from: event.target.value }))}
                         />
                     </FilterField>
                     <FilterField label="Đến ngày" hint={availablePeriod.to ? `Dữ liệu đến ${availablePeriod.to}` : ''}>
-                        <input
-                            type="date"
+                        <FilterDateInput
                             className={filterControlClass}
                             value={draftReportFilters.to}
                             onChange={(event) => setDraftReportFilters((prev) => ({ ...prev, to: event.target.value }))}

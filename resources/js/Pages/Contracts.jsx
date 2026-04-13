@@ -12,13 +12,14 @@ import FilterToolbar, {
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import AppIcon from '@/Components/AppIcon';
+import FilterDateInput from '@/Components/FilterDateInput';
 import PaginationControls from '@/Components/PaginationControls';
 import FilterStatusHelpIcon from '@/Components/FilterStatusHelpIcon';
 import ClientSelect from '@/Components/ClientSelect';
 import TagMultiSelect from '@/Components/TagMultiSelect';
 import { usersToStaffTagOptions } from '@/lib/staffFilterOptions';
 import { useToast } from '@/Contexts/ToastContext';
-import { formatVietnamDate, toDateInputValue } from '@/lib/vietnamTime';
+import { formatVietnamDate, toDateInputValue, validateContractDateOrder } from '@/lib/vietnamTime';
 
 const STATUS_OPTIONS = [
     { value: 'draft', label: 'Nháp' },
@@ -1225,6 +1226,10 @@ export default function Contracts(props) {
         if (!form.signed_at?.trim() || !form.start_date?.trim() || !form.end_date?.trim()) {
             return toast.error('Vui lòng nhập đủ ngày ký, ngày bắt đầu hiệu lực và ngày kết thúc.');
         }
+        const dateOrderError = validateContractDateOrder(form.signed_at, form.start_date, form.end_date);
+        if (dateOrderError) {
+            return toast.error(dateOrderError);
+        }
         const payload = {
             title: form.title,
             client_id: Number(form.client_id),
@@ -1484,16 +1489,14 @@ export default function Contracts(props) {
                             />
                         </FilterField>
                         <FilterField label="Ngày ký từ">
-                            <input
-                                type="date"
+                            <FilterDateInput
                                 className={filterControlClass}
                                 value={filters.signed_at_from || ''}
                                 onChange={(e) => setFilters((s) => ({ ...s, signed_at_from: e.target.value }))}
                             />
                         </FilterField>
                         <FilterField label="Ngày ký đến">
-                            <input
-                                type="date"
+                            <FilterDateInput
                                 className={filterControlClass}
                                 value={filters.signed_at_to || ''}
                                 onChange={(e) => setFilters((s) => ({ ...s, signed_at_to: e.target.value }))}

@@ -7,7 +7,7 @@ import { useToast } from '@/Contexts/ToastContext';
 import { absoluteHttpUrl } from '@/lib/externalUrl';
 import { progressBarFillClass } from '@/lib/progressBarFill';
 import { datesFromContract, taskDefaultsFromProject } from '@/lib/timelineDefaults';
-import { formatVietnamDate, toDateInputValue } from '@/lib/vietnamTime';
+import { formatVietnamDate, formatVietnamDateShort, toDateInputValue } from '@/lib/vietnamTime';
 
 const PROJECT_STATUS = {
     moi_tao: 'Mới tạo', dang_trien_khai: 'Đang triển khai',
@@ -709,9 +709,9 @@ export default function ProjectDetail(props) {
                                         <div key={item.date} className="min-w-[28px] text-center">
                                             <div className="h-24 flex items-end justify-center">
                                                 <div className={`w-5 rounded-t ${Number(item.delta_clicks || 0) >= 0 ? 'bg-emerald-500/70' : 'bg-rose-500/70'}`} style={{ height: `${h}%` }}
-                                                    title={`${item.date}: ${formatNumber(clicks)} clicks`} />
+                                                    title={`${formatVietnamDate(item.date)}: ${formatNumber(clicks)} clicks`} />
                                             </div>
-                                            <div className="text-[9px] text-text-muted mt-1">{formatDate(item.date).slice(0, 5)}</div>
+                                            <div className="text-[9px] text-text-muted mt-1" title={formatVietnamDate(item.date)}>{formatVietnamDateShort(item.date)}</div>
                                         </div>
                                     );
                                 })}

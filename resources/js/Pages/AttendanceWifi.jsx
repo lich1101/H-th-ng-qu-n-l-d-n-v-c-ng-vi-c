@@ -9,6 +9,7 @@ import FilterToolbar, {
     FilterField,
     filterControlClass,
 } from '@/Components/FilterToolbar';
+import FilterDateInput from '@/Components/FilterDateInput';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import PaginationControls from '@/Components/PaginationControls';
@@ -791,10 +792,10 @@ export default function AttendanceWifi(props) {
                             >
                                 <div className={FILTER_GRID_RESPONSIVE}>
                                     <FilterField label="Từ ngày">
-                                        <input type="date" className={filterControlClass} value={recordFilters.from_date} onChange={(e) => setRecordFilters((s) => ({ ...s, from_date: e.target.value }))} />
+                                        <FilterDateInput className={filterControlClass} value={recordFilters.from_date} onChange={(e) => setRecordFilters((s) => ({ ...s, from_date: e.target.value }))} />
                                     </FilterField>
                                     <FilterField label="Đến ngày">
-                                        <input type="date" className={filterControlClass} value={recordFilters.to_date} onChange={(e) => setRecordFilters((s) => ({ ...s, to_date: e.target.value }))} />
+                                        <FilterDateInput className={filterControlClass} value={recordFilters.to_date} onChange={(e) => setRecordFilters((s) => ({ ...s, to_date: e.target.value }))} />
                                     </FilterField>
                                     <FilterActionGroup className={FILTER_GRID_SUBMIT_ROW}>
                                         <button type="submit" className={FILTER_SUBMIT_PRIMARY_BUTTON_CLASS}>

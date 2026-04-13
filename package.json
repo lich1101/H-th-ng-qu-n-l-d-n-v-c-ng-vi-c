@@ -29,6 +29,7 @@
         "tailwindcss": "^3.1.0"
     },
     "dependencies": {
+        "flatpickr": "^4.6.13",
         "lucide": "^1.7.0",
         "tablesort": "^5.7.0",
         "tom-select": "^2.5.2"

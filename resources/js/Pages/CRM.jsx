@@ -14,6 +14,7 @@ import AppIcon from '@/Components/AppIcon';
 import ClientSelect from '@/Components/ClientSelect';
 import PaginationControls from '@/Components/PaginationControls';
 import TagMultiSelect from '@/Components/TagMultiSelect';
+import FilterDateInput from '@/Components/FilterDateInput';
 import ClientStaffTransferPendingBanner from '@/Components/ClientStaffTransferPendingBanner';
 import { useToast } from '@/Contexts/ToastContext';
 import { formatVietnamDate } from '@/lib/vietnamTime';
@@ -1126,16 +1127,14 @@ export default function CRM(props) {
                                     </FilterField>
                                 )}
                                 <FilterField label="Ngày tạo từ">
-                                    <input
-                                        type="date"
+                                    <FilterDateInput
                                         className={filterControlClass}
                                         value={clientFilters.created_from}
                                         onChange={(e) => setClientFilters((s) => ({ ...s, created_from: e.target.value }))}
                                     />
                                 </FilterField>
                                 <FilterField label="Ngày tạo đến">
-                                    <input
-                                        type="date"
+                                    <FilterDateInput
                                         className={filterControlClass}
                                         value={clientFilters.created_to}
                                         onChange={(e) => setClientFilters((s) => ({ ...s, created_to: e.target.value }))}

@@ -8,6 +8,7 @@ import FilterToolbar, {
     FilterField,
     filterControlClass,
 } from '@/Components/FilterToolbar';
+import FilterDateInput from '@/Components/FilterDateInput';
 import PageContainer from '@/Components/PageContainer';
 import Modal from '@/Components/Modal';
 import { useToast } from '@/Contexts/ToastContext';
@@ -341,16 +342,14 @@ export default function Meetings(props) {
             >
                 <div className={FILTER_GRID_RESPONSIVE}>
                     <FilterField label="Từ ngày">
-                        <input
-                            type="date"
+                        <FilterDateInput
                             className={filterControlClass}
                             value={filters.date_from}
                             onChange={(e) => setFilters((prev) => ({ ...prev, date_from: e.target.value }))}
                         />
                     </FilterField>
                     <FilterField label="Đến ngày">
-                        <input
-                            type="date"
+                        <FilterDateInput
                             className={filterControlClass}
                             value={filters.date_to}
                             onChange={(e) => setFilters((prev) => ({ ...prev, date_to: e.target.value }))}

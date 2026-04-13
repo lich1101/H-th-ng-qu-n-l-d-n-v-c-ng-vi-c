@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import FilterStatusHelpIcon from '@/Components/FilterStatusHelpIcon';
 import axios from 'axios';
+import FilterDateInput from '@/Components/FilterDateInput';
 import PageContainer from '@/Components/PageContainer';
 import FilterToolbar, {
     FILTER_GRID_SUBMIT_ROW,
@@ -502,16 +503,14 @@ export default function Opportunities(props) {
                         />
                     </FilterField>
                     <FilterField label="Dự kiến chốt từ">
-                        <input
-                            type="date"
+                        <FilterDateInput
                             className={filterControlClass}
                             value={filters.expected_close_from}
                             onChange={(event) => setFilters((prev) => ({ ...prev, expected_close_from: event.target.value }))}
                         />
                     </FilterField>
                     <FilterField label="Dự kiến chốt đến">
-                        <input
-                            type="date"
+                        <FilterDateInput
                             className={filterControlClass}
                             value={filters.expected_close_to}
                             onChange={(event) => setFilters((prev) => ({ ...prev, expected_close_to: event.target.value }))}

@@ -322,14 +322,6 @@ export default function ProjectsKanban(props) {
         }));
     }, [projects, statusOptions]);
 
-    const formatDate = (raw) => {
-        if (!raw) return '';
-        const full = formatVietnamDate(raw, '');
-        if (!full) return '';
-        const parts = full.split('/');
-        return parts.length >= 2 ? `${parts[0]}/${parts[1]}` : full;
-    };
-
     const serviceLabel = (project) => {
         if (!project) return '';
         if (project.service_type === 'khac') {
@@ -1184,7 +1176,7 @@ export default function ProjectsKanban(props) {
                                     <div className="flex-1">
                                         <div className="flex items-center justify-between">
                                             <h3 className="font-semibold text-slate-900">{p.name}</h3>
-                                            <span className="text-xs text-text-muted">{formatDate(p.deadline)}</span>
+                                            <span className="text-xs text-text-muted">{formatVietnamDate(p.deadline, '')}</span>
                                         </div>
                                         <p className="text-xs text-text-muted mt-1">{p.code} • {serviceLabel(p)}</p>
                                         <p className={`text-xs mt-1 ${p.contract ? 'text-text-muted' : 'text-warning'}`}>
@@ -1227,7 +1219,7 @@ export default function ProjectsKanban(props) {
                                     <div key={p.id} className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-card cursor-pointer" onClick={() => { window.location.href = `/du-an/${p.id}`; }}>
                                     <div className="flex items-center justify-between text-xs text-text-muted mb-2">
                                         <span>{p.name}</span>
-                                        <span>{formatDate(p.deadline) || 'Chưa có hạn chót'}</span>
+                                        <span>{formatVietnamDate(p.deadline, '') || 'Chưa có hạn chót'}</span>
                                     </div>
                                     <div className={`text-xs mb-2 ${p.contract ? 'text-text-muted' : 'text-warning'}`}>
                                         Hợp đồng:{' '}

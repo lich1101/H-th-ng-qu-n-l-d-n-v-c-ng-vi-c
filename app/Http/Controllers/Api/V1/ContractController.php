@@ -513,7 +513,7 @@ class ContractController extends Controller
             'pending_cost_requests.*.note' => ['nullable', 'string'],
         ]);
 
-        $validated = $request->validate($rules);
+        $validated = $request->validate($rules, $this->contractValidationMessages());
         $careStaffIds = $this->extractCareStaffIds($validated);
         $pendingPayments = isset($validated['pending_payment_requests']) && is_array($validated['pending_payment_requests'])
             ? $validated['pending_payment_requests'] : [];
@@ -622,7 +622,7 @@ class ContractController extends Controller
             return response()->json(['message' => 'Không có quyền cập nhật hợp đồng.'], 403);
         }
         $wasApproved = ($contract->approval_status ?? '') === 'approved';
-        $validated = $request->validate($this->rules($contract->id, true));
+        $validated = $request->validate($this->rules($contract->id, true), $this->contractValidationMessages());
         unset($validated['status']);
         $careStaffIds = $this->extractCareStaffIds($validated);
         $client = Client::query()->find((int) $validated['client_id']);
@@ -841,8 +841,8 @@ class ContractController extends Controller
             'debt' => ['nullable', 'numeric', 'min:0'],
             'cash_flow' => ['nullable', 'numeric'],
             'signed_at' => ['required', 'date'],
-            'start_date' => ['required', 'date'],
-            'end_date' => ['required', 'date'],
+            'start_date' => ['required', 'date', 'after_or_equal:signed_at'],
+            'end_date' => ['required', 'date', 'after:start_date'],
             'notes' => ['nullable', 'string'],
             'approval_note' => ['nullable', 'string'],
             'collector_user_id' => ['nullable', 'integer', 'exists:users,id'],
@@ -851,6 +851,23 @@ class ContractController extends Controller
             'create_and_approve' => ['nullable', 'boolean'],
         ];
         return $rules;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function contractValidationMessages(): array
+    {
+        return [
+            'signed_at.required' => 'Vui lòng nhập ngày ký.',
+            'signed_at.date' => 'Ngày ký không hợp lệ.',
+            'start_date.required' => 'Vui lòng nhập ngày bắt đầu hiệu lực.',
+            'start_date.date' => 'Ngày bắt đầu hiệu lực không hợp lệ.',
+            'start_date.after_or_equal' => 'Ngày bắt đầu hiệu lực phải từ ngày ký trở đi.',
+            'end_date.required' => 'Vui lòng nhập ngày kết thúc.',
+            'end_date.date' => 'Ngày kết thúc không hợp lệ.',
+            'end_date.after' => 'Ngày kết thúc phải sau ngày bắt đầu hiệu lực.',
+        ];
     }
 
     /**
