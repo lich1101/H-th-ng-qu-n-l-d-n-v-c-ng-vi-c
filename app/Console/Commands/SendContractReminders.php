@@ -118,6 +118,10 @@ class SendContractReminders extends Command
             }
 
             $outstanding = max(0, (float) ($contract->value ?? 0) - (float) ($contract->payments_total ?? 0));
+            if ($outstanding <= 0) {
+                continue;
+            }
+
             $targets = $this->reminderTargets($contract);
             if (empty($targets)) {
                 continue;

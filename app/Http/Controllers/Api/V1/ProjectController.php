@@ -166,6 +166,9 @@ class ProjectController extends Controller
         if ($contract instanceof JsonResponse) {
             return $contract;
         }
+        if ($contract instanceof Contract) {
+            $this->mergeProjectDatesFromContract($validated, $contract);
+        }
 
         $project = Project::create($validated);
         if (! empty($validated['workflow_topic_id'])) {
@@ -580,6 +583,21 @@ class ProjectController extends Controller
                 continue;
             }
             $validated[$key] = ExternalUrl::toAbsoluteHref($validated[$key] ?? null);
+        }
+    }
+
+    /**
+     * Gán ngày bắt đầu / hạn chót dự án từ hợp đồng khi client không gửi (khớp createFromContract).
+     *
+     * @param  array<string, mixed>  $validated
+     */
+    private function mergeProjectDatesFromContract(array &$validated, Contract $contract): void
+    {
+        if (empty($validated['start_date']) && ! empty($contract->start_date)) {
+            $validated['start_date'] = $contract->start_date->toDateString();
+        }
+        if (empty($validated['deadline']) && ! empty($contract->end_date)) {
+            $validated['deadline'] = $contract->end_date->toDateString();
         }
     }
 

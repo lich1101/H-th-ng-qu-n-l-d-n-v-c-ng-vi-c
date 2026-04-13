@@ -14,6 +14,7 @@ import PaginationControls from '@/Components/PaginationControls';
 import TagMultiSelect from '@/Components/TagMultiSelect';
 import { useToast } from '@/Contexts/ToastContext';
 import { absoluteHttpUrl } from '@/lib/externalUrl';
+import { datesFromContract } from '@/lib/timelineDefaults';
 import { formatVietnamDate, toDateInputValue } from '@/lib/vietnamTime';
 import { progressBarFillClass } from '@/lib/progressBarFill';
 import { fetchStaffFilterOptions } from '@/lib/staffFilterOptions';
@@ -1245,7 +1246,17 @@ export default function ProjectsKanban(props) {
                             <select
                                 className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
                                 value={form.contract_id}
-                                onChange={(e) => setForm((s) => ({ ...s, contract_id: e.target.value }))}
+                                onChange={(e) => {
+                                    const id = e.target.value;
+                                    setForm((s) => {
+                                        if (!id) {
+                                            return { ...s, contract_id: '', start_date: '', deadline: '' };
+                                        }
+                                        const c = contracts.find((x) => String(x.id) === String(id));
+                                        const d = datesFromContract(c);
+                                        return { ...s, contract_id: id, start_date: d.start, deadline: d.end };
+                                    });
+                                }}
                             >
                                 <option value="">Chọn hợp đồng (khuyên chọn để tạo công việc đúng phạm vi)</option>
                                 {contracts.map((c) => (

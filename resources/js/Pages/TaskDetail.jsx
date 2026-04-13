@@ -4,6 +4,7 @@ import Modal from '@/Components/Modal';
 import PageContainer from '@/Components/PageContainer';
 import { useToast } from '@/Contexts/ToastContext';
 import { progressBarFillClass } from '@/lib/progressBarFill';
+import { taskItemDefaults, taskDefaultsFromProject } from '@/lib/timelineDefaults';
 import { formatVietnamDate, toDateInputValue } from '@/lib/vietnamTime';
 
 const TASK_STATUS = { todo: 'Cần làm', doing: 'Đang làm', done: 'Hoàn tất', blocked: 'Bị chặn' };
@@ -99,11 +100,15 @@ export default function TaskDetail(props) {
         return items.filter((i) => String(i?.assignee?.id || 0) === activeTab);
     }, [items, activeTab]);
 
-    const taskItemDateMax = task?.deadline ? toDateInputValue(task.deadline) : '';
+    const taskItemDateMax = useMemo(() => {
+        if (task?.deadline) return toDateInputValue(task.deadline);
+        return taskDefaultsFromProject(task?.project).end || '';
+    }, [task]);
 
     // Item form
     const openItemForm = (item = null) => {
         setEditingItemId(item?.id || null);
+        const itemDefaults = taskItemDefaults(task, task?.project);
         setItemForm({
             title: item?.title || '',
             description: item?.description ?? (task?.description || ''),
@@ -113,10 +118,10 @@ export default function TaskDetail(props) {
             weight_percent: item?.weight_percent ?? '',
             start_date: item?.start_date
                 ? toDateInputValue(item.start_date)
-                : (task?.start_at ? toDateInputValue(task.start_at) : ''),
+                : (itemDefaults.start || ''),
             deadline: item?.deadline
                 ? toDateInputValue(item.deadline)
-                : (task?.deadline ? toDateInputValue(task.deadline) : ''),
+                : (itemDefaults.end || ''),
             assignee_id: item?.assignee_id || task?.assignee_id || '',
         });
         setShowItemForm(true);

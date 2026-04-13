@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Contract;
 use App\Models\Project;
 use App\Models\Task;
 use App\Models\WorkflowTopic;
@@ -88,10 +89,29 @@ class WorkflowTopicApplierService
         }
     }
 
+    /**
+     * Hợp đồng gắn dự án: ưu tiên contract_id, sau đó hợp đồng trỏ ngược project_id.
+     */
+    private function resolveContractForTimeline(Project $project): ?Contract
+    {
+        $project->loadMissing(['contract', 'linkedContract']);
+
+        if ($project->contract_id && $project->contract) {
+            return $project->contract;
+        }
+
+        return $project->linkedContract;
+    }
+
     private function resolveProjectStart(Project $project): Carbon
     {
         if (! empty($project->start_date)) {
             return Carbon::parse($project->start_date, 'Asia/Ho_Chi_Minh')->startOfDay();
+        }
+
+        $contract = $this->resolveContractForTimeline($project);
+        if ($contract && ! empty($contract->start_date)) {
+            return Carbon::parse($contract->start_date, 'Asia/Ho_Chi_Minh')->startOfDay();
         }
 
         return Carbon::now('Asia/Ho_Chi_Minh')->startOfDay();
@@ -104,7 +124,18 @@ class WorkflowTopicApplierService
             if ($deadline->lt($projectStart)) {
                 return $projectStart->copy();
             }
+
             return $deadline;
+        }
+
+        $contract = $this->resolveContractForTimeline($project);
+        if ($contract && ! empty($contract->end_date)) {
+            $end = Carbon::parse($contract->end_date, 'Asia/Ho_Chi_Minh')->startOfDay();
+            if ($end->lt($projectStart)) {
+                return $projectStart->copy();
+            }
+
+            return $end;
         }
 
         return $projectStart->copy()->addDays(30);

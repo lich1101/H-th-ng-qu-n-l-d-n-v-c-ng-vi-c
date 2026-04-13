@@ -5,6 +5,7 @@ import PageContainer from '@/Components/PageContainer';
 import { useToast } from '@/Contexts/ToastContext';
 import { absoluteHttpUrl } from '@/lib/externalUrl';
 import { progressBarFillClass } from '@/lib/progressBarFill';
+import { datesFromContract, taskDefaultsFromProject } from '@/lib/timelineDefaults';
 import { formatVietnamDate, toDateInputValue } from '@/lib/vietnamTime';
 
 const PROJECT_STATUS = {
@@ -357,6 +358,7 @@ export default function ProjectDetail(props) {
                 : 'todo';
 
         setEditingTaskId(task?.id || null);
+        const projectTaskDefaults = taskDefaultsFromProject(project);
         setTaskForm({
             title: task?.title || '',
             description: task?.description || (!task && project?.customer_requirement ? String(project.customer_requirement) : ''),
@@ -365,10 +367,10 @@ export default function ProjectDetail(props) {
             weight_percent: task?.weight_percent ?? '',
             start_date: task?.start_at
                 ? toDateInputValue(task.start_at)
-                : (!task && project?.start_date ? toDateInputValue(project.start_date) : ''),
+                : (!task ? (projectTaskDefaults.start || '') : ''),
             deadline: task?.deadline
                 ? toDateInputValue(task.deadline)
-                : (!task && project?.deadline ? toDateInputValue(project.deadline) : ''),
+                : (!task ? (projectTaskDefaults.end || '') : ''),
             department_id: task?.department_id || project?.owner?.department_id || '',
             assignee_id: task?.assignee_id || project?.owner_id || '',
         });
@@ -973,7 +975,17 @@ export default function ProjectDetail(props) {
                             <select
                                 className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
                                 value={projectForm.contract_id}
-                                onChange={(e) => setProjectForm((s) => ({ ...s, contract_id: e.target.value }))}
+                                onChange={(e) => {
+                                    const id = e.target.value;
+                                    setProjectForm((s) => {
+                                        if (!id) {
+                                            return { ...s, contract_id: '', start_date: '', deadline: '' };
+                                        }
+                                        const c = contracts.find((x) => String(x.id) === String(id));
+                                        const d = datesFromContract(c);
+                                        return { ...s, contract_id: id, start_date: d.start, deadline: d.end };
+                                    });
+                                }}
                             >
                                 <option value="">Chọn hợp đồng (tuỳ chọn)</option>
                                 {contracts.map((c) => (

@@ -19,7 +19,7 @@ class TaskController extends Controller
     {
         $user = $request->user();
         $query = Task::query()
-            ->with(['project', 'project.owner', 'assignee', 'reviewer', 'department'])
+            ->with(['project', 'project.contract', 'project.linkedContract', 'project.owner', 'assignee', 'reviewer', 'department'])
             ->withCount(['comments', 'attachments', 'items'])
             ->withCount([
                 'updates as pending_updates_count' => function ($builder) {
@@ -109,7 +109,7 @@ class TaskController extends Controller
         $validated['created_by'] = $request->user()->id;
         $validated['assigned_by'] = $validated['assigned_by'] ?? $request->user()->id;
         $this->applyOneWayAssignment($validated);
-        
+
         $currentWeight = Task::where('project_id', $validated['project_id'])->sum('weight_percent');
         $newWeight = isset($validated['weight_percent']) ? max(1, min(100, (int) $validated['weight_percent'])) : 100;
 
@@ -137,7 +137,7 @@ class TaskController extends Controller
         $this->notifyTaskAssignee($task, true);
 
         return response()->json(
-            $task->load(['project', 'project.owner', 'assignee', 'reviewer', 'department'])->loadCount(['comments', 'attachments']),
+            $task->load(['project', 'project.contract', 'project.linkedContract', 'project.owner', 'assignee', 'reviewer', 'department'])->loadCount(['comments', 'attachments']),
             201
         );
     }
@@ -148,7 +148,7 @@ class TaskController extends Controller
             return response()->json(['message' => 'Không có quyền xem công việc.'], 403);
         }
         return response()->json(
-            $task->load(['project', 'project.owner', 'assignee', 'reviewer', 'department'])->loadCount(['comments', 'attachments'])
+            $task->load(['project', 'project.contract', 'project.linkedContract', 'project.owner', 'assignee', 'reviewer', 'department'])->loadCount(['comments', 'attachments'])
         );
     }
 
@@ -183,7 +183,7 @@ class TaskController extends Controller
             $currentWeight = Task::where('project_id', $projectId)
                 ->where('id', '!=', $task->id)
                 ->sum('weight_percent');
-                
+
             $newWeight = max(1, min(100, (int) $validated['weight_percent']));
             if ($currentWeight + $newWeight > 100) {
                 return response()->json(['message' => 'Tổng tỷ trọng các công việc trong dự án không được vượt quá 100%.'], 422);
@@ -235,7 +235,7 @@ class TaskController extends Controller
         }
 
         return response()->json(
-            $task->load(['project', 'project.owner', 'assignee', 'reviewer', 'department'])->loadCount(['comments', 'attachments'])
+            $task->load(['project', 'project.contract', 'project.linkedContract', 'project.owner', 'assignee', 'reviewer', 'department'])->loadCount(['comments', 'attachments'])
         );
     }
 
