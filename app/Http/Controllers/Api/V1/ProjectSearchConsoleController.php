@@ -118,7 +118,8 @@ class ProjectSearchConsoleController extends Controller
         array $overrides = []
     ): array {
         $setting = AppSetting::query()->first();
-        $siteUrl = $syncService->normalizeSiteUrl($project->website_url);
+        $websiteDomain = $syncService->normalizeStoredWebsiteDomain($project->website_url);
+        $siteUrl = $syncService->resolveGscApiSiteUrl($project->website_url);
 
         $hasCredentials = $setting
             ? trim((string) $setting->gsc_client_id) !== ''
@@ -141,7 +142,7 @@ class ProjectSearchConsoleController extends Controller
         $syncError = trim($validationError !== '' ? $validationError : $storedError);
 
         $enableBlockReason = '';
-        if (! $siteUrl) {
+        if (! $websiteDomain || ! $siteUrl) {
             $enableBlockReason = 'Dự án chưa có URL website hợp lệ.';
         } elseif (! $enabledSystem) {
             $enableBlockReason = 'Google Search Console đang tắt trong Cài đặt hệ thống.';
@@ -182,7 +183,7 @@ class ProjectSearchConsoleController extends Controller
 
         return [
             'status' => [
-                'project_has_website' => (bool) $siteUrl,
+                'project_has_website' => (bool) $websiteDomain,
                 'gsc_enabled' => $enabledSystem,
                 'gsc_credentials_ready' => $hasCredentials,
                 'can_sync' => $canUseSystem,
@@ -200,7 +201,8 @@ class ProjectSearchConsoleController extends Controller
             ],
             'project' => [
                 'id' => (int) $project->id,
-                'website_url' => $siteUrl ?: null,
+                'website_url' => $websiteDomain ?: null,
+                'gsc_property_url' => $siteUrl ?: null,
             ],
             'latest' => $this->transformLatest($latest),
             'trend' => $trend,

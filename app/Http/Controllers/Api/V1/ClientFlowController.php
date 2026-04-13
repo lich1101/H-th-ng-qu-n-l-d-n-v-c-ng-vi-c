@@ -96,8 +96,10 @@ class ClientFlowController extends Controller
             ->orderBy('id')
             ->get();
 
-        $opportunities = Opportunity::query()
-            ->where('client_id', $client->id)
+        $opportunitiesQuery = Opportunity::query()
+            ->where('client_id', $client->id);
+        CrmScope::applyOpportunityScope($opportunitiesQuery, $user);
+        $opportunities = $opportunitiesQuery
             ->with([
                 'assignee:id,name,email',
                 'creator:id,name,email',

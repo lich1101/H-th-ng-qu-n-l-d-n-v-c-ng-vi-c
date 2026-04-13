@@ -4,7 +4,7 @@ namespace App\Support;
 
 /**
  * Giữ đúng chuỗi URL người dùng nhập (chỉ trim). Không tự thêm https:// hay sửa dấu /.
- * Chuẩn hóa cho GSC/API vẫn nằm ở ProjectGscSyncService::normalizeSiteUrl.
+ * Website dự án (GSC): domain lưu DB — ProjectGscSyncService::normalizeStoredWebsiteDomain / resolveGscApiSiteUrl.
  */
 final class ExternalUrl
 {

@@ -159,18 +159,13 @@ class CrmScope
             });
         }
 
+        // Nhân viên: không mở phạm vi theo nhóm chăm sóc trên HĐ/KH — khớp phạm vi cơ hội (phụ trách / sales / người tạo / nhân viên thu).
         return $query->where(function (Builder $builder) use ($user) {
             $builder->where('created_by', $user->id)
                 ->orWhere('collector_user_id', $user->id)
-                ->orWhereHas('careStaffUsers', function (Builder $careStaffQuery) use ($user) {
-                    $careStaffQuery->where('users.id', $user->id);
-                })
                 ->orWhereHas('client', function (Builder $clientQuery) use ($user) {
                     $clientQuery->where('assigned_staff_id', $user->id)
-                        ->orWhere('sales_owner_id', $user->id)
-                        ->orWhereHas('careStaffUsers', function (Builder $careQuery) use ($user) {
-                            $careQuery->where('users.id', $user->id);
-                        });
+                        ->orWhere('sales_owner_id', $user->id);
                 });
         });
     }
@@ -190,15 +185,13 @@ class CrmScope
             });
         }
 
+        // Nhân viên: không mở phạm vi theo nhóm chăm sóc — chỉ creator/assignee trên cơ hội hoặc KH (phụ trách / sales owner).
         return $query->where(function (Builder $builder) use ($user) {
             $builder->where('created_by', $user->id)
                 ->orWhere('assigned_to', $user->id)
                 ->orWhereHas('client', function (Builder $clientQuery) use ($user) {
                     $clientQuery->where('assigned_staff_id', $user->id)
-                        ->orWhere('sales_owner_id', $user->id)
-                        ->orWhereHas('careStaffUsers', function (Builder $careQuery) use ($user) {
-                            $careQuery->where('users.id', $user->id);
-                        });
+                        ->orWhere('sales_owner_id', $user->id);
                 });
         });
     }

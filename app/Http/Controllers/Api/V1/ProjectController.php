@@ -669,11 +669,12 @@ class ProjectController extends Controller
      */
     private function normalizeProjectUrlFields(array &$validated): void
     {
-        foreach (['repo_url', 'website_url'] as $key) {
-            if (! array_key_exists($key, $validated)) {
-                continue;
-            }
-            $validated[$key] = ExternalUrl::toAbsoluteHref($validated[$key] ?? null);
+        if (array_key_exists('repo_url', $validated)) {
+            $validated['repo_url'] = ExternalUrl::toAbsoluteHref($validated['repo_url'] ?? null);
+        }
+        if (array_key_exists('website_url', $validated)) {
+            $gsc = app(ProjectGscSyncService::class);
+            $validated['website_url'] = $gsc->normalizeStoredWebsiteDomain($validated['website_url'] ?? null);
         }
     }
 
@@ -812,6 +813,14 @@ class ProjectController extends Controller
     private function transformProject(Project $project, ?User $user, bool $detailed = false): array
     {
         $payload = $project->toArray();
+        $gsc = app(ProjectGscSyncService::class);
+        $rawWebsite = (string) ($payload['website_url'] ?? '');
+        if ($rawWebsite !== '') {
+            $norm = $gsc->normalizeStoredWebsiteDomain($rawWebsite);
+            if ($norm !== null) {
+                $payload['website_url'] = $norm;
+            }
+        }
         $primaryContract = $payload['contract'] ?? null;
         $fallbackContract = $payload['linked_contract'] ?? null;
         $resolvedContract = $primaryContract ?: $fallbackContract;

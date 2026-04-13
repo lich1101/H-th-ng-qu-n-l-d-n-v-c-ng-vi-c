@@ -220,7 +220,8 @@ class ContractController extends Controller
      */
     private function contractListAggregates(Builder $filteredQuery): array
     {
-        $idsSub = $filteredQuery->clone()->select('contracts.id');
+        // Cùng bộ filter với paginate(); distinct tránh trùng id nếu query sau này có join.
+        $idsSub = $filteredQuery->clone()->distinct()->select('contracts.id');
 
         $itemsAgg = ContractItem::query()
             ->selectRaw('contract_id, COALESCE(SUM(total_price), 0) as items_sum, COUNT(*) as items_cnt')

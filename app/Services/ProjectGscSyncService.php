@@ -18,7 +18,7 @@ class ProjectGscSyncService
 
     public function syncProject(Project $project, bool $force = false): ?ProjectGscDailyStat
     {
-        $siteUrl = $this->normalizeSiteUrl($project->website_url);
+        $siteUrl = $this->resolveGscApiSiteUrl($project->website_url);
         if (! $siteUrl) {
             $this->rememberSyncError($project, 'Dự án chưa có URL website hợp lệ để đồng bộ Google Search Console.');
             return null;
@@ -208,7 +208,7 @@ class ProjectGscSyncService
 
     public function canEnableNotificationsForProject(Project $project): array
     {
-        $siteUrl = $this->normalizeSiteUrl($project->website_url);
+        $siteUrl = $this->resolveGscApiSiteUrl($project->website_url);
         if (! $siteUrl) {
             return [
                 'ok' => false,
@@ -270,8 +270,8 @@ class ProjectGscSyncService
 
     public function handleWebsiteMutation(Project $project, ?string $oldWebsiteRaw): void
     {
-        $oldSite = $this->normalizeSiteUrl($oldWebsiteRaw);
-        $newSite = $this->normalizeSiteUrl($project->website_url);
+        $oldSite = $this->normalizeStoredWebsiteDomain($oldWebsiteRaw);
+        $newSite = $this->normalizeStoredWebsiteDomain((string) ($project->website_url ?? ''));
 
         if ($oldSite === $newSite) {
             if ($newSite && ! $project->gsc_tracking_started_at) {
@@ -311,29 +311,106 @@ class ProjectGscSyncService
         return $this->searchConsole->isConfigured($setting);
     }
 
-    public function normalizeSiteUrl(?string $raw): ?string
+    /**
+     * Chuỗi property đúng với Google Search Console API (sites.list hoặc sc-domain:...).
+     * DB lưu domain thuần (vd. biihappy.com) — hàm này map sang URL property.
+     */
+    public function resolveGscApiSiteUrl(?string $raw): ?string
+    {
+        $domain = $this->normalizeStoredWebsiteDomain($raw);
+        if (! $domain) {
+            return null;
+        }
+
+        return $this->resolveGscPropertyUrlFromDomain($domain);
+    }
+
+    /**
+     * Lưu/hiển thị: chỉ domain (chữ thường, bỏ www), không thêm https://.
+     * Hỗ trợ sc-domain:, URL đầy đủ, hoặc nhập tay biihappy.com.
+     */
+    public function normalizeStoredWebsiteDomain(?string $raw): ?string
     {
         $value = trim((string) $raw);
         if ($value === '') {
             return null;
         }
 
-        if (! preg_match('/^https?:\/\//i', $value)) {
-            $value = 'https://'.$value;
+        if (preg_match('/\s+\([^)]+\)\s*$/', $value)) {
+            $value = trim((string) preg_replace('/\s+\([^)]+\)\s*$/', '', $value));
         }
 
-        $parts = parse_url($value);
-        if (! is_array($parts) || empty($parts['host'])) {
+        $lower = strtolower($value);
+        if (str_starts_with($lower, 'sc-domain:')) {
+            $rest = trim(substr($value, strlen('sc-domain:')));
+            $rest = trim($rest, '/');
+
+            return $this->sanitizeHostLabel($rest);
+        }
+
+        if (preg_match('#^https?://#i', $value)) {
+            $parts = parse_url($value);
+            if (is_array($parts) && ! empty($parts['host'])) {
+                return $this->sanitizeHostLabel((string) $parts['host']);
+            }
+
             return null;
         }
 
-        $scheme = strtolower((string) ($parts['scheme'] ?? 'https'));
-        $host = strtolower((string) $parts['host']);
-        $port = isset($parts['port']) ? ':'.$parts['port'] : '';
-        $path = isset($parts['path']) ? rtrim((string) $parts['path'], '/') : '';
-        $path = $path === '' ? '/' : $path.'/';
+        $value = preg_replace('#^//+#', '', $value);
+        $segment = explode('/', $value, 2)[0] ?? '';
+        $segment = explode(':', $segment, 2)[0] ?? '';
 
-        return "{$scheme}://{$host}{$port}{$path}";
+        return $this->sanitizeHostLabel($segment);
+    }
+
+    /**
+     * @deprecated Dùng resolveGscApiSiteUrl() cho GSC API; normalizeStoredWebsiteDomain() cho lưu DB.
+     */
+    public function normalizeSiteUrl(?string $raw): ?string
+    {
+        return $this->resolveGscApiSiteUrl($raw);
+    }
+
+    private function sanitizeHostLabel(string $host): ?string
+    {
+        $host = strtolower(trim($host));
+        $host = (string) preg_replace('/^www\./', '', $host);
+        if ($host === '') {
+            return null;
+        }
+
+        if (! preg_match('/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/i', $host)) {
+            return null;
+        }
+
+        return $host;
+    }
+
+    private function resolveGscPropertyUrlFromDomain(string $domain): string
+    {
+        $setting = AppSetting::query()->first();
+        $domainNorm = strtolower((string) preg_replace('/^www\./', '', $domain));
+
+        if ($this->canSync($setting)) {
+            try {
+                $sites = $this->searchConsole->listSites($setting);
+                foreach ($sites as $row) {
+                    $su = trim((string) ($row['site_url'] ?? ''));
+                    if ($su === '') {
+                        continue;
+                    }
+                    $d = $this->normalizeStoredWebsiteDomain($su);
+                    if ($d && strtolower((string) preg_replace('/^www\./', '', $d)) === $domainNorm) {
+                        return $su;
+                    }
+                }
+            } catch (\Throwable $e) {
+                // Fallback dưới đây.
+            }
+        }
+
+        return 'sc-domain:'.$domain;
     }
 
     private function rememberSyncSuccess(Project $project, Carbon $syncedAt): void

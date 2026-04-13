@@ -2,7 +2,38 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 
 /**
- * Website dự án cho GSC: chọn property từ API sites.list hoặc nhập tay (giữ đúng chuỗi lưu).
+ * Chuẩn hóa về domain thuần (vd. biihappy.com), khớp backend ProjectGscSyncService::normalizeStoredWebsiteDomain.
+ * @param {string|null|undefined} raw
+ * @returns {string}
+ */
+export function normalizeStoredWebsiteDomain(raw) {
+    let v = String(raw ?? '').trim();
+    if (!v) return '';
+    v = v.replace(/\s+\([^)]+\)\s*$/, '').trim();
+    const lower = v.toLowerCase();
+    if (lower.startsWith('sc-domain:')) {
+        let rest = v.slice('sc-domain:'.length).trim().replace(/^\/+|\/+$/g, '');
+        const segment = rest.split('/')[0]?.split(':')[0] ?? '';
+        return stripWww(segment.toLowerCase());
+    }
+    if (/^https?:\/\//i.test(v)) {
+        try {
+            const u = new URL(v);
+            return stripWww(u.hostname.toLowerCase());
+        } catch {
+            return '';
+        }
+    }
+    const segment = v.replace(/^\/+/, '').split(/[/:]/)[0] ?? '';
+    return stripWww(segment.toLowerCase());
+}
+
+function stripWww(h) {
+    return h.replace(/^www\./i, '');
+}
+
+/**
+ * Website dự án cho GSC: chọn property từ API sites.list hoặc nhập domain; lưu chỉ domain.
  *
  * @param {{ value: string, onChange: (url: string) => void, active?: boolean }} props
  */
@@ -31,6 +62,8 @@ export default function ProjectWebsiteGscField({ value, onChange, active = true 
         };
     }, [active]);
 
+    const valueNorm = normalizeStoredWebsiteDomain(value);
+
     useEffect(() => {
         const u = (value || '').trim();
         if (!u) {
@@ -38,9 +71,12 @@ export default function ProjectWebsiteGscField({ value, onChange, active = true 
             return;
         }
         if (loading) return;
-        const inList = gscSites.some((s) => String(s.site_url) === u);
+        const inList = gscSites.some((s) => normalizeStoredWebsiteDomain(s.site_url) === valueNorm && valueNorm !== '');
         setMode(inList ? 'gsc' : 'manual');
-    }, [value, gscSites, loading]);
+    }, [value, valueNorm, gscSites, loading]);
+
+    const matchingSite = gscSites.find((s) => normalizeStoredWebsiteDomain(s.site_url) === valueNorm && valueNorm !== '');
+    const selectValue = matchingSite ? matchingSite.site_url : '';
 
     return (
         <div>
@@ -68,34 +104,47 @@ export default function ProjectWebsiteGscField({ value, onChange, active = true 
                     }`}
                     onClick={() => setMode('manual')}
                 >
-                    Nhập URL khác
+                    Nhập domain
                 </button>
             </div>
             {mode === 'gsc' ? (
                 <select
                     className="w-full rounded-2xl border border-slate-200/80 px-3 py-2 disabled:opacity-60"
                     disabled={loading}
-                    value={gscSites.some((s) => String(s.site_url) === (value || '').trim()) ? (value || '').trim() : ''}
-                    onChange={(e) => onChange(e.target.value)}
+                    value={selectValue}
+                    onChange={(e) => {
+                        const next = e.target.value;
+                        onChange(next ? normalizeStoredWebsiteDomain(next) : '');
+                    }}
                 >
                     <option value="">{loading ? 'Đang tải danh sách site…' : '— Chọn property —'}</option>
-                    {gscSites.map((s) => (
-                        <option key={s.site_url} value={s.site_url}>
-                            {s.site_url}
-                            {s.permission_level ? ` (${s.permission_level})` : ''}
-                        </option>
-                    ))}
+                    {gscSites.map((s) => {
+                        const dom = normalizeStoredWebsiteDomain(s.site_url);
+                        if (!dom) return null;
+                        return (
+                            <option key={s.site_url} value={s.site_url}>
+                                {dom}
+                                {s.permission_level ? ` (${s.permission_level})` : ''}
+                            </option>
+                        );
+                    })}
                 </select>
             ) : (
                 <input
                     className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                    placeholder="VD: https://example.com/ hoặc sc-domain:example.com"
+                    placeholder="VD: biihappy.com (chỉ domain, không cần https://)"
                     value={value || ''}
                     onChange={(e) => onChange(e.target.value)}
+                    onBlur={(e) => {
+                        const n = normalizeStoredWebsiteDomain(e.target.value);
+                        if (n !== (value || '').trim()) {
+                            onChange(n);
+                        }
+                    }}
                 />
             )}
             <p className="mt-1 text-xs text-text-muted">
-                Giá trị lưu khớp chuỗi property trên Google Search Console. Vào chi tiết dự án để bật thông báo GSC khi cần.
+                Hệ thống lưu <strong className="font-semibold">domain</strong> (vd. biihappy.com). Đồng bộ GSC dùng đúng property trên tài khoản Search Console. Vào chi tiết dự án để bật thông báo GSC khi cần.
             </p>
         </div>
     );
