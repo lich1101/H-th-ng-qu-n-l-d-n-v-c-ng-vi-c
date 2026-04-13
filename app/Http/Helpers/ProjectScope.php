@@ -378,6 +378,33 @@ class ProjectScope
         return max(0, $ownerId);
     }
 
+    /**
+     * NV thu hợp đồng (collector): chỉ xem vận hành dự án/công việc/đầu việc, không chỉnh sửa.
+     * Chủ dự án và admin không bị giới hạn dù trùng collector.
+     */
+    public static function isContractCollectorOperationsReadOnly(?User $user, Project $project): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        if (self::isAdminRole($user)) {
+            return false;
+        }
+
+        if (self::projectOwnerId($project) > 0 && self::projectOwnerId($project) === (int) $user->id) {
+            return false;
+        }
+
+        if (! self::hasLinkedContract($project)) {
+            return false;
+        }
+
+        $collectorId = self::projectCollectorId($project);
+
+        return $collectorId > 0 && $collectorId === (int) $user->id;
+    }
+
     public static function canManageProjectTasks(?User $user, Project $project): bool
     {
         if (! $user) {
@@ -400,6 +427,11 @@ class ProjectScope
 
         if (self::isAdminRole($user)) {
             return true;
+        }
+
+        $project = $task->project;
+        if ($project && self::isContractCollectorOperationsReadOnly($user, $project)) {
+            return false;
         }
 
         if (self::taskProjectOwnerId($task) > 0 && self::taskProjectOwnerId($task) === (int) $user->id) {
@@ -462,6 +494,11 @@ class ProjectScope
 
         if (self::isAdminRole($user)) {
             return true;
+        }
+
+        $project = $task->project;
+        if ($project && self::isContractCollectorOperationsReadOnly($user, $project)) {
+            return false;
         }
 
         if ((int) ($task->assignee_id ?? 0) === (int) $user->id) {

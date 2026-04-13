@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
-import AppIcon from '@/Components/AppIcon';
 import FilterToolbar, {
     FILTER_GRID_RESPONSIVE,
     FILTER_GRID_SUBMIT_ROW,
@@ -362,6 +361,16 @@ export default function TasksBoard(props) {
         return fallback;
     };
 
+    const isContractCollectorReadOnly = (project) => {
+        if (!project) return false;
+        const collectorId = Number(project.collector_user_id ?? project.contract?.collector_user_id ?? 0);
+        const ownerId = Number(project.owner_id ?? 0);
+        if (collectorId <= 0 || collectorId !== currentUserId) return false;
+        if (['admin', 'administrator'].includes(userRole)) return false;
+        if (ownerId > 0 && ownerId === currentUserId) return false;
+        return true;
+    };
+
     const canApproveItemReports = (taskRecord = itemsTask) => {
         if (!taskRecord) return false;
         const projectOwnerId = Number(taskRecord?.project?.owner_id || 0);
@@ -370,12 +379,14 @@ export default function TasksBoard(props) {
 
     const canManageTaskRecord = (taskRecord) => {
         if (!taskRecord) return false;
+        if (isContractCollectorReadOnly(taskRecord.project)) return false;
         const projectOwnerId = Number(taskRecord?.project?.owner_id || 0);
         return userRole === 'admin' || projectOwnerId === currentUserId;
     };
 
     const canManageTaskItems = (taskRecord = itemsTask) => {
         if (!taskRecord) return false;
+        if (isContractCollectorReadOnly(taskRecord.project)) return false;
         const projectOwnerId = Number(taskRecord?.project?.owner_id || 0);
         const taskOwnerId = Number(taskRecord?.assignee_id || 0);
         return userRole === 'admin'
@@ -385,6 +396,7 @@ export default function TasksBoard(props) {
 
     const canSubmitItemReport = (item, taskRecord = itemsTask) => {
         if (!item) return false;
+        if (isContractCollectorReadOnly(taskRecord?.project)) return false;
         const taskOwnerId = Number(taskRecord?.assignee_id || 0);
         return userRole === 'admin'
             || taskOwnerId === currentUserId
@@ -393,6 +405,7 @@ export default function TasksBoard(props) {
 
     const canEditPendingItemUpdate = (item, update, taskRecord = itemsTask) => {
         if (!item || !update || update.review_status !== 'pending') return false;
+        if (isContractCollectorReadOnly(taskRecord?.project)) return false;
         if (canApproveItemReports(taskRecord)) return true;
         return Number(item.assignee_id || 0) === currentUserId
             || Number(update?.submitter?.id || update?.submitted_by || 0) === currentUserId;
@@ -1956,9 +1969,8 @@ export default function TasksBoard(props) {
                                                         <button className="text-xs font-semibold text-sky-600" onClick={(e) => { e.stopPropagation(); openItemsModal(t); }} type="button">
                                                             Đầu việc
                                                         </button>
-                                                        <button className="text-xs font-semibold text-emerald-600 inline-flex items-center gap-1" onClick={(e) => { e.stopPropagation(); openTaskChat(t); }} type="button" title="Mở chat công việc">
-                                                            <AppIcon name="chat" className="h-3.5 w-3.5" />
-                                                            Chat
+                                                        <button className="text-xs font-semibold text-emerald-600" onClick={(e) => { e.stopPropagation(); openTaskChat(t); }} type="button" title="Mở chat công việc">
+                                                            Mở chat
                                                         </button>
                                                     </td>
                                                 </tr>
@@ -2011,9 +2023,8 @@ export default function TasksBoard(props) {
                                                                 <button className="hover:text-danger" onClick={(e) => { e.stopPropagation(); remove(t.id); }} type="button">Xoá</button>
                                                             )}
                                                             <button className="hover:text-sky-600" onClick={(e) => { e.stopPropagation(); openItemsModal(t); }} type="button">Đầu việc</button>
-                                                            <button className="hover:text-emerald-600 inline-flex items-center gap-1" onClick={(e) => { e.stopPropagation(); openTaskChat(t); }} type="button" title="Mở chat công việc">
-                                                                <AppIcon name="chat" className="h-3.5 w-3.5" />
-                                                                Chat
+                                                            <button className="hover:text-emerald-600 font-semibold" onClick={(e) => { e.stopPropagation(); openTaskChat(t); }} type="button" title="Mở chat công việc">
+                                                                Mở chat
                                                             </button>
                                                         </div>
                                                     </div>

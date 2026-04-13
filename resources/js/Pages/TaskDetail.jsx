@@ -93,7 +93,18 @@ export default function TaskDetail(props) {
     const projectOwnerId = Number(task?.project?.owner_id || 0);
     const isProjectOwner = projectOwnerId > 0 && projectOwnerId === currentUserId;
     const isTaskAssignee = Number(task?.assignee_id || 0) === currentUserId;
-    const canManageItems = currentUserRole === 'admin' || isProjectOwner || isTaskAssignee;
+    const collectorReadOnly = useMemo(() => {
+        const p = task?.project;
+        if (!p) return false;
+        const collectorId = Number(p.collector_user_id ?? p.contract?.collector_user_id ?? 0);
+        const ownerId = Number(p.owner_id ?? 0);
+        if (collectorId <= 0 || collectorId !== currentUserId) return false;
+        if (['admin', 'administrator'].includes(currentUserRole)) return false;
+        if (ownerId > 0 && ownerId === currentUserId) return false;
+        return true;
+    }, [task, currentUserId, currentUserRole]);
+
+    const canManageItems = !collectorReadOnly && (currentUserRole === 'admin' || currentUserRole === 'administrator' || isProjectOwner || isTaskAssignee);
 
     const visibleItems = useMemo(() => {
         if (activeTab === 'all') return items;

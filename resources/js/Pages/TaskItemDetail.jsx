@@ -79,13 +79,25 @@ export default function TaskItemDetail(props) {
 
     const isTaskAssignee = Number(task?.assignee_id || 0) === currentUserId;
     const isProjectOwner = projectOwnerId > 0 && projectOwnerId === currentUserId;
-    const canApprove = currentUserRole === 'admin' || isProjectOwner;
-    const canEdit = currentUserRole === 'admin' || isProjectOwner || isTaskAssignee;
+    const collectorReadOnly = useMemo(() => {
+        const p = task?.project;
+        if (!p) return false;
+        const collectorId = Number(p.collector_user_id ?? p.contract?.collector_user_id ?? 0);
+        const ownerId = Number(p.owner_id ?? 0);
+        if (collectorId <= 0 || collectorId !== currentUserId) return false;
+        if (['admin', 'administrator'].includes(currentUserRole)) return false;
+        if (ownerId > 0 && ownerId === currentUserId) return false;
+        return true;
+    }, [task, currentUserId, currentUserRole]);
 
-    const canSubmitReport = currentUserRole === 'admin'
+    const canApprove = currentUserRole === 'admin' || currentUserRole === 'administrator' || isProjectOwner;
+    const canEdit = !collectorReadOnly && (currentUserRole === 'admin' || currentUserRole === 'administrator' || isProjectOwner || isTaskAssignee);
+
+    const canSubmitReport = !collectorReadOnly && (currentUserRole === 'admin' || currentUserRole === 'administrator'
         || isTaskAssignee
-        || Number(item?.assignee_id || 0) === currentUserId;
+        || Number(item?.assignee_id || 0) === currentUserId);
     const canEditPendingUpdate = (update) => {
+        if (collectorReadOnly) return false;
         if (!update || update.review_status !== 'pending') return false;
         if (canApprove) return true;
         return Number(item?.assignee_id || 0) === currentUserId

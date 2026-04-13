@@ -157,6 +157,12 @@ class TaskController extends Controller
         if (! ProjectScope::canAccessTask($request->user(), $task)) {
             return response()->json(['message' => 'Không có quyền cập nhật công việc.'], 403);
         }
+        $task->loadMissing('project');
+        if ($task->project && ProjectScope::isContractCollectorOperationsReadOnly($request->user(), $task->project)) {
+            return response()->json([
+                'message' => 'Bạn chỉ có quyền xem công việc theo phạm vi NV thu hợp đồng.',
+            ], 403);
+        }
         $validated = $request->validate($this->rules(true));
         $canManageTask = $task->project
             ? ProjectScope::canManageProjectTasks($request->user(), $task->project)

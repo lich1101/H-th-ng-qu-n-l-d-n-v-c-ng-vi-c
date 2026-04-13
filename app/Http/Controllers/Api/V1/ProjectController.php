@@ -314,10 +314,9 @@ class ProjectController extends Controller
         $canEdit = in_array($request->user()->role, ['admin', 'administrator', 'quan_ly'], true)
             || (int) $project->owner_id === (int) $request->user()->id;
         if (! $canEdit && $this->projectHasLinkedContract($project)) {
-            $collectorId = ProjectScope::projectCollectorId($project);
             $contractCreatorId = $this->projectContractCreatorId($project);
 
-            if ($collectorId === (int) $request->user()->id || $contractCreatorId === (int) $request->user()->id) {
+            if ($contractCreatorId === (int) $request->user()->id) {
                 $canEdit = true;
             }
         }
@@ -852,10 +851,9 @@ class ProjectController extends Controller
                 || (int) $project->owner_id === (int) $user->id
             : false;
         if (! $canEdit && $user && $this->projectHasLinkedContract($project)) {
-            $collectorId = ProjectScope::projectCollectorId($project);
             $contractCreatorId = $this->projectContractCreatorId($project);
 
-            if ($collectorId === (int) $user->id || $contractCreatorId === (int) $user->id) {
+            if ($contractCreatorId === (int) $user->id) {
                 $canEdit = true;
             }
         }

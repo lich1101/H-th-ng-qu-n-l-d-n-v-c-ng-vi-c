@@ -95,6 +95,7 @@ export default function ProjectDetail(props) {
     const toast = useToast();
     const projectId = props.projectId;
     const currentRole = props?.auth?.user?.role || '';
+    const currentUserId = Number(props?.auth?.user?.id || 0);
 
     const [project, setProject] = useState(null);
     const [tasks, setTasks] = useState([]);
@@ -141,9 +142,21 @@ export default function ProjectDetail(props) {
         workflow_topic_id: '',
     });
 
+    const collectorReadOnly = useMemo(() => {
+        if (!project) return false;
+        const collectorId = Number(
+            project.collector_user_id ?? project.contract?.collector_user_id ?? 0,
+        );
+        const ownerId = Number(project.owner_id ?? 0);
+        if (collectorId <= 0 || collectorId !== currentUserId) return false;
+        if (['admin', 'administrator'].includes(currentRole)) return false;
+        if (ownerId > 0 && ownerId === currentUserId) return false;
+        return true;
+    }, [project, currentUserId, currentRole]);
+
     const canManageTasks = useMemo(
-        () => !!project?.permissions?.can_edit || ['admin', 'administrator', 'quan_ly'].includes(currentRole),
-        [project, currentRole]
+        () => !collectorReadOnly && (!!project?.permissions?.can_edit || ['admin', 'administrator', 'quan_ly'].includes(currentRole)),
+        [project, currentRole, collectorReadOnly]
     );
 
     const canEditProject = useMemo(
@@ -813,7 +826,7 @@ export default function ProjectDetail(props) {
                                                             <>
                                                                 <button type="button" className="rounded-lg px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100" onClick={() => openTaskForm(task)}>Sửa</button>
                                                                 {task.status !== 'done' && (
-                                                                    <button type="button" className="rounded-lg px-2 py-1 text-xs font-semibold text-emerald-600 hover:bg-emerald-50" onClick={() => quickStatus(task, 'done')}>✓</button>
+                                                                    <button type="button" className="rounded-lg px-2 py-1 text-xs font-semibold text-emerald-600 hover:bg-emerald-50" onClick={() => quickStatus(task, 'done')}>Hoàn tất</button>
                                                                 )}
                                                                 {currentRole === 'admin' && (
                                                                     <button type="button" className="rounded-lg px-2 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50" onClick={() => deleteTask(task.id)}>Xóa</button>
