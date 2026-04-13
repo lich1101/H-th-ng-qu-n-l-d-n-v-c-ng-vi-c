@@ -113,51 +113,107 @@ function PaceBadge({ pace }) {
 }
 
 function SegmentedPaceBar({ summary }) {
+    const [activeSegmentKey, setActiveSegmentKey] = useState('');
     const rates = summary?.pace_rates || {};
     const paceCounts = summary?.pace_counts || {};
+    const total = Math.max(0, toInt(summary?.total));
+    const completed = Math.max(0, toInt(summary?.completed));
+    const completionRate = toPercent(summary?.completion_rate);
+    const avgActual = toPercent(summary?.avg_actual_progress);
+    const avgExpected = toPercent(summary?.avg_expected_progress);
+    const avgLag = toPercent(summary?.avg_lag_percent);
     const behind = Math.max(0, Number(rates.behind || 0));
     const onTrack = Math.max(0, Number(rates.on_track || 0));
     const ahead = Math.max(0, Number(rates.ahead || 0));
-    const segments = [
+    const baseSegments = [
         {
             key: 'behind',
             label: 'Chậm tiến độ',
             rate: behind,
             count: toInt(paceCounts.behind),
-            barClass: 'bg-rose-500',
+            colorClass: 'bg-rose-500',
         },
         {
             key: 'on_track',
             label: 'Kịp tiến độ',
             rate: onTrack,
             count: toInt(paceCounts.on_track),
-            barClass: 'bg-blue-500',
+            colorClass: 'bg-blue-500',
         },
         {
             key: 'ahead',
             label: 'Vượt tiến độ',
             rate: ahead,
             count: toInt(paceCounts.ahead),
-            barClass: 'bg-emerald-500',
+            colorClass: 'bg-emerald-500',
         },
     ];
+    let rangeStart = 0;
+    const segments = baseSegments.map((segment) => {
+        const start = rangeStart;
+        const end = start + segment.rate;
+        rangeStart = end;
+        return {
+            ...segment,
+            center: start + (segment.rate / 2),
+        };
+    });
+    const activeSegment = segments.find((segment) => segment.key === activeSegmentKey && segment.rate > 0) || null;
 
     if ((behind + onTrack + ahead) <= 0) {
         return <div className="h-2 w-full rounded-full bg-slate-100" />;
     }
 
+    const tooltipStyle = (() => {
+        if (!activeSegment) return {};
+        if (activeSegment.center < 20) return { left: 0 };
+        if (activeSegment.center > 80) return { right: 0 };
+        return {
+            left: `${activeSegment.center}%`,
+            transform: 'translateX(-50%)',
+        };
+    })();
+
     return (
-        <div className="flex h-2 w-full overflow-hidden rounded-full bg-slate-100">
-            {segments.map((segment) => (
-                segment.rate > 0 ? (
-                    <div
-                        key={segment.key}
-                        className={`${segment.barClass} cursor-help`}
-                        style={{ width: `${segment.rate}%` }}
-                        title={`${segment.label}: ${segment.count.toLocaleString('vi-VN')} (${toPercent(segment.rate)})`}
-                    />
-                ) : null
-            ))}
+        <div className="relative" onMouseLeave={() => setActiveSegmentKey('')}>
+            <div className="flex h-2 w-full overflow-hidden rounded-full bg-slate-100">
+                {segments.map((segment) => (
+                    segment.rate > 0 ? (
+                        <div
+                            key={segment.key}
+                            className={`${segment.colorClass} cursor-pointer transition-opacity ${
+                                activeSegmentKey && activeSegmentKey !== segment.key ? 'opacity-65' : 'opacity-100'
+                            }`}
+                            style={{ width: `${segment.rate}%` }}
+                            onMouseEnter={() => setActiveSegmentKey(segment.key)}
+                        />
+                    ) : null
+                ))}
+            </div>
+            {activeSegment ? (
+                <div
+                    className="pointer-events-none absolute bottom-full z-20 mb-2 w-[252px] max-w-[calc(100vw-2rem)] rounded-xl border border-slate-200 bg-white/95 p-3 text-xs shadow-lg shadow-slate-900/10 backdrop-blur-sm"
+                    style={tooltipStyle}
+                >
+                    <div className="flex items-center justify-between gap-2">
+                        <span className="inline-flex items-center gap-1.5 font-semibold text-slate-900">
+                            <span className={`h-2.5 w-2.5 rounded-full ${activeSegment.colorClass}`} />
+                            {activeSegment.label}
+                        </span>
+                        <span className="font-semibold text-slate-700">
+                            {activeSegment.count.toLocaleString('vi-VN')} / {total.toLocaleString('vi-VN')}
+                        </span>
+                    </div>
+                    <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-slate-600">
+                        <span>Tỷ trọng: {toPercent(activeSegment.rate)}</span>
+                        <span>Hoàn thành: {completionRate}</span>
+                        <span>Đã xong: {completed.toLocaleString('vi-VN')} / {total.toLocaleString('vi-VN')}</span>
+                        <span>Thực tế TB: {avgActual}</span>
+                        <span>Kỳ vọng TB: {avgExpected}</span>
+                        <span>Lệch TB: {avgLag}</span>
+                    </div>
+                </div>
+            ) : null}
         </div>
     );
 }
