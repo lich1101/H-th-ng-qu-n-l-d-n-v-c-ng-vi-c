@@ -69,7 +69,8 @@ class ContractController extends Controller
 
         $perPage = (int) $request->input('per_page', 20);
         $perPage = $perPage > 0 ? $perPage : 20;
-        $perPage = max(5, min(200, $perPage));
+        /** Trần khớp tùy chọn «Hiển thị» trên UI (PaginationControls tối đa 2000). */
+        $perPage = max(5, min(2000, $perPage));
 
         /** @var \Illuminate\Pagination\LengthAwarePaginator $contracts */
         $contracts = $query->paginate($perPage);
