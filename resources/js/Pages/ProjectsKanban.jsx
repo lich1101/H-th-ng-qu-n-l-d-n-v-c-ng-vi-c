@@ -572,7 +572,9 @@ export default function ProjectsKanban(props) {
     };
 
     const quickMove = async (p, nextStatus) => {
-        if (!canUpdate) return toast.error('Bạn không có quyền cập nhật dự án.');
+        if (!p?.permissions?.can_edit) {
+            return toast.error('Bạn không có quyền cập nhật dự án này.');
+        }
         try {
             await axios.put(`/api/v1/projects/${p.id}`, buildProjectPayload(p, { status: nextStatus }));
             toast.success('Đã cập nhật trạng thái.');
@@ -598,9 +600,15 @@ export default function ProjectsKanban(props) {
             return;
         }
 
+        const editable = selectedProjects.filter((project) => project?.permissions?.can_edit);
+        if (!editable.length) {
+            toast.error('Không có dự án nào trong lựa chọn mà bạn được phép sửa.');
+            return;
+        }
+
         setBulkLoading(true);
         try {
-            await Promise.all(selectedProjects.map((project) => (
+            await Promise.all(editable.map((project) => (
                 axios.put(`/api/v1/projects/${project.id}`, buildProjectPayload(project, patch))
             )));
             toast.success(successLabel);
@@ -614,8 +622,8 @@ export default function ProjectsKanban(props) {
     };
 
     const bulkSyncContractDates = async () => {
-        if (!canUpdate) {
-            toast.error('Bạn không có quyền cập nhật dự án hàng loạt.');
+        if (!['admin', 'administrator'].includes(userRole)) {
+            toast.error('Chỉ quản trị viên mới đồng bộ ngày theo hợp đồng hàng loạt.');
             return;
         }
         if (!selectedProjectIds.length) {
@@ -698,6 +706,11 @@ export default function ProjectsKanban(props) {
     };
 
     const canEditProject = (project) => !!project?.permissions?.can_edit;
+    const editingProjectRow = useMemo(
+        () => projects.find((p) => Number(p.id) === Number(editingId)),
+        [projects, editingId],
+    );
+    const canEditAllProjectFields = !editingId || !!editingProjectRow?.permissions?.can_edit_all_project_fields;
     const canDeleteProject = (project) => !!project?.permissions?.can_delete;
     const canSubmitProjectHandover = (project) => !!project?.permissions?.can_submit_handover;
     const canReviewProjectHandover = (project) => !!project?.permissions?.can_review_handover;
@@ -818,6 +831,7 @@ export default function ProjectsKanban(props) {
                                                     className="rounded-xl border border-sky-300 bg-sky-100 px-3 py-2 text-xs font-semibold text-sky-800"
                                                     onClick={() => bulkUpdateProjects({ status: 'dang_trien_khai' }, `Đã chuyển ${selectedProjectIds.length} dự án sang Đang triển khai.`)}
                                                     disabled={bulkLoading}
+                                                    title="Chỉ áp dụng cho các dự án bạn có quyền sửa"
                                                 >
                                                     {bulkLoading ? 'Đang xử lý...' : 'Đang triển khai'}
                                                 </button>
@@ -837,6 +851,7 @@ export default function ProjectsKanban(props) {
                                                 >
                                                     {bulkLoading ? 'Đang xử lý...' : 'Tạm dừng'}
                                                 </button>
+                                                {['admin', 'administrator'].includes(userRole) && (
                                                 <button
                                                     type="button"
                                                     className="rounded-xl border border-violet-300 bg-violet-100 px-3 py-2 text-xs font-semibold text-violet-900"
@@ -846,6 +861,7 @@ export default function ProjectsKanban(props) {
                                                 >
                                                     {bulkLoading ? 'Đang xử lý...' : 'Đồng bộ ngày theo HĐ'}
                                                 </button>
+                                                )}
                                             </>
                                         )}
                                         {canDelete && (
@@ -1298,8 +1314,9 @@ export default function ProjectsKanban(props) {
                     <div>
                         <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Barem công việc theo Topic</label>
                         <select
-                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-80"
                             value={form.workflow_topic_id}
+                            disabled={editingId && !canEditAllProjectFields}
                             onChange={(e) => setForm((s) => ({ ...s, workflow_topic_id: e.target.value }))}
                         >
                             <option value="">Không dùng barem (tạo dự án trống)</option>
@@ -1311,6 +1328,9 @@ export default function ProjectsKanban(props) {
                         </select>
                         <p className="mt-1 text-xs text-text-muted">
                             Khi tạo dự án mới, nếu chọn barem thì hệ thống tự sinh công việc và đầu việc theo timeline dự án, chưa gán người phụ trách.
+                            {editingId && !canEditAllProjectFields && (
+                                <span className="block text-amber-700">Phụ trách dự án chỉ sửa được các trường còn lại; barem/HĐ/ngày/chủ dự án do quản trị chỉnh.</span>
+                            )}
                         </p>
                     </div>
                     {form.service_type === 'khac' && (
@@ -1328,8 +1348,9 @@ export default function ProjectsKanban(props) {
                         <div>
                             <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Hợp đồng liên kết</label>
                             <select
-                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-80"
                                 value={form.contract_id}
+                                disabled={editingId && !canEditAllProjectFields}
                                 onChange={(e) => {
                                     const id = e.target.value;
                                     setForm((s) => {
@@ -1356,8 +1377,9 @@ export default function ProjectsKanban(props) {
                         <div>
                             <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Người phụ trách triển khai</label>
                             <select
-                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-80"
                                 value={form.owner_id}
+                                disabled={editingId && !canEditAllProjectFields}
                                 onChange={(e) => setForm((s) => ({ ...s, owner_id: e.target.value }))}
                             >
                                 <option value="">Chọn người phụ trách dự án</option>
@@ -1372,11 +1394,11 @@ export default function ProjectsKanban(props) {
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Ngày bắt đầu</label>
-                            <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" type="date" value={form.start_date} onChange={(e) => setForm((s) => ({ ...s, start_date: e.target.value }))} />
+                            <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-80" type="date" value={form.start_date} disabled={editingId && !canEditAllProjectFields} onChange={(e) => setForm((s) => ({ ...s, start_date: e.target.value }))} />
                         </div>
                         <div>
                             <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Hạn chót</label>
-                            <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" type="date" value={form.deadline} onChange={(e) => setForm((s) => ({ ...s, deadline: e.target.value }))} />
+                            <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-80" type="date" value={form.deadline} disabled={editingId && !canEditAllProjectFields} onChange={(e) => setForm((s) => ({ ...s, deadline: e.target.value }))} />
                         </div>
                     </div>
                     <div>

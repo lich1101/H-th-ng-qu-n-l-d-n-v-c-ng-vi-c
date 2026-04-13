@@ -73,6 +73,9 @@ class ClientFlowController extends Controller
         }
 
         $client->load([
+            'leadType:id,name',
+            'assignedDepartment:id,name',
+            'revenueTier:id,name',
             'assignedStaff:id,name,email',
             'salesOwner:id,name,email',
             'careStaffUsers:id,name,email',
@@ -191,17 +194,44 @@ class ClientFlowController extends Controller
             'client' => [
                 'id' => $client->id,
                 'name' => $client->name,
+                'external_code' => $client->external_code,
                 'company' => $client->company,
                 'email' => $client->email,
                 'phone' => $client->phone,
                 'notes' => $client->notes,
                 'lead_type_id' => $client->lead_type_id,
+                'lead_type' => $client->leadType
+                    ? [
+                        'id' => $client->leadType->id,
+                        'name' => $client->leadType->name,
+                    ]
+                    : null,
                 'assigned_department_id' => $client->assigned_department_id,
+                'assigned_department' => $client->assignedDepartment
+                    ? [
+                        'id' => $client->assignedDepartment->id,
+                        'name' => $client->assignedDepartment->name,
+                    ]
+                    : null,
+                'revenue_tier_id' => $client->revenue_tier_id,
+                'revenue_tier' => $client->revenueTier
+                    ? [
+                        'id' => $client->revenueTier->id,
+                        'name' => $client->revenueTier->name,
+                    ]
+                    : null,
                 'assigned_staff_id' => $client->assigned_staff_id,
                 'sales_owner_id' => $client->sales_owner_id,
                 'lead_source' => $client->lead_source,
                 'lead_channel' => $client->lead_channel,
+                'lead_message' => $client->lead_message,
+                'customer_level' => $client->customer_level,
+                'customer_status_label' => $client->customer_status_label,
+                'company_size' => $client->company_size,
                 'total_revenue' => $client->total_revenue,
+                'total_debt_amount' => $client->total_debt_amount,
+                'total_cash_flow' => $client->total_cash_flow,
+                'legacy_debt_amount' => $client->legacy_debt_amount,
                 'has_purchased' => $client->has_purchased,
                 'assigned_staff' => $client->assignedStaff
                     ? [

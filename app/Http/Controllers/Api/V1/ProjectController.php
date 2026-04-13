@@ -21,6 +21,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Carbon\Carbon;
 
 class ProjectController extends Controller
 {
@@ -311,21 +312,22 @@ class ProjectController extends Controller
             return response()->json(['message' => 'Không có quyền cập nhật dự án.'], 403);
         }
 
-        $canEdit = in_array($request->user()->role, ['admin', 'administrator', 'quan_ly'], true)
-            || (int) $project->owner_id === (int) $request->user()->id;
-        if (! $canEdit && $this->projectHasLinkedContract($project)) {
-            $contractCreatorId = $this->projectContractCreatorId($project);
-
-            if ($contractCreatorId === (int) $request->user()->id) {
-                $canEdit = true;
-            }
-        }
+        $user = $request->user();
+        $canEditAll = $user && in_array((string) $user->role, ['admin', 'administrator'], true);
+        $canEdit = $canEditAll || ($user && (int) $project->owner_id === (int) $user->id);
 
         if (! $canEdit) {
             return response()->json(['message' => 'Bạn chỉ có quyền xem dự án trong phạm vi phụ trách.'], 403);
         }
 
         $validated = $request->validate($this->rules($project->id));
+
+        if (! $canEditAll) {
+            $restricted = $this->restrictedProjectFieldsViolationResponse($project, $validated);
+            if ($restricted instanceof JsonResponse) {
+                return $restricted;
+            }
+        }
         $this->normalizeProjectUrlFields($validated);
         if (array_key_exists('owner_id', $validated)) {
             if ($error = $this->validateProjectOwner($validated['owner_id'])) {
@@ -364,7 +366,7 @@ class ProjectController extends Controller
             : $oldWorkflowTopicId;
         $workflowTopicChanged = $oldWorkflowTopicId !== $newWorkflowTopicId;
         $confirmReapplyWorkflow = filter_var($request->input('confirm_reapply_workflow', false), FILTER_VALIDATE_BOOLEAN);
-        if ($workflowTopicChanged && $oldWorkflowTopicId > 0 && $newWorkflowTopicId > 0 && ! $confirmReapplyWorkflow) {
+        if ($canEditAll && $workflowTopicChanged && $oldWorkflowTopicId > 0 && $newWorkflowTopicId > 0 && ! $confirmReapplyWorkflow) {
             return response()->json([
                 'message' => 'Đổi Topic Barem sẽ xóa toàn bộ công việc/đầu việc hiện tại. Vui lòng xác nhận trước khi lưu.',
                 'code' => 'workflow_topic_reapply_confirmation_required',
@@ -441,8 +443,8 @@ class ProjectController extends Controller
                 }
 
                 $perms = $this->projectPermissions($project, $user);
-                if (! ($perms['can_edit'] ?? false)) {
-                    $skipped[] = ['id' => $projectId, 'reason' => 'Không có quyền chỉnh sửa dự án.'];
+                if (! ($perms['can_edit_all_project_fields'] ?? false)) {
+                    $skipped[] = ['id' => $projectId, 'reason' => 'Chỉ quản trị viên mới đồng bộ ngày theo hợp đồng hàng loạt.'];
 
                     continue;
                 }
@@ -846,25 +848,77 @@ class ProjectController extends Controller
     {
         $minimum = $this->handoverMinimumProgressPercent();
 
-        $canEdit = $user
-            ? in_array($user->role, ['admin', 'administrator', 'quan_ly'], true)
-                || (int) $project->owner_id === (int) $user->id
-            : false;
-        if (! $canEdit && $user && $this->projectHasLinkedContract($project)) {
-            $contractCreatorId = $this->projectContractCreatorId($project);
-
-            if ($contractCreatorId === (int) $user->id) {
-                $canEdit = true;
-            }
-        }
+        $canEditAll = $user && in_array((string) $user->role, ['admin', 'administrator'], true);
+        $canEdit = $canEditAll || ($user && (int) $project->owner_id === (int) $user->id);
 
         return [
             'can_view' => ProjectScope::canAccessProject($user, $project),
             'can_edit' => $canEdit,
+            'can_edit_all_project_fields' => $canEditAll,
             'can_delete' => $user ? in_array((string) $user->role, ['admin', 'administrator'], true) : false,
             'can_submit_handover' => ProjectScope::canSubmitProjectHandover($user, $project, $minimum),
             'can_review_handover' => ProjectScope::canReviewProjectHandover($user, $project),
         ];
+    }
+
+    /**
+     * Phụ trách dự án (không phải admin): không đổi chủ dự án, HĐ, ngày, barem topic.
+     */
+    private function restrictedProjectFieldsViolationResponse(Project $project, array $validated): ?JsonResponse
+    {
+        if (array_key_exists('owner_id', $validated)) {
+            $new = (int) ($validated['owner_id'] ?? 0);
+            $old = (int) ($project->owner_id ?? 0);
+            if ($new !== $old) {
+                return response()->json([
+                    'message' => 'Phụ trách dự án không được đổi sang nhân sự khác.',
+                ], 422);
+            }
+        }
+        if (array_key_exists('contract_id', $validated)) {
+            $new = (int) ($validated['contract_id'] ?? 0);
+            $old = (int) ($project->contract_id ?? 0);
+            if ($new !== $old) {
+                return response()->json([
+                    'message' => 'Không được đổi hợp đồng liên kết.',
+                ], 422);
+            }
+        }
+        if (array_key_exists('workflow_topic_id', $validated)) {
+            $new = (int) ($validated['workflow_topic_id'] ?? 0);
+            $old = (int) ($project->workflow_topic_id ?? 0);
+            if ($new !== $old) {
+                return response()->json([
+                    'message' => 'Không được đổi topic barem. Chỉ quản trị viên mới được thao tác.',
+                ], 422);
+            }
+        }
+        if (array_key_exists('start_date', $validated)) {
+            $oldStr = $project->start_date ? $project->start_date->toDateString() : null;
+            $newRaw = $validated['start_date'] ?? null;
+            $newStr = $newRaw !== null && $newRaw !== ''
+                ? Carbon::parse((string) $newRaw)->toDateString()
+                : null;
+            if ($oldStr !== $newStr) {
+                return response()->json([
+                    'message' => 'Không được chỉnh ngày bắt đầu dự án.',
+                ], 422);
+            }
+        }
+        if (array_key_exists('deadline', $validated)) {
+            $oldStr = $project->deadline ? $project->deadline->toDateString() : null;
+            $newRaw = $validated['deadline'] ?? null;
+            $newStr = $newRaw !== null && $newRaw !== ''
+                ? Carbon::parse((string) $newRaw)->toDateString()
+                : null;
+            if ($oldStr !== $newStr) {
+                return response()->json([
+                    'message' => 'Không được chỉnh ngày kết thúc dự án.',
+                ], 422);
+            }
+        }
+
+        return null;
     }
 
     private function handoverMinimumProgressPercent(): int

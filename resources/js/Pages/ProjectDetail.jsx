@@ -164,6 +164,8 @@ export default function ProjectDetail(props) {
         [project]
     );
 
+    const canEditAllProjectFields = !!project?.permissions?.can_edit_all_project_fields;
+
     const statusOptions = useMemo(() => {
         const values = meta.project_statuses || [];
         if (!values.length) return DEFAULT_PROJECT_STATUSES;
@@ -957,8 +959,9 @@ export default function ProjectDetail(props) {
                     <div>
                         <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Barem công việc theo Topic</label>
                         <select
-                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-80"
                             value={projectForm.workflow_topic_id}
+                            disabled={!canEditAllProjectFields}
                             onChange={(e) => setProjectForm((s) => ({ ...s, workflow_topic_id: e.target.value }))}
                         >
                             <option value="">Không dùng barem</option>
@@ -970,6 +973,9 @@ export default function ProjectDetail(props) {
                         </select>
                         <p className="mt-1 text-xs text-text-muted">
                             Đổi topic khác topic hiện tại sẽ xóa công việc/đầu việc và tạo lại theo barem mới (cần xác nhận).
+                            {!canEditAllProjectFields && (
+                                <span className="block text-amber-700">Phụ trách dự án chỉ sửa được các trường còn lại; barem/HĐ/ngày/chủ dự án do quản trị chỉnh.</span>
+                            )}
                         </p>
                     </div>
                     {projectForm.service_type === 'khac' && (
@@ -987,8 +993,9 @@ export default function ProjectDetail(props) {
                         <div>
                             <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Hợp đồng liên kết</label>
                             <select
-                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-80"
                                 value={projectForm.contract_id}
+                                disabled={!canEditAllProjectFields}
                                 onChange={(e) => {
                                     const id = e.target.value;
                                     setProjectForm((s) => {
@@ -1012,8 +1019,9 @@ export default function ProjectDetail(props) {
                         <div>
                             <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Người phụ trách triển khai</label>
                             <select
-                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                                className="w-full rounded-2xl border border-slate-200/80 px-3 py-2 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-80"
                                 value={projectForm.owner_id}
+                                disabled={!canEditAllProjectFields}
                                 onChange={(e) => setProjectForm((s) => ({ ...s, owner_id: e.target.value }))}
                             >
                                 <option value="">Chọn người phụ trách dự án</option>
@@ -1028,11 +1036,11 @@ export default function ProjectDetail(props) {
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Ngày bắt đầu</label>
-                            <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" type="date" value={projectForm.start_date} onChange={(e) => setProjectForm((s) => ({ ...s, start_date: e.target.value }))} />
+                            <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-80" type="date" value={projectForm.start_date} disabled={!canEditAllProjectFields} onChange={(e) => setProjectForm((s) => ({ ...s, start_date: e.target.value }))} />
                         </div>
                         <div>
                             <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Hạn chót</label>
-                            <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2" type="date" value={projectForm.deadline} onChange={(e) => setProjectForm((s) => ({ ...s, deadline: e.target.value }))} />
+                            <input className="w-full rounded-2xl border border-slate-200/80 px-3 py-2 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-80" type="date" value={projectForm.deadline} disabled={!canEditAllProjectFields} onChange={(e) => setProjectForm((s) => ({ ...s, deadline: e.target.value }))} />
                         </div>
                     </div>
                     <div>
