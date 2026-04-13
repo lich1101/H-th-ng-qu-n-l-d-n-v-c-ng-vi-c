@@ -79,6 +79,14 @@ const HANDOVER_STYLES = {
 
 const BLOCKED_ASSIGNMENT_ROLES = ['admin', 'administrator', 'ke_toan'];
 
+const parseMultiIds = (raw) => {
+    if (!raw) return [];
+    return String(raw)
+        .split(/[\s,;|]+/)
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value) && value > 0);
+};
+
 export default function ProjectsKanban(props) {
     const toast = useToast();
     const userRole = props?.auth?.user?.role || '';
@@ -99,13 +107,16 @@ export default function ProjectsKanban(props) {
     const [editingOriginalWorkflowTopicId, setEditingOriginalWorkflowTopicId] = useState(0);
     const [showForm, setShowForm] = useState(false);
     const [viewMode, setViewMode] = useState('list');
+    const queryParams = typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search)
+        : new URLSearchParams();
     const [filters, setFilters] = useState({
-        search: '',
-        status: '',
-        service_type: '',
-        owner_ids: [],
+        search: queryParams.get('search') || '',
+        status: queryParams.get('status') || '',
+        service_type: queryParams.get('service_type') || '',
+        owner_ids: parseMultiIds(queryParams.get('owner_ids') || queryParams.get('owner_id')),
         per_page: 20,
-        page: 1,
+        page: Number(queryParams.get('page') || 1),
     });
     const [form, setForm] = useState({
         code: '',

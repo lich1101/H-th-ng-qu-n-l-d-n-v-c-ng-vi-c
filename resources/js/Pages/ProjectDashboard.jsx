@@ -14,6 +14,7 @@ import TagMultiSelect from '@/Components/TagMultiSelect';
 import AppIcon from '@/Components/AppIcon';
 import { useToast } from '@/Contexts/ToastContext';
 import { formatVietnamDate } from '@/lib/vietnamTime';
+import { Link } from '@inertiajs/inertia-react';
 
 const paceTone = {
     behind: {
@@ -28,8 +29,8 @@ const paceTone = {
     },
     ahead: {
         label: 'Vượt tiến độ',
-        chip: 'bg-amber-100 text-amber-700 border border-amber-200',
-        bar: 'bg-amber-500',
+        chip: 'bg-emerald-100 text-emerald-700 border border-emerald-200',
+        bar: 'bg-emerald-500',
     },
 };
 
@@ -53,6 +54,34 @@ function toPercent(value, digits = 1) {
     const parsed = Number(value || 0);
     if (!Number.isFinite(parsed)) return '0%';
     return `${parsed.toFixed(digits)}%`;
+}
+
+function toNumber(value, fallback = 0) {
+    const parsed = Number(value || 0);
+    if (!Number.isFinite(parsed)) return fallback;
+    return parsed;
+}
+
+function buildRouteUrl(routeName, params = {}) {
+    const baseUrl = route(routeName);
+    const searchParams = new URLSearchParams();
+    Object.entries(params || {}).forEach(([key, value]) => {
+        if (Array.isArray(value)) {
+            const normalized = value.map((item) => String(item || '').trim()).filter(Boolean);
+            if (normalized.length > 0) {
+                searchParams.set(key, normalized.join(','));
+            }
+            return;
+        }
+
+        const normalized = String(value ?? '').trim();
+        if (normalized) {
+            searchParams.set(key, normalized);
+        }
+    });
+
+    const queryString = searchParams.toString();
+    return queryString ? `${baseUrl}?${queryString}` : baseUrl;
 }
 
 function normalizeFilters(filters) {
@@ -85,9 +114,33 @@ function PaceBadge({ pace }) {
 
 function SegmentedPaceBar({ summary }) {
     const rates = summary?.pace_rates || {};
+    const paceCounts = summary?.pace_counts || {};
     const behind = Math.max(0, Number(rates.behind || 0));
     const onTrack = Math.max(0, Number(rates.on_track || 0));
     const ahead = Math.max(0, Number(rates.ahead || 0));
+    const segments = [
+        {
+            key: 'behind',
+            label: 'Chậm tiến độ',
+            rate: behind,
+            count: toInt(paceCounts.behind),
+            barClass: 'bg-rose-500',
+        },
+        {
+            key: 'on_track',
+            label: 'Kịp tiến độ',
+            rate: onTrack,
+            count: toInt(paceCounts.on_track),
+            barClass: 'bg-blue-500',
+        },
+        {
+            key: 'ahead',
+            label: 'Vượt tiến độ',
+            rate: ahead,
+            count: toInt(paceCounts.ahead),
+            barClass: 'bg-emerald-500',
+        },
+    ];
 
     if ((behind + onTrack + ahead) <= 0) {
         return <div className="h-2 w-full rounded-full bg-slate-100" />;
@@ -95,14 +148,21 @@ function SegmentedPaceBar({ summary }) {
 
     return (
         <div className="flex h-2 w-full overflow-hidden rounded-full bg-slate-100">
-            {onTrack > 0 ? <div className="bg-blue-500" style={{ width: `${onTrack}%` }} /> : null}
-            {behind > 0 ? <div className="bg-rose-500" style={{ width: `${behind}%` }} /> : null}
-            {ahead > 0 ? <div className="bg-amber-500" style={{ width: `${ahead}%` }} /> : null}
+            {segments.map((segment) => (
+                segment.rate > 0 ? (
+                    <div
+                        key={segment.key}
+                        className={`${segment.barClass} cursor-help`}
+                        style={{ width: `${segment.rate}%` }}
+                        title={`${segment.label}: ${segment.count.toLocaleString('vi-VN')} (${toPercent(segment.rate)})`}
+                    />
+                ) : null
+            ))}
         </div>
     );
 }
 
-function SummaryCard({ title, summary, icon, note }) {
+function SummaryCard({ title, summary, icon, note, href = '' }) {
     const total = toInt(summary?.total);
     const completed = toInt(summary?.completed);
     const completionRate = toPercent(summary?.completion_rate);
@@ -112,8 +172,8 @@ function SummaryCard({ title, summary, icon, note }) {
 
     const paceCounts = summary?.pace_counts || {};
 
-    return (
-        <div className={cardClass}>
+    const content = (
+        <>
             <div className="flex items-start justify-between gap-3">
                 <div>
                     <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-subtle">{title}</p>
@@ -137,15 +197,15 @@ function SummaryCard({ title, summary, icon, note }) {
                 </div>
                 <div className="mt-2 grid grid-cols-3 gap-2 text-[11px] text-text-muted">
                     <span className="inline-flex items-center gap-1">
-                        <span className="h-2 w-2 rounded-full bg-blue-500" />
-                        Kịp: {toInt(paceCounts.on_track).toLocaleString('vi-VN')}
-                    </span>
-                    <span className="inline-flex items-center gap-1">
                         <span className="h-2 w-2 rounded-full bg-rose-500" />
                         Chậm: {toInt(paceCounts.behind).toLocaleString('vi-VN')}
                     </span>
                     <span className="inline-flex items-center gap-1">
-                        <span className="h-2 w-2 rounded-full bg-amber-500" />
+                        <span className="h-2 w-2 rounded-full bg-blue-500" />
+                        Kịp: {toInt(paceCounts.on_track).toLocaleString('vi-VN')}
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                        <span className="h-2 w-2 rounded-full bg-emerald-500" />
                         Vượt: {toInt(paceCounts.ahead).toLocaleString('vi-VN')}
                     </span>
                 </div>
@@ -165,13 +225,31 @@ function SummaryCard({ title, summary, icon, note }) {
                     <div className="mt-1 font-semibold text-slate-800">{avgLag}</div>
                 </div>
             </div>
+        </>
+    );
+
+    if (href) {
+        return (
+            <Link href={href} className={`${cardClass} block transition hover:-translate-y-0.5 hover:border-primary/30 hover:bg-primary/[0.03]`}>
+                {content}
+            </Link>
+        );
+    }
+
+    return (
+        <div className={cardClass}>
+            {content}
         </div>
     );
 }
 
-function StaffEntityCell({ summary, title }) {
-    return (
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-3">
+function StaffEntityCell({ summary, title, href = '' }) {
+    const entityCardClass = `rounded-2xl border border-slate-200/80 bg-white p-3 ${
+        href ? 'transition hover:-translate-y-0.5 hover:border-primary/30 hover:bg-primary/[0.03]' : ''
+    }`;
+
+    const cardContent = (
+        <div className={entityCardClass}>
             <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text-subtle">{title}</div>
             <div className="mt-1.5 flex items-end justify-between gap-2">
                 <div className="text-lg font-semibold text-slate-900">{toInt(summary?.total).toLocaleString('vi-VN')}</div>
@@ -188,6 +266,16 @@ function StaffEntityCell({ summary, title }) {
             </div>
         </div>
     );
+
+    if (href) {
+        return (
+            <Link href={href} className="block">
+                {cardContent}
+            </Link>
+        );
+    }
+
+    return cardContent;
 }
 
 function MultiToggleChips({ options = [], selected = [], onToggle }) {
@@ -348,6 +436,19 @@ export default function ProjectDashboard(props) {
         return `Bộ lọc hiện tại: ${parts.join(' • ')}.`;
     }, [appliedFilters]);
 
+    const projectBoardUrl = useMemo(
+        () => buildRouteUrl('projects.kanban'),
+        []
+    );
+    const tasksBoardUrl = useMemo(
+        () => buildRouteUrl('tasks.board'),
+        []
+    );
+    const taskItemsBoardUrl = useMemo(
+        () => buildRouteUrl('task-items.board'),
+        []
+    );
+
     return (
         <PageContainer
             auth={props.auth}
@@ -435,18 +536,21 @@ export default function ProjectDashboard(props) {
                     summary={overview.projects || {}}
                     icon="project"
                     note="Tình trạng dự án theo tiến độ thực tế vs kỳ vọng."
+                    href={projectBoardUrl}
                 />
                 <SummaryCard
                     title="Công việc phụ trách"
                     summary={overview.tasks || {}}
                     icon="tasks"
                     note="Mức độ hoàn thành công việc theo nhân sự được giao."
+                    href={tasksBoardUrl}
                 />
                 <SummaryCard
                     title="Đầu việc phụ trách"
                     summary={overview.task_items || {}}
                     icon="check"
                     note="Đầu việc chi tiết dùng để đo sát độ trễ theo ngày."
+                    href={taskItemsBoardUrl}
                 />
             </div>
 
@@ -485,9 +589,27 @@ export default function ProjectDashboard(props) {
                                     </div>
                                 </div>
                                 <div className="grid gap-2.5 lg:grid-cols-3">
-                                    <StaffEntityCell title="Dự án" summary={row.projects} />
-                                    <StaffEntityCell title="Công việc" summary={row.tasks} />
-                                    <StaffEntityCell title="Đầu việc" summary={row.task_items} />
+                                    <StaffEntityCell
+                                        title="Dự án"
+                                        summary={row.projects}
+                                        href={Number(row.staff?.id || 0) > 0
+                                            ? buildRouteUrl('projects.kanban', { owner_ids: [Number(row.staff.id)] })
+                                            : ''}
+                                    />
+                                    <StaffEntityCell
+                                        title="Công việc"
+                                        summary={row.tasks}
+                                        href={Number(row.staff?.id || 0) > 0
+                                            ? buildRouteUrl('tasks.board', { assignee_ids: [Number(row.staff.id)] })
+                                            : ''}
+                                    />
+                                    <StaffEntityCell
+                                        title="Đầu việc"
+                                        summary={row.task_items}
+                                        href={Number(row.staff?.id || 0) > 0
+                                            ? buildRouteUrl('task-items.board', { assignee_ids: [Number(row.staff.id)] })
+                                            : ''}
+                                    />
                                 </div>
                             </div>
                         ))}
@@ -546,7 +668,7 @@ export default function ProjectDashboard(props) {
                                         <td className="px-3 py-2.5 font-semibold">{toPercent(project.progress_percent, 0)}</td>
                                         <td className="px-3 py-2.5">{toPercent(project?.pace?.expected_progress, 0)}</td>
                                         <td className="px-3 py-2.5">
-                                            <span className={`${toInt(project?.pace?.lag_percent) > 0 ? 'text-rose-600' : 'text-emerald-600'} font-semibold`}>
+                                            <span className={`${toNumber(project?.pace?.lag_percent) > 0 ? 'text-rose-600' : 'text-emerald-600'} font-semibold`}>
                                                 {toPercent(project?.pace?.lag_percent, 0)}
                                             </span>
                                         </td>
@@ -566,4 +688,3 @@ export default function ProjectDashboard(props) {
         </PageContainer>
     );
 }
-

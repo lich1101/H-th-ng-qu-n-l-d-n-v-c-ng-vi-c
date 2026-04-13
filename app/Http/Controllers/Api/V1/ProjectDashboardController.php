@@ -14,6 +14,8 @@ use Illuminate\Support\Collection;
 
 class ProjectDashboardController extends Controller
 {
+    private const PACE_TOLERANCE_PERCENT = 3.0;
+
     private const PROJECT_STATUS_LABELS = [
         'moi_tao' => 'Mới tạo',
         'dang_trien_khai' => 'Đang triển khai',
@@ -450,9 +452,9 @@ class ProjectDashboardController extends Controller
                 'on_track' => 0,
                 'ahead' => 0,
             ],
-            'actual_progress_sum' => 0,
-            'expected_progress_sum' => 0,
-            'lag_sum' => 0,
+            'actual_progress_sum' => 0.0,
+            'expected_progress_sum' => 0.0,
+            'lag_sum' => 0.0,
         ];
     }
 
@@ -469,18 +471,18 @@ class ProjectDashboardController extends Controller
         }
         $summary['pace_counts'][$paceStatus] = (int) $summary['pace_counts'][$paceStatus] + 1;
 
-        $summary['actual_progress_sum'] = (int) $summary['actual_progress_sum'] + (int) ($row['pace']['actual_progress'] ?? 0);
-        $summary['expected_progress_sum'] = (int) $summary['expected_progress_sum'] + (int) ($row['pace']['expected_progress'] ?? 0);
-        $summary['lag_sum'] = (int) $summary['lag_sum'] + (int) ($row['pace']['lag_percent'] ?? 0);
+        $summary['actual_progress_sum'] = (float) $summary['actual_progress_sum'] + (float) ($row['pace']['actual_progress'] ?? 0);
+        $summary['expected_progress_sum'] = (float) $summary['expected_progress_sum'] + (float) ($row['pace']['expected_progress'] ?? 0);
+        $summary['lag_sum'] = (float) $summary['lag_sum'] + (float) ($row['pace']['lag_percent'] ?? 0);
     }
 
     private function finalizeSummary(array $summary): array
     {
         $total = max(0, (int) ($summary['total'] ?? 0));
         $completed = max(0, (int) ($summary['completed'] ?? 0));
-        $actualSum = (int) ($summary['actual_progress_sum'] ?? 0);
-        $expectedSum = (int) ($summary['expected_progress_sum'] ?? 0);
-        $lagSum = (int) ($summary['lag_sum'] ?? 0);
+        $actualSum = (float) ($summary['actual_progress_sum'] ?? 0);
+        $expectedSum = (float) ($summary['expected_progress_sum'] ?? 0);
+        $lagSum = (float) ($summary['lag_sum'] ?? 0);
 
         $paceCounts = $summary['pace_counts'] ?? [];
         $behind = (int) ($paceCounts['behind'] ?? 0);
@@ -509,41 +511,71 @@ class ProjectDashboardController extends Controller
 
     private function buildPaceSummary($startValue, $deadlineValue, int $actualProgress, $createdAt = null): array
     {
-        $now = Carbon::now('Asia/Ho_Chi_Minh')->startOfDay();
-        $start = $this->parseDateToDay($startValue)
-            ?: ($this->parseDateToDay($createdAt) ?: $now->copy());
-        $deadline = $this->parseDateToDay($deadlineValue);
-
-        if (! $deadline || $deadline->lessThan($start)) {
-            $deadline = $now->copy();
-        }
-
-        $totalDays = max(1, $start->diffInDays($deadline) + 1);
-        $expectedToday = 0;
-        if ($now->greaterThanOrEqualTo($start)) {
-            $effectiveToday = $now->lessThan($deadline) ? $now : $deadline;
-            $elapsedToday = min($totalDays, max(0, $start->diffInDays($effectiveToday, false) + 1));
-            $expectedToday = (int) round(($elapsedToday / $totalDays) * 100);
-        }
-        $expectedToday = max(0, min(100, $expectedToday));
-
+        $timezone = 'Asia/Ho_Chi_Minh';
+        $now = Carbon::now($timezone);
         $actual = max(0, min(100, $actualProgress));
-        $lag = max(0, $expectedToday - $actual);
+
+        $start = $this->parseDateToDay($startValue)
+            ?: ($this->parseDateToDay($createdAt) ?: $now->copy()->startOfDay());
+        $startAt = $start->copy()->startOfDay();
+        $deadlineDay = $this->parseDateToDay($deadlineValue);
+
+        // Nếu thiếu deadline thì không đủ dữ liệu để so với kỳ vọng theo timeline.
+        // Trường hợp này giữ expected = actual để trạng thái trung tính, tránh gắn nhầm "chậm".
+        if (! $deadlineDay) {
+            return [
+                'status' => 'on_track',
+                'label' => self::PACE_LABELS['on_track'],
+                'actual_progress' => (float) $actual,
+                'expected_progress' => (float) $actual,
+                'lag_percent' => 0.0,
+                'ahead_percent' => 0.0,
+                'delta_percent' => 0.0,
+                'is_late' => false,
+                'sort_order' => 1,
+            ];
+        }
+
+        $deadlineAt = $deadlineDay->copy()->endOfDay();
+        if ($deadlineAt->lessThanOrEqualTo($startAt)) {
+            $deadlineAt = $startAt->copy()->endOfDay();
+        }
+
+        $totalSeconds = max(1, $startAt->diffInSeconds($deadlineAt));
+        $expected = 0.0;
+        if ($now->lessThanOrEqualTo($startAt)) {
+            $expected = 0.0;
+        } elseif ($now->greaterThanOrEqualTo($deadlineAt)) {
+            $expected = 100.0;
+        } else {
+            $elapsedSeconds = max(0, $startAt->diffInSeconds($now, false));
+            $expected = ($elapsedSeconds / $totalSeconds) * 100;
+        }
+        $expected = max(0.0, min(100.0, round($expected, 1)));
+
+        $delta = round((float) $actual - $expected, 1);
+        $lag = max(0.0, round($expected - (float) $actual, 1));
+        $ahead = max(0.0, round((float) $actual - $expected, 1));
 
         $pace = 'on_track';
-        if ($actual < $expectedToday) {
+        $deadlinePassed = $now->greaterThan($deadlineAt);
+        if ($deadlinePassed && $actual < 100) {
             $pace = 'behind';
-        } elseif ($actual > $expectedToday) {
+        } elseif ($delta < -self::PACE_TOLERANCE_PERCENT) {
+            $pace = 'behind';
+        } elseif ($delta > self::PACE_TOLERANCE_PERCENT) {
             $pace = 'ahead';
         }
 
         return [
             'status' => $pace,
             'label' => self::PACE_LABELS[$pace] ?? self::PACE_LABELS['on_track'],
-            'actual_progress' => $actual,
-            'expected_progress' => $expectedToday,
+            'actual_progress' => (float) $actual,
+            'expected_progress' => $expected,
             'lag_percent' => $lag,
-            'is_late' => $lag > 0,
+            'ahead_percent' => $ahead,
+            'delta_percent' => $delta,
+            'is_late' => $pace === 'behind',
             'sort_order' => $pace === 'behind' ? 0 : ($pace === 'on_track' ? 1 : 2),
         ];
     }
