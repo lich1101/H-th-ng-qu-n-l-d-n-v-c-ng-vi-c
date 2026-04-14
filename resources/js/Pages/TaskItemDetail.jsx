@@ -365,7 +365,7 @@ export default function TaskItemDetail(props) {
                                 <div className="text-xs text-text-muted">Tiến độ</div>
                                 <div className="mt-1 flex items-center gap-2">
                                     <div className="h-2 flex-1 rounded-full bg-slate-200">
-                                        <div className={`h-2 rounded-full ${progressBarFillClass(item.progress_percent)} transition-all`} style={{ width: `${Math.min(100, item.progress_percent || 0)}%` }} />
+                                        <div className={`h-2 rounded-full ${progressBarFillClass(item.progress_percent)} transition-all`} style={{ width: `${Math.max(0, Math.min(100, Number(item.progress_percent) || 0))}%` }} />
                                     </div>
                                     <span className="font-semibold text-slate-900">{item.progress_percent ?? 0}%</span>
                                 </div>
@@ -394,8 +394,9 @@ export default function TaskItemDetail(props) {
                             const elapsed = now - start;
                             const timePercent = Math.min(100, Math.max(0, Math.round((elapsed / totalDuration) * 100)));
                             const progress = Number(item.progress_percent || 0);
-                            const ratio = timePercent > 0 ? Math.round((progress / timePercent) * 100) : 100;
-                            const isLate = progress < timePercent;
+                            const progressSafe = Math.max(0, Math.min(100, Number.isFinite(progress) ? progress : 0));
+                            const ratio = timePercent > 0 ? Math.round((progressSafe / timePercent) * 100) : 100;
+                            const isLate = progressSafe < timePercent;
                             const dueIn = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
                             return (
                                 <div className="mt-4 rounded-2xl border border-slate-200/80 bg-gradient-to-r from-slate-50 to-white p-4">
@@ -407,7 +408,7 @@ export default function TaskItemDetail(props) {
                                         </div>
                                         <div className="text-center">
                                             <div className="text-xs text-text-muted">Tiến độ thực tế</div>
-                                            <div className="mt-1 text-lg font-bold text-slate-900">{progress}%</div>
+                                            <div className="mt-1 text-lg font-bold text-slate-900">{progressSafe}%</div>
                                         </div>
                                         <div className="text-center">
                                             <div className="text-xs text-text-muted">Tốc độ hoàn thành</div>
@@ -425,14 +426,14 @@ export default function TaskItemDetail(props) {
                                     {/* Visual bar */}
                                     <div className="mt-3 relative">
                                         <div className="h-3 rounded-full bg-slate-200 overflow-hidden">
-                                            <div className={`h-3 rounded-full ${progressBarFillClass(progress)} transition-all`} style={{ width: `${progress}%` }} />
+                                            <div className={`h-3 rounded-full ${progressBarFillClass(progress)} transition-all`} style={{ width: `${progressSafe}%` }} />
                                         </div>
                                         <div className="absolute top-0 h-3 w-0.5 bg-rose-500 rounded" style={{ left: `${Math.min(99, timePercent)}%` }} title={`Thời gian: ${timePercent}%`} />
                                     </div>
                                     <div className="mt-1 flex justify-between text-[10px] text-text-muted">
-                                        <span>Tiến độ: {progress}%</span>
+                                        <span>Tiến độ: {progressSafe}%</span>
                                         <span className={isLate ? 'text-rose-500 font-semibold' : 'text-emerald-500'}>
-                                            {isLate ? `Chậm ${timePercent - progress}%` : `Nhanh hơn ${progress - timePercent}%`}
+                                            {isLate ? `Chậm ${Math.max(0, timePercent - progressSafe)}%` : `Nhanh hơn ${Math.max(0, progressSafe - timePercent)}%`}
                                         </span>
                                         <span>Thời gian: {timePercent}%</span>
                                     </div>

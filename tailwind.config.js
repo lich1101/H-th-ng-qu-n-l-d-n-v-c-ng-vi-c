@@ -6,7 +6,19 @@ module.exports = {
         './vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php',
         './storage/framework/views/*.php',
         './resources/views/**/*.blade.php',
+        './resources/js/**/*.js',
         './resources/js/**/*.jsx',
+        './resources/js/**/*.ts',
+        './resources/js/**/*.tsx',
+    ],
+    safelist: [
+        'bg-slate-400',
+        'bg-sky-500',
+        'bg-primary',
+        'bg-teal-700',
+        'bg-amber-500',
+        'bg-orange-600',
+        'bg-emerald-600',
     ],
 
     theme: {

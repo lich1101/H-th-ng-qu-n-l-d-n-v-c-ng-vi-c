@@ -268,7 +268,7 @@ export default function TaskDetail(props) {
                                 <div className="text-xs text-text-muted">Tiến độ</div>
                                 <div className="mt-1 flex items-center gap-2">
                                     <div className="h-2 flex-1 rounded-full bg-slate-200">
-                                        <div className={`h-2 rounded-full ${progressBarFillClass(task.progress_percent)} transition-all`} style={{ width: `${Math.min(100, task.progress_percent || 0)}%` }} />
+                                        <div className={`h-2 rounded-full ${progressBarFillClass(task.progress_percent)} transition-all`} style={{ width: `${Math.max(0, Math.min(100, Number(task.progress_percent) || 0))}%` }} />
                                     </div>
                                     <span className="font-semibold text-slate-900">{task.progress_percent ?? 0}%</span>
                                 </div>
@@ -345,7 +345,7 @@ export default function TaskDetail(props) {
                                                 <span className="flex items-center gap-1">
                                                     Tiến độ:
                                                     <span className="inline-block h-1.5 w-12 rounded-full bg-slate-200">
-                                                        <span className={`block h-1.5 rounded-full ${progressBarFillClass(item.progress_percent)}`} style={{ width: `${Math.min(100, item.progress_percent || 0)}%` }} />
+                                                        <span className={`block h-1.5 rounded-full ${progressBarFillClass(item.progress_percent)}`} style={{ width: `${Math.max(0, Math.min(100, Number(item.progress_percent) || 0))}%` }} />
                                                     </span>
                                                     {item.progress_percent ?? 0}%
                                                 </span>
