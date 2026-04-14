@@ -1274,6 +1274,14 @@ export default function Contracts(props) {
         if (dateOrderError) {
             return toast.error(dateOrderError);
         }
+        const validProductLines = items.filter((item) => {
+            const pid = item.product_id ? Number(item.product_id) : null;
+            const name = String(item.product_name ?? '').trim();
+            return (Number.isFinite(pid) && pid > 0) || name.length > 0;
+        }).length;
+        if (validProductLines < 1) {
+            return toast.error('Vui lòng thêm ít nhất một dòng sản phẩm hoặc dịch vụ vào hợp đồng.');
+        }
         const payload = {
             title: form.title,
             client_id: Number(form.client_id),

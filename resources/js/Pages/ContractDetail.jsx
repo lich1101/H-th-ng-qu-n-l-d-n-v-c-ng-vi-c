@@ -609,6 +609,15 @@ export default function ContractDetail(props) {
             toast.error(dateOrderError);
             return;
         }
+        const validEditProductLines = editItems.filter((item) => {
+            const pid = item.product_id ? Number(item.product_id) : null;
+            const name = String(item.product_name ?? '').trim();
+            return (Number.isFinite(pid) && pid > 0) || name.length > 0;
+        }).length;
+        if (validEditProductLines < 1) {
+            toast.error('Vui lòng thêm ít nhất một dòng sản phẩm hoặc dịch vụ vào hợp đồng.');
+            return;
+        }
 
         setSavingContract(true);
         try {

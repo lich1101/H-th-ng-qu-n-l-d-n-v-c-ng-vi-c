@@ -575,7 +575,13 @@ class ContractController extends Controller
         $validated['created_by'] = $request->user()->id;
         unset($validated['project_id'], $validated['create_and_approve'], $validated['status']);
 
-        $items = $this->normalizeItems($request->input('items', []));
+        $rawItems = $request->input('items');
+        $items = $this->normalizeItems(is_array($rawItems) ? $rawItems : []);
+        if (count($items) < 1) {
+            return response()->json([
+                'message' => 'Hợp đồng phải có ít nhất một dòng sản phẩm hoặc dịch vụ.',
+            ], 422);
+        }
         $validated = $this->normalizeContractFinancialInputs($validated, $items);
 
         $validated['collector_user_id'] = $this->resolveCollectorUserId($request, $validated);
@@ -588,9 +594,7 @@ class ContractController extends Controller
                 $contract = Contract::create($validated);
                 $this->syncCareStaff($contract, $careStaffIds, $request->user());
 
-                if (! empty($items)) {
-                    $this->syncItems($contract, $items);
-                }
+                $this->syncItems($contract, $items);
 
                 $contract->refreshFinancials();
 
@@ -675,7 +679,21 @@ class ContractController extends Controller
         )) {
             return response()->json(['message' => $msg], 422);
         }
-        $items = $this->normalizeItems($request->input('items', []));
+        $rawItems = $request->input('items');
+        $itemsPayload = is_array($rawItems) ? $rawItems : [];
+        $items = $this->normalizeItems($itemsPayload);
+        $itemsKeyPresent = array_key_exists('items', $request->all());
+        if ($itemsKeyPresent) {
+            if (count($items) < 1) {
+                return response()->json([
+                    'message' => 'Hợp đồng phải có ít nhất một dòng sản phẩm hoặc dịch vụ.',
+                ], 422);
+            }
+        } elseif (! $contract->items()->exists()) {
+            return response()->json([
+                'message' => 'Hợp đồng phải có ít nhất một dòng sản phẩm hoặc dịch vụ.',
+            ], 422);
+        }
         $validated = $this->normalizeContractFinancialInputs($validated, $items, $contract);
 
         $validated['collector_user_id'] = $this->resolveCollectorUserId($request, $validated, $contract);
@@ -1262,7 +1280,13 @@ class ContractController extends Controller
             return [];
         }
         $items = array_values(array_filter($items, function ($item) {
-            return is_array($item) && (! empty($item['product_id']) || ! empty($item['product_name']));
+            if (! is_array($item)) {
+                return false;
+            }
+            $pid = isset($item['product_id']) ? (int) $item['product_id'] : 0;
+            $name = isset($item['product_name']) ? trim((string) $item['product_name']) : '';
+
+            return $pid > 0 || $name !== '';
         }));
         if (empty($items)) {
             return [];
