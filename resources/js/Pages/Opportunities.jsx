@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import FilterStatusHelpIcon from '@/Components/FilterStatusHelpIcon';
 import axios from 'axios';
 import FilterDateInput from '@/Components/FilterDateInput';
@@ -106,7 +106,16 @@ export default function Opportunities(props) {
 
     const [opportunities, setOpportunities] = useState([]);
     const [opportunityMeta, setOpportunityMeta] = useState({ current_page: 1, last_page: 1, total: 0 });
-    const [listAggregates, setListAggregates] = useState({ revenue_total: 0 });
+    const [listAggregates, setListAggregates] = useState({
+        revenue_total: 0,
+        status_counts: {
+            all: 0,
+            undetermined: 0,
+            open: 0,
+            overdue: 0,
+            success: 0,
+        },
+    });
     const [filters, setFilters] = useState({
         search: '',
         computed_status: '',
@@ -129,6 +138,7 @@ export default function Opportunities(props) {
     const [savingOpportunity, setSavingOpportunity] = useState(false);
     const [form, setForm] = useState(emptyOpportunityForm());
     const [linkableContracts, setLinkableContracts] = useState([]);
+    const opportunitiesFetchRequestId = useRef(0);
 
     const userMap = useMemo(() => {
         return users.reduce((acc, item) => {
@@ -155,14 +165,19 @@ export default function Opportunities(props) {
     }, [opportunities, editingId]);
 
     const computedStatusCounts = useMemo(() => {
-        const counts = {};
-        opportunities.forEach((item) => {
-            const code = String(item?.computed_status || '');
-            if (!code) return;
-            counts[code] = (counts[code] || 0) + 1;
-        });
-        return counts;
-    }, [opportunities]);
+        const toSafeCount = (value) => {
+            const parsed = Number(value);
+            return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : 0;
+        };
+
+        return {
+            all: toSafeCount(listAggregates?.status_counts?.all ?? opportunityMeta.total ?? 0),
+            undetermined: toSafeCount(listAggregates?.status_counts?.undetermined),
+            open: toSafeCount(listAggregates?.status_counts?.open),
+            overdue: toSafeCount(listAggregates?.status_counts?.overdue),
+            success: toSafeCount(listAggregates?.status_counts?.success),
+        };
+    }, [listAggregates?.status_counts, opportunityMeta.total]);
 
     const stats = useMemo(() => {
         return [
@@ -225,6 +240,8 @@ export default function Opportunities(props) {
         const nextPage = typeof pageOrFilters === 'object' && pageOrFilters !== null
             ? Number(pageOrFilters.page || 1)
             : Number(pageOrFilters || 1);
+        const requestId = opportunitiesFetchRequestId.current + 1;
+        opportunitiesFetchRequestId.current = requestId;
 
         setLoading(true);
         try {
@@ -240,11 +257,21 @@ export default function Opportunities(props) {
                     ...(nextFilters.expected_close_to ? { expected_close_to: nextFilters.expected_close_to } : {}),
                 },
             });
+            if (requestId !== opportunitiesFetchRequestId.current) {
+                return;
+            }
 
             setOpportunities(res.data?.data || []);
             const agg = res.data?.aggregates;
             setListAggregates({
                 revenue_total: Number(agg?.revenue_total ?? 0),
+                status_counts: {
+                    all: Number(agg?.status_counts?.all ?? res.data?.total ?? 0),
+                    undetermined: Number(agg?.status_counts?.undetermined ?? 0),
+                    open: Number(agg?.status_counts?.open ?? 0),
+                    overdue: Number(agg?.status_counts?.overdue ?? 0),
+                    success: Number(agg?.status_counts?.success ?? 0),
+                },
             });
             setOpportunityMeta({
                 current_page: res.data?.current_page || 1,
@@ -256,9 +283,14 @@ export default function Opportunities(props) {
                 page: res.data?.current_page || nextPage,
             }));
         } catch (error) {
+            if (requestId !== opportunitiesFetchRequestId.current) {
+                return;
+            }
             toast.error(error?.response?.data?.message || 'Không tải được danh sách cơ hội.');
         } finally {
-            setLoading(false);
+            if (requestId === opportunitiesFetchRequestId.current) {
+                setLoading(false);
+            }
         }
     };
 
@@ -533,7 +565,7 @@ export default function Opportunities(props) {
                             fetchOpportunities(1, next);
                         }}
                     >
-                        Tất cả (trang: {opportunities.length})
+                        Tất cả (lọc: {computedStatusCounts.all})
                     </button>
                     {COMPUTED_STATUS_FILTER_OPTIONS.filter((o) => o.value).map((opt) => (
                         <button

@@ -26,9 +26,20 @@ class OpportunityController extends Controller
     public function index(Request $request): JsonResponse
     {
         $viewer = $request->user();
-        $filtered = $this->opportunityIndexFilteredQuery($request, $viewer);
+        $isLinkableForContract = $request->boolean('linkable_for_contract');
+        $scopeWithoutComputedStatus = $this->opportunityIndexFilteredQuery($request, $viewer, false);
+        $filtered = $this->opportunityIndexFilteredQuery($request, $viewer, true);
 
         $revenueTotal = (float) ($filtered->clone()->sum('amount') ?? 0);
+        $statusCounts = $isLinkableForContract
+            ? [
+                'all' => (int) $filtered->clone()->count(),
+                'undetermined' => 0,
+                'open' => 0,
+                'overdue' => 0,
+                'success' => 0,
+            ]
+            : $this->buildOpportunityStatusCounts($scopeWithoutComputedStatus);
 
         $query = $filtered->clone()->with([
             'client:id,name,company,email,phone,notes,assigned_staff_id',
@@ -53,12 +64,13 @@ class OpportunityController extends Controller
         $payload = $result->toArray();
         $payload['aggregates'] = [
             'revenue_total' => $revenueTotal,
+            'status_counts' => $statusCounts,
         ];
 
         return response()->json($payload);
     }
 
-    private function opportunityIndexFilteredQuery(Request $request, User $viewer): Builder
+    private function opportunityIndexFilteredQuery(Request $request, User $viewer, bool $applyComputedStatus = true): Builder
     {
         $query = Opportunity::query();
         CrmScope::applyOpportunityScope($query, $viewer);
@@ -82,7 +94,7 @@ class OpportunityController extends Controller
         } elseif ($request->filled('client_id')) {
             $query->where('client_id', (int) $request->input('client_id'));
         }
-        if (! $request->boolean('linkable_for_contract') && $request->filled('computed_status')) {
+        if (! $request->boolean('linkable_for_contract') && $applyComputedStatus && $request->filled('computed_status')) {
             OpportunityComputedStatus::applyIndexFilter($query, (string) $request->input('computed_status'));
         }
         $staffFilterIds = $this->resolveStaffFilterIds($request);
@@ -127,6 +139,33 @@ class OpportunityController extends Controller
         }
 
         return $query;
+    }
+
+    /**
+     * @return array{all:int,undetermined:int,open:int,overdue:int,success:int}
+     */
+    private function buildOpportunityStatusCounts(Builder $query): array
+    {
+        $counts = [
+            OpportunityComputedStatus::UNDETERMINED => 0,
+            OpportunityComputedStatus::OPEN => 0,
+            OpportunityComputedStatus::OVERDUE => 0,
+            OpportunityComputedStatus::SUCCESS => 0,
+        ];
+
+        foreach (array_keys($counts) as $statusCode) {
+            $statusQuery = $query->clone();
+            OpportunityComputedStatus::applyIndexFilter($statusQuery, $statusCode);
+            $counts[$statusCode] = (int) $statusQuery->count();
+        }
+
+        return [
+            'all' => (int) $query->clone()->count(),
+            'undetermined' => $counts[OpportunityComputedStatus::UNDETERMINED],
+            'open' => $counts[OpportunityComputedStatus::OPEN],
+            'overdue' => $counts[OpportunityComputedStatus::OVERDUE],
+            'success' => $counts[OpportunityComputedStatus::SUCCESS],
+        ];
     }
 
     public function store(Request $request): JsonResponse
