@@ -9,6 +9,7 @@ use App\Models\AppSetting;
 use App\Models\Contract;
 use App\Models\Project;
 use App\Models\ProjectMeeting;
+use App\Models\Task;
 use App\Models\TaskItem;
 use App\Models\User;
 use App\Services\ClientPhoneDuplicateService;
@@ -120,11 +121,106 @@ class ProjectController extends Controller
             ->orderByDesc('id')
             ->paginate((int) $request->input('per_page', 15));
 
-        $paginator->setCollection($paginator->getCollection()->transform(function (Project $project) use ($user) {
-            return $this->transformProject($project, $user);
+        $ids = $paginator->getCollection()->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $pendingCounts = $this->pendingReviewCountsByProjectIds($ids);
+
+        $paginator->setCollection($paginator->getCollection()->transform(function (Project $project) use ($user, $pendingCounts) {
+            $pid = (int) $project->id;
+
+            return $this->transformProject($project, $user, false, $pendingCounts[$pid] ?? 0);
         }));
 
         return response()->json($paginator);
+    }
+
+    public function approvalQueue(Project $project, Request $request): JsonResponse
+    {
+        if (! ProjectScope::canAccessProject($request->user(), $project)) {
+            return response()->json(['message' => 'Không có quyền xem dự án.'], 403);
+        }
+
+        $user = $request->user();
+        $canReview = $this->canUserReviewProjectProgress($user, $project);
+
+        $tasks = Task::query()
+            ->where('project_id', $project->id)
+            ->where(function ($q) {
+                $q->whereHas('updates', function ($u) {
+                    $u->where('review_status', 'pending');
+                })->orWhereHas('items', function ($items) {
+                    $items->whereHas('updates', function ($u) {
+                        $u->where('review_status', 'pending');
+                    });
+                });
+            })
+            ->with([
+                'updates' => function ($q) {
+                    $q->where('review_status', 'pending')
+                        ->with(['submitter:id,name,email,avatar_url'])
+                        ->orderByDesc('id');
+                },
+                'items' => function ($q) {
+                    $q->whereHas('updates', function ($u) {
+                        $u->where('review_status', 'pending');
+                    })
+                        ->with([
+                            'updates' => function ($uq) {
+                                $uq->where('review_status', 'pending')
+                                    ->with(['submitter:id,name,email,avatar_url'])
+                                    ->orderByDesc('id');
+                            },
+                        ])
+                        ->orderByDesc('id');
+                },
+            ])
+            ->orderByDesc('id')
+            ->get();
+
+        $tasksPayload = $tasks->map(function (Task $task) {
+            return [
+                'id' => $task->id,
+                'title' => $task->title,
+                'task_updates_pending' => $task->updates->map(function ($u) {
+                    return [
+                        'id' => $u->id,
+                        'note' => $u->note,
+                        'created_at' => $u->created_at?->toIso8601String(),
+                        'review_status' => $u->review_status,
+                        'submitter' => $u->submitter ? [
+                            'id' => $u->submitter->id,
+                            'name' => $u->submitter->name,
+                            'email' => $u->submitter->email,
+                            'avatar_url' => $u->submitter->avatar_url,
+                        ] : null,
+                    ];
+                })->values()->all(),
+                'items' => $task->items->map(function ($item) {
+                    return [
+                        'id' => $item->id,
+                        'title' => $item->title,
+                        'pending_updates' => $item->updates->map(function ($u) {
+                            return [
+                                'id' => $u->id,
+                                'note' => $u->note,
+                                'created_at' => $u->created_at?->toIso8601String(),
+                                'review_status' => $u->review_status,
+                                'submitter' => $u->submitter ? [
+                                    'id' => $u->submitter->id,
+                                    'name' => $u->submitter->name,
+                                    'email' => $u->submitter->email,
+                                    'avatar_url' => $u->submitter->avatar_url,
+                                ] : null,
+                            ];
+                        })->values()->all(),
+                    ];
+                })->values()->all(),
+            ];
+        })->values()->all();
+
+        return response()->json([
+            'can_review_progress' => $canReview,
+            'tasks' => $tasksPayload,
+        ]);
     }
 
     public function store(
@@ -298,7 +394,9 @@ class ProjectController extends Controller
             },
         ]));
 
-        return response()->json($this->transformProject($project, $request->user(), true));
+        $counts = $this->pendingReviewCountsByProjectIds([(int) $project->id]);
+
+        return response()->json($this->transformProject($project, $request->user(), true, $counts[(int) $project->id] ?? 0));
     }
 
     public function update(
@@ -576,8 +674,13 @@ class ProjectController extends Controller
             ->orderByDesc('id')
             ->paginate((int) $request->input('per_page', 50));
 
-        $paginator->setCollection($paginator->getCollection()->transform(function (Project $project) use ($user) {
-            return $this->transformProject($project, $user);
+        $ids = $paginator->getCollection()->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $pendingCounts = $this->pendingReviewCountsByProjectIds($ids);
+
+        $paginator->setCollection($paginator->getCollection()->transform(function (Project $project) use ($user, $pendingCounts) {
+            $pid = (int) $project->id;
+
+            return $this->transformProject($project, $user, false, $pendingCounts[$pid] ?? 0);
         }));
 
         return response()->json($paginator);
@@ -811,8 +914,72 @@ class ProjectController extends Controller
         ];
     }
 
-    private function transformProject(Project $project, ?User $user, bool $detailed = false): array
+    /**
+     * @param  array<int>  $projectIds
+     * @return array<int, int> project_id => số phiếu chờ duyệt (task_updates + task_item_updates)
+     */
+    private function pendingReviewCountsByProjectIds(array $projectIds): array
     {
+        $projectIds = array_values(array_unique(array_filter(array_map('intval', $projectIds))));
+        if (empty($projectIds)) {
+            return [];
+        }
+
+        $merged = array_fill_keys($projectIds, 0);
+
+        $taskLevel = DB::table('task_updates')
+            ->join('tasks', 'tasks.id', '=', 'task_updates.task_id')
+            ->whereIn('tasks.project_id', $projectIds)
+            ->where('task_updates.review_status', 'pending')
+            ->groupBy('tasks.project_id')
+            ->selectRaw('tasks.project_id as project_id, count(*) as c')
+            ->get();
+
+        foreach ($taskLevel as $row) {
+            $pid = (int) $row->project_id;
+            if (array_key_exists($pid, $merged)) {
+                $merged[$pid] += (int) $row->c;
+            }
+        }
+
+        $itemLevel = DB::table('task_item_updates')
+            ->join('task_items', 'task_items.id', '=', 'task_item_updates.task_item_id')
+            ->join('tasks', 'tasks.id', '=', 'task_items.task_id')
+            ->whereIn('tasks.project_id', $projectIds)
+            ->where('task_item_updates.review_status', 'pending')
+            ->groupBy('tasks.project_id')
+            ->selectRaw('tasks.project_id as project_id, count(*) as c')
+            ->get();
+
+        foreach ($itemLevel as $row) {
+            $pid = (int) $row->project_id;
+            if (array_key_exists($pid, $merged)) {
+                $merged[$pid] += (int) $row->c;
+            }
+        }
+
+        return $merged;
+    }
+
+    private function canUserReviewProjectProgress(?User $user, Project $project): bool
+    {
+        if (! $user) {
+            return false;
+        }
+        if (in_array((string) $user->role, ['admin', 'administrator'], true)) {
+            return true;
+        }
+
+        return (int) ($project->owner_id ?? 0) === (int) $user->id;
+    }
+
+    private function transformProject(Project $project, ?User $user, bool $detailed = false, ?int $pendingReviewCount = null): array
+    {
+        if ($pendingReviewCount === null) {
+            $counts = $this->pendingReviewCountsByProjectIds([(int) $project->id]);
+            $pendingReviewCount = $counts[(int) $project->id] ?? 0;
+        }
+
         $payload = $project->toArray();
         $gsc = app(ProjectGscSyncService::class);
         $rawWebsite = (string) ($payload['website_url'] ?? '');
@@ -834,6 +1001,8 @@ class ProjectController extends Controller
         $payload['permissions'] = $this->projectPermissions($project, $user);
         $payload['handover_min_progress_percent'] = $this->handoverMinimumProgressPercent();
         $payload['collector_user_id'] = ProjectScope::projectCollectorId($project);
+        $payload['pending_review_count'] = $pendingReviewCount;
+        $payload['has_pending_reviews'] = $pendingReviewCount > 0;
 
         if ($detailed && $project->relationLoaded('tasks')) {
             $payload['tasks'] = collect($project->tasks)->map(function ($task) {

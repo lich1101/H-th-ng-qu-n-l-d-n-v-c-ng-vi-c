@@ -122,6 +122,10 @@ export default function ProjectDetail(props) {
     const [workflowTopics, setWorkflowTopics] = useState([]);
     const [owners, setOwners] = useState([]);
     const [showProjectForm, setShowProjectForm] = useState(false);
+    const [showApprovalQueueModal, setShowApprovalQueueModal] = useState(false);
+    const [approvalQueueLoading, setApprovalQueueLoading] = useState(false);
+    const [approvalQueue, setApprovalQueue] = useState(null);
+    const [approvalActionId, setApprovalActionId] = useState(null);
     const [savingProject, setSavingProject] = useState(false);
     const [editingOriginalWorkflowTopicId, setEditingOriginalWorkflowTopicId] = useState(0);
     const [projectForm, setProjectForm] = useState({
@@ -321,6 +325,96 @@ export default function ProjectDetail(props) {
     };
 
     useEffect(() => { fetchData(); fetchLookups(); }, [projectId]);
+
+    const fetchApprovalQueue = async () => {
+        setApprovalQueueLoading(true);
+        try {
+            const res = await axios.get(`/api/v1/projects/${projectId}/approval-queue`);
+            setApprovalQueue(res.data || null);
+        } catch (e) {
+            toast.error(e?.response?.data?.message || 'Không tải được danh sách phiếu duyệt.');
+            setApprovalQueue(null);
+        } finally {
+            setApprovalQueueLoading(false);
+        }
+    };
+
+    const openApprovalQueueModal = () => {
+        setShowApprovalQueueModal(true);
+        fetchApprovalQueue();
+    };
+
+    const approvalQueueActionKey = (taskId, kind, ids) => `${taskId}-${kind}-${ids.join('-')}`;
+
+    const approveTaskItemUpdate = async (taskId, itemId, updateId) => {
+        const key = approvalQueueActionKey(taskId, 'item', [itemId, updateId]);
+        setApprovalActionId(key);
+        try {
+            await axios.post(`/api/v1/tasks/${taskId}/items/${itemId}/updates/${updateId}/approve`);
+            toast.success('Đã duyệt phiếu.');
+            await fetchApprovalQueue();
+            await fetchData();
+        } catch (e) {
+            toast.error(e?.response?.data?.message || 'Duyệt thất bại.');
+        } finally {
+            setApprovalActionId(null);
+        }
+    };
+
+    const rejectTaskItemUpdate = async (taskId, itemId, updateId) => {
+        const note = window.prompt('Lý do từ chối (bắt buộc):') || '';
+        if (!note.trim()) {
+            toast.error('Vui lòng nhập lý do từ chối.');
+            return;
+        }
+        const key = approvalQueueActionKey(taskId, 'item', [itemId, updateId]);
+        setApprovalActionId(key);
+        try {
+            await axios.post(`/api/v1/tasks/${taskId}/items/${itemId}/updates/${updateId}/reject`, { review_note: note.trim() });
+            toast.success('Đã từ chối phiếu.');
+            await fetchApprovalQueue();
+            await fetchData();
+        } catch (e) {
+            toast.error(e?.response?.data?.message || 'Từ chối thất bại.');
+        } finally {
+            setApprovalActionId(null);
+        }
+    };
+
+    const approveTaskUpdate = async (taskId, updateId) => {
+        const key = approvalQueueActionKey(taskId, 'task', [updateId]);
+        setApprovalActionId(key);
+        try {
+            await axios.post(`/api/v1/tasks/${taskId}/updates/${updateId}/approve`);
+            toast.success('Đã duyệt báo cáo.');
+            await fetchApprovalQueue();
+            await fetchData();
+        } catch (e) {
+            toast.error(e?.response?.data?.message || 'Duyệt thất bại.');
+        } finally {
+            setApprovalActionId(null);
+        }
+    };
+
+    const rejectTaskUpdate = async (taskId, updateId) => {
+        const note = window.prompt('Lý do từ chối (bắt buộc):') || '';
+        if (!note.trim()) {
+            toast.error('Vui lòng nhập lý do từ chối.');
+            return;
+        }
+        const key = approvalQueueActionKey(taskId, 'task', [updateId]);
+        setApprovalActionId(key);
+        try {
+            await axios.post(`/api/v1/tasks/${taskId}/updates/${updateId}/reject`, { review_note: note.trim() });
+            toast.success('Đã từ chối báo cáo.');
+            await fetchApprovalQueue();
+            await fetchData();
+        } catch (e) {
+            toast.error(e?.response?.data?.message || 'Từ chối thất bại.');
+        } finally {
+            setApprovalActionId(null);
+        }
+    };
 
     const updateGscNotification = async (enabled) => {
         if (gscNotifySaving) return;
@@ -538,6 +632,18 @@ export default function ProjectDetail(props) {
                                 </span>
                                 <a className="text-sm text-primary font-semibold" href={`/du-an/${project.id}/luong`}>Luồng</a>
                                 <a className="text-sm text-slate-600 font-semibold" href={`/du-an/${project.id}/kho`}>Lưu Tài Liệu</a>
+                                <button
+                                    type="button"
+                                    onClick={openApprovalQueueModal}
+                                    className="rounded-xl border border-amber-200/80 bg-amber-50/80 px-3 py-1.5 text-sm font-semibold text-amber-900 shadow-sm transition hover:border-amber-300 hover:bg-amber-50"
+                                >
+                                    Danh sách phiếu duyệt
+                                    {Number(project.pending_review_count || 0) > 0 && (
+                                        <span className="ml-1.5 inline-flex rounded-full bg-amber-500 px-2 py-0.5 text-[11px] font-bold text-white">
+                                            {project.pending_review_count}
+                                        </span>
+                                    )}
+                                </button>
                                 {canEditProject && (
                                     <button
                                         type="button"
@@ -846,6 +952,128 @@ export default function ProjectDetail(props) {
                     </div>
                 </div>
             )}
+
+            <Modal
+                open={showApprovalQueueModal}
+                onClose={() => setShowApprovalQueueModal(false)}
+                title="Phiếu duyệt trong dự án"
+                description="Công việc → đầu việc → phiếu chờ duyệt. Bấm vào tên công việc hoặc đầu việc để mở chi tiết."
+                size="xl"
+            >
+                <div className="max-h-[70vh] overflow-y-auto pr-1 text-sm">
+                    {approvalQueueLoading && (
+                        <p className="text-text-muted">Đang tải...</p>
+                    )}
+                    {!approvalQueueLoading && approvalQueue && (!approvalQueue.tasks || approvalQueue.tasks.length === 0) && (
+                        <p className="text-text-muted">Không có phiếu nào đang chờ duyệt.</p>
+                    )}
+                    {!approvalQueueLoading && approvalQueue?.tasks?.length > 0 && (
+                        <div className="space-y-4">
+                            {approvalQueue.tasks.map((t) => (
+                                <div key={t.id} className="rounded-2xl border border-slate-200/80 bg-slate-50/50 p-4">
+                                    <button
+                                        type="button"
+                                        className="text-left font-semibold text-slate-900 hover:text-primary"
+                                        onClick={() => { window.location.href = `/cong-viec/${t.id}`; }}
+                                    >
+                                        {t.title}
+                                        <span className="ml-2 text-xs font-normal text-text-muted">(Công việc #{t.id})</span>
+                                    </button>
+
+                                    {(t.task_updates_pending || []).length > 0 && (
+                                        <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
+                                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Báo cáo cấp công việc</p>
+                                            <ul className="mt-2 space-y-2">
+                                                {(t.task_updates_pending || []).map((u) => (
+                                                    <li key={u.id} className="rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2 text-xs">
+                                                        <div className="flex flex-wrap items-start justify-between gap-2">
+                                                            <div>
+                                                                <span className="text-text-muted">{u.submitter?.name || '—'}</span>
+                                                                <span className="text-text-muted"> · {u.created_at ? formatVietnamDate(u.created_at) : '—'}</span>
+                                                                {u.note && <p className="mt-1 text-slate-700">{u.note}</p>}
+                                                            </div>
+                                                            {approvalQueue.can_review_progress && (
+                                                                <div className="flex shrink-0 gap-1">
+                                                                    <button
+                                                                        type="button"
+                                                                        disabled={approvalActionId === approvalQueueActionKey(t.id, 'task', [u.id])}
+                                                                        className="rounded-lg bg-emerald-600 px-2 py-1 text-[11px] font-semibold text-white disabled:opacity-50"
+                                                                        onClick={(e) => { e.stopPropagation(); approveTaskUpdate(t.id, u.id); }}
+                                                                    >
+                                                                        Duyệt
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        disabled={approvalActionId === approvalQueueActionKey(t.id, 'task', [u.id])}
+                                                                        className="rounded-lg border border-rose-200 px-2 py-1 text-[11px] font-semibold text-rose-700 disabled:opacity-50"
+                                                                        onClick={(e) => { e.stopPropagation(); rejectTaskUpdate(t.id, u.id); }}
+                                                                    >
+                                                                        Từ chối
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+
+                                    {(t.items || []).length > 0 && (
+                                        <div className="mt-3 space-y-3">
+                                            {(t.items || []).map((item) => (
+                                                <div key={item.id} className="rounded-xl border border-slate-200 bg-white p-3">
+                                                    <button
+                                                        type="button"
+                                                        className="text-left text-sm font-semibold text-slate-800 hover:text-primary"
+                                                        onClick={() => { window.location.href = `/dau-viec/${item.id}`; }}
+                                                    >
+                                                        {item.title}
+                                                        <span className="ml-2 text-xs font-normal text-text-muted">(Đầu việc #{item.id})</span>
+                                                    </button>
+                                                    <ul className="mt-2 space-y-2">
+                                                        {(item.pending_updates || []).map((u) => (
+                                                            <li key={u.id} className="rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2 text-xs">
+                                                                <div className="flex flex-wrap items-start justify-between gap-2">
+                                                                    <div>
+                                                                        <span className="text-text-muted">{u.submitter?.name || '—'}</span>
+                                                                        <span className="text-text-muted"> · {u.created_at ? formatVietnamDate(u.created_at) : '—'}</span>
+                                                                        {u.note && <p className="mt-1 text-slate-700">{u.note}</p>}
+                                                                    </div>
+                                                                    {approvalQueue.can_review_progress && (
+                                                                        <div className="flex shrink-0 gap-1">
+                                                                            <button
+                                                                                type="button"
+                                                                                disabled={approvalActionId === approvalQueueActionKey(t.id, 'item', [item.id, u.id])}
+                                                                                className="rounded-lg bg-emerald-600 px-2 py-1 text-[11px] font-semibold text-white disabled:opacity-50"
+                                                                                onClick={(e) => { e.stopPropagation(); approveTaskItemUpdate(t.id, item.id, u.id); }}
+                                                                            >
+                                                                                Duyệt
+                                                                            </button>
+                                                                            <button
+                                                                                type="button"
+                                                                                disabled={approvalActionId === approvalQueueActionKey(t.id, 'item', [item.id, u.id])}
+                                                                                className="rounded-lg border border-rose-200 px-2 py-1 text-[11px] font-semibold text-rose-700 disabled:opacity-50"
+                                                                                onClick={(e) => { e.stopPropagation(); rejectTaskItemUpdate(t.id, item.id, u.id); }}
+                                                                            >
+                                                                                Từ chối
+                                                                            </button>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </li>
+                                                        ))}
+                                                    </ul>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </Modal>
 
             {/* Task Form Modal */}
             <Modal

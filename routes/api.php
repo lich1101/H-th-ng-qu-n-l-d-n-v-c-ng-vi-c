@@ -157,6 +157,7 @@ Route::prefix('v1')->group(function () {
         Route::get('/project-dashboard/overview', [ProjectDashboardController::class, 'overview'])
             ->middleware('role:admin,administrator');
         Route::get('/projects/{project}', [ProjectController::class, 'show']);
+        Route::get('/projects/{project}/approval-queue', [ProjectController::class, 'approvalQueue']);
         Route::get('/projects/{project}/search-console', [ProjectSearchConsoleController::class, 'show']);
         Route::put('/projects/{project}/search-console/notification', [ProjectSearchConsoleController::class, 'updateNotification']);
         Route::post('/projects/{project}/search-console/sync', [ProjectSearchConsoleController::class, 'sync'])

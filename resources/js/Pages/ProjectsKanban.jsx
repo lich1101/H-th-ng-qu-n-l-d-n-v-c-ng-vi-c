@@ -923,7 +923,7 @@ export default function ProjectsKanban(props) {
                                         {projects.map((p) => (
                                             <tr
                                                 key={p.id}
-                                                className={`border-b border-slate-100 cursor-pointer hover:bg-slate-50/70 ${selectedProjectSet.has(Number(p.id)) ? 'bg-primary/5' : ''}`}
+                                                className={`border-b border-slate-100 cursor-pointer hover:bg-slate-50/70 ${selectedProjectSet.has(Number(p.id)) ? 'bg-primary/5' : ''} ${Number(p.pending_review_count || 0) > 0 ? 'border-l-4 border-l-amber-400 bg-amber-50/35' : ''}`}
                                                 onClick={() => { window.location.href = `/du-an/${p.id}`; }}
                                             >
                                                 {canBulkActions && (
@@ -939,8 +939,19 @@ export default function ProjectsKanban(props) {
                                                     </td>
                                                 )}
                                                 <td className="py-3">
-                                                    <div className="font-medium text-slate-900">{p.name}</div>
-                                                    <div className="text-xs text-text-muted">{p.code}</div>
+                                                    <div className="flex items-start gap-2">
+                                                        {Number(p.pending_review_count || 0) > 0 && (
+                                                            <span
+                                                                className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-amber-500 shadow-[0_0_0_3px_rgba(245,158,11,0.25)]"
+                                                                title={`${p.pending_review_count} phiếu chờ duyệt tiến độ`}
+                                                                aria-hidden
+                                                            />
+                                                        )}
+                                                        <div>
+                                                            <div className="font-medium text-slate-900">{p.name}</div>
+                                                            <div className="text-xs text-text-muted">{p.code}</div>
+                                                        </div>
+                                                    </div>
                                                 </td>
                                                 <td className="py-3">
                                                     {p.website_url ? (
@@ -1112,12 +1123,17 @@ export default function ProjectsKanban(props) {
                                         {col.items.map((p) => (
                                             <div
                                                 key={p.id}
-                                                className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-card cursor-pointer"
+                                                className={`rounded-2xl border p-4 shadow-card cursor-pointer ${Number(p.pending_review_count || 0) > 0 ? 'border-amber-200 border-l-4 border-l-amber-400 bg-amber-50/40' : 'bg-white border-slate-200/80'}`}
                                                 onClick={() => { window.location.href = `/du-an/${p.id}`; }}
                                             >
-                                                <div className="flex items-center justify-between">
-                                                    <span className="text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
-                                                        {serviceLabel(p)}
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <span className="flex items-center gap-2 min-w-0">
+                                                        {Number(p.pending_review_count || 0) > 0 && (
+                                                            <span className="h-2 w-2 shrink-0 rounded-full bg-amber-500" title={`${p.pending_review_count} phiếu chờ duyệt`} />
+                                                        )}
+                                                        <span className="text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full truncate">
+                                                            {serviceLabel(p)}
+                                                        </span>
                                                     </span>
                                                     <div className="flex items-center gap-2 text-xs text-text-muted">
                                                         {canEditProject(p) && (
@@ -1195,9 +1211,17 @@ export default function ProjectsKanban(props) {
                     {viewMode === 'timeline' && (
                         <div className="space-y-4">
                             {sortedByDeadline.map((p) => (
-                                <div key={p.id} className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-card flex gap-4 cursor-pointer" onClick={() => { window.location.href = `/du-an/${p.id}`; }}>
+                                <div key={p.id} className={`rounded-2xl border p-4 shadow-card flex gap-4 cursor-pointer ${Number(p.pending_review_count || 0) > 0 ? 'border-amber-200 border-l-4 border-l-amber-400 bg-amber-50/40' : 'bg-white border-slate-200/80'}`} onClick={() => { window.location.href = `/du-an/${p.id}`; }}>
                                     <div className="flex flex-col items-center">
-                                        <span className="h-3 w-3 rounded-full bg-primary" />
+                                        <span className="flex flex-col items-center gap-1">
+                                            <span className="h-3 w-3 rounded-full bg-primary" />
+                                            {Number(p.pending_review_count || 0) > 0 && (
+                                                <span
+                                                    className="h-2 w-2 rounded-full bg-amber-500"
+                                                    title={`${p.pending_review_count} phiếu chờ duyệt`}
+                                                />
+                                            )}
+                                        </span>
                                         <span className="flex-1 w-px bg-slate-200 mt-2" />
                                     </div>
                                     <div className="flex-1">
@@ -1243,9 +1267,14 @@ export default function ProjectsKanban(props) {
                                 const end = p.deadline ? new Date(p.deadline) : new Date(start.getTime() + 5 * 86400000);
                                 const totalDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / 86400000));
                                 return (
-                                    <div key={p.id} className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-card cursor-pointer" onClick={() => { window.location.href = `/du-an/${p.id}`; }}>
-                                    <div className="flex items-center justify-between text-xs text-text-muted mb-2">
-                                        <span>{p.name}</span>
+                                    <div key={p.id} className={`rounded-2xl border p-4 shadow-card cursor-pointer ${Number(p.pending_review_count || 0) > 0 ? 'border-amber-200 border-l-4 border-l-amber-400 bg-amber-50/40' : 'bg-white border-slate-200/80'}`} onClick={() => { window.location.href = `/du-an/${p.id}`; }}>
+                                    <div className="flex items-center justify-between text-xs text-text-muted mb-2 gap-2">
+                                        <span className="flex items-center gap-2">
+                                            {Number(p.pending_review_count || 0) > 0 && (
+                                                <span className="h-2 w-2 shrink-0 rounded-full bg-amber-500" title={`${p.pending_review_count} phiếu chờ duyệt`} />
+                                            )}
+                                            <span>{p.name}</span>
+                                        </span>
                                         <span>{formatVietnamDate(p.deadline, '') || 'Chưa có hạn chót'}</span>
                                     </div>
                                     <div className={`text-xs mb-2 ${p.contract ? 'text-text-muted' : 'text-warning'}`}>
