@@ -27,6 +27,7 @@ const serviceLabels = {
     content: 'Content',
     website_care: 'Website Care',
     khac: 'Khác',
+    'Hợp đồng chưa có sản phẩm': 'Hợp đồng chưa có sản phẩm',
 };
 
 const formatCurrency = (value) => `${Number(value || 0).toLocaleString('vi-VN')} đ`;

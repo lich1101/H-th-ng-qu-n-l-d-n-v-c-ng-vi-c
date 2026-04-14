@@ -86,13 +86,14 @@ export default function DonutChart({
 
     const segments = useMemo(() => {
         let accumulatedAngle = -90;
-        return normalized.map((item) => {
+        return normalized.map((item, segmentIndex) => {
             const percent = total > 0 ? (item.value / total) * 100 : 0;
             const sweepAngle = total > 0 ? (item.value / total) * 360 : 0;
             const startAngle = accumulatedAngle;
             const endAngle = accumulatedAngle + sweepAngle;
             const segment = {
                 ...item,
+                segmentIndex,
                 percent,
                 startAngle,
                 endAngle,
@@ -132,7 +133,7 @@ export default function DonutChart({
                     />
                     {total > 0 ? segments.map((seg) => (
                         <path
-                            key={seg.label}
+                            key={`donut-path-${seg.segmentIndex}`}
                             d={seg.path}
                             fill={seg.color}
                             className="pointer-events-none transition-opacity duration-150"
@@ -140,7 +141,7 @@ export default function DonutChart({
                     )) : null}
                     {total > 0 ? segments.map((seg) => (
                         <path
-                            key={`${seg.label}-hover`}
+                            key={`donut-hover-${seg.segmentIndex}`}
                             d={seg.hoverPath}
                             fill="none"
                             stroke="transparent"
@@ -149,7 +150,7 @@ export default function DonutChart({
                             className="cursor-pointer"
                             onMouseEnter={() => setHoveredSegment(seg)}
                             onMouseMove={() => setHoveredSegment(seg)}
-                            onMouseLeave={() => setHoveredSegment((current) => (current?.label === seg.label ? null : current))}
+                            onMouseLeave={() => setHoveredSegment((current) => (current?.segmentIndex === seg.segmentIndex ? null : current))}
                         />
                     )) : null}
                 </svg>
@@ -168,16 +169,16 @@ export default function DonutChart({
                 </div>
             </div>
             <div className={`w-full ${isHorizontal ? 'grid max-h-[320px] content-start auto-rows-min gap-2.5 overflow-y-auto pr-1.5' : 'max-h-[280px] space-y-2.5 overflow-y-auto pr-1.5'}`}>
-                {normalized.map((item) => (
+                {normalized.map((item, idx) => (
                     <button
-                        key={item.label}
+                        key={`donut-legend-${idx}`}
                         type="button"
                         className={`flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white text-left shadow-sm transition hover:border-slate-300 hover:bg-slate-50 ${isHorizontal ? 'px-3.5 py-3' : 'px-3 py-2.5'}`}
                         onMouseEnter={() => {
-                            const segment = segments.find((seg) => seg.label === item.label);
+                            const segment = segments[idx];
                             if (segment) setHoveredSegment(segment);
                         }}
-                        onMouseLeave={() => setHoveredSegment((current) => (current?.label === item.label ? null : current))}
+                        onMouseLeave={() => setHoveredSegment((current) => (current?.segmentIndex === idx ? null : current))}
                     >
                         <div className="flex min-w-0 items-center gap-2.5">
                             <span className="h-3 w-3 flex-none rounded-full ring-4 ring-slate-50" style={{ background: item.color }} />

@@ -366,7 +366,9 @@ export default function CompanyRevenueReport(props) {
                     <div className="flex items-start justify-between gap-4">
                         <div>
                             <h3 className="text-base font-semibold text-slate-900">Doanh thu theo sản phẩm</h3>
-                            <p className="mt-1 text-xs text-text-muted">Biểu đồ tròn được tính theo doanh thu hợp đồng trong đúng khoảng thời gian đang lọc.</p>
+                            <p className="mt-1 text-xs text-text-muted">
+                                Tỷ trọng theo danh mục / dòng hàng hợp đồng đã duyệt trong kỳ (giá trị hiệu lực). Kỳ lọc theo ngày duyệt hợp đồng. Phần chênh so với tổng dòng hàng hiển thị ở mục «Hợp đồng chưa có sản phẩm».
+                            </p>
                         </div>
                         <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
                             {periodLabel}
