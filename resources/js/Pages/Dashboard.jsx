@@ -132,15 +132,16 @@ export default function Dashboard(props) {
         fetchData();
     }, [reportFilters.from, reportFilters.to]);
 
+    /** Doanh thu theo danh mục/dòng hàng — chỉ từ product_breakdown (API: ngày duyệt + giá trị hiệu lực). */
     const serviceBreakdown = useMemo(() => {
         const palette = ['#3B82F6', '#34D399', '#F2C94C', '#F43F5E', '#8B5CF6', '#F97316', '#14B8A6'];
-        const source = report.product_breakdown || report.service_breakdown || [];
+        const source = report.product_breakdown || [];
         return source.map((item, index) => ({
             label: serviceLabels[item.label] ?? item.label ?? 'Khác',
             value: Number(item.value || 0),
             color: palette[index % palette.length],
         }));
-    }, [report.product_breakdown, report.service_breakdown]);
+    }, [report.product_breakdown]);
 
     const employeeSummary = report.employee_summary || {};
     const staffSales = report.staff_sales_breakdown || [];
@@ -268,14 +269,14 @@ export default function Dashboard(props) {
             <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-2">
                 <section className={cardClass}>
                     <SectionHeader
-                        title="Biểu đồ tròn cơ cấu dịch vụ"
-                        description="Hiển thị tỷ trọng dự án theo nhóm dịch vụ đang vận hành trên hệ thống."
+                        title="Biểu đồ tròn cơ cấu doanh thu"
+                        description="Tỷ trọng theo danh mục / dòng hàng hợp đồng đã duyệt trong kỳ (giá trị hiệu lực). Kỳ lọc theo ngày duyệt hợp đồng."
                         chip="Theo danh mục"
                         tone="violet"
                     />
                     <div className="mt-5 rounded-2xl border border-slate-200/80 bg-slate-50/70 p-4">
                         {serviceBreakdown.length === 0 ? (
-                            <p className="text-sm text-text-muted">Chưa có dữ liệu cơ cấu dịch vụ.</p>
+                            <p className="text-sm text-text-muted">Chưa có dữ liệu doanh thu theo danh mục trong kỳ đã chọn.</p>
                         ) : (
                             <DonutChart data={serviceBreakdown} centerLabel="Dịch vụ" layout="horizontal" size={220} thickness={30} />
                         )}
@@ -285,7 +286,7 @@ export default function Dashboard(props) {
                 <section className={cardClass}>
                     <SectionHeader
                         title="Biểu đồ doanh số nhân viên"
-                        description={`So sánh doanh số ký, thu tiền và số hợp đồng của từng nhân sự trong ${report.period?.current_label?.toLowerCase() || 'kỳ hiện tại'}.`}
+                        description={`So sánh doanh thu ghi nhận (ngày duyệt), thu tiền và số hợp đồng đã duyệt của từng nhân sự trong ${report.period?.current_label?.toLowerCase() || 'kỳ hiện tại'}.`}
                         chip="Dữ liệu theo người"
                         tone="cyan"
                     />

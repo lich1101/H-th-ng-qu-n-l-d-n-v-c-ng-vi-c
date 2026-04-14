@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Helpers\CrmScope;
+use App\Services\ContractReportingService;
 use App\Http\Helpers\ProjectScope;
 use App\Models\Project;
 use App\Models\ContractItem;
@@ -38,6 +39,7 @@ class ReportController extends Controller
                 'tasks' => ['total' => 0, 'completed' => 0, 'overdue' => 0, 'on_time_rate' => 0],
                 'service_breakdown' => [],
                 'product_breakdown' => [],
+                'product_breakdown_total' => 0,
                 'projects_total' => 0,
                 'projects_in_progress' => 0,
                 'projects_pending_review' => 0,
@@ -141,20 +143,17 @@ class ReportController extends Controller
         }
 
         $contractWithClientSelect = $hasClientAssignedStaffId ? 'client:id,assigned_staff_id' : 'client:id';
-        $contractDateParts = [];
-        if ($hasContractApprovedAt) {
-            $contractDateParts[] = 'contracts.approved_at';
-        }
-        if ($hasContractSignedAt) {
-            $contractDateParts[] = 'contracts.signed_at';
-        }
-        $contractDateExpr = ! empty($contractDateParts)
-            ? ('DATE(COALESCE(' . implode(', ', $contractDateParts) . '))')
+        /** Doanh thu / kỳ báo cáo: chỉ theo ngày duyệt (khớp màn quản lý hợp đồng). */
+        $contractDateExpr = $hasContractApprovedAt
+            ? 'DATE(contracts.approved_at)'
             : 'DATE(contracts.created_at)';
 
         $approvedContractsBaseQuery = (clone $contractBaseQuery)
             ->when($hasContractApprovalStatus, function ($query) {
                 $query->where('approval_status', 'approved');
+            })
+            ->when($hasContractApprovedAt, function ($query) {
+                $query->whereNotNull('contracts.approved_at');
             });
         $now = now();
         $availableFromRaw = (clone $approvedContractsBaseQuery)
@@ -378,6 +377,9 @@ class ReportController extends Controller
             ->when($hasContractApprovalStatus, function ($query) {
                 $query->where('approval_status', 'approved');
             })
+            ->when($hasContractApprovedAt, function ($query) {
+                $query->whereNotNull('contracts.approved_at');
+            })
             ->whereBetween(DB::raw($contractDateExpr), [
                 $currentPeriodStart->toDateString(),
                 $currentPeriodEnd->toDateString(),
@@ -452,6 +454,9 @@ class ReportController extends Controller
             ->when($hasContractApprovalStatus, function ($query) {
                 $query->where('approval_status', 'approved');
             })
+            ->when($hasContractApprovedAt, function ($query) {
+                $query->whereNotNull('contracts.approved_at');
+            })
             ->whereBetween(DB::raw($contractDateExpr), [
                 $previousPeriodStart->toDateString(),
                 $previousPeriodEnd->toDateString(),
@@ -462,6 +467,9 @@ class ReportController extends Controller
             ->with($contractWithClientSelect)
             ->when($hasContractApprovalStatus, function ($query) {
                 $query->where('approval_status', 'approved');
+            })
+            ->when($hasContractApprovedAt, function ($query) {
+                $query->whereNotNull('contracts.approved_at');
             })
             ->whereBetween(DB::raw($contractDateExpr), [
                 $samePeriodLastYearStart->toDateString(),
@@ -480,12 +488,12 @@ class ReportController extends Controller
 
         $aggregateRevenueByStaff = function ($contracts) use (
             $resolveStaffId,
-            $hasContractValue,
             $hasContractRevenue,
             $hasContractCashFlow,
             $hasContractPaymentsPaidAt
         ): array {
             $totals = [];
+            $revenueByContractId = ContractReportingService::effectiveRevenuesForContracts($contracts);
             foreach ($contracts as $contract) {
                 $staffId = $resolveStaffId($contract);
                 if (! isset($totals[$staffId])) {
@@ -496,7 +504,7 @@ class ReportController extends Controller
                     ];
                 }
 
-                $contractRevenue = $hasContractValue ? (float) ($contract->getRawOriginal('value') ?? 0) : 0.0;
+                $contractRevenue = (float) ($revenueByContractId[(int) $contract->id] ?? 0.0);
                 $contractCashflow = 0.0;
                 if (! $hasContractPaymentsPaidAt) {
                     $contractCashflow = $hasContractRevenue
@@ -870,6 +878,9 @@ class ReportController extends Controller
             ->when($hasContractApprovalStatus, function ($query) {
                 $query->where('approval_status', 'approved');
             })
+            ->when($hasContractApprovedAt, function ($query) {
+                $query->whereNotNull('contracts.approved_at');
+            })
             ->whereBetween(DB::raw($contractDateExpr), [
                 $customerGrowthPeriods->first()['start'],
                 $customerGrowthPeriods->last()['end'],
@@ -880,9 +891,9 @@ class ReportController extends Controller
 
         $seenClientFirstContract = [];
         foreach ($approvedContractsTimeline as $contract) {
-            $contractAt = $contract->approved_at
-                ?: $contract->signed_at
-                ?: $contract->created_at;
+            $contractAt = $hasContractApprovedAt
+                ? $contract->approved_at
+                : ($contract->signed_at ?: $contract->created_at);
             $key = optional($contractAt)->format('Y-m');
             if (! $key || ! isset($customerGrowthSeed[$key])) {
                 continue;
@@ -950,6 +961,7 @@ class ReportController extends Controller
             ],
             'service_breakdown' => $serviceBreakdown,
             'product_breakdown' => $productBreakdown,
+            'product_breakdown_total' => round((float) $productBreakdown->sum('value'), 2),
             'projects_total' => $totalProjects,
             'projects_in_progress' => $inProgressProjects,
             'projects_pending_review' => $pendingReviewProjects,
@@ -1008,6 +1020,7 @@ class ReportController extends Controller
                 ],
                 'service_breakdown' => [],
                 'product_breakdown' => [],
+                'product_breakdown_total' => 0,
                 'projects_total' => 0,
                 'projects_in_progress' => 0,
                 'projects_pending_review' => 0,
@@ -1128,12 +1141,34 @@ class ReportController extends Controller
                 ->whereIn('clients.assigned_department_id', $deptIds)
                 ->count();
 
-            $staffRevenue = Contract::query()
-                ->selectRaw('clients.assigned_staff_id as staff_id, SUM(contracts.value) as revenue, COUNT(*) as contracts')
+            $hasItemsTableRd = Schema::hasTable('contract_items');
+            $hasItemTotalPriceRd = $hasItemsTableRd && Schema::hasColumn('contract_items', 'total_price');
+            $hasContractValueRd = Schema::hasColumn('contracts', 'value');
+            $hasContractSubtotalRd = Schema::hasColumn('contracts', 'subtotal_value');
+
+            $staffRevenueQuery = Contract::query()
                 ->join('clients', 'contracts.client_id', '=', 'clients.id')
                 ->where('contracts.approval_status', 'approved')
                 ->whereNotNull('clients.assigned_staff_id')
-                ->whereIn('clients.assigned_department_id', $deptIds)
+                ->whereIn('clients.assigned_department_id', $deptIds);
+
+            if ($hasItemsTableRd && $hasItemTotalPriceRd) {
+                $itemsAggRd = ContractItem::query()
+                    ->selectRaw('contract_id, COALESCE(SUM(total_price), 0) as items_sum, COUNT(*) as items_cnt')
+                    ->groupBy('contract_id');
+                $staffRevenueQuery->leftJoinSub($itemsAggRd, 'items_agg', function ($join) {
+                    $join->on('items_agg.contract_id', '=', 'contracts.id');
+                });
+                $effRd = ContractReportingService::effectiveRevenueSql('items_agg');
+                $staffRevenueQuery->selectRaw("clients.assigned_staff_id as staff_id, SUM({$effRd}) as revenue, COUNT(*) as contracts");
+            } else {
+                $fallbackRd = $hasContractValueRd && $hasContractSubtotalRd
+                    ? '(CASE WHEN contracts.value IS NOT NULL THEN COALESCE(contracts.value, 0) ELSE COALESCE(contracts.subtotal_value, 0) END)'
+                    : ($hasContractValueRd ? 'COALESCE(contracts.value, 0)' : ($hasContractSubtotalRd ? 'COALESCE(contracts.subtotal_value, 0)' : '0'));
+                $staffRevenueQuery->selectRaw("clients.assigned_staff_id as staff_id, SUM({$fallbackRd}) as revenue, COUNT(*) as contracts");
+            }
+
+            $staffRevenue = $staffRevenueQuery
                 ->groupBy('clients.assigned_staff_id')
                 ->get();
 
@@ -1177,7 +1212,6 @@ class ReportController extends Controller
             $productsTable = 'products';
             $usersTable = 'users';
 
-            $hasContractSignedAt = Schema::hasColumn($contractsTable, 'signed_at');
             $hasContractApprovedAt = Schema::hasColumn($contractsTable, 'approved_at');
             $hasContractCollector = Schema::hasColumn($contractsTable, 'collector_user_id');
             $hasContractCreatedBy = Schema::hasColumn($contractsTable, 'created_by');
@@ -1200,21 +1234,18 @@ class ReportController extends Controller
             $hasProductCategoriesTable = Schema::hasTable('product_categories');
             $hasProductCategoryId = $hasProductsTable && Schema::hasColumn($productsTable, 'category_id');
             $hasUserAvatar = Schema::hasColumn($usersTable, 'avatar_url');
+            $hasContractSubtotal = Schema::hasColumn($contractsTable, 'subtotal_value');
 
-            $dateParts = [];
-            if ($hasContractApprovedAt) {
-                $dateParts[] = 'contracts.approved_at';
-            }
-            if ($hasContractSignedAt) {
-                $dateParts[] = 'contracts.signed_at';
-            }
-            $contractDateExpr = ! empty($dateParts)
-                ? ('DATE(COALESCE(' . implode(', ', $dateParts) . '))')
+            $contractDateExpr = $hasContractApprovedAt
+                ? 'DATE(contracts.approved_at)'
                 : 'DATE(contracts.created_at)';
 
             $approvedContractsQuery = Contract::query();
             if ($hasContractApprovalStatus) {
                 $approvedContractsQuery->where('approval_status', 'approved');
+            }
+            if ($hasContractApprovedAt) {
+                $approvedContractsQuery->whereNotNull('contracts.approved_at');
             }
 
             $earliestContractDate = (clone $approvedContractsQuery)
@@ -1329,9 +1360,28 @@ class ReportController extends Controller
                 ->when($hasContractApprovalStatus, function ($query) {
                     $query->where('contracts.approval_status', 'approved');
                 })
+                ->when($hasContractApprovedAt, function ($query) {
+                    $query->whereNotNull('contracts.approved_at');
+                })
                 ->select('contracts.id')
-                ->selectRaw("$contractDateExpr as contract_date")
-                ->selectRaw($hasContractValue ? 'COALESCE(contracts.value, 0) as contract_value' : '0 as contract_value')
+                ->selectRaw("$contractDateExpr as contract_date");
+
+            if ($hasItemsTable && $hasItemTotalPrice) {
+                $itemsAggSub = ContractItem::query()
+                    ->selectRaw('contract_id, COALESCE(SUM(total_price), 0) as items_sum, COUNT(*) as items_cnt')
+                    ->groupBy('contract_id');
+                $baseContractsQuery->leftJoinSub($itemsAggSub, 'items_agg', function ($join) {
+                    $join->on('items_agg.contract_id', '=', 'contracts.id');
+                });
+                $baseContractsQuery->selectRaw(ContractReportingService::effectiveRevenueSql('items_agg').' as contract_value');
+            } else {
+                $fallbackEff = $hasContractValue && $hasContractSubtotal
+                    ? '(CASE WHEN contracts.value IS NOT NULL THEN COALESCE(contracts.value, 0) ELSE COALESCE(contracts.subtotal_value, 0) END)'
+                    : ($hasContractValue ? 'COALESCE(contracts.value, 0)' : ($hasContractSubtotal ? 'COALESCE(contracts.subtotal_value, 0)' : '0'));
+                $baseContractsQuery->selectRaw("{$fallbackEff} as contract_value");
+            }
+
+            $baseContractsQuery
                 ->selectRaw($hasContractCollector ? 'contracts.collector_user_id as collector_user_id' : 'NULL as collector_user_id')
                 ->selectRaw($hasContractCreatedBy ? 'contracts.created_by as created_by' : 'NULL as created_by');
 
@@ -1727,6 +1777,7 @@ class ReportController extends Controller
                         : 0,
                 ],
                 'product_breakdown' => $productBreakdown->values(),
+                'product_breakdown_total' => round((float) $productBreakdown->sum('value'), 2),
                 'staff_breakdown' => $staffBreakdown,
                 'daily_rows' => $dailyRows,
                 'period' => [
