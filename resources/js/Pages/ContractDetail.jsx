@@ -1448,6 +1448,33 @@ export default function ContractDetail(props) {
                         )}
                     </div>
                 </div>
+
+                <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
+                    <div className="mb-4">
+                        <h4 className="text-sm font-semibold text-slate-900">Lịch sử thao tác (hợp đồng đã duyệt)</h4>
+                        <p className="text-xs text-text-muted mt-1">
+                            Ghi nhận chỉnh sửa thông tin, dòng hàng, file, thanh toán/chi phí và nhật ký sau khi hợp đồng được duyệt.
+                        </p>
+                    </div>
+                    <div className="space-y-3">
+                        {(contract.activity_logs || []).length === 0 ? (
+                            <div className="rounded-xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">
+                                Chưa có lịch sử thao tác (hoặc hợp đồng chưa duyệt / chưa migrate bảng).
+                            </div>
+                        ) : (
+                            (contract.activity_logs || []).map((log) => (
+                                <div key={log.id} className="rounded-xl border border-slate-100 bg-slate-50/90 px-4 py-3">
+                                    <div className="text-[11px] text-text-muted mb-1.5">
+                                        <span className="font-semibold text-slate-700">{log.user?.name || '—'}</span>
+                                        <span className="mx-1">•</span>
+                                        <span>{formatDateDisplay(log.created_at)}</span>
+                                    </div>
+                                    <p className="text-sm text-slate-800 leading-relaxed whitespace-pre-wrap">{log.summary}</p>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
             </div>
 
             {/* Project Creation Form Modal */}

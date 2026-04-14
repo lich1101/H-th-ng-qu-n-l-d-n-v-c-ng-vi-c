@@ -17,6 +17,7 @@ use App\Models\Product;
 use App\Models\Project;
 use App\Models\RevenueTier;
 use App\Models\User;
+use App\Services\ContractActivityLogService;
 use App\Services\ContractFinanceRequestService;
 use App\Services\ContractFileStorageService;
 use App\Services\ContractLifecycleStatusService;
@@ -354,6 +355,16 @@ class ContractController extends Controller
 
         $file->load('uploader:id,name,email');
 
+        if (Schema::hasTable('contract_activity_logs')) {
+            $contract->refresh();
+            app(ContractActivityLogService::class)->logIfApproved(
+                $contract,
+                $request->user(),
+                ($request->user()->name ?? 'Người dùng').' đã tải file đính kèm: '.$file->original_name,
+                ['type' => 'file_upload', 'file_id' => $file->id],
+            );
+        }
+
         return response()->json([
             'message' => 'Đã tải file lên.',
             'data' => [
@@ -406,7 +417,18 @@ class ContractController extends Controller
             return response()->json(['message' => 'Không có quyền xóa file.'], 403);
         }
 
+        $removedName = $contractFile->original_name;
         app(ContractFileStorageService::class)->delete($contractFile);
+
+        if (Schema::hasTable('contract_activity_logs')) {
+            $contract->refresh();
+            app(ContractActivityLogService::class)->logIfApproved(
+                $contract,
+                $request->user(),
+                ($request->user()->name ?? 'Người dùng').' đã xóa file đính kèm: '.$removedName,
+                ['type' => 'file_delete'],
+            );
+        }
 
         return response()->json(['message' => 'Đã xóa file.']);
     }
@@ -660,6 +682,13 @@ class ContractController extends Controller
 
         unset($validated['approval_status'], $validated['approved_by'], $validated['approved_at']);
 
+        $beforeState = null;
+        $careIdsBefore = [];
+        if ($wasApproved) {
+            $beforeState = Contract::query()->with(['careStaffUsers'])->findOrFail($contract->id);
+            $careIdsBefore = $beforeState->careStaffUsers->pluck('id')->sort()->values()->all();
+        }
+
         try {
             DB::transaction(function () use ($request, $contract, $validated, $careStaffIds, $items, $wasApproved) {
                 $contract->update($validated);
@@ -692,6 +721,19 @@ class ContractController extends Controller
         $contract->refresh();
         if ($contract->client) {
             $this->syncClientRevenue($contract->client);
+        }
+
+        if ($wasApproved && $beforeState && Schema::hasTable('contract_activity_logs')) {
+            $contract->load('careStaffUsers');
+            $careIdsAfter = $contract->careStaffUsers->pluck('id')->sort()->values()->all();
+            $careChanged = $careIdsBefore !== $careIdsAfter;
+            app(ContractActivityLogService::class)->logContractFormChanges(
+                $request->user(),
+                $beforeState,
+                $contract->fresh(),
+                ! empty($items),
+                $careChanged
+            );
         }
 
         $this->loadContractDetail($contract);
@@ -902,23 +944,9 @@ class ContractController extends Controller
 
     public function destroy(Request $request, Contract $contract): JsonResponse
     {
-        if (! $this->canEditContract($request->user(), $contract)) {
-            return response()->json(['message' => 'Không có quyền xóa hợp đồng.'], 403);
-        }
-        if ($contract->project_id) {
-            Project::where('id', $contract->project_id)
-                ->where('contract_id', $contract->id)
-                ->update(['contract_id' => null]);
-        }
-
-        $client = $contract->client;
-        $contract->delete();
-
-        if ($client) {
-            $this->syncClientRevenue($client);
-        }
-
-        return response()->json(['message' => 'Contract deleted.']);
+        return response()->json([
+            'message' => 'Hệ thống không cho phép xóa hợp đồng. Vui lòng liên hệ quản trị nếu cần xử lý đặc biệt.',
+        ], 403);
     }
 
     public function storeCareNote(Request $request, Contract $contract): JsonResponse
@@ -942,6 +970,16 @@ class ContractController extends Controller
             'title' => trim((string) $validated['title']),
             'detail' => trim((string) $validated['detail']),
         ]);
+
+        if (Schema::hasTable('contract_activity_logs')) {
+            $contract->refresh();
+            app(ContractActivityLogService::class)->logIfApproved(
+                $contract,
+                $user,
+                ($user->name ?? 'Người dùng').' đã thêm ghi chú chăm sóc: '.Str::limit($note->title, 120),
+                ['type' => 'care_note', 'note_id' => $note->id],
+            );
+        }
 
         return response()->json([
             'message' => 'Đã thêm ghi chú chăm sóc hợp đồng.',
@@ -1466,7 +1504,7 @@ class ContractController extends Controller
     {
         $contract->setAttribute('can_view', $this->canViewContract($user, $contract));
         $contract->setAttribute('can_manage', $this->canEditContract($user, $contract));
-        $contract->setAttribute('can_delete', $this->canEditContract($user, $contract));
+        $contract->setAttribute('can_delete', false);
         $contract->setAttribute('can_add_care_note', $this->canAddCareNote($user, $contract));
         $contract->setAttribute('can_review_finance_request', $this->canApprove($user));
         $contract->setAttribute('can_manage_finance', $this->canApprove($user));
@@ -1852,6 +1890,12 @@ class ContractController extends Controller
             'careStaffUsers:id,name,email,avatar_url,department_id',
             'careNotes.user:id,name,email,avatar_url',
         ]);
+
+        if (Schema::hasTable('contract_activity_logs')) {
+            $contract->load(['activityLogs' => function ($q) {
+                $q->orderByDesc('created_at')->limit(300);
+            }, 'activityLogs.user:id,name,email']);
+        }
     }
 
     private function contractStatusSql(): string

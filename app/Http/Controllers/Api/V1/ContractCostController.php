@@ -9,11 +9,13 @@ use App\Models\Contract;
 use App\Models\ContractFinanceRequest;
 use App\Models\ContractCost;
 use App\Models\User;
+use App\Services\ContractActivityLogService;
 use App\Services\DataTransfers\ClientFinancialSyncService;
 use App\Services\NotificationService;
 use App\Support\ContractApproverIds;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 
 class ContractCostController extends Controller
 {
@@ -56,6 +58,17 @@ class ContractCostController extends Controller
 
         $this->notifyFinanceApprovers($contract, $request->user(), $financeRequest);
 
+        if (Schema::hasTable('contract_activity_logs')) {
+            $contract->refresh();
+            app(ContractActivityLogService::class)->logIfApproved(
+                $contract,
+                $request->user(),
+                ($request->user()->name ?? 'Người dùng').' đã gửi phiếu duyệt chi phí ('
+                    .number_format((float) $financeRequest->amount, 0, ',', '.').' đ).',
+                ['type' => 'cost_request', 'finance_request_id' => $financeRequest->id],
+            );
+        }
+
         return response()->json([
             'message' => 'Đã gửi phiếu duyệt chi phí. Admin/Kế toán cần duyệt trước khi ghi nhận vào hợp đồng.',
             'requires_approval' => true,
@@ -85,6 +98,16 @@ class ContractCostController extends Controller
         $contract->refreshFinancials();
         $this->syncClientFinancials($contract);
 
+        if (Schema::hasTable('contract_activity_logs')) {
+            $contract->refresh();
+            app(ContractActivityLogService::class)->logIfApproved(
+                $contract,
+                $request->user(),
+                ($request->user()->name ?? 'Người dùng').' đã sửa ghi nhận chi phí #'.$cost->id.'.',
+                ['type' => 'cost_update', 'cost_id' => $cost->id],
+            );
+        }
+
         return response()->json($cost);
     }
 
@@ -103,6 +126,16 @@ class ContractCostController extends Controller
         $cost->delete();
         $contract->refreshFinancials();
         $this->syncClientFinancials($contract);
+
+        if (Schema::hasTable('contract_activity_logs')) {
+            $contract->refresh();
+            app(ContractActivityLogService::class)->logIfApproved(
+                $contract,
+                $request->user(),
+                ($request->user()->name ?? 'Người dùng').' đã xóa một ghi nhận chi phí.',
+                ['type' => 'cost_delete'],
+            );
+        }
 
         return response()->json(['message' => 'Đã xóa chi phí hợp đồng.']);
     }

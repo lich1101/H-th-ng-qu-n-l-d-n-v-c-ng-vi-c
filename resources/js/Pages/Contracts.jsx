@@ -206,7 +206,7 @@ export default function Contracts(props) {
     const currentUserId = Number(props?.auth?.user?.id || 0) || null;
     const canCreate = ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'].includes(userRole);
     const canManage = ['admin', 'administrator', 'quan_ly', 'ke_toan'].includes(userRole);
-    const canDelete = ['admin', 'administrator', 'quan_ly', 'ke_toan'].includes(userRole);
+    const canDelete = false;
     const canApprove = ['admin', 'administrator', 'ke_toan'].includes(userRole);
     const canFinance = ['admin', 'administrator', 'ke_toan'].includes(userRole);
     const canBulkActions = canApprove || canDelete;
@@ -374,6 +374,7 @@ export default function Contracts(props) {
     };
 
     const canDeleteContract = (contract) => {
+        if (!canDelete) return false;
         const apiPermission = readBoolean(contract?.can_delete);
         if (apiPermission !== null) {
             return apiPermission;
@@ -1833,7 +1834,7 @@ export default function Contracts(props) {
                                 <tfoot>
                                     <tr className="border-t-2 border-slate-200 bg-slate-50/90 text-left text-sm text-slate-800">
                                         <td
-                                            colSpan={canBulkActions ? 11 : 10}
+                                            colSpan={canBulkActions ? 12 : 11}
                                             className="py-2.5 pr-3 text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle"
                                         >
                                             Tổng theo bộ lọc (tất cả trang)
