@@ -24,6 +24,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -386,8 +387,7 @@ class ReportController extends Controller
             ])
             ->get();
 
-        // Breakdown from contract_items only (SUM total_price): cơ cấu theo danh mục / SP.
-        // Không cộng (contracts.value − SUM(lines)) vào nhãn «Chưa gắn sản phẩm» — đó là chênh lệch VAT/điều chỉnh HĐ, không phải thiếu gắn SP.
+        // Cơ cấu theo dòng hàng; phần chênh lên so với doanh thu hiệu lực gán nhãn «Hợp đồng chưa có sản phẩm» (HĐ không dòng hàng / VAT / điều chỉnh).
         $productBreakdown = collect();
         if ($hasItemsTable && $hasItemTotalPrice) {
             $periodContractIds = $contractsForCurrentPeriod->pluck('id')->all();
@@ -448,6 +448,11 @@ class ReportController extends Controller
                 }
             }
         }
+
+        $periodEffectiveForBreakdown = round(array_sum(
+            ContractReportingService::effectiveRevenuesForContracts($contractsForCurrentPeriod)
+        ), 2);
+        $productBreakdown = $this->appendProductBreakdownGapLine($productBreakdown, $periodEffectiveForBreakdown);
 
         $contractsForPreviousPeriod = (clone $contractBaseQuery)
             ->with($contractWithClientSelect)
@@ -1651,6 +1656,11 @@ class ReportController extends Controller
                 }
             }
 
+            $periodEffectiveForBreakdownCr = round((float) collect($filteredContracts)->sum(function ($row) {
+                return (float) ($row->contract_value ?? 0);
+            }), 2);
+            $productBreakdown = $this->appendProductBreakdownGapLine($productBreakdown, $periodEffectiveForBreakdownCr);
+
             $staffUserColumns = ['id', 'name', 'role'];
             if ($hasUserAvatar) {
                 $staffUserColumns[] = 'avatar_url';
@@ -1854,5 +1864,28 @@ class ReportController extends Controller
         }
 
         return $totals;
+    }
+
+    /**
+     * Phần doanh thu hiệu lực vượt tổng dòng hàng (theo danh mục) → gán nhãn «Hợp đồng chưa có sản phẩm», không để thiếu vào các nhóm SP.
+     *
+     * @param  Collection|array<int, array{label: string, value: float}>  $rows
+     */
+    private function appendProductBreakdownGapLine(Collection|array $rows, float $periodEffectiveRevenueTotal): Collection
+    {
+        $c = collect($rows);
+        $linesSum = round((float) $c->sum('value'), 2);
+        $gapUp = round(max(0.0, $periodEffectiveRevenueTotal - $linesSum), 2);
+        if ($gapUp <= 0) {
+            return $c->values();
+        }
+
+        return $c
+            ->push([
+                'label' => 'Hợp đồng chưa có sản phẩm',
+                'value' => $gapUp,
+            ])
+            ->sortByDesc('value')
+            ->values();
     }
 }
