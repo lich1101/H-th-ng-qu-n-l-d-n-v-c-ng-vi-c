@@ -197,20 +197,25 @@ class ContractController extends Controller
             });
         }
 
+        if ($request->filled('created_at_from')) {
+            $query->whereDate('contracts.created_at', '>=', (string) $request->input('created_at_from'));
+        }
+        if ($request->filled('created_at_to')) {
+            $query->whereDate('contracts.created_at', '<=', (string) $request->input('created_at_to'));
+        }
+
         if ($request->filled('approved_at_from') || $request->filled('approved_at_to')) {
-            $includeWithoutApproved = $request->boolean('include_without_approved_at');
-            $query->where(function (Builder $outer) use ($request, $includeWithoutApproved) {
-                $outer->where(function (Builder $inner) use ($request) {
-                    if ($request->filled('approved_at_from')) {
-                        $inner->whereDate('contracts.approved_at', '>=', (string) $request->input('approved_at_from'));
-                    }
-                    if ($request->filled('approved_at_to')) {
-                        $inner->whereDate('contracts.approved_at', '<=', (string) $request->input('approved_at_to'));
-                    }
-                });
-                if ($includeWithoutApproved) {
-                    $outer->orWhereNull('contracts.approved_at');
-                }
+            $query->where(function (Builder $outer) use ($request) {
+                $outer->whereNull('contracts.approved_at')
+                    ->orWhere(function (Builder $inner) use ($request) {
+                        $inner->whereNotNull('contracts.approved_at');
+                        if ($request->filled('approved_at_from')) {
+                            $inner->whereDate('contracts.approved_at', '>=', (string) $request->input('approved_at_from'));
+                        }
+                        if ($request->filled('approved_at_to')) {
+                            $inner->whereDate('contracts.approved_at', '<=', (string) $request->input('approved_at_to'));
+                        }
+                    });
             });
         }
 
