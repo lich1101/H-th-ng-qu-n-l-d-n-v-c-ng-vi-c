@@ -969,9 +969,21 @@ class ContractController extends Controller
 
     public function destroy(Request $request, Contract $contract): JsonResponse
     {
-        return response()->json([
-            'message' => 'Hệ thống không cho phép xóa hợp đồng. Vui lòng liên hệ quản trị nếu cần xử lý đặc biệt.',
-        ], 403);
+        $user = $request->user();
+        if (! $this->canDeleteContract($user, $contract)) {
+            return response()->json(['message' => 'Không có quyền xóa hợp đồng.'], 403);
+        }
+
+        $contract->loadMissing('client');
+        $client = $contract->client;
+
+        $contract->delete();
+
+        if ($client) {
+            $this->syncClientRevenue($client);
+        }
+
+        return response()->json(['message' => 'Đã xóa hợp đồng.']);
     }
 
     public function storeCareNote(Request $request, Contract $contract): JsonResponse
@@ -1535,7 +1547,7 @@ class ContractController extends Controller
     {
         $contract->setAttribute('can_view', $this->canViewContract($user, $contract));
         $contract->setAttribute('can_manage', $this->canEditContract($user, $contract));
-        $contract->setAttribute('can_delete', false);
+        $contract->setAttribute('can_delete', $this->canDeleteContract($user, $contract));
         $contract->setAttribute('can_add_care_note', $this->canAddCareNote($user, $contract));
         $contract->setAttribute('can_review_finance_request', $this->canApprove($user));
         $contract->setAttribute('can_manage_finance', $this->canApprove($user));
@@ -1579,6 +1591,15 @@ class ContractController extends Controller
         }
 
         return false;
+    }
+
+    private function canDeleteContract(User $user, Contract $contract): bool
+    {
+        if (! $this->canViewContract($user, $contract)) {
+            return false;
+        }
+
+        return in_array((string) $user->role, ['admin', 'administrator'], true);
     }
 
     /**

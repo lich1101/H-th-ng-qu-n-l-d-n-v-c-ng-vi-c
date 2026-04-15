@@ -209,7 +209,7 @@ export default function Contracts(props) {
     const currentUserId = Number(props?.auth?.user?.id || 0) || null;
     const canCreate = ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'].includes(userRole);
     const canManage = ['admin', 'administrator', 'quan_ly', 'ke_toan'].includes(userRole);
-    const canDelete = false;
+    const canDelete = ['admin', 'administrator'].includes(userRole);
     const canApprove = ['admin', 'administrator', 'ke_toan'].includes(userRole);
     const canFinance = ['admin', 'administrator', 'ke_toan'].includes(userRole);
     const canBulkActions = canApprove || canDelete;
