@@ -64,7 +64,7 @@ class ContractController extends Controller
             $query->with('items');
         }
 
-        $sortBy = (string) $request->input('sort_by', 'approved_at');
+        $sortBy = (string) $request->input('sort_by', 'created_at');
         $sortDir = $this->normalizeSortDirection((string) $request->input('sort_dir', 'desc'));
         $this->applyContractSorting($query, $sortBy, $sortDir);
 
@@ -477,6 +477,9 @@ class ContractController extends Controller
                 $query->orderByRaw('CASE WHEN contracts.signed_at IS NULL THEN 1 ELSE 0 END')
                     ->orderBy('contracts.signed_at', $direction);
                 break;
+            case 'created_at':
+                $query->orderBy('contracts.created_at', $direction);
+                break;
             case 'approved_at':
                 $query->orderByRaw('CASE WHEN contracts.approved_at IS NULL THEN 1 ELSE 0 END')
                     ->orderBy('contracts.approved_at', $direction);
@@ -526,8 +529,7 @@ class ContractController extends Controller
                 $query->orderBy('contracts.handover_receive_status', $direction);
                 break;
             default:
-                $query->orderByRaw('CASE WHEN contracts.approved_at IS NULL THEN 1 ELSE 0 END')
-                    ->orderByDesc('contracts.approved_at');
+                $query->orderByDesc('contracts.created_at');
                 $direction = 'desc';
                 break;
         }

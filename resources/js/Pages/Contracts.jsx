@@ -260,7 +260,7 @@ export default function Contracts(props) {
         staff_ids: [],
         per_page: 20,
         page: 1,
-        sort_by: 'approved_at',
+        sort_by: 'created_at',
         sort_dir: 'desc',
         ...currentMonthCreatedRange(),
         ...emptyApprovedRange(),
@@ -511,7 +511,7 @@ export default function Contracts(props) {
                     ...(nextFilters.created_at_to ? { created_at_to: nextFilters.created_at_to } : {}),
                     ...(nextFilters.approved_at_from ? { approved_at_from: nextFilters.approved_at_from } : {}),
                     ...(nextFilters.approved_at_to ? { approved_at_to: nextFilters.approved_at_to } : {}),
-                    sort_by: nextFilters.sort_by || 'approved_at',
+                    sort_by: nextFilters.sort_by || 'created_at',
                     sort_dir: nextFilters.sort_dir || 'desc',
                 },
             });
@@ -1638,7 +1638,7 @@ export default function Contracts(props) {
                     <table
                         ref={contractTableRef}
                         data-sort-scope="remote"
-                        data-sort-by={filters.sort_by || 'approved_at'}
+                        data-sort-by={filters.sort_by || 'created_at'}
                         data-sort-dir={filters.sort_dir || 'desc'}
                         className="table-spacious min-w-full text-sm"
                     >
