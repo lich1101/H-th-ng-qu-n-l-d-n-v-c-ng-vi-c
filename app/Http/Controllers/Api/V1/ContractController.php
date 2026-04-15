@@ -1389,7 +1389,8 @@ class ContractController extends Controller
 
     private function normalizeContractFinancialInputs(array $validated, array $items, ?Contract $contract = null): array
     {
-        $vatEnabled = filter_var($validated['vat_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $hasItems = ! empty($items);
+        $vatEnabled = ! $hasItems && filter_var($validated['vat_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
         $vatMode = (string) ($validated['vat_mode'] ?? ($contract->vat_mode ?? 'percent'));
         if (! in_array($vatMode, ['percent', 'amount'], true)) {
             $vatMode = 'percent';
@@ -1398,7 +1399,7 @@ class ContractController extends Controller
         $fallbackSubtotal = $contract
             ? (float) ($contract->subtotal_value ?: $contract->getRawOriginal('value') ?: 0)
             : 0.0;
-        $subtotal = ! empty($items)
+        $subtotal = $hasItems
             ? $this->sumItems($items)
             : $this->parseNumericInput($validated['subtotal_value'] ?? ($validated['value'] ?? $fallbackSubtotal));
 

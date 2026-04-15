@@ -132,16 +132,6 @@ const calculateItemTotal = (item) => {
     const quantity = Math.max(1, parseNumberInput(item?.quantity) || 1);
     return price * quantity;
 };
-const hasInputValue = (value) => value !== null && value !== undefined && String(value).trim() !== '';
-const normalizeVatMode = (value) => (String(value || '').toLowerCase() === 'amount' ? 'amount' : 'percent');
-const calculateVatAmount = ({ subtotal = 0, vatEnabled = false, vatMode = 'percent', vatRate = 0, vatAmount = 0 }) => {
-    if (!vatEnabled) return 0;
-    const normalizedSubtotal = Math.max(0, parseNumberInput(subtotal));
-    if (normalizeVatMode(vatMode) === 'amount') {
-        return Math.max(0, parseNumberInput(vatAmount));
-    }
-    return Math.max(0, normalizedSubtotal * Math.max(0, parseNumberInput(vatRate)) / 100);
-};
 const resolveContractSubtotal = (contract) => {
     if (!contract) return 0;
     if (hasInputValue(contract.subtotal_value)) {
@@ -156,6 +146,7 @@ const resolveContractValue = (contract) => {
     if (!contract) return 0;
     return parseNumberInput(contract.value ?? contract.effective_value ?? contract.items_total_value ?? contract.subtotal_value);
 };
+const hasInputValue = (value) => value !== null && value !== undefined && String(value).trim() !== '';
 const statusBadgeClass = (value) => ({
     draft: 'border border-slate-200 bg-slate-100 text-slate-700',
     signed: 'border border-violet-200 bg-violet-100 text-violet-700',
@@ -272,10 +263,6 @@ export default function Contracts(props) {
         care_staff_ids: [],
         value: '',
         subtotal_value: '',
-        vat_enabled: false,
-        vat_mode: 'percent',
-        vat_rate: '',
-        vat_amount: '',
         payment_times: '1',
         /** Chỉ để hiển thị (đồng bộ từ API), không gửi khi lưu */
         status_display: '',
@@ -409,22 +396,10 @@ export default function Contracts(props) {
     }, [items]);
 
     const contractSubtotal = useMemo(() => (
-        items.length
-            ? itemsTotal
-            : parseNumberInput(form.vat_enabled ? form.subtotal_value : form.value)
-    ), [form.subtotal_value, form.value, form.vat_enabled, items.length, itemsTotal]);
+        items.length ? itemsTotal : 0
+    ), [items.length, itemsTotal]);
 
-    const vatComputedAmount = useMemo(() => calculateVatAmount({
-        subtotal: contractSubtotal,
-        vatEnabled: form.vat_enabled,
-        vatMode: form.vat_mode,
-        vatRate: form.vat_rate,
-        vatAmount: form.vat_amount,
-    }), [contractSubtotal, form.vat_amount, form.vat_enabled, form.vat_mode, form.vat_rate]);
-
-    const contractValueTotal = useMemo(() => (
-        contractSubtotal + vatComputedAmount
-    ), [contractSubtotal, vatComputedAmount]);
+    const contractValueTotal = useMemo(() => contractSubtotal, [contractSubtotal]);
 
     const paymentBaseTotal = useMemo(() => {
         return payments.reduce((sum, payment) => {
@@ -758,10 +733,6 @@ export default function Contracts(props) {
             care_staff_ids: [],
             value: '',
             subtotal_value: '',
-            vat_enabled: false,
-            vat_mode: 'percent',
-            vat_rate: '',
-            vat_amount: '',
             payment_times: '1',
             status_display: '',
             signed_at: todayInputValue(),
@@ -807,10 +778,6 @@ export default function Contracts(props) {
                 care_staff_ids: normalizeCareStaffIds(detail.care_staff_users || []),
                 value: String(resolveContractValue(detail)),
                 subtotal_value: String(resolveContractSubtotal(detail)),
-                vat_enabled: Boolean(detail.vat_enabled),
-                vat_mode: normalizeVatMode(detail.vat_mode),
-                vat_rate: hasInputValue(detail.vat_rate) ? String(detail.vat_rate) : '',
-                vat_amount: hasInputValue(detail.vat_amount) ? String(detail.vat_amount) : '',
                 payment_times: String(detail.payment_times ?? 1),
                 status_display: detail.status || 'draft',
                 signed_at: toDateInputValue(detail.signed_at),
@@ -866,35 +833,21 @@ export default function Contracts(props) {
                 ...prev,
                 { product_id: '', product_name: '', unit: '', unit_price: '', quantity: 1, note: '' },
             ];
-            const nextSubtotal = nextItems.reduce((sum, item) => sum + calculateItemTotal(item), 0);
-            setForm((current) => ({ ...current, value: String(nextSubtotal), subtotal_value: String(nextSubtotal) }));
             return nextItems;
         });
     };
 
     const updateItem = (index, changes) => {
         setItems((prev) => {
-            const nextItems = prev.map((item, idx) => {
+            return prev.map((item, idx) => {
                 if (idx !== index) return item;
                 return { ...item, ...changes };
             });
-            const nextSubtotal = nextItems.reduce((sum, item) => sum + calculateItemTotal(item), 0);
-            setForm((current) => ({ ...current, value: String(nextSubtotal), subtotal_value: String(nextSubtotal) }));
-            return nextItems;
         });
     };
 
     const removeItem = (index) => {
-        setItems((prev) => {
-            const nextItems = prev.filter((_, idx) => idx !== index);
-            const nextSubtotal = nextItems.reduce((sum, item) => sum + calculateItemTotal(item), 0);
-            setForm((current) => ({
-                ...current,
-                value: nextItems.length ? String(nextSubtotal) : current.vat_enabled ? current.value : '',
-                subtotal_value: nextItems.length ? String(nextSubtotal) : '',
-            }));
-            return nextItems;
-        });
+        setItems((prev) => prev.filter((_, idx) => idx !== index));
     };
 
     const refreshContractExtras = async () => {
@@ -1290,20 +1243,12 @@ export default function Contracts(props) {
             title: form.title,
             client_id: Number(form.client_id),
             collector_user_id: form.collector_user_id ? Number(form.collector_user_id) : null,
-            subtotal_value: items.length || form.vat_enabled
-                ? contractSubtotal
-                : form.value === '' ? null : parseNumberInput(form.value),
-            value: items.length || form.vat_enabled
-                ? contractValueTotal
-                : form.value === '' ? null : parseNumberInput(form.value),
-            vat_enabled: Boolean(form.vat_enabled),
-            vat_mode: form.vat_enabled ? normalizeVatMode(form.vat_mode) : null,
-            vat_rate: form.vat_enabled && normalizeVatMode(form.vat_mode) === 'percent'
-                ? parseNumberInput(form.vat_rate)
-                : null,
-            vat_amount: form.vat_enabled && normalizeVatMode(form.vat_mode) === 'amount'
-                ? parseNumberInput(form.vat_amount)
-                : null,
+            subtotal_value: contractSubtotal,
+            value: contractValueTotal,
+            vat_enabled: false,
+            vat_mode: null,
+            vat_rate: null,
+            vat_amount: 0,
             payment_times: form.payment_times === '' ? 1 : Number(form.payment_times),
             signed_at: form.signed_at,
             start_date: form.start_date,
@@ -2071,102 +2016,19 @@ export default function Contracts(props) {
                     </div>
 
                     <div className="rounded-2xl border border-slate-200/80 bg-slate-50 p-4">
-                        <div className="flex items-center justify-between gap-3">
-                            <div>
-                                <h4 className="text-sm font-semibold text-slate-900">VAT</h4>
-                                <p className="mt-1 text-xs text-text-muted">Tự cộng VAT vào tổng giá trị hợp đồng.</p>
-                            </div>
-                            <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
-                                <input
-                                    type="checkbox"
-                                    checked={Boolean(form.vat_enabled)}
-                                    onChange={(e) => setForm((s) => ({
-                                        ...s,
-                                        vat_enabled: e.target.checked,
-                                        value: !e.target.checked && !items.length
-                                            ? (hasInputValue(s.subtotal_value) ? s.subtotal_value : s.value)
-                                            : s.value,
-                                        subtotal_value: e.target.checked && !items.length && !hasInputValue(s.subtotal_value)
-                                            ? s.value
-                                            : s.subtotal_value,
-                                    }))}
-                                />
-                                Áp dụng VAT
-                            </label>
-                        </div>
-                        {form.vat_enabled && (
-                            <div className="mt-4 grid gap-4 md:grid-cols-4">
-                                {!items.length && (
-                                    <LabeledField label="Giá trị trước VAT (VNĐ)" className="md:col-span-2">
-                                        <input
-                                            className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
-                                            type="text"
-                                            inputMode="numeric"
-                                            placeholder="0"
-                                            value={form.subtotal_value}
-                                            onChange={(e) => setForm((s) => ({ ...s, subtotal_value: formatMoneyInput(e.target.value) }))}
-                                        />
-                                    </LabeledField>
-                                )}
-                                <LabeledField label="Kiểu VAT">
-                                    <select
-                                        className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
-                                        value={form.vat_mode}
-                                        onChange={(e) => setForm((s) => ({ ...s, vat_mode: normalizeVatMode(e.target.value) }))}
-                                    >
-                                        <option value="percent">Theo %</option>
-                                        <option value="amount">Theo số tiền</option>
-                                    </select>
-                                </LabeledField>
-                                {normalizeVatMode(form.vat_mode) === 'percent' ? (
-                                    <LabeledField label="% VAT">
-                                        <input
-                                            className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
-                                            type="number"
-                                            min="0"
-                                            step="0.01"
-                                            placeholder="10"
-                                            value={form.vat_rate}
-                                            onChange={(e) => setForm((s) => ({ ...s, vat_rate: e.target.value }))}
-                                        />
-                                    </LabeledField>
-                                ) : (
-                                    <LabeledField label="Tiền VAT (VNĐ)">
-                                        <input
-                                            className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
-                                            type="text"
-                                            inputMode="numeric"
-                                            placeholder="0"
-                                            value={form.vat_amount}
-                                            onChange={(e) => setForm((s) => ({ ...s, vat_amount: formatMoneyInput(e.target.value) }))}
-                                        />
-                                    </LabeledField>
-                                )}
-                                <LabeledField label="VAT tạm tính">
-                                    <div className="rounded-2xl border border-slate-200/80 bg-white px-3 py-2 text-sm font-semibold text-slate-800">
-                                        {formatCurrency(vatComputedAmount)} VNĐ
-                                    </div>
-                                </LabeledField>
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="rounded-2xl border border-slate-200/80 bg-slate-50 p-4">
                         <div className="grid gap-4 md:grid-cols-3">
                             <LabeledField
                                 label="Giá trị hợp đồng (VNĐ)"
-                                hint={items.length || form.vat_enabled
-                                    ? 'Đang được tự tính từ giá trị trước VAT và cấu hình VAT phía trên.'
-                                    : ''}
+                                hint="Tự động bằng tổng giá trị các dòng sản phẩm (đơn giá × số lượng)."
                             >
                                 <input
-                                    className="w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2"
+                                    className="w-full rounded-2xl border border-slate-200/80 bg-slate-100 px-3 py-2 text-slate-700"
                                     type="text"
                                     inputMode="numeric"
                                     placeholder="0"
-                                    value={items.length || form.vat_enabled ? formatMoneyInput(contractValueTotal) : form.value}
-                                    onChange={(e) => setForm((s) => ({ ...s, value: formatMoneyInput(e.target.value) }))}
-                                    disabled={items.length > 0 || form.vat_enabled}
+                                    value={formatMoneyInput(contractValueTotal)}
+                                    readOnly
+                                    disabled
                                 />
                             </LabeledField>
                             <LabeledField label="Số lần thanh toán">
