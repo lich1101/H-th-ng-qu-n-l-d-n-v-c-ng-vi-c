@@ -1485,7 +1485,7 @@ export default function AttendanceWifi(props) {
                                                     </td>
                                                     <td className="px-4 py-3">{item.role}</td>
                                                     <td className="px-4 py-3">{item.department || '—'}</td>
-                                                    <td className="px-4 py-3" style={{ maxWidth: '860px !important' }}>
+                                                    <td className="px-4 py-3" style="min-width: 860px !important;">
                                                         {workTypes.length === 0 ? (
                                                             <div className="text-xs text-rose-600">Chưa có loại chấm công để gán lịch tuần.</div>
                                                         ) : (
