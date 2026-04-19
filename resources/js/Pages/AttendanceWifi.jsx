@@ -1465,7 +1465,7 @@ export default function AttendanceWifi(props) {
                                             <th className="px-4 py-3 text-left font-semibold text-slate-700">Nhân sự</th>
                                             <th className="px-4 py-3 text-left font-semibold text-slate-700">Vai trò</th>
                                             <th className="px-4 py-3 text-left font-semibold text-slate-700">Phòng ban</th>
-                                            <th className="px-4 py-3 text-left font-semibold text-slate-700">Lịch theo tuần (T2 → CN)</th>
+                                            <th className="px-4 py-3 text-left font-semibold text-slate-700" >Lịch theo tuần (T2 → CN)</th>
                                             <th className="px-4 py-3 text-left font-semibold text-slate-700">Trạng thái</th>
                                         </tr>
                                     </thead>
@@ -1485,7 +1485,7 @@ export default function AttendanceWifi(props) {
                                                     </td>
                                                     <td className="px-4 py-3">{item.role}</td>
                                                     <td className="px-4 py-3">{item.department || '—'}</td>
-                                                    <td className="px-4 py-3">
+                                                    <td className="px-4 py-3 max-w-[860px]">
                                                         {workTypes.length === 0 ? (
                                                             <div className="text-xs text-rose-600">Chưa có loại chấm công để gán lịch tuần.</div>
                                                         ) : (
