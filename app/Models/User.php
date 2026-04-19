@@ -30,6 +30,7 @@ class User extends Authenticatable
         'is_active',
         'attendance_employment_type',
         'attendance_shift_weekdays',
+        'attendance_weekday_work_types',
         'attendance_earliest_checkin_time',
         'facebook_user_access_token',
         'facebook_user_token_expires_at',
@@ -120,6 +121,7 @@ class User extends Authenticatable
         'is_active' => 'boolean',
         'attendance_employment_type' => 'string',
         'attendance_shift_weekdays' => 'array',
+        'attendance_weekday_work_types' => 'array',
         'facebook_user_token_expires_at' => 'datetime',
     ];
 }

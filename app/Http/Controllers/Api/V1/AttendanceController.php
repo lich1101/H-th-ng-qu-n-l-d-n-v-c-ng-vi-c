@@ -10,6 +10,7 @@ use App\Models\Department;
 use App\Models\AttendanceRecord;
 use App\Models\AttendanceReminderLog;
 use App\Models\AttendanceRequest as AttendanceRequestModel;
+use App\Models\AttendanceWorkType;
 use App\Models\AttendanceWifiNetwork;
 use App\Models\User;
 use App\Services\AttendanceService;
@@ -17,6 +18,7 @@ use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
@@ -223,6 +225,7 @@ class AttendanceController extends Controller
                 'is_active',
                 'attendance_employment_type',
                 'attendance_shift_weekdays',
+                'attendance_weekday_work_types',
                 'attendance_earliest_checkin_time',
             ])
             ->where('role', '!=', 'administrator')
@@ -247,6 +250,160 @@ class AttendanceController extends Controller
         return response()->json($rows);
     }
 
+    public function workTypes(Request $request): JsonResponse
+    {
+        if (! $this->canManageAttendance($request->user())) {
+            return response()->json(['message' => 'Không có quyền xem loại chấm công.'], 403);
+        }
+
+        $rows = AttendanceWorkType::query()
+            ->orderByDesc('is_system')
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get();
+
+        return response()->json([
+            'data' => $rows->map(function (AttendanceWorkType $item) {
+                return $this->workTypePayload($item);
+            })->values(),
+        ]);
+    }
+
+    public function workTypeStore(Request $request): JsonResponse
+    {
+        if (! $this->canManageAttendanceTypes($request->user())) {
+            return response()->json(['message' => 'Chỉ Administrator mới được thêm loại chấm công.'], 403);
+        }
+
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:120'],
+            'code' => ['nullable', 'string', 'max:64'],
+            'session' => ['required', 'in:full_day,morning,afternoon,off'],
+            'default_work_units' => ['nullable', 'numeric', 'min:0', 'max:1'],
+            'sort_order' => ['nullable', 'integer', 'min:0', 'max:100000'],
+            'is_active' => ['nullable', 'boolean'],
+        ]);
+
+        $name = trim((string) $validated['name']);
+        $session = (string) $validated['session'];
+        $defaultUnits = $this->resolveWorkTypeDefaultUnits($session, $validated['default_work_units'] ?? null);
+
+        if (! $this->isValidWorkUnitStep($defaultUnits)) {
+            return response()->json([
+                'message' => 'Công mặc định của loại chấm công phải theo bước 0.5 (0, 0.5, 1).',
+            ], 422);
+        }
+
+        $codeInput = trim((string) ($validated['code'] ?? ''));
+        $code = $codeInput !== ''
+            ? Str::slug($codeInput, '_')
+            : Str::slug($name, '_');
+        $code = trim($code, '_');
+        if ($code === '') {
+            $code = 'work_type_' . time();
+        }
+
+        if (AttendanceWorkType::query()->where('code', $code)->exists()) {
+            return response()->json(['message' => 'Mã loại chấm công đã tồn tại.'], 422);
+        }
+
+        $item = AttendanceWorkType::query()->create([
+            'name' => $name,
+            'code' => $code,
+            'session' => $session,
+            'default_work_units' => $defaultUnits,
+            'sort_order' => (int) ($validated['sort_order'] ?? 0),
+            'is_active' => array_key_exists('is_active', $validated) ? (bool) $validated['is_active'] : true,
+            'is_system' => false,
+            'created_by' => $request->user()->id,
+            'updated_by' => $request->user()->id,
+        ]);
+
+        return response()->json([
+            'message' => 'Đã thêm loại chấm công.',
+            'item' => $this->workTypePayload($item),
+        ], 201);
+    }
+
+    public function workTypeUpdate(Request $request, AttendanceWorkType $attendanceWorkType): JsonResponse
+    {
+        if (! $this->canManageAttendanceTypes($request->user())) {
+            return response()->json(['message' => 'Chỉ Administrator mới được sửa loại chấm công.'], 403);
+        }
+
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:120'],
+            'code' => ['nullable', 'string', 'max:64'],
+            'session' => ['required', 'in:full_day,morning,afternoon,off'],
+            'default_work_units' => ['nullable', 'numeric', 'min:0', 'max:1'],
+            'sort_order' => ['nullable', 'integer', 'min:0', 'max:100000'],
+            'is_active' => ['nullable', 'boolean'],
+        ]);
+
+        $name = trim((string) $validated['name']);
+        $session = (string) $validated['session'];
+        $defaultUnits = $this->resolveWorkTypeDefaultUnits($session, $validated['default_work_units'] ?? null);
+
+        if (! $this->isValidWorkUnitStep($defaultUnits)) {
+            return response()->json([
+                'message' => 'Công mặc định của loại chấm công phải theo bước 0.5 (0, 0.5, 1).',
+            ], 422);
+        }
+
+        $codeInput = trim((string) ($validated['code'] ?? ''));
+        $codeBase = $codeInput !== ''
+            ? Str::slug($codeInput, '_')
+            : Str::slug($name, '_');
+        $code = trim($codeBase, '_');
+        if ($code === '') {
+            $code = 'work_type_' . $attendanceWorkType->id;
+        }
+
+        $exists = AttendanceWorkType::query()
+            ->where('code', $code)
+            ->where('id', '!=', $attendanceWorkType->id)
+            ->exists();
+        if ($exists) {
+            return response()->json(['message' => 'Mã loại chấm công đã tồn tại.'], 422);
+        }
+
+        $attendanceWorkType->update([
+            'name' => $name,
+            'code' => $code,
+            'session' => $session,
+            'default_work_units' => $defaultUnits,
+            'sort_order' => (int) ($validated['sort_order'] ?? $attendanceWorkType->sort_order),
+            'is_active' => array_key_exists('is_active', $validated)
+                ? (bool) $validated['is_active']
+                : (bool) $attendanceWorkType->is_active,
+            'updated_by' => $request->user()->id,
+        ]);
+
+        return response()->json([
+            'message' => 'Đã cập nhật loại chấm công.',
+            'item' => $this->workTypePayload($attendanceWorkType->fresh()),
+        ]);
+    }
+
+    public function workTypeDestroy(Request $request, AttendanceWorkType $attendanceWorkType): JsonResponse
+    {
+        if (! $this->canManageAttendanceTypes($request->user())) {
+            return response()->json(['message' => 'Chỉ Administrator mới được xóa loại chấm công.'], 403);
+        }
+        if ((bool) $attendanceWorkType->is_system) {
+            return response()->json(['message' => 'Không thể xóa loại chấm công hệ thống mặc định.'], 422);
+        }
+        if ($this->isWorkTypeInUse((int) $attendanceWorkType->id)) {
+            return response()->json([
+                'message' => 'Loại chấm công này đang được gán cho nhân sự theo lịch tuần, không thể xóa.',
+            ], 422);
+        }
+
+        $attendanceWorkType->delete();
+
+        return response()->json(['message' => 'Đã xóa loại chấm công.']);
+    }
+
     public function staffUpdate(Request $request, User $user, AttendanceService $attendance): JsonResponse
     {
         if (! $this->canManageAttendance($request->user())) {
@@ -254,19 +411,35 @@ class AttendanceController extends Controller
         }
 
         $validated = $request->validate([
-            'attendance_employment_type' => ['required', 'in:full_time,half_day_morning,half_day_afternoon'],
+            'attendance_employment_type' => ['nullable', 'in:full_time,half_day_morning,half_day_afternoon'],
             'attendance_shift_weekdays' => ['nullable', 'array'],
             'attendance_shift_weekdays.*' => ['integer', 'min:1', 'max:7'],
+            'attendance_weekday_work_types' => ['nullable', 'array'],
+            'attendance_weekday_work_types.*' => ['nullable', 'integer', 'min:1'],
             'attendance_earliest_checkin_time' => ['nullable', 'regex:/^\d{2}:\d{2}$/'],
         ]);
 
+        $weekdayInputProvided = array_key_exists('attendance_weekday_work_types', $validated);
         $shiftDays = array_key_exists('attendance_shift_weekdays', $validated)
             ? array_values(array_unique(array_map('intval', $validated['attendance_shift_weekdays'] ?? [])))
             : $user->attendance_shift_weekdays;
 
+        $employmentType = array_key_exists('attendance_employment_type', $validated)
+            ? (string) $validated['attendance_employment_type']
+            : (string) ($user->attendance_employment_type ?: AttendanceService::EMPLOYMENT_FULL_TIME);
+
+        $weekdayWorkTypes = $weekdayInputProvided
+            ? $this->normalizeWeekdayWorkTypeMap($validated['attendance_weekday_work_types'], true)
+            : $this->normalizeWeekdayWorkTypeMap($user->attendance_weekday_work_types, false);
+
+        if ($weekdayInputProvided) {
+            $shiftDays = $this->shiftWeekdaysFromWeekdayMap($weekdayWorkTypes);
+        }
+
         $user->update([
-            'attendance_employment_type' => (string) $validated['attendance_employment_type'],
-            'attendance_shift_weekdays' => $shiftDays,
+            'attendance_employment_type' => $employmentType,
+            'attendance_shift_weekdays' => empty($shiftDays) ? null : $shiftDays,
+            'attendance_weekday_work_types' => empty($weekdayWorkTypes) ? null : $weekdayWorkTypes,
             'attendance_earliest_checkin_time' => array_key_exists('attendance_earliest_checkin_time', $validated)
                 ? ($validated['attendance_earliest_checkin_time']
                     ? $attendance->normalizeTime((string) $validated['attendance_earliest_checkin_time'], '08:30')
@@ -1372,7 +1545,7 @@ class AttendanceController extends Controller
             $dayCursor->addDay();
         }
 
-        $matrixRows = $trackedUsers->map(function (User $user) use ($dayKeys, $recordIndex) {
+        $matrixRows = $trackedUsers->map(function (User $user) use ($dayKeys, $recordIndex, $attendance) {
             $userRecords = $recordIndex[(int) $user->id] ?? [];
             $totalWorkUnits = 0.0;
             $lateDays = 0;
@@ -1382,6 +1555,9 @@ class AttendanceController extends Controller
                 /** @var AttendanceRecord|null $record */
                 $record = $userRecords[$dayKey] ?? null;
                 if (! $record) {
+                    $dayDate = Carbon::parse($dayKey, 'Asia/Ho_Chi_Minh');
+                    $plannedUnits = $attendance->defaultWorkUnitsForUserOnDate($user, $dayDate);
+                    $isScheduledOff = $plannedUnits <= 0;
                     $cells[] = [
                         'date' => $dayKey,
                         'record_id' => null,
@@ -1389,8 +1565,8 @@ class AttendanceController extends Controller
                         'work_units' => 0,
                         'work_units_display' => '',
                         'minutes_late' => 0,
-                        'status' => 'absent',
-                        'status_label' => 'Không chấm công',
+                        'status' => $isScheduledOff ? 'scheduled_off' : 'absent',
+                        'status_label' => $isScheduledOff ? 'Nghỉ theo lịch' : 'Không chấm công',
                         'source' => '',
                         'source_label' => '',
                         'check_in_at' => '—',
@@ -1463,7 +1639,6 @@ class AttendanceController extends Controller
     {
         $attendance = app(AttendanceService::class);
         [$startDate, $endDate] = $this->resolveReportRange($request);
-        $totalDays = max(1, $startDate->diffInDays($endDate) + 1);
 
         $visibleIds = $this->visibleUserIdsForAttendance($request->user());
 
@@ -1516,10 +1691,15 @@ class AttendanceController extends Controller
             ->get()
             ->groupBy('user_id');
 
-        return $users->map(function (User $user) use ($attendance, $recordsByUser, $requestsByUser, $totalDays) {
+        return $users->map(function (User $user) use ($attendance, $recordsByUser, $requestsByUser, $startDate, $endDate) {
             $employmentType = $attendance->employmentTypeForUser($user);
-            $defaultWorkUnits = $attendance->defaultWorkUnitsForEmployment($employmentType);
-            $expectedUnits = round($totalDays * $defaultWorkUnits, 1);
+            $expectedUnitsRaw = 0.0;
+            $cursor = $startDate->copy();
+            while ($cursor->lte($endDate)) {
+                $expectedUnitsRaw += $attendance->defaultWorkUnitsForUserOnDate($user, $cursor);
+                $cursor->addDay();
+            }
+            $expectedUnits = round($expectedUnitsRaw, 1);
             $userRecords = $recordsByUser->get($user->id, collect());
             $actualUnits = round((float) $userRecords->sum(function (AttendanceRecord $record) {
                 return (float) ($record->work_units ?? 0);
@@ -2017,6 +2197,180 @@ class AttendanceController extends Controller
         $scaled = round($numeric * 2, 6);
 
         return abs($scaled - round($scaled)) < 0.0001;
+    }
+
+    private function canManageAttendanceTypes(?User $user): bool
+    {
+        return $user && $user->role === 'administrator';
+    }
+
+    /**
+     * @return array<int|string, mixed>
+     */
+    private function workTypePayload(AttendanceWorkType $item): array
+    {
+        return [
+            'id' => (int) $item->id,
+            'code' => (string) $item->code,
+            'name' => (string) $item->name,
+            'session' => (string) $item->session,
+            'session_label' => $this->workTypeSessionLabel((string) $item->session),
+            'default_work_units' => (float) ($item->default_work_units ?? 0),
+            'sort_order' => (int) ($item->sort_order ?? 0),
+            'is_active' => (bool) $item->is_active,
+            'is_system' => (bool) $item->is_system,
+            'can_delete' => ! ((bool) $item->is_system),
+        ];
+    }
+
+    private function workTypeSessionLabel(string $session): string
+    {
+        switch ($session) {
+            case AttendanceService::WORK_SESSION_MORNING:
+                return 'Buổi sáng';
+            case AttendanceService::WORK_SESSION_AFTERNOON:
+                return 'Buổi chiều';
+            case AttendanceService::WORK_SESSION_OFF:
+                return 'Nghỉ';
+            default:
+                return 'Cả ngày';
+        }
+    }
+
+    private function resolveWorkTypeDefaultUnits(string $session, $providedValue): float
+    {
+        $defaultBySession = match ($session) {
+            AttendanceService::WORK_SESSION_MORNING,
+            AttendanceService::WORK_SESSION_AFTERNOON => 0.5,
+            AttendanceService::WORK_SESSION_OFF => 0.0,
+            default => 1.0,
+        };
+
+        if ($session === AttendanceService::WORK_SESSION_OFF) {
+            return 0.0;
+        }
+
+        if (! is_numeric($providedValue)) {
+            return $defaultBySession;
+        }
+
+        return $this->normalizeWorkUnits((float) $providedValue);
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    private function normalizeWeekdayWorkTypeMap($payload, bool $strict = false): array
+    {
+        if (! is_array($payload) || $payload === []) {
+            return [];
+        }
+
+        $types = AttendanceWorkType::query()
+            ->select(['id', 'is_active'])
+            ->get()
+            ->keyBy('id');
+
+        $normalized = [];
+        foreach ($payload as $weekdayKey => $workTypeIdRaw) {
+            $weekday = (int) $weekdayKey;
+            if ($weekday < 1 || $weekday > 7) {
+                if ($strict) {
+                    throw new \Illuminate\Http\Exceptions\HttpResponseException(
+                        response()->json([
+                            'message' => 'Lịch tuần chỉ nhận thứ từ 2 đến Chủ nhật (1-7).',
+                        ], 422)
+                    );
+                }
+                continue;
+            }
+
+            $workTypeId = (int) $workTypeIdRaw;
+            if ($workTypeId <= 0) {
+                continue;
+            }
+
+            /** @var AttendanceWorkType|null $type */
+            $type = $types->get($workTypeId);
+            if (! $type) {
+                if ($strict) {
+                    throw new \Illuminate\Http\Exceptions\HttpResponseException(
+                        response()->json([
+                            'message' => sprintf('Loại chấm công #%d không tồn tại.', $workTypeId),
+                        ], 422)
+                    );
+                }
+                continue;
+            }
+            if (! $type->is_active) {
+                if ($strict) {
+                    throw new \Illuminate\Http\Exceptions\HttpResponseException(
+                        response()->json([
+                            'message' => sprintf('Loại chấm công #%d đang tạm ngưng, không thể gán vào lịch tuần.', $workTypeId),
+                        ], 422)
+                    );
+                }
+                continue;
+            }
+
+            $normalized[$weekday] = $workTypeId;
+        }
+
+        ksort($normalized);
+        return $normalized;
+    }
+
+    /**
+     * @param  array<int, int>  $weekdayWorkTypes
+     * @return array<int>
+     */
+    private function shiftWeekdaysFromWeekdayMap(array $weekdayWorkTypes): array
+    {
+        if ($weekdayWorkTypes === []) {
+            return [];
+        }
+
+        $typeIds = array_values(array_unique(array_map('intval', $weekdayWorkTypes)));
+        $unitsByTypeId = AttendanceWorkType::query()
+            ->whereIn('id', $typeIds)
+            ->pluck('default_work_units', 'id')
+            ->all();
+
+        $days = [];
+        foreach ($weekdayWorkTypes as $weekday => $typeId) {
+            if (((float) ($unitsByTypeId[(int) $typeId] ?? 0)) <= 0) {
+                continue;
+            }
+            $day = (int) $weekday;
+            if ($day >= 1 && $day <= 7) {
+                $days[$day] = $day;
+            }
+        }
+        ksort($days);
+
+        return array_values($days);
+    }
+
+    private function isWorkTypeInUse(int $workTypeId): bool
+    {
+        if ($workTypeId <= 0) {
+            return false;
+        }
+
+        return User::query()
+            ->whereNotNull('attendance_weekday_work_types')
+            ->get(['attendance_weekday_work_types'])
+            ->contains(function (User $user) use ($workTypeId) {
+                if (! is_array($user->attendance_weekday_work_types)) {
+                    return false;
+                }
+                foreach ($user->attendance_weekday_work_types as $typeIdRaw) {
+                    if ((int) $typeIdRaw === $workTypeId) {
+                        return true;
+                    }
+                }
+                return false;
+            });
     }
 
     private function canManualAdjustAttendance(?User $user): bool

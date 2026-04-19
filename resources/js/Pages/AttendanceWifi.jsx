@@ -45,10 +45,21 @@ const statusLabels = {
     rejected: 'Từ chối',
 };
 
-const employmentOptions = [
-    { value: 'full_time', label: 'Toàn thời gian' },
-    { value: 'half_day_morning', label: 'Mỗi sáng' },
-    { value: 'half_day_afternoon', label: 'Mỗi chiều' },
+const workTypeSessionOptions = [
+    { value: 'full_day', label: 'Cả ngày', defaultUnits: 1 },
+    { value: 'morning', label: 'Buổi sáng', defaultUnits: 0.5 },
+    { value: 'afternoon', label: 'Buổi chiều', defaultUnits: 0.5 },
+    { value: 'off', label: 'Nghỉ', defaultUnits: 0 },
+];
+
+const weekdayOptions = [
+    { iso: 1, label: 'Thứ 2' },
+    { iso: 2, label: 'Thứ 3' },
+    { iso: 3, label: 'Thứ 4' },
+    { iso: 4, label: 'Thứ 5' },
+    { iso: 5, label: 'Thứ 6' },
+    { iso: 6, label: 'Thứ 7' },
+    { iso: 7, label: 'Chủ nhật' },
 ];
 
 const requestTypeOptions = [
@@ -194,6 +205,28 @@ function formatHolidayRange(item) {
     return `${rangeLabel}${dayCount > 1 ? ` • ${dayCount} ngày` : ''}`;
 }
 
+function normalizeWeekdayWorkTypeMap(raw) {
+    const map = {};
+    if (!raw || typeof raw !== 'object') return map;
+    Object.entries(raw).forEach(([weekdayRaw, typeIdRaw]) => {
+        const weekday = Number(weekdayRaw);
+        const typeId = Number(typeIdRaw);
+        if (!Number.isInteger(weekday) || weekday < 1 || weekday > 7) return;
+        if (!Number.isInteger(typeId) || typeId <= 0) return;
+        map[weekday] = typeId;
+    });
+    return map;
+}
+
+function workTypeLabel(type) {
+    const name = String(type?.name || '').trim();
+    const session = String(type?.session_label || type?.session || '').trim();
+    const units = Number(type?.default_work_units || 0);
+    if (!name) return '';
+    if (!session) return `${name} • ${units} công`;
+    return `${name} • ${session} • ${units} công`;
+}
+
 export default function AttendanceWifi(props) {
     const toast = useToast();
     const role = props?.auth?.user?.role || '';
@@ -244,6 +277,17 @@ export default function AttendanceWifi(props) {
     const [staffRows, setStaffRows] = useState([]);
     const [staffPaging, setStaffPaging] = useState({ current_page: 1, last_page: 1, total: 0, per_page: 200 });
     const [staffFilters, setStaffFilters] = useState({ search: '', role: '', per_page: 200, page: 1 });
+    const [workTypes, setWorkTypes] = useState([]);
+    const [workTypeModal, setWorkTypeModal] = useState({ open: false, item: null });
+    const [workTypeForm, setWorkTypeForm] = useState({
+        name: '',
+        code: '',
+        session: 'full_day',
+        default_work_units: '1',
+        sort_order: '0',
+        is_active: true,
+    });
+    const [savingStaffUserId, setSavingStaffUserId] = useState(0);
     const [reportSummary, setReportSummary] = useState({ total_staff: 0, today_work_units: 0 });
     const [reportMatrix, setReportMatrix] = useState({ month: currentMonthKey(), month_label: '', days: [], rows: [], legend: [] });
     const [reportFilters, setReportFilters] = useState({ month: currentMonthKey(), user_id: '', search: '' });
@@ -284,6 +328,62 @@ export default function AttendanceWifi(props) {
         }
         return rows;
     }, [manualRecordModal.item, staffRows]);
+
+    const fallbackOffTypeId = useMemo(() => {
+        const offByCode = (workTypes || []).find((item) => String(item?.code || '') === 'off_day' && !!item?.is_active);
+        if (offByCode) return Number(offByCode.id || 0);
+        const offByUnits = (workTypes || []).find((item) => Number(item?.default_work_units || 0) <= 0 && !!item?.is_active);
+        return Number(offByUnits?.id || 0);
+    }, [workTypes]);
+
+    const fallbackTypeByCode = useMemo(() => {
+        const map = {};
+        (workTypes || []).forEach((item) => {
+            const code = String(item?.code || '');
+            if (!code || !item?.is_active || map[code]) return;
+            map[code] = Number(item.id || 0);
+        });
+        return map;
+    }, [workTypes]);
+
+    const resolveWeekdayMapForStaff = (item) => {
+        const existing = normalizeWeekdayWorkTypeMap(item?.attendance_weekday_work_types);
+        if (weekdayOptions.every((day) => Number(existing[day.iso] || 0) > 0)) {
+            return existing;
+        }
+
+        const employmentCode = String(item?.attendance_employment_type || 'full_time');
+        const fallbackTypeId = Number(
+            fallbackTypeByCode[employmentCode]
+            || fallbackTypeByCode.full_time
+            || (workTypes.find((type) => !!type?.is_active)?.id || 0),
+        );
+        const shiftDays = Array.isArray(item?.attendance_shift_weekdays)
+            ? item.attendance_shift_weekdays
+                .map((d) => Number(d))
+                .filter((d) => Number.isInteger(d) && d >= 1 && d <= 7)
+            : null;
+
+        const merged = { ...existing };
+        weekdayOptions.forEach((day) => {
+            const current = Number(merged[day.iso] || 0);
+            if (current > 0) return;
+            const isWorkingDay = !shiftDays || shiftDays.length === 0 || shiftDays.includes(day.iso);
+            if (!isWorkingDay && fallbackOffTypeId > 0) {
+                merged[day.iso] = fallbackOffTypeId;
+                return;
+            }
+            if (fallbackTypeId > 0) {
+                merged[day.iso] = fallbackTypeId;
+                return;
+            }
+            if (fallbackOffTypeId > 0) {
+                merged[day.iso] = fallbackOffTypeId;
+            }
+        });
+
+        return merged;
+    };
 
     const reportGrowth = useMemo(() => {
         const days = Array.isArray(reportMatrix?.days) ? reportMatrix.days : [];
@@ -357,9 +457,19 @@ export default function AttendanceWifi(props) {
         setHolidayModal({ open: true, item });
     };
 
+    const resetWorkTypeForm = (item = null) => {
+        setWorkTypeForm({
+            name: item?.name || '',
+            code: item?.code || '',
+            session: item?.session || 'full_day',
+            default_work_units: item?.default_work_units != null ? String(item.default_work_units) : '1',
+            sort_order: item?.sort_order != null ? String(item.sort_order) : '0',
+            is_active: item?.is_active ?? true,
+        });
+        setWorkTypeModal({ open: true, item });
+    };
+
     const openReview = (item) => {
-        const employmentType = item?.user?.attendance_employment_type || 'full_time';
-        const fallbackUnits = employmentType === 'full_time' ? 1 : 0.5;
         setReviewForm({
             status: 'approved',
             approval_mode: 'full_work',
@@ -528,6 +638,12 @@ export default function AttendanceWifi(props) {
         });
     };
 
+    const loadWorkTypes = async () => {
+        if (!canManage) return;
+        const res = await axios.get('/api/v1/attendance/work-types');
+        setWorkTypes(res.data?.data || []);
+    };
+
     const handleReportSearch = (val) => {
         const next = { ...reportFilters, search: val };
         setReportFilters(next);
@@ -551,6 +667,7 @@ export default function AttendanceWifi(props) {
                 canManage ? loadDevices(deviceFilters) : Promise.resolve(),
                 canManage ? loadHolidays() : Promise.resolve(),
                 canManage ? loadStaff(staffFilters) : Promise.resolve(),
+                canManage ? loadWorkTypes() : Promise.resolve(),
                 canViewReport ? loadReport(reportFilters) : Promise.resolve(),
             ]);
         } catch (error) {
@@ -704,17 +821,80 @@ export default function AttendanceWifi(props) {
         }
     };
 
-    const updateStaffEmployment = async (userId, attendanceEmploymentType) => {
+    const saveWorkType = async () => {
+        if (!isAdministrator) return;
+        const payload = {
+            name: String(workTypeForm.name || '').trim(),
+            code: String(workTypeForm.code || '').trim() || null,
+            session: workTypeForm.session,
+            default_work_units: Number(workTypeForm.default_work_units || 0),
+            sort_order: Number(workTypeForm.sort_order || 0),
+            is_active: !!workTypeForm.is_active,
+        };
+        if (!payload.name) {
+            toast.error('Tên loại chấm công là bắt buộc.');
+            return;
+        }
         try {
-            await axios.put(`/api/v1/attendance/staff/${userId}`, { attendance_employment_type: attendanceEmploymentType });
-            setStaffRows((current) => current.map((item) => (
-                Number(item.id) === Number(userId)
-                    ? { ...item, attendance_employment_type: attendanceEmploymentType }
-                    : item
-            )));
-            toast.success('Đã cập nhật hình thức chấm công.');
+            if (workTypeModal.item?.id) {
+                await axios.put(`/api/v1/attendance/work-types/${workTypeModal.item.id}`, payload);
+                toast.success('Đã cập nhật loại chấm công.');
+            } else {
+                await axios.post('/api/v1/attendance/work-types', payload);
+                toast.success('Đã thêm loại chấm công.');
+            }
+            setWorkTypeModal({ open: false, item: null });
+            await loadWorkTypes();
         } catch (error) {
-            toast.error(error?.response?.data?.message || 'Cập nhật nhân sự thất bại.');
+            toast.error(error?.response?.data?.message || 'Lưu loại chấm công thất bại.');
+        }
+    };
+
+    const removeWorkType = async (item) => {
+        if (!isAdministrator) return;
+        if (!item?.id) return;
+        if (!window.confirm(`Xóa loại chấm công "${item.name}"?`)) return;
+        try {
+            await axios.delete(`/api/v1/attendance/work-types/${item.id}`);
+            toast.success('Đã xóa loại chấm công.');
+            await loadWorkTypes();
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Xóa loại chấm công thất bại.');
+        }
+    };
+
+    const updateStaffWeekdayType = async (item, weekdayIso, nextTypeIdRaw) => {
+        const userId = Number(item?.id || 0);
+        const weekday = Number(weekdayIso);
+        const nextTypeId = Number(nextTypeIdRaw || 0);
+        if (userId <= 0 || weekday < 1 || weekday > 7 || nextTypeId <= 0) return;
+
+        const nextMap = {
+            ...resolveWeekdayMapForStaff(item),
+            [weekday]: nextTypeId,
+        };
+
+        setSavingStaffUserId(userId);
+        try {
+            const res = await axios.put(`/api/v1/attendance/staff/${userId}`, {
+                attendance_weekday_work_types: nextMap,
+            });
+            const updatedUser = res.data?.user || {};
+            setStaffRows((current) => current.map((row) => {
+                if (Number(row.id) !== userId) return row;
+                return {
+                    ...row,
+                    ...updatedUser,
+                    attendance_weekday_work_types: Object.keys(normalizeWeekdayWorkTypeMap(updatedUser?.attendance_weekday_work_types)).length > 0
+                        ? normalizeWeekdayWorkTypeMap(updatedUser.attendance_weekday_work_types)
+                        : nextMap,
+                };
+            }));
+            toast.success(`Đã cập nhật ${weekdayOptions.find((d) => d.iso === weekday)?.label || 'lịch ngày'} cho ${item?.name || 'nhân sự'}.`);
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Cập nhật lịch nhân sự thất bại.');
+        } finally {
+            setSavingStaffUserId(0);
         }
     };
 
@@ -1187,90 +1367,186 @@ export default function AttendanceWifi(props) {
                 )}
 
                 {activeTab === 'staff' && canManage && (
-                    <div className={cardClass}>
-                        <FilterToolbar enableSearch
-                            className="mb-4"
-                            title="Cấu hình từng nhân viên"
-                            description="Toàn thời gian phải chấm trong khung đầu giờ để được 1 công. Mỗi chiều lấy mốc từ giờ bắt đầu buổi chiều."
-                            searchValue={staffFilters.search}
-                            onSearch={handleStaffSearch}
-                            onSubmitFilters={() => loadStaff({ ...staffFilters, page: 1 })}
-                        >
-                            <div className={FILTER_GRID_RESPONSIVE}>
-                                <FilterField label="Vai trò">
-                                    <select className={filterControlClass} value={staffFilters.role} onChange={(e) => {
-                                        const next = { ...staffFilters, role: e.target.value, page: 1 };
-                                        setStaffFilters(next);
-                                    }}>
-                                        <option value="">Tất cả vai trò</option>
-                                        <option value="admin">Admin</option>
-                                        <option value="quan_ly">Quản lý</option>
-                                        <option value="nhan_vien">Nhân viên</option>
-                                        <option value="ke_toan">Kế toán</option>
-                                    </select>
-                                </FilterField>
-                                <FilterActionGroup className={FILTER_GRID_SUBMIT_ROW}>
-                                    <button type="submit" className={FILTER_SUBMIT_BUTTON_CLASS}>
-                                        Lọc
+                    <div className="space-y-4">
+                        <div className={cardClass}>
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                    <h3 className="text-lg font-semibold text-slate-900">Loại chấm công (kiểu làm việc)</h3>
+                                    <p className="mt-1 text-sm text-text-muted">
+                                        Tạo các loại làm việc để gán theo từng thứ trong tuần. Quyền thêm/sửa/xóa chỉ dành cho Administrator.
+                                    </p>
+                                </div>
+                                {isAdministrator ? (
+                                    <button type="button" className={buttonPrimaryClass} onClick={() => resetWorkTypeForm(null)}>
+                                        Thêm loại chấm công
                                     </button>
-                                </FilterActionGroup>
+                                ) : (
+                                    <Badge tone="slate">Chỉ Administrator được chỉnh sửa</Badge>
+                                )}
                             </div>
-                        </FilterToolbar>
-                        <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200/80">
-                            <table className="min-w-full divide-y divide-slate-200 text-sm">
-                                <thead className="bg-slate-50">
-                                    <tr>
-                                        <th className="px-4 py-3 text-left font-semibold text-slate-700">Nhân sự</th>
-                                        <th className="px-4 py-3 text-left font-semibold text-slate-700">Vai trò</th>
-                                        <th className="px-4 py-3 text-left font-semibold text-slate-700">Phòng ban</th>
-                                        <th className="px-4 py-3 text-left font-semibold text-slate-700">Kiểu làm việc</th>
-                                        <th className="px-4 py-3 text-left font-semibold text-slate-700">Trạng thái</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100 bg-white">
-                                    {staffRows.length === 0 && (
-                                        <tr>
-                                            <td className="px-4 py-6 text-center text-text-muted" colSpan={5}>Chưa có nhân sự phù hợp.</td>
-                                        </tr>
-                                    )}
-                                    {staffRows.map((item) => (
-                                        <tr key={item.id}>
-                                            <td className="px-4 py-3">
-                                                <div className="font-semibold text-slate-900">{item.name}</div>
-                                                <div className="text-xs text-text-muted">{item.email}</div>
-                                            </td>
-                                            <td className="px-4 py-3">{item.role}</td>
-                                            <td className="px-4 py-3">{item.department || '—'}</td>
-                                            <td className="px-4 py-3">
-                                                <select className={inputClass} value={item.attendance_employment_type || 'full_time'} onChange={(e) => updateStaffEmployment(item.id, e.target.value)}>
-                                                    {employmentOptions.map((option) => (
-                                                        <option key={option.value} value={option.value}>{option.label}</option>
-                                                    ))}
-                                                </select>
-                                            </td>
-                                            <td className="px-4 py-3"><Badge tone={item.is_active ? 'emerald' : 'slate'}>{item.is_active ? 'Đang hoạt động' : 'Ngừng hoạt động'}</Badge></td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                                {workTypes.length === 0 ? (
+                                    <div className="md:col-span-2 xl:col-span-3 rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-center text-text-muted">
+                                        Chưa có loại chấm công nào.
+                                    </div>
+                                ) : null}
+                                {workTypes.map((item) => (
+                                    <div key={item.id} className="rounded-2xl border border-slate-200/80 bg-slate-50 p-4">
+                                        <div className="flex items-start justify-between gap-2">
+                                            <div>
+                                                <p className="font-semibold text-slate-900">{item.name}</p>
+                                                <p className="mt-1 text-xs text-text-muted">
+                                                    Mã: <span className="font-semibold text-slate-700">{item.code}</span>
+                                                </p>
+                                            </div>
+                                            <Badge tone={item.is_active ? 'emerald' : 'slate'}>
+                                                {item.is_active ? 'Đang bật' : 'Tạm tắt'}
+                                            </Badge>
+                                        </div>
+                                        <div className="mt-3 text-sm text-slate-700">
+                                            <p>{item.session_label || item.session}</p>
+                                            <p>{Number(item.default_work_units || 0)} công</p>
+                                        </div>
+                                        <div className="mt-3 flex flex-wrap gap-2">
+                                            {isAdministrator ? (
+                                                <button type="button" className={buttonSecondaryClass} onClick={() => resetWorkTypeForm(item)}>
+                                                    Sửa
+                                                </button>
+                                            ) : null}
+                                            {isAdministrator && item.can_delete ? (
+                                                <button
+                                                    type="button"
+                                                    className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-100"
+                                                    onClick={() => removeWorkType(item)}
+                                                >
+                                                    Xóa
+                                                </button>
+                                            ) : null}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
-                        <PaginationControls
-                            page={staffPaging.current_page}
-                            lastPage={staffPaging.last_page}
-                            total={staffPaging.total}
-                            perPage={staffPaging.per_page}
-                            onPageChange={(page) => {
-                                const next = { ...staffFilters, page };
-                                setStaffFilters(next);
-                                loadStaff(next);
-                            }}
-                            onPerPageChange={(perPage) => {
-                                const next = { ...staffFilters, per_page: perPage, page: 1 };
-                                setStaffFilters(next);
-                                loadStaff(next);
-                            }}
-                            label="nhân sự"
-                        />
+
+                        <div className={cardClass}>
+                            <FilterToolbar
+                                enableSearch
+                                className="mb-4"
+                                title="Cấu hình lịch làm việc theo thứ"
+                                description="Gán kiểu làm việc cho từng thứ trong tuần của mỗi nhân sự. Ví dụ: thứ 2 chỉ làm sáng, thứ 7/chủ nhật nghỉ."
+                                searchValue={staffFilters.search}
+                                onSearch={handleStaffSearch}
+                                onSubmitFilters={() => loadStaff({ ...staffFilters, page: 1 })}
+                            >
+                                <div className={FILTER_GRID_RESPONSIVE}>
+                                    <FilterField label="Vai trò">
+                                        <select className={filterControlClass} value={staffFilters.role} onChange={(e) => {
+                                            const next = { ...staffFilters, role: e.target.value, page: 1 };
+                                            setStaffFilters(next);
+                                        }}>
+                                            <option value="">Tất cả vai trò</option>
+                                            <option value="admin">Admin</option>
+                                            <option value="quan_ly">Quản lý</option>
+                                            <option value="nhan_vien">Nhân viên</option>
+                                            <option value="ke_toan">Kế toán</option>
+                                        </select>
+                                    </FilterField>
+                                    <FilterActionGroup className={FILTER_GRID_SUBMIT_ROW}>
+                                        <button type="submit" className={FILTER_SUBMIT_BUTTON_CLASS}>
+                                            Lọc
+                                        </button>
+                                    </FilterActionGroup>
+                                </div>
+                            </FilterToolbar>
+                            <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200/80">
+                                <table className="min-w-full divide-y divide-slate-200 text-sm">
+                                    <thead className="bg-slate-50">
+                                        <tr>
+                                            <th className="px-4 py-3 text-left font-semibold text-slate-700">Nhân sự</th>
+                                            <th className="px-4 py-3 text-left font-semibold text-slate-700">Vai trò</th>
+                                            <th className="px-4 py-3 text-left font-semibold text-slate-700">Phòng ban</th>
+                                            <th className="px-4 py-3 text-left font-semibold text-slate-700">Lịch theo tuần (T2 → CN)</th>
+                                            <th className="px-4 py-3 text-left font-semibold text-slate-700">Trạng thái</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100 bg-white">
+                                        {staffRows.length === 0 && (
+                                            <tr>
+                                                <td className="px-4 py-6 text-center text-text-muted" colSpan={5}>Chưa có nhân sự phù hợp.</td>
+                                            </tr>
+                                        )}
+                                        {staffRows.map((item) => {
+                                            const weekdayMap = resolveWeekdayMapForStaff(item);
+                                            return (
+                                                <tr key={item.id}>
+                                                    <td className="px-4 py-3">
+                                                        <div className="font-semibold text-slate-900">{item.name}</div>
+                                                        <div className="text-xs text-text-muted">{item.email}</div>
+                                                    </td>
+                                                    <td className="px-4 py-3">{item.role}</td>
+                                                    <td className="px-4 py-3">{item.department || '—'}</td>
+                                                    <td className="px-4 py-3">
+                                                        {workTypes.length === 0 ? (
+                                                            <div className="text-xs text-rose-600">Chưa có loại chấm công để gán lịch tuần.</div>
+                                                        ) : (
+                                                            <div className="grid min-w-[860px] gap-2 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                                                                {weekdayOptions.map((day) => {
+                                                                    const selectedTypeId = Number(weekdayMap[day.iso] || 0);
+                                                                    const options = (workTypes || []).filter((type) => (
+                                                                        type?.is_active || Number(type?.id || 0) === selectedTypeId
+                                                                    ));
+                                                                    return (
+                                                                        <label key={`${item.id}-${day.iso}`} className="block">
+                                                                            <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.14em] text-text-subtle">
+                                                                                {day.label}
+                                                                            </span>
+                                                                            <select
+                                                                                className={inputClass}
+                                                                                value={selectedTypeId > 0 ? String(selectedTypeId) : ''}
+                                                                                disabled={savingStaffUserId === Number(item.id)}
+                                                                                onChange={(e) => updateStaffWeekdayType(item, day.iso, e.target.value)}
+                                                                            >
+                                                                                {options.map((type) => (
+                                                                                    <option key={type.id} value={type.id}>
+                                                                                        {workTypeLabel(type)}
+                                                                                    </option>
+                                                                                ))}
+                                                                            </select>
+                                                                        </label>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <Badge tone={item.is_active ? 'emerald' : 'slate'}>
+                                                            {item.is_active ? 'Đang hoạt động' : 'Ngừng hoạt động'}
+                                                        </Badge>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <PaginationControls
+                                page={staffPaging.current_page}
+                                lastPage={staffPaging.last_page}
+                                total={staffPaging.total}
+                                perPage={staffPaging.per_page}
+                                onPageChange={(page) => {
+                                    const next = { ...staffFilters, page };
+                                    setStaffFilters(next);
+                                    loadStaff(next);
+                                }}
+                                onPerPageChange={(perPage) => {
+                                    const next = { ...staffFilters, per_page: perPage, page: 1 };
+                                    setStaffFilters(next);
+                                    loadStaff(next);
+                                }}
+                                label="nhân sự"
+                            />
+                        </div>
                     </div>
                 )}
 
@@ -1486,6 +1762,87 @@ export default function AttendanceWifi(props) {
                 <div className="mt-5 flex justify-end gap-3">
                     <button type="button" className={buttonSecondaryClass} onClick={() => setHolidayModal({ open: false, item: null })}>Hủy</button>
                     <button type="button" className={buttonPrimaryClass} onClick={saveHoliday}>Lưu ngày lễ</button>
+                </div>
+            </Modal>
+
+            <Modal
+                open={workTypeModal.open}
+                onClose={() => setWorkTypeModal({ open: false, item: null })}
+                title={workTypeModal.item ? `Sửa loại chấm công: ${workTypeModal.item.name}` : 'Thêm loại chấm công'}
+                description="Loại chấm công được dùng để gán theo từng thứ trong tuần cho nhân sự."
+                size="md"
+            >
+                <div className="grid gap-4 md:grid-cols-2">
+                    <FormField label="Tên loại" required className="md:col-span-2">
+                        <input
+                            className={inputClass}
+                            value={workTypeForm.name}
+                            onChange={(e) => setWorkTypeForm((s) => ({ ...s, name: e.target.value }))}
+                            placeholder="Ví dụ: Thứ 2 chỉ buổi sáng"
+                        />
+                    </FormField>
+                    <FormField label="Mã loại">
+                        <input
+                            className={inputClass}
+                            value={workTypeForm.code}
+                            onChange={(e) => setWorkTypeForm((s) => ({ ...s, code: e.target.value }))}
+                            placeholder="tu_2_sang"
+                        />
+                    </FormField>
+                    <FormField label="Thứ tự">
+                        <input
+                            type="number"
+                            min="0"
+                            className={inputClass}
+                            value={workTypeForm.sort_order}
+                            onChange={(e) => setWorkTypeForm((s) => ({ ...s, sort_order: e.target.value }))}
+                        />
+                    </FormField>
+                    <FormField label="Phiên làm việc" required>
+                        <select
+                            className={inputClass}
+                            value={workTypeForm.session}
+                            onChange={(e) => {
+                                const nextSession = e.target.value;
+                                const fallback = workTypeSessionOptions.find((item) => item.value === nextSession);
+                                setWorkTypeForm((s) => ({
+                                    ...s,
+                                    session: nextSession,
+                                    default_work_units: String(fallback ? fallback.defaultUnits : s.default_work_units),
+                                }));
+                            }}
+                        >
+                            {workTypeSessionOptions.map((option) => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                        </select>
+                    </FormField>
+                    <FormField label="Công mặc định" required>
+                        <input
+                            type="number"
+                            min="0"
+                            max="1"
+                            step="0.5"
+                            className={inputClass}
+                            value={workTypeForm.default_work_units}
+                            disabled={workTypeForm.session === 'off'}
+                            onChange={(e) => setWorkTypeForm((s) => ({ ...s, default_work_units: e.target.value }))}
+                        />
+                    </FormField>
+                    <FormField label="Trạng thái" className="md:col-span-2">
+                        <select
+                            className={inputClass}
+                            value={workTypeForm.is_active ? '1' : '0'}
+                            onChange={(e) => setWorkTypeForm((s) => ({ ...s, is_active: e.target.value === '1' }))}
+                        >
+                            <option value="1">Đang bật</option>
+                            <option value="0">Tạm tắt</option>
+                        </select>
+                    </FormField>
+                </div>
+                <div className="mt-5 flex justify-end gap-3">
+                    <button type="button" className={buttonSecondaryClass} onClick={() => setWorkTypeModal({ open: false, item: null })}>Hủy</button>
+                    <button type="button" className={buttonPrimaryClass} onClick={saveWorkType} disabled={!isAdministrator}>Lưu loại</button>
                 </div>
             </Modal>
 

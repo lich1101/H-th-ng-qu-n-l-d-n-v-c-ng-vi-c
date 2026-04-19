@@ -121,6 +121,14 @@ Route::prefix('v1')->group(function () {
             ->middleware('role:admin,administrator,ke_toan');
         Route::put('/attendance/staff/{user}', [AttendanceController::class, 'staffUpdate'])
             ->middleware('role:admin,administrator,ke_toan');
+        Route::get('/attendance/work-types', [AttendanceController::class, 'workTypes'])
+            ->middleware('role:admin,administrator,ke_toan');
+        Route::post('/attendance/work-types', [AttendanceController::class, 'workTypeStore'])
+            ->middleware('role:administrator');
+        Route::put('/attendance/work-types/{attendanceWorkType}', [AttendanceController::class, 'workTypeUpdate'])
+            ->middleware('role:administrator');
+        Route::delete('/attendance/work-types/{attendanceWorkType}', [AttendanceController::class, 'workTypeDestroy'])
+            ->middleware('role:administrator');
         Route::get('/attendance/devices', [AttendanceController::class, 'devices'])
             ->middleware('role:admin,administrator,ke_toan');
         Route::post('/attendance/devices/{attendanceDevice}/review', [AttendanceController::class, 'reviewDevice'])
