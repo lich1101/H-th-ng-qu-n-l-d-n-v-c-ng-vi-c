@@ -113,11 +113,11 @@ Route::prefix('v1')->group(function () {
         Route::get('/attendance/wifi', [AttendanceController::class, 'wifiIndex'])
             ->middleware('role:admin,administrator,ke_toan');
         Route::post('/attendance/wifi', [AttendanceController::class, 'wifiStore'])
-            ->middleware('role:admin,administrator,ke_toan');
+            ->middleware('role:administrator');
         Route::put('/attendance/wifi/{attendanceWifiNetwork}', [AttendanceController::class, 'wifiUpdate'])
-            ->middleware('role:admin,administrator,ke_toan');
+            ->middleware('role:administrator');
         Route::delete('/attendance/wifi/{attendanceWifiNetwork}', [AttendanceController::class, 'wifiDestroy'])
-            ->middleware('role:admin,administrator,ke_toan');
+            ->middleware('role:administrator');
         Route::get('/attendance/staff', [AttendanceController::class, 'staffIndex'])
             ->middleware('role:admin,administrator,ke_toan');
         Route::put('/attendance/staff/{user}', [AttendanceController::class, 'staffUpdate'])

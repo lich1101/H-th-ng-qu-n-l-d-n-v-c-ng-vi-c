@@ -29,6 +29,7 @@ const attendanceTabs = {
     wifi: 'WiFi',
     devices: 'Thiết bị',
     holidays: 'Ngày lễ',
+    work_types: 'Loại chấm công',
     staff: 'Nhân sự',
     report: 'Báo cáo',
 };
@@ -232,6 +233,7 @@ export default function AttendanceWifi(props) {
     const role = props?.auth?.user?.role || '';
     const canManage = ['admin', 'administrator', 'ke_toan'].includes(role);
     const isAdministrator = String(role).toLowerCase() === 'administrator';
+    const canManageWifi = isAdministrator;
     const canExport = canManage;
     const canViewReport = canManage || ['quan_ly', 'nhan_vien'].includes(role);
     const canManualAdjust = role === 'administrator';
@@ -309,7 +311,7 @@ export default function AttendanceWifi(props) {
     const tabs = useMemo(() => {
         const base = ['personal', 'requests'];
         if (canManage) {
-            base.push('settings', 'wifi', 'devices', 'holidays', 'staff', 'report');
+            base.push('settings', 'wifi', 'devices', 'holidays', 'work_types', 'staff', 'report');
         } else if (canViewReport) {
             base.push('report');
         }
@@ -448,6 +450,10 @@ export default function AttendanceWifi(props) {
     }, [canManage, dashboard, requests]);
 
     const resetWifiForm = (item = null) => {
+        if (!canManageWifi) {
+            toast.error('Chỉ Administrator mới được cấu hình WiFi.');
+            return;
+        }
         setWifiForm({
             ssid: item?.ssid || '',
             bssid: item?.bssid || '',
@@ -710,6 +716,10 @@ export default function AttendanceWifi(props) {
     };
 
     const saveWifi = async () => {
+        if (!canManageWifi) {
+            toast.error('Chỉ Administrator mới được cấu hình WiFi.');
+            return;
+        }
         try {
             if (wifiModal.item?.id) {
                 await axios.put(`/api/v1/attendance/wifi/${wifiModal.item.id}`, wifiForm);
@@ -726,6 +736,10 @@ export default function AttendanceWifi(props) {
     };
 
     const removeWifi = async (item) => {
+        if (!canManageWifi) {
+            toast.error('Chỉ Administrator mới được xóa WiFi.');
+            return;
+        }
         if (!confirm(`Xóa WiFi ${item.ssid}?`)) return;
         try {
             await axios.delete(`/api/v1/attendance/wifi/${item.id}`);
@@ -1253,9 +1267,15 @@ export default function AttendanceWifi(props) {
                         <div className="flex items-center justify-between gap-3">
                             <div>
                                 <h3 className="text-lg font-semibold text-slate-900">WiFi được phép chấm công</h3>
-                                <p className="mt-1 text-sm text-text-muted">Admin và administrator lấy BSSID hiện tại ngay trên mobile. Ở web, bạn có thể thêm/sửa SSID và BSSID được phép.</p>
+                                <p className="mt-1 text-sm text-text-muted">
+                                    Danh sách SSID/BSSID được phép chấm công. Chỉ Administrator được thêm, sửa, xóa.
+                                </p>
                             </div>
-                            <button type="button" className={buttonPrimaryClass} onClick={() => resetWifiForm(null)}>Thêm WiFi</button>
+                            {canManageWifi ? (
+                                <button type="button" className={buttonPrimaryClass} onClick={() => resetWifiForm(null)}>Thêm WiFi</button>
+                            ) : (
+                                <Badge tone="slate">Chỉ xem</Badge>
+                            )}
                         </div>
                         <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200/80">
                             <table className="min-w-full divide-y divide-slate-200 text-sm">
@@ -1265,13 +1285,15 @@ export default function AttendanceWifi(props) {
                                         <th className="px-4 py-3 text-left font-semibold text-slate-700">BSSID</th>
                                         <th className="px-4 py-3 text-left font-semibold text-slate-700">Ghi chú</th>
                                         <th className="px-4 py-3 text-left font-semibold text-slate-700">Trạng thái</th>
-                                        <th className="px-4 py-3 text-right font-semibold text-slate-700">Thao tác</th>
+                                        {canManageWifi ? (
+                                            <th className="px-4 py-3 text-right font-semibold text-slate-700">Thao tác</th>
+                                        ) : null}
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 bg-white">
                                     {wifiRows.length === 0 && (
                                         <tr>
-                                            <td className="px-4 py-6 text-center text-text-muted" colSpan={5}>Chưa cấu hình WiFi nào.</td>
+                                            <td className="px-4 py-6 text-center text-text-muted" colSpan={canManageWifi ? 5 : 4}>Chưa cấu hình WiFi nào.</td>
                                         </tr>
                                     )}
                                     {wifiRows.map((item) => (
@@ -1280,12 +1302,14 @@ export default function AttendanceWifi(props) {
                                             <td className="px-4 py-3 text-slate-700">{item.bssid || 'Bất kỳ BSSID nào'}</td>
                                             <td className="px-4 py-3 text-text-muted">{item.note || '—'}</td>
                                             <td className="px-4 py-3"><Badge tone={item.is_active ? 'emerald' : 'slate'}>{item.is_active ? 'Đang bật' : 'Đang tắt'}</Badge></td>
-                                            <td className="px-4 py-3">
-                                                <div className="flex justify-end gap-2">
-                                                    <button type="button" className={buttonSecondaryClass} onClick={() => resetWifiForm(item)}>Sửa</button>
-                                                    <button type="button" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-100" onClick={() => removeWifi(item)}>Xóa</button>
-                                                </div>
-                                            </td>
+                                            {canManageWifi ? (
+                                                <td className="px-4 py-3">
+                                                    <div className="flex justify-end gap-2">
+                                                        <button type="button" className={buttonSecondaryClass} onClick={() => resetWifiForm(item)}>Sửa</button>
+                                                        <button type="button" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-100" onClick={() => removeWifi(item)}>Xóa</button>
+                                                    </div>
+                                                </td>
+                                            ) : null}
                                         </tr>
                                     ))}
                                 </tbody>
@@ -1413,201 +1437,201 @@ export default function AttendanceWifi(props) {
                     </div>
                 )}
 
-                {activeTab === 'staff' && canManage && (
-                    <div className="space-y-4">
-                        <div className={cardClass}>
-                            <div className="flex flex-wrap items-start justify-between gap-3">
-                                <div>
-                                    <h3 className="text-lg font-semibold text-slate-900">Loại chấm công (kiểu làm việc)</h3>
-                                    <p className="mt-1 text-sm text-text-muted">
-                                        Tạo các loại làm việc để gán theo từng thứ trong tuần. Quyền thêm/sửa/xóa chỉ dành cho Administrator.
-                                    </p>
-                                </div>
-                                {isAdministrator ? (
-                                    <button type="button" className={buttonPrimaryClass} onClick={() => resetWorkTypeForm(null)}>
-                                        Thêm loại chấm công
-                                    </button>
-                                ) : (
-                                    <Badge tone="slate">Chỉ Administrator được chỉnh sửa</Badge>
-                                )}
+                {activeTab === 'work_types' && canManage && (
+                    <div className={cardClass}>
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                                <h3 className="text-lg font-semibold text-slate-900">Loại chấm công (kiểu làm việc)</h3>
+                                <p className="mt-1 text-sm text-text-muted">
+                                    Tạo các loại làm việc để gán theo từng thứ trong tuần. Quyền thêm/sửa/xóa chỉ dành cho Administrator.
+                                </p>
                             </div>
-                            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                                {workTypes.length === 0 ? (
-                                    <div className="md:col-span-2 xl:col-span-3 rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-center text-text-muted">
-                                        Chưa có loại chấm công nào.
-                                    </div>
-                                ) : null}
-                                {workTypes.map((item) => (
-                                    <div key={item.id} className="rounded-2xl border border-slate-200/80 bg-slate-50 p-4">
-                                        <div className="flex items-start justify-between gap-2">
-                                            <div>
-                                                <p className="font-semibold text-slate-900">{item.name}</p>
-                                                <p className="mt-1 text-xs text-text-muted">
-                                                    Mã: <span className="font-semibold text-slate-700">{item.code}</span>
-                                                </p>
-                                            </div>
-                                            <Badge tone={item.is_active ? 'emerald' : 'slate'}>
-                                                {item.is_active ? 'Đang bật' : 'Tạm tắt'}
-                                            </Badge>
-                                        </div>
-                                        <div className="mt-3 text-sm text-slate-700">
-                                            <p>{item.session_label || item.session}</p>
-                                            <p>{Number(item.default_work_units || 0)} công</p>
-                                        </div>
-                                        <div className="mt-3 flex flex-wrap gap-2">
-                                            {isAdministrator ? (
-                                                <button type="button" className={buttonSecondaryClass} onClick={() => resetWorkTypeForm(item)}>
-                                                    Sửa
-                                                </button>
-                                            ) : null}
-                                            {isAdministrator && item.can_delete ? (
-                                                <button
-                                                    type="button"
-                                                    className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-100"
-                                                    onClick={() => removeWorkType(item)}
-                                                >
-                                                    Xóa
-                                                </button>
-                                            ) : null}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
+                            {isAdministrator ? (
+                                <button type="button" className={buttonPrimaryClass} onClick={() => resetWorkTypeForm(null)}>
+                                    Thêm loại chấm công
+                                </button>
+                            ) : (
+                                <Badge tone="slate">Chỉ Administrator được chỉnh sửa</Badge>
+                            )}
                         </div>
+                        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                            {workTypes.length === 0 ? (
+                                <div className="md:col-span-2 xl:col-span-3 rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-center text-text-muted">
+                                    Chưa có loại chấm công nào.
+                                </div>
+                            ) : null}
+                            {workTypes.map((item) => (
+                                <div key={item.id} className="rounded-2xl border border-slate-200/80 bg-slate-50 p-4">
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div>
+                                            <p className="font-semibold text-slate-900">{item.name}</p>
+                                            <p className="mt-1 text-xs text-text-muted">
+                                                Mã: <span className="font-semibold text-slate-700">{item.code}</span>
+                                            </p>
+                                        </div>
+                                        <Badge tone={item.is_active ? 'emerald' : 'slate'}>
+                                            {item.is_active ? 'Đang bật' : 'Tạm tắt'}
+                                        </Badge>
+                                    </div>
+                                    <div className="mt-3 text-sm text-slate-700">
+                                        <p>{item.session_label || item.session}</p>
+                                        <p>{Number(item.default_work_units || 0)} công</p>
+                                    </div>
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                        {isAdministrator ? (
+                                            <button type="button" className={buttonSecondaryClass} onClick={() => resetWorkTypeForm(item)}>
+                                                Sửa
+                                            </button>
+                                        ) : null}
+                                        {isAdministrator && item.can_delete ? (
+                                            <button
+                                                type="button"
+                                                className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-100"
+                                                onClick={() => removeWorkType(item)}
+                                            >
+                                                Xóa
+                                            </button>
+                                        ) : null}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
 
-                        <div className={cardClass}>
-                            <FilterToolbar
-                                enableSearch
-                                className="mb-4"
-                                title="Cấu hình lịch làm việc theo thứ"
-                                description="Gán kiểu làm việc cho từng thứ trong tuần của mỗi nhân sự. Ví dụ: thứ 2 chỉ làm sáng, thứ 7/chủ nhật nghỉ."
-                                searchValue={staffFilters.search}
-                                onSearch={handleStaffSearch}
-                                onSubmitFilters={() => loadStaff({ ...staffFilters, page: 1 })}
-                            >
-                                <div className={FILTER_GRID_RESPONSIVE}>
-                                    <FilterField label="Vai trò">
-                                        <select className={filterControlClass} value={staffFilters.role} onChange={(e) => {
-                                            const next = { ...staffFilters, role: e.target.value, page: 1 };
-                                            setStaffFilters(next);
-                                        }}>
-                                            <option value="">Tất cả vai trò</option>
-                                            <option value="admin">Admin</option>
-                                            <option value="quan_ly">Quản lý</option>
-                                            <option value="nhan_vien">Nhân viên</option>
-                                            <option value="ke_toan">Kế toán</option>
-                                        </select>
-                                    </FilterField>
-                                    <FilterActionGroup className={FILTER_GRID_SUBMIT_ROW}>
-                                        <button type="submit" className={FILTER_SUBMIT_BUTTON_CLASS}>
-                                            Lọc
-                                        </button>
-                                    </FilterActionGroup>
-                                </div>
-                            </FilterToolbar>
-                            <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200/80">
-                                <table className="min-w-full divide-y divide-slate-200 text-sm">
-                                    <thead className="bg-slate-50">
-                                        <tr>
-                                            <th className="px-4 py-3 text-left font-semibold text-slate-700">Nhân sự</th>
-                                            <th className="px-4 py-3 text-left font-semibold text-slate-700">Vai trò</th>
-                                            <th className="px-4 py-3 text-left font-semibold text-slate-700">Phòng ban</th>
-                                            <th className="px-4 py-3 text-left font-semibold text-slate-700" >Lịch theo tuần (T2 → CN)</th>
-                                            <th className="px-4 py-3 text-left font-semibold text-slate-700">Trạng thái</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-100 bg-white">
-                                        {staffRows.length === 0 && (
-                                            <tr>
-                                                <td className="px-4 py-6 text-center text-text-muted" colSpan={5}>Chưa có nhân sự phù hợp.</td>
-                                            </tr>
-                                        )}
-                                        {staffRows.map((item) => {
-                                            const weekdayMap = resolveWeekdayMapForStaff(item);
-                                            const weekSummary = weekdayOptions.reduce((acc, day) => {
-                                                const selectedTypeId = Number(weekdayMap[day.iso] || 0);
-                                                const selectedType = workTypeById[selectedTypeId];
-                                                const units = Number(selectedType?.default_work_units || 0);
-                                                if (units > 0) {
-                                                    acc.workDays += 1;
-                                                } else {
-                                                    acc.offDays += 1;
-                                                }
-                                                acc.totalUnits += units;
-                                                return acc;
-                                            }, { workDays: 0, offDays: 0, totalUnits: 0 });
-                                            const totalUnitsLabel = Number(weekSummary.totalUnits || 0).toFixed(1);
-                                            return (
-                                                <tr
-                                                    key={item.id}
-                                                    className="cursor-pointer transition-colors hover:bg-slate-50"
-                                                    role="button"
-                                                    tabIndex={0}
-                                                    onClick={() => openStaffScheduleModal(item)}
-                                                    onKeyDown={(event) => {
-                                                        if (event.key === 'Enter' || event.key === ' ') {
-                                                            event.preventDefault();
-                                                            openStaffScheduleModal(item);
-                                                        }
-                                                    }}
-                                                >
-                                                    <td className="px-4 py-3">
-                                                        <div className="font-semibold text-slate-900">{item.name}</div>
-                                                        <div className="text-xs text-text-muted">{item.email}</div>
-                                                    </td>
-                                                    <td className="px-4 py-3">{item.role}</td>
-                                                    <td className="px-4 py-3">{item.department || '—'}</td>
-                                                    <td className="px-4 py-3">
-                                                        {workTypes.length === 0 ? (
-                                                            <div className="text-xs text-rose-600">Chưa có loại chấm công để gán lịch tuần.</div>
-                                                        ) : (
-                                                            <div className="space-y-2">
-                                                                <div className="text-xs text-slate-700">
-                                                                    {`Làm: ${weekSummary.workDays} ngày • Nghỉ: ${weekSummary.offDays} ngày • Tổng công/tuần: ${totalUnitsLabel}`}
-                                                                </div>
-                                                                <button
-                                                                    type="button"
-                                                                    className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                                                                    onClick={(event) => {
-                                                                        event.stopPropagation();
-                                                                        openStaffScheduleModal(item);
-                                                                    }}
-                                                                >
-                                                                    Mở lịch tuần
-                                                                </button>
-                                                            </div>
-                                                        )}
-                                                        <div className="mt-1.5 text-[11px] text-text-muted">Bấm vào dòng hoặc nút để mở popup.</div>
-                                                    </td>
-                                                    <td className="px-4 py-3">
-                                                        <Badge tone={item.is_active ? 'emerald' : 'slate'}>
-                                                            {item.is_active ? 'Đang hoạt động' : 'Ngừng hoạt động'}
-                                                        </Badge>
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
+                {activeTab === 'staff' && canManage && (
+                    <div className={cardClass}>
+                        <FilterToolbar
+                            enableSearch
+                            className="mb-4"
+                            title="Cấu hình lịch làm việc theo thứ"
+                            description="Gán kiểu làm việc cho từng thứ trong tuần của mỗi nhân sự. Ví dụ: thứ 2 chỉ làm sáng, thứ 7/chủ nhật nghỉ."
+                            searchValue={staffFilters.search}
+                            onSearch={handleStaffSearch}
+                            onSubmitFilters={() => loadStaff({ ...staffFilters, page: 1 })}
+                        >
+                            <div className={FILTER_GRID_RESPONSIVE}>
+                                <FilterField label="Vai trò">
+                                    <select className={filterControlClass} value={staffFilters.role} onChange={(e) => {
+                                        const next = { ...staffFilters, role: e.target.value, page: 1 };
+                                        setStaffFilters(next);
+                                    }}>
+                                        <option value="">Tất cả vai trò</option>
+                                        <option value="admin">Admin</option>
+                                        <option value="quan_ly">Quản lý</option>
+                                        <option value="nhan_vien">Nhân viên</option>
+                                        <option value="ke_toan">Kế toán</option>
+                                    </select>
+                                </FilterField>
+                                <FilterActionGroup className={FILTER_GRID_SUBMIT_ROW}>
+                                    <button type="submit" className={FILTER_SUBMIT_BUTTON_CLASS}>
+                                        Lọc
+                                    </button>
+                                </FilterActionGroup>
                             </div>
-                            <PaginationControls
-                                page={staffPaging.current_page}
-                                lastPage={staffPaging.last_page}
-                                total={staffPaging.total}
-                                perPage={staffPaging.per_page}
-                                onPageChange={(page) => {
-                                    const next = { ...staffFilters, page };
-                                    setStaffFilters(next);
-                                    loadStaff(next);
-                                }}
-                                onPerPageChange={(perPage) => {
-                                    const next = { ...staffFilters, per_page: perPage, page: 1 };
-                                    setStaffFilters(next);
-                                    loadStaff(next);
-                                }}
-                                label="nhân sự"
-                            />
+                        </FilterToolbar>
+                        <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200/80">
+                            <table className="min-w-full divide-y divide-slate-200 text-sm">
+                                <thead className="bg-slate-50">
+                                    <tr>
+                                        <th className="px-4 py-3 text-left font-semibold text-slate-700">Nhân sự</th>
+                                        <th className="px-4 py-3 text-left font-semibold text-slate-700">Vai trò</th>
+                                        <th className="px-4 py-3 text-left font-semibold text-slate-700">Phòng ban</th>
+                                        <th className="px-4 py-3 text-left font-semibold text-slate-700" >Lịch theo tuần (T2 → CN)</th>
+                                        <th className="px-4 py-3 text-left font-semibold text-slate-700">Trạng thái</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 bg-white">
+                                    {staffRows.length === 0 && (
+                                        <tr>
+                                            <td className="px-4 py-6 text-center text-text-muted" colSpan={5}>Chưa có nhân sự phù hợp.</td>
+                                        </tr>
+                                    )}
+                                    {staffRows.map((item) => {
+                                        const weekdayMap = resolveWeekdayMapForStaff(item);
+                                        const weekSummary = weekdayOptions.reduce((acc, day) => {
+                                            const selectedTypeId = Number(weekdayMap[day.iso] || 0);
+                                            const selectedType = workTypeById[selectedTypeId];
+                                            const units = Number(selectedType?.default_work_units || 0);
+                                            if (units > 0) {
+                                                acc.workDays += 1;
+                                            } else {
+                                                acc.offDays += 1;
+                                            }
+                                            acc.totalUnits += units;
+                                            return acc;
+                                        }, { workDays: 0, offDays: 0, totalUnits: 0 });
+                                        const totalUnitsLabel = Number(weekSummary.totalUnits || 0).toFixed(1);
+                                        return (
+                                            <tr
+                                                key={item.id}
+                                                className="cursor-pointer transition-colors hover:bg-slate-50"
+                                                role="button"
+                                                tabIndex={0}
+                                                onClick={() => openStaffScheduleModal(item)}
+                                                onKeyDown={(event) => {
+                                                    if (event.key === 'Enter' || event.key === ' ') {
+                                                        event.preventDefault();
+                                                        openStaffScheduleModal(item);
+                                                    }
+                                                }}
+                                            >
+                                                <td className="px-4 py-3">
+                                                    <div className="font-semibold text-slate-900">{item.name}</div>
+                                                    <div className="text-xs text-text-muted">{item.email}</div>
+                                                </td>
+                                                <td className="px-4 py-3">{item.role}</td>
+                                                <td className="px-4 py-3">{item.department || '—'}</td>
+                                                <td className="px-4 py-3">
+                                                    {workTypes.length === 0 ? (
+                                                        <div className="text-xs text-rose-600">Chưa có loại chấm công để gán lịch tuần.</div>
+                                                    ) : (
+                                                        <div className="space-y-2">
+                                                            <div className="text-xs text-slate-700">
+                                                                {`Làm: ${weekSummary.workDays} ngày • Nghỉ: ${weekSummary.offDays} ngày • Tổng công/tuần: ${totalUnitsLabel}`}
+                                                            </div>
+                                                            <button
+                                                                type="button"
+                                                                className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                                                onClick={(event) => {
+                                                                    event.stopPropagation();
+                                                                    openStaffScheduleModal(item);
+                                                                }}
+                                                            >
+                                                                Mở lịch tuần
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                    <div className="mt-1.5 text-[11px] text-text-muted">Bấm vào dòng hoặc nút để mở popup.</div>
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <Badge tone={item.is_active ? 'emerald' : 'slate'}>
+                                                        {item.is_active ? 'Đang hoạt động' : 'Ngừng hoạt động'}
+                                                    </Badge>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
                         </div>
+                        <PaginationControls
+                            page={staffPaging.current_page}
+                            lastPage={staffPaging.last_page}
+                            total={staffPaging.total}
+                            perPage={staffPaging.per_page}
+                            onPageChange={(page) => {
+                                const next = { ...staffFilters, page };
+                                setStaffFilters(next);
+                                loadStaff(next);
+                            }}
+                            onPerPageChange={(perPage) => {
+                                const next = { ...staffFilters, per_page: perPage, page: 1 };
+                                setStaffFilters(next);
+                                loadStaff(next);
+                            }}
+                            label="nhân sự"
+                        />
                     </div>
                 )}
 
@@ -1789,7 +1813,9 @@ export default function AttendanceWifi(props) {
                 </div>
                 <div className="mt-5 flex justify-end gap-3">
                     <button type="button" className={buttonSecondaryClass} onClick={() => setWifiModal({ open: false, item: null })}>Hủy</button>
-                    <button type="button" className={buttonPrimaryClass} onClick={saveWifi}>Lưu WiFi</button>
+                    {canManageWifi ? (
+                        <button type="button" className={buttonPrimaryClass} onClick={saveWifi}>Lưu WiFi</button>
+                    ) : null}
                 </div>
             </Modal>
 

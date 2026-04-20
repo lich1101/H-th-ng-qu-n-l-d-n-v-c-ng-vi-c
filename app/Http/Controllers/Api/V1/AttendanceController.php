@@ -142,7 +142,7 @@ class AttendanceController extends Controller
 
     public function wifiStore(Request $request, AttendanceService $attendance): JsonResponse
     {
-        if (! $this->canManageAttendance($request->user())) {
+        if (! $this->canManageAttendanceWifi($request->user())) {
             return response()->json(['message' => 'Không có quyền cấu hình WiFi.'], 403);
         }
 
@@ -170,7 +170,7 @@ class AttendanceController extends Controller
 
     public function wifiUpdate(Request $request, AttendanceWifiNetwork $attendanceWifiNetwork, AttendanceService $attendance): JsonResponse
     {
-        if (! $this->canManageAttendance($request->user())) {
+        if (! $this->canManageAttendanceWifi($request->user())) {
             return response()->json(['message' => 'Không có quyền cập nhật WiFi.'], 403);
         }
 
@@ -199,7 +199,7 @@ class AttendanceController extends Controller
 
     public function wifiDestroy(Request $request, AttendanceWifiNetwork $attendanceWifiNetwork): JsonResponse
     {
-        if (! $this->canManageAttendance($request->user())) {
+        if (! $this->canManageAttendanceWifi($request->user())) {
             return response()->json(['message' => 'Không có quyền xóa WiFi.'], 403);
         }
 
@@ -1871,6 +1871,11 @@ class AttendanceController extends Controller
     private function canManageAttendance(?User $user): bool
     {
         return $user && in_array($user->role, ['admin', 'administrator', 'ke_toan'], true);
+    }
+
+    private function canManageAttendanceWifi(?User $user): bool
+    {
+        return $user && $user->role === 'administrator';
     }
 
     private function canTrackAttendance(?User $user): bool
