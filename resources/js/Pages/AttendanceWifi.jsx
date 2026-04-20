@@ -1524,11 +1524,32 @@ export default function AttendanceWifi(props) {
                                         )}
                                         {staffRows.map((item) => {
                                             const weekdayMap = resolveWeekdayMapForStaff(item);
+                                            const weekSummary = weekdayOptions.reduce((acc, day) => {
+                                                const selectedTypeId = Number(weekdayMap[day.iso] || 0);
+                                                const selectedType = workTypeById[selectedTypeId];
+                                                const units = Number(selectedType?.default_work_units || 0);
+                                                if (units > 0) {
+                                                    acc.workDays += 1;
+                                                } else {
+                                                    acc.offDays += 1;
+                                                }
+                                                acc.totalUnits += units;
+                                                return acc;
+                                            }, { workDays: 0, offDays: 0, totalUnits: 0 });
+                                            const totalUnitsLabel = Number(weekSummary.totalUnits || 0).toFixed(1);
                                             return (
                                                 <tr
                                                     key={item.id}
                                                     className="cursor-pointer transition-colors hover:bg-slate-50"
+                                                    role="button"
+                                                    tabIndex={0}
                                                     onClick={() => openStaffScheduleModal(item)}
+                                                    onKeyDown={(event) => {
+                                                        if (event.key === 'Enter' || event.key === ' ') {
+                                                            event.preventDefault();
+                                                            openStaffScheduleModal(item);
+                                                        }
+                                                    }}
                                                 >
                                                     <td className="px-4 py-3">
                                                         <div className="font-semibold text-slate-900">{item.name}</div>
@@ -1540,27 +1561,23 @@ export default function AttendanceWifi(props) {
                                                         {workTypes.length === 0 ? (
                                                             <div className="text-xs text-rose-600">Chưa có loại chấm công để gán lịch tuần.</div>
                                                         ) : (
-                                                            <div className="grid min-w-[720px] gap-1.5 sm:grid-cols-2 xl:grid-cols-4">
-                                                                {weekdayOptions.map((day) => {
-                                                                    const selectedTypeId = Number(weekdayMap[day.iso] || 0);
-                                                                    const selectedType = workTypeById[selectedTypeId];
-                                                                    const selectedLabel = selectedType
-                                                                        ? workTypeLabel(selectedType)
-                                                                        : 'Chưa cấu hình';
-                                                                    return (
-                                                                        <div key={`${item.id}-${day.iso}`} className="rounded-xl border border-slate-200/80 bg-white px-2 py-1.5">
-                                                                            <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-text-subtle">
-                                                                                {day.label}
-                                                                            </div>
-                                                                            <div className="line-clamp-1 text-[11px] font-medium text-slate-700">{selectedLabel}</div>
-                                                                        </div>
-                                                                    );
-                                                                })}
+                                                            <div className="space-y-2">
+                                                                <div className="text-xs text-slate-700">
+                                                                    {`Làm: ${weekSummary.workDays} ngày • Nghỉ: ${weekSummary.offDays} ngày • Tổng công/tuần: ${totalUnitsLabel}`}
+                                                                </div>
+                                                                <button
+                                                                    type="button"
+                                                                    className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                                                    onClick={(event) => {
+                                                                        event.stopPropagation();
+                                                                        openStaffScheduleModal(item);
+                                                                    }}
+                                                                >
+                                                                    Mở lịch tuần
+                                                                </button>
                                                             </div>
                                                         )}
-                                                        <div className="mt-1.5 text-[11px] text-text-muted">
-                                                            Bấm vào dòng để mở popup và chỉnh lịch theo từng thứ.
-                                                        </div>
+                                                        <div className="mt-1.5 text-[11px] text-text-muted">Bấm vào dòng hoặc nút để mở popup.</div>
                                                     </td>
                                                     <td className="px-4 py-3">
                                                         <Badge tone={item.is_active ? 'emerald' : 'slate'}>
