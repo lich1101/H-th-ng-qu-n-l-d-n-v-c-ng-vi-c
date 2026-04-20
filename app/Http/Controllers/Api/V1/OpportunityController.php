@@ -7,15 +7,16 @@ use App\Http\Helpers\CrmScope;
 use App\Models\Client;
 use App\Models\Contract;
 use App\Models\Opportunity;
+use App\Models\OpportunityStatus;
 use App\Models\User;
 use App\Services\NotificationService;
 use App\Services\StaffFilterOptionsService;
-use App\Support\OpportunityComputedStatus;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class OpportunityController extends Controller
@@ -27,25 +28,21 @@ class OpportunityController extends Controller
     {
         $viewer = $request->user();
         $isLinkableForContract = $request->boolean('linkable_for_contract');
-        $scopeWithoutComputedStatus = $this->opportunityIndexFilteredQuery($request, $viewer, false);
+        $statusOptions = $this->statusOptions();
+        $scopeWithoutStatus = $this->opportunityIndexFilteredQuery($request, $viewer, false);
         $filtered = $this->opportunityIndexFilteredQuery($request, $viewer, true);
 
         $revenueTotal = (float) ($filtered->clone()->sum('amount') ?? 0);
         $statusCounts = $isLinkableForContract
-            ? [
-                'all' => (int) $filtered->clone()->count(),
-                'undetermined' => 0,
-                'open' => 0,
-                'overdue' => 0,
-                'success' => 0,
-            ]
-            : $this->buildOpportunityStatusCounts($scopeWithoutComputedStatus);
+            ? $this->emptyOpportunityStatusCounts($statusOptions, (int) $filtered->clone()->count())
+            : $this->buildOpportunityStatusCounts($scopeWithoutStatus, $statusOptions);
 
         $query = $filtered->clone()->with([
             'client:id,name,company,email,phone,notes,assigned_staff_id',
             'assignee:id,name,email,role',
             'creator:id,name,email,role',
             'product:id,name,code',
+            'statusRelation:code,name,color_hex,sort_order',
             'contract:id,code,title,client_id,opportunity_id',
         ]);
 
@@ -54,9 +51,7 @@ class OpportunityController extends Controller
             ->paginate((int) $request->input('per_page', 20));
 
         $result->getCollection()->transform(function (Opportunity $o) {
-            $s = $o->computedStatusPayload();
-            $o->setAttribute('computed_status', $s['code']);
-            $o->setAttribute('computed_status_label', $s['label']);
+            $this->decorateOpportunityStatus($o);
 
             return $o;
         });
@@ -66,11 +61,12 @@ class OpportunityController extends Controller
             'revenue_total' => $revenueTotal,
             'status_counts' => $statusCounts,
         ];
+        $payload['status_options'] = $statusOptions;
 
         return response()->json($payload);
     }
 
-    private function opportunityIndexFilteredQuery(Request $request, User $viewer, bool $applyComputedStatus = true): Builder
+    private function opportunityIndexFilteredQuery(Request $request, User $viewer, bool $applyStatusFilter = true): Builder
     {
         $query = Opportunity::query();
         CrmScope::applyOpportunityScope($query, $viewer);
@@ -94,8 +90,11 @@ class OpportunityController extends Controller
         } elseif ($request->filled('client_id')) {
             $query->where('client_id', (int) $request->input('client_id'));
         }
-        if (! $request->boolean('linkable_for_contract') && $applyComputedStatus && $request->filled('computed_status')) {
-            OpportunityComputedStatus::applyIndexFilter($query, (string) $request->input('computed_status'));
+        if (! $request->boolean('linkable_for_contract') && $applyStatusFilter) {
+            $statusFilter = $this->resolveRequestedStatusFilter($request);
+            if ($statusFilter !== null) {
+                $query->where('status', $statusFilter);
+            }
         }
         $staffFilterIds = $this->resolveStaffFilterIds($request);
         if (! empty($staffFilterIds)) {
@@ -142,30 +141,23 @@ class OpportunityController extends Controller
     }
 
     /**
-     * @return array{all:int,undetermined:int,open:int,overdue:int,success:int}
+     * @param  array<int, array{code:string,name:string,color_hex:string,sort_order:int}>  $statusOptions
+     * @return array<string, int>
      */
-    private function buildOpportunityStatusCounts(Builder $query): array
+    private function buildOpportunityStatusCounts(Builder $query, array $statusOptions): array
     {
-        $counts = [
-            OpportunityComputedStatus::UNDETERMINED => 0,
-            OpportunityComputedStatus::OPEN => 0,
-            OpportunityComputedStatus::OVERDUE => 0,
-            OpportunityComputedStatus::SUCCESS => 0,
-        ];
-
-        foreach (array_keys($counts) as $statusCode) {
+        $counts = $this->emptyOpportunityStatusCounts($statusOptions, (int) $query->clone()->count());
+        foreach ($statusOptions as $status) {
+            $statusCode = (string) ($status['code'] ?? '');
+            if ($statusCode === '') {
+                continue;
+            }
             $statusQuery = $query->clone();
-            OpportunityComputedStatus::applyIndexFilter($statusQuery, $statusCode);
+            $statusQuery->where('status', $statusCode);
             $counts[$statusCode] = (int) $statusQuery->count();
         }
 
-        return [
-            'all' => (int) $query->clone()->count(),
-            'undetermined' => $counts[OpportunityComputedStatus::UNDETERMINED],
-            'open' => $counts[OpportunityComputedStatus::OPEN],
-            'overdue' => $counts[OpportunityComputedStatus::OVERDUE],
-            'success' => $counts[OpportunityComputedStatus::SUCCESS],
-        ];
+        return $counts;
     }
 
     public function store(Request $request): JsonResponse
@@ -175,6 +167,7 @@ class OpportunityController extends Controller
             'opportunity_type' => ['nullable', 'string', 'max:120'],
             'client_id' => ['required', 'integer', 'exists:clients,id'],
             'amount' => ['required', 'numeric', 'min:0'],
+            'status' => ['nullable', 'string', Rule::exists('opportunity_statuses', 'code')],
             'source' => ['nullable', 'string', 'max:120'],
             'success_probability' => ['required', 'integer', 'min:0', 'max:100'],
             'product_id' => ['nullable', 'integer', 'exists:products,id'],
@@ -207,6 +200,7 @@ class OpportunityController extends Controller
         if (empty($validated['assigned_to'])) {
             $validated['assigned_to'] = (int) $request->user()->id;
         }
+        $validated['status'] = trim((string) ($validated['status'] ?? '')) ?: $this->defaultOpportunityStatusCode();
         $validated['watcher_ids'] = $this->normalizeWatcherIds($validated['watcher_ids'] ?? []);
 
         $opportunity = Opportunity::create($validated);
@@ -216,11 +210,10 @@ class OpportunityController extends Controller
             'assignee:id,name,email,role',
             'creator:id,name,email,role',
             'product:id,name,code',
+            'statusRelation:code,name,color_hex,sort_order',
             'contract:id,code,title,client_id,opportunity_id',
         ]);
-        $s = $opportunity->computedStatusPayload();
-        $opportunity->setAttribute('computed_status', $s['code']);
-        $opportunity->setAttribute('computed_status_label', $s['label']);
+        $this->decorateOpportunityStatus($opportunity);
 
         $this->notifyOpportunityCreated($opportunity, $request->user());
 
@@ -323,11 +316,10 @@ class OpportunityController extends Controller
             'assignee:id,name,email,role',
             'creator:id,name,email,role',
             'product:id,name,code',
+            'statusRelation:code,name,color_hex,sort_order',
             'contract:id,code,title,client_id,opportunity_id',
         ]);
-        $s = $opportunity->computedStatusPayload();
-        $opportunity->setAttribute('computed_status', $s['code']);
-        $opportunity->setAttribute('computed_status_label', $s['label']);
+        $this->decorateOpportunityStatus($opportunity);
 
         return response()->json($opportunity);
     }
@@ -348,6 +340,7 @@ class OpportunityController extends Controller
             'opportunity_type' => ['nullable', 'string', 'max:120'],
             'client_id' => ['sometimes', 'required', 'integer', 'exists:clients,id'],
             'amount' => ['required', 'numeric', 'min:0'],
+            'status' => ['nullable', 'string', Rule::exists('opportunity_statuses', 'code')],
             'source' => ['nullable', 'string', 'max:120'],
             'success_probability' => ['required', 'integer', 'min:0', 'max:100'],
             'product_id' => ['nullable', 'integer', 'exists:products,id'],
@@ -371,6 +364,9 @@ class OpportunityController extends Controller
         if (array_key_exists('watcher_ids', $validated)) {
             $validated['watcher_ids'] = $this->normalizeWatcherIds($validated['watcher_ids'] ?? []);
         }
+        if (array_key_exists('status', $validated)) {
+            $validated['status'] = trim((string) $validated['status']) ?: $this->defaultOpportunityStatusCode();
+        }
         if (array_key_exists('client_id', $validated)) {
             $targetClient = Client::query()->find((int) $validated['client_id']);
             if (! $targetClient || ! $this->canMutateOpportunityForClient($user, $targetClient)) {
@@ -388,11 +384,10 @@ class OpportunityController extends Controller
             'assignee:id,name,email,role',
             'creator:id,name,email,role',
             'product:id,name,code',
+            'statusRelation:code,name,color_hex,sort_order',
             'contract:id,code,title,client_id,opportunity_id',
         ]);
-        $s = $opportunity->computedStatusPayload();
-        $opportunity->setAttribute('computed_status', $s['code']);
-        $opportunity->setAttribute('computed_status_label', $s['label']);
+        $this->decorateOpportunityStatus($opportunity);
 
         return response()->json($opportunity);
     }
@@ -621,5 +616,103 @@ class OpportunityController extends Controller
             ->all();
 
         return $normalized;
+    }
+
+    /**
+     * @return array<int, array{code:string,name:string,color_hex:string,sort_order:int}>
+     */
+    private function statusOptions(): array
+    {
+        $rows = OpportunityStatus::query()
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get(['code', 'name', 'color_hex', 'sort_order'])
+            ->map(function (OpportunityStatus $status) {
+                return [
+                    'code' => (string) $status->code,
+                    'name' => (string) $status->name,
+                    'color_hex' => (string) ($status->color_hex ?: '#64748B'),
+                    'sort_order' => (int) ($status->sort_order ?? 0),
+                ];
+            })
+            ->values()
+            ->all();
+
+        if (! empty($rows)) {
+            return $rows;
+        }
+
+        return [
+            ['code' => 'open', 'name' => 'Đang mở', 'color_hex' => '#0EA5E9', 'sort_order' => 1],
+            ['code' => 'won', 'name' => 'Thành công', 'color_hex' => '#22C55E', 'sort_order' => 2],
+            ['code' => 'lost', 'name' => 'Thất bại', 'color_hex' => '#EF4444', 'sort_order' => 3],
+        ];
+    }
+
+    private function defaultOpportunityStatusCode(): string
+    {
+        $options = $this->statusOptions();
+        $firstCode = trim((string) ($options[0]['code'] ?? ''));
+
+        return $firstCode !== '' ? $firstCode : 'open';
+    }
+
+    /**
+     * @param  array<int, array{code:string,name:string,color_hex:string,sort_order:int}>  $statusOptions
+     * @return array<string, int>
+     */
+    private function emptyOpportunityStatusCounts(array $statusOptions, int $allCount): array
+    {
+        $counts = ['all' => max(0, $allCount)];
+        foreach ($statusOptions as $status) {
+            $code = trim((string) ($status['code'] ?? ''));
+            if ($code === '') {
+                continue;
+            }
+            $counts[$code] = 0;
+        }
+
+        return $counts;
+    }
+
+    private function decorateOpportunityStatus(Opportunity $opportunity): void
+    {
+        $payload = $opportunity->computedStatusPayload();
+        $code = trim((string) ($payload['code'] ?? ''));
+        $label = trim((string) ($payload['label'] ?? ''));
+        $colorHex = trim((string) ($payload['color_hex'] ?? '#64748B'));
+
+        if ($code === '') {
+            $code = $this->defaultOpportunityStatusCode();
+        }
+        if ($label === '') {
+            $label = $code;
+        }
+        if ($colorHex === '') {
+            $colorHex = '#64748B';
+        }
+
+        $opportunity->setAttribute('status', $code);
+        $opportunity->setAttribute('status_label', $label);
+        $opportunity->setAttribute('status_color_hex', $colorHex);
+
+        // Giữ tương thích ngược cho web/app đang dùng key computed_status.
+        $opportunity->setAttribute('computed_status', $code);
+        $opportunity->setAttribute('computed_status_label', $label);
+    }
+
+    private function resolveRequestedStatusFilter(Request $request): ?string
+    {
+        $raw = $request->input('status');
+        if ($raw === null || trim((string) $raw) === '') {
+            $raw = $request->input('computed_status');
+        }
+
+        $statusCode = trim((string) $raw);
+        if ($statusCode === '') {
+            return null;
+        }
+
+        return $statusCode;
     }
 }

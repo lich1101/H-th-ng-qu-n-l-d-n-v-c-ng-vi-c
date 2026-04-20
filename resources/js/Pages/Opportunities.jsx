@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import FilterStatusHelpIcon from '@/Components/FilterStatusHelpIcon';
 import axios from 'axios';
 import FilterDateInput from '@/Components/FilterDateInput';
 import PageContainer from '@/Components/PageContainer';
@@ -34,34 +33,35 @@ const numberOrNull = (value) => {
     return Number.isFinite(parsed) ? parsed : null;
 };
 
-const COMPUTED_STATUS_FILTER_OPTIONS = [
-    { value: '', label: 'Tất cả trạng thái' },
-    { value: 'undetermined', label: 'Chưa xác định' },
-    { value: 'open', label: 'Đang mở' },
-    { value: 'overdue', label: 'Quá hạn' },
-    { value: 'success', label: 'Thành công' },
-];
-
-/** Giải thích trạng thái tính toán (OpportunityComputedStatus) */
-const OPPORTUNITY_COMPUTED_STATUS_HELP = [
-    { value: 'undetermined', label: 'Chưa xác định', description: 'Chưa có ngày dự kiến chốt nên chưa phân loại thời hạn.' },
-    { value: 'open', label: 'Đang mở', description: 'Còn trong hạn đến ngày dự kiến chốt và chưa có hợp đồng liên kết.' },
-    { value: 'overdue', label: 'Quá hạn', description: 'Đã qua ngày dự kiến chốt nhưng chưa có hợp đồng liên kết.' },
-    { value: 'success', label: 'Thành công', description: 'Đã có hợp đồng gắn với cơ hội.' },
-];
-
-const computedStatusBadgeHex = (code) => ({
-    undetermined: '#64748B',
-    open: '#0ea5e9',
-    overdue: '#f59e0b',
-    success: '#10b981',
-}[String(code || '')] || '#64748B');
+const normalizeStatusOptions = (rows) => {
+    if (!Array.isArray(rows)) return [];
+    return rows
+        .map((row) => {
+            const code = String(row?.code || '').trim();
+            if (!code) return null;
+            const sortOrder = Number(row?.sort_order);
+            return {
+                code,
+                name: String(row?.name || code),
+                color_hex: String(row?.color_hex || '#64748B'),
+                sort_order: Number.isFinite(sortOrder) ? sortOrder : 0,
+            };
+        })
+        .filter(Boolean)
+        .sort((a, b) => {
+            if (a.sort_order !== b.sort_order) {
+                return a.sort_order - b.sort_order;
+            }
+            return String(a.name || '').localeCompare(String(b.name || ''), 'vi');
+        });
+};
 
 const emptyOpportunityForm = () => ({
     title: '',
     opportunity_type: '',
     client_id: '',
     contract_id: '',
+    status: '',
     source: '',
     amount: '',
     success_probability: '',
@@ -108,17 +108,11 @@ export default function Opportunities(props) {
     const [opportunityMeta, setOpportunityMeta] = useState({ current_page: 1, last_page: 1, total: 0 });
     const [listAggregates, setListAggregates] = useState({
         revenue_total: 0,
-        status_counts: {
-            all: 0,
-            undetermined: 0,
-            open: 0,
-            overdue: 0,
-            success: 0,
-        },
+        status_counts: { all: 0 },
     });
     const [filters, setFilters] = useState({
         search: '',
-        computed_status: '',
+        status: '',
         client_id: '',
         staff_ids: [],
         expected_close_from: '',
@@ -131,6 +125,7 @@ export default function Opportunities(props) {
     const [users, setUsers] = useState([]);
     const [opportunityStaffFilterUsers, setOpportunityStaffFilterUsers] = useState([]);
     const [products, setProducts] = useState([]);
+    const [statusOptions, setStatusOptions] = useState([]);
 
     const [loading, setLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
@@ -164,20 +159,31 @@ export default function Opportunities(props) {
         return row?.client || null;
     }, [opportunities, editingId]);
 
-    const computedStatusCounts = useMemo(() => {
+    const statusOptionMap = useMemo(() => {
+        return (statusOptions || []).reduce((acc, option) => {
+            const code = String(option?.code || '');
+            if (!code) return acc;
+            acc[code] = option;
+            return acc;
+        }, {});
+    }, [statusOptions]);
+
+    const statusCounts = useMemo(() => {
         const toSafeCount = (value) => {
             const parsed = Number(value);
             return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : 0;
         };
 
-        return {
+        const base = {
             all: toSafeCount(listAggregates?.status_counts?.all ?? opportunityMeta.total ?? 0),
-            undetermined: toSafeCount(listAggregates?.status_counts?.undetermined),
-            open: toSafeCount(listAggregates?.status_counts?.open),
-            overdue: toSafeCount(listAggregates?.status_counts?.overdue),
-            success: toSafeCount(listAggregates?.status_counts?.success),
         };
-    }, [listAggregates?.status_counts, opportunityMeta.total]);
+        (statusOptions || []).forEach((option) => {
+            const code = String(option?.code || '');
+            if (!code) return;
+            base[code] = toSafeCount(listAggregates?.status_counts?.[code]);
+        });
+        return base;
+    }, [listAggregates?.status_counts, opportunityMeta.total, statusOptions]);
 
     const stats = useMemo(() => {
         return [
@@ -190,7 +196,7 @@ export default function Opportunities(props) {
 
     const fetchOptions = async () => {
         try {
-            const [clientRes, userRes, productRes, staffFilterRows] = await Promise.all([
+            const [clientRes, userRes, productRes, statusRes, staffFilterRows] = await Promise.all([
                 axios.get('/api/v1/crm/clients', {
                     params: {
                         per_page: 300,
@@ -208,6 +214,7 @@ export default function Opportunities(props) {
                         page: 1,
                     },
                 }),
+                axios.get('/api/v1/opportunity-statuses'),
                 fetchStaffFilterOptions('opportunities'),
             ]);
 
@@ -215,6 +222,10 @@ export default function Opportunities(props) {
             setUsers(userRes.data?.data || []);
             setOpportunityStaffFilterUsers(staffFilterRows);
             setProducts(productRes.data?.data || []);
+            const nextStatuses = normalizeStatusOptions(statusRes.data);
+            if (nextStatuses.length > 0) {
+                setStatusOptions(nextStatuses);
+            }
         } catch (error) {
             toast.error(error?.response?.data?.message || 'Không tải được dữ liệu cấu hình cơ hội.');
         }
@@ -245,12 +256,13 @@ export default function Opportunities(props) {
 
         setLoading(true);
         try {
+            const requestedStatus = String(nextFilters.status || '').trim();
             const res = await axios.get('/api/v1/opportunities', {
                 params: {
                     per_page: Number(nextFilters.per_page || 20),
                     page: nextPage,
                     ...(nextFilters.search ? { search: nextFilters.search } : {}),
-                    ...(nextFilters.computed_status ? { computed_status: nextFilters.computed_status } : {}),
+                    ...(requestedStatus ? { status: requestedStatus } : {}),
                     ...(nextFilters.client_id ? { client_id: nextFilters.client_id } : {}),
                     ...(Array.isArray(nextFilters.staff_ids) && nextFilters.staff_ids.length > 0 ? { staff_ids: nextFilters.staff_ids } : {}),
                     ...(nextFilters.expected_close_from ? { expected_close_from: nextFilters.expected_close_from } : {}),
@@ -262,16 +274,21 @@ export default function Opportunities(props) {
             }
 
             setOpportunities(res.data?.data || []);
+            const nextStatuses = normalizeStatusOptions(res.data?.status_options);
+            if (nextStatuses.length > 0) {
+                setStatusOptions(nextStatuses);
+            }
+            const effectiveStatuses = nextStatuses.length > 0 ? nextStatuses : statusOptions;
+            const nextStatusSet = new Set(effectiveStatuses.map((status) => String(status.code)));
+            const syncedStatusFilter = requestedStatus && nextStatusSet.has(requestedStatus)
+                ? requestedStatus
+                : '';
             const agg = res.data?.aggregates;
             setListAggregates({
                 revenue_total: Number(agg?.revenue_total ?? 0),
-                status_counts: {
-                    all: Number(agg?.status_counts?.all ?? res.data?.total ?? 0),
-                    undetermined: Number(agg?.status_counts?.undetermined ?? 0),
-                    open: Number(agg?.status_counts?.open ?? 0),
-                    overdue: Number(agg?.status_counts?.overdue ?? 0),
-                    success: Number(agg?.status_counts?.success ?? 0),
-                },
+                status_counts: (agg?.status_counts && typeof agg.status_counts === 'object')
+                    ? agg.status_counts
+                    : { all: Number(res.data?.total ?? 0) },
             });
             setOpportunityMeta({
                 current_page: res.data?.current_page || 1,
@@ -280,6 +297,7 @@ export default function Opportunities(props) {
             });
             setFilters((prev) => ({
                 ...prev,
+                status: syncedStatusFilter,
                 page: res.data?.current_page || nextPage,
             }));
         } catch (error) {
@@ -338,6 +356,9 @@ export default function Opportunities(props) {
         if (currentUserId) {
             nextForm.assigned_to = String(currentUserId);
         }
+        if (Array.isArray(statusOptions) && statusOptions.length > 0) {
+            nextForm.status = String(statusOptions[0]?.code || '');
+        }
         setForm(nextForm);
         setShowForm(true);
     };
@@ -346,6 +367,7 @@ export default function Opportunities(props) {
         title: row.title || '',
         opportunity_type: row.opportunity_type || '',
         client_id: row.client_id ? String(row.client_id) : '',
+        status: row.status ? String(row.status) : '',
         source: row.source || '',
         amount: row.amount !== null && row.amount !== undefined && row.amount !== ''
             ? String(row.amount)
@@ -412,6 +434,7 @@ export default function Opportunities(props) {
             title: String(form.title || '').trim(),
             opportunity_type: String(form.opportunity_type || '').trim() || null,
             client_id: Number(form.client_id),
+            status: String(form.status || '').trim() || null,
             source: String(form.source || '').trim() || null,
             amount: amountParsed,
             success_probability: probParsed,
@@ -489,28 +512,22 @@ export default function Opportunities(props) {
             </div>
             <FilterToolbar enableSearch
                 title="Danh sách cơ hội"
-                description="Lọc theo trạng thái tính toán, khách hàng và tìm kiếm nhanh theo tên cơ hội, ghi chú hoặc khách hàng."
+                description="Lọc theo trạng thái cơ hội thủ công, khách hàng và tìm kiếm nhanh theo tên cơ hội, ghi chú hoặc khách hàng."
                 searchValue={filters.search}
                 onSearch={handleOpportunitySearch}
                 onSubmitFilters={applyOpportunityFilters}
             >
                 <div className={FILTER_GRID_WITH_SUBMIT}>
-                    <FilterField
-                        label={(
-                            <span className="inline-flex items-center gap-1.5">
-                                Trạng thái (tính toán)
-                                <FilterStatusHelpIcon items={OPPORTUNITY_COMPUTED_STATUS_HELP} ariaLabel="Giải thích trạng thái cơ hội" />
-                            </span>
-                        )}
-                    >
+                    <FilterField label="Trạng thái cơ hội">
                         <select
                             className={filterControlClass}
-                            value={filters.computed_status}
-                            onChange={(event) => setFilters((prev) => ({ ...prev, computed_status: event.target.value }))}
+                            value={filters.status}
+                            onChange={(event) => setFilters((prev) => ({ ...prev, status: event.target.value }))}
                         >
-                            {COMPUTED_STATUS_FILTER_OPTIONS.map((opt) => (
-                                <option key={opt.value || 'all'} value={opt.value}>
-                                    {opt.label}
+                            <option value="">Tất cả trạng thái</option>
+                            {statusOptions.map((opt) => (
+                                <option key={opt.code} value={opt.code}>
+                                    {opt.name}
                                 </option>
                             ))}
                         </select>
@@ -557,30 +574,30 @@ export default function Opportunities(props) {
                 <div className="mt-4 flex flex-wrap gap-2">
                     <button
                         type="button"
-                        className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${!filters.computed_status ? 'border-primary bg-primary/10 text-primary' : 'border-slate-200 text-slate-600 bg-white'
+                        className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${!filters.status ? 'border-primary bg-primary/10 text-primary' : 'border-slate-200 text-slate-600 bg-white'
                             }`}
                         onClick={() => {
-                            const next = { ...filters, computed_status: '', page: 1 };
+                            const next = { ...filters, status: '', page: 1 };
                             setFilters(next);
                             fetchOpportunities(1, next);
                         }}
                     >
-                        Tất cả (lọc: {computedStatusCounts.all})
+                        Tất cả (lọc: {statusCounts.all})
                     </button>
-                    {COMPUTED_STATUS_FILTER_OPTIONS.filter((o) => o.value).map((opt) => (
+                    {statusOptions.map((opt) => (
                         <button
-                            key={opt.value}
+                            key={opt.code}
                             type="button"
-                            className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${filters.computed_status === opt.value ? 'ring-2 ring-primary/30' : ''
+                            className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${filters.status === opt.code ? 'ring-2 ring-primary/30' : ''
                                 }`}
-                            style={toColorStyle(computedStatusBadgeHex(opt.value))}
+                            style={toColorStyle(opt.color_hex)}
                             onClick={() => {
-                                const next = { ...filters, computed_status: opt.value, page: 1 };
+                                const next = { ...filters, status: opt.code, page: 1 };
                                 setFilters(next);
                                 fetchOpportunities(1, next);
                             }}
                         >
-                            {opt.label} ({computedStatusCounts[opt.value] || 0})
+                            {opt.name} ({statusCounts[opt.code] || 0})
                         </button>
                     ))}
                 </div>
@@ -593,7 +610,7 @@ export default function Opportunities(props) {
                     setEditingId(null);
                 }}
                 title={editingId ? `Sửa cơ hội #${editingId}` : 'Thêm cơ hội mới'}
-                description="Form cơ hội theo chuẩn CRM: khách hàng, doanh số dự kiến và người phụ trách. Trạng thái hiển thị được tính tự động."
+                description="Form cơ hội theo chuẩn CRM: khách hàng, doanh số dự kiến, người phụ trách và trạng thái cơ hội thủ công."
                 size="md"
             >
                 <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
@@ -622,6 +639,21 @@ export default function Opportunities(props) {
                             onChange={(event) => setForm((prev) => ({ ...prev, opportunity_type: event.target.value }))}
                             placeholder="Ví dụ: Dịch vụ SEO, Backlink"
                         />
+                    </Field>
+
+                    <Field label="Trạng thái cơ hội">
+                        <select
+                            className={filterControlClass}
+                            value={form.status}
+                            onChange={(event) => setForm((prev) => ({ ...prev, status: event.target.value }))}
+                        >
+                            <option value="">Chọn trạng thái</option>
+                            {statusOptions.map((option) => (
+                                <option key={option.code} value={option.code}>
+                                    {option.name}
+                                </option>
+                            ))}
+                        </select>
                     </Field>
 
                     <Field label="Doanh số dự kiến (VNĐ)" required>
@@ -783,7 +815,13 @@ export default function Opportunities(props) {
                         </thead>
                         <tbody>
                             {opportunities.map((item) => {
-                                const cStatus = String(item.computed_status || '');
+                                const statusCode = String(item.status || item.computed_status || '');
+                                const statusLabel = String(item.status_label || item.computed_status_label || statusCode || '—');
+                                const statusColor = String(
+                                    item.status_color_hex
+                                    || statusOptionMap?.[statusCode]?.color_hex
+                                    || '#64748B',
+                                );
                                 const assignee = item.assignee?.name || item.creator?.name || '—';
                                 const client = item.client?.name || `KH #${item.client_id}`;
                                 const clientId = Number(item.client_id || item.client?.id || 0);
@@ -840,9 +878,9 @@ export default function Opportunities(props) {
                                         <td className="py-3">
                                             <span
                                                 className="inline-flex rounded-full border px-2 py-1 text-xs font-semibold"
-                                                style={toColorStyle(computedStatusBadgeHex(cStatus))}
+                                                style={toColorStyle(statusColor)}
                                             >
-                                                {item.computed_status_label || item.computed_status || '—'}
+                                                {statusLabel}
                                             </span>
                                         </td>
                                         <td className="py-3 text-xs text-slate-700">

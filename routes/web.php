@@ -204,13 +204,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('/co-hoi', function () {
         return Inertia::render('Opportunities');
-    })->name('opportunities.index')->middleware('role:admin,quan_ly,nhan_vien');
+    })->name('opportunities.index')->middleware('role:admin,administrator,quan_ly,nhan_vien');
 
     Route::get('/co-hoi/{opportunity}', function (App\Models\Opportunity $opportunity) {
         return Inertia::render('OpportunityDetail', [
             'opportunityId' => $opportunity->id,
         ]);
-    })->name('opportunities.detail')->middleware('role:admin,quan_ly,nhan_vien');
+    })->name('opportunities.detail')->middleware('role:admin,administrator,quan_ly,nhan_vien');
 
     Route::get('/hop-dong', function () {
         return Inertia::render('Contracts');
@@ -268,6 +268,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/hang-doanh-thu', function () {
         return Inertia::render('RevenueTiers');
     })->name('revenue-tiers.index')->middleware('role:admin');
+
+    Route::get('/cai-dat-he-thong/trang-thai-co-hoi', function () {
+        return Inertia::render('OpportunityStatuses');
+    })->name('settings.opportunity-statuses')->middleware('role:admin,administrator');
 
     Route::get('/phong-ban', function () {
         return Inertia::render('Departments');

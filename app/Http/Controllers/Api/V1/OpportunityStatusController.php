@@ -13,6 +13,7 @@ class OpportunityStatusController extends Controller
     public function index(): JsonResponse
     {
         $items = OpportunityStatus::query()
+            ->withCount('opportunities')
             ->orderBy('sort_order')
             ->orderBy('id')
             ->get();
@@ -89,4 +90,3 @@ class OpportunityStatusController extends Controller
         return $candidate;
     }
 }
-

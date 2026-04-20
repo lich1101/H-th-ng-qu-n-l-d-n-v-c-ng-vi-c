@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use App\Support\OpportunityComputedStatus;
 use Illuminate\Database\Eloquent\Model;
 
 class Opportunity extends Model
@@ -12,6 +11,7 @@ class Opportunity extends Model
         'opportunity_type',
         'client_id',
         'amount',
+        'status',
         'source',
         'success_probability',
         'product_id',
@@ -24,6 +24,7 @@ class Opportunity extends Model
 
     protected $casts = [
         'amount' => 'float',
+        'status' => 'string',
         'success_probability' => 'integer',
         'watcher_ids' => 'array',
         'expected_close_date' => 'date',
@@ -57,11 +58,39 @@ class Opportunity extends Model
         return $this->hasOne(Contract::class, 'opportunity_id');
     }
 
+    public function statusRelation()
+    {
+        return $this->belongsTo(OpportunityStatus::class, 'status', 'code');
+    }
+
     /**
-     * @return array{code: string, label: string}
+     * @return array{code: string, label: string, color_hex: string}
      */
     public function computedStatusPayload(): array
     {
-        return OpportunityComputedStatus::compute($this);
+        $statusCode = trim((string) ($this->status ?: ''));
+        $status = $this->relationLoaded('statusRelation')
+            ? $this->statusRelation
+            : null;
+
+        if (! $status && $statusCode !== '') {
+            $status = OpportunityStatus::query()
+                ->where('code', $statusCode)
+                ->first();
+        }
+
+        if ($status) {
+            return [
+                'code' => (string) $status->code,
+                'label' => (string) $status->name,
+                'color_hex' => (string) ($status->color_hex ?: '#64748B'),
+            ];
+        }
+
+        return [
+            'code' => $statusCode !== '' ? $statusCode : 'open',
+            'label' => $statusCode !== '' ? $statusCode : 'Đang mở',
+            'color_hex' => '#64748B',
+        ];
     }
 }

@@ -288,6 +288,7 @@ export default function AttendanceWifi(props) {
         is_active: true,
     });
     const [savingStaffUserId, setSavingStaffUserId] = useState(0);
+    const [staffScheduleModal, setStaffScheduleModal] = useState({ open: false, item: null, weekdayMap: {} });
     const [reportSummary, setReportSummary] = useState({ total_staff: 0, today_work_units: 0 });
     const [reportMatrix, setReportMatrix] = useState({ month: currentMonthKey(), month_label: '', days: [], rows: [], legend: [] });
     const [reportFilters, setReportFilters] = useState({ month: currentMonthKey(), user_id: '', search: '' });
@@ -342,6 +343,16 @@ export default function AttendanceWifi(props) {
             const code = String(item?.code || '');
             if (!code || !item?.is_active || map[code]) return;
             map[code] = Number(item.id || 0);
+        });
+        return map;
+    }, [workTypes]);
+
+    const workTypeById = useMemo(() => {
+        const map = {};
+        (workTypes || []).forEach((item) => {
+            const id = Number(item?.id || 0);
+            if (id <= 0) return;
+            map[id] = item;
         });
         return map;
     }, [workTypes]);
@@ -863,17 +874,9 @@ export default function AttendanceWifi(props) {
         }
     };
 
-    const updateStaffWeekdayType = async (item, weekdayIso, nextTypeIdRaw) => {
+    const saveStaffWeekdayMap = async (item, nextMap, successMessage) => {
         const userId = Number(item?.id || 0);
-        const weekday = Number(weekdayIso);
-        const nextTypeId = Number(nextTypeIdRaw || 0);
-        if (userId <= 0 || weekday < 1 || weekday > 7 || nextTypeId <= 0) return;
-
-        const nextMap = {
-            ...resolveWeekdayMapForStaff(item),
-            [weekday]: nextTypeId,
-        };
-
+        if (userId <= 0) return;
         setSavingStaffUserId(userId);
         try {
             const res = await axios.put(`/api/v1/attendance/staff/${userId}`, {
@@ -890,12 +893,56 @@ export default function AttendanceWifi(props) {
                         : nextMap,
                 };
             }));
-            toast.success(`Đã cập nhật ${weekdayOptions.find((d) => d.iso === weekday)?.label || 'lịch ngày'} cho ${item?.name || 'nhân sự'}.`);
+            toast.success(successMessage || `Đã cập nhật lịch theo tuần cho ${item?.name || 'nhân sự'}.`);
         } catch (error) {
             toast.error(error?.response?.data?.message || 'Cập nhật lịch nhân sự thất bại.');
         } finally {
             setSavingStaffUserId(0);
         }
+    };
+
+    const openStaffScheduleModal = (item) => {
+        if (!item?.id) return;
+        setStaffScheduleModal({
+            open: true,
+            item,
+            weekdayMap: resolveWeekdayMapForStaff(item),
+        });
+    };
+
+    const closeStaffScheduleModal = () => {
+        if (savingStaffUserId > 0) return;
+        setStaffScheduleModal({ open: false, item: null, weekdayMap: {} });
+    };
+
+    const updateStaffScheduleModalDay = (weekdayIso, nextTypeIdRaw) => {
+        const weekday = Number(weekdayIso);
+        const nextTypeId = Number(nextTypeIdRaw || 0);
+        if (weekday < 1 || weekday > 7 || nextTypeId <= 0) return;
+        setStaffScheduleModal((prev) => ({
+            ...prev,
+            weekdayMap: {
+                ...(prev.weekdayMap || {}),
+                [weekday]: nextTypeId,
+            },
+        }));
+    };
+
+    const saveStaffScheduleModal = async () => {
+        const item = staffScheduleModal.item;
+        if (!item?.id) return;
+        const normalized = normalizeWeekdayWorkTypeMap(staffScheduleModal.weekdayMap);
+        const missing = weekdayOptions.some((day) => Number(normalized[day.iso] || 0) <= 0);
+        if (missing) {
+            toast.error('Vui lòng chọn loại ca cho đủ 7 ngày trong tuần.');
+            return;
+        }
+        await saveStaffWeekdayMap(
+            item,
+            normalized,
+            `Đã cập nhật lịch theo tuần cho ${item?.name || 'nhân sự'}.`,
+        );
+        setStaffScheduleModal({ open: false, item: null, weekdayMap: {} });
     };
 
     const openExportModal = () => {
@@ -1478,45 +1525,42 @@ export default function AttendanceWifi(props) {
                                         {staffRows.map((item) => {
                                             const weekdayMap = resolveWeekdayMapForStaff(item);
                                             return (
-                                                <tr key={item.id}>
+                                                <tr
+                                                    key={item.id}
+                                                    className="cursor-pointer transition-colors hover:bg-slate-50"
+                                                    onClick={() => openStaffScheduleModal(item)}
+                                                >
                                                     <td className="px-4 py-3">
                                                         <div className="font-semibold text-slate-900">{item.name}</div>
                                                         <div className="text-xs text-text-muted">{item.email}</div>
                                                     </td>
                                                     <td className="px-4 py-3">{item.role}</td>
                                                     <td className="px-4 py-3">{item.department || '—'}</td>
-                                                    <td className="px-4 py-3" style="max-width: 10000px !important;">
+                                                    <td className="px-4 py-3">
                                                         {workTypes.length === 0 ? (
                                                             <div className="text-xs text-rose-600">Chưa có loại chấm công để gán lịch tuần.</div>
                                                         ) : (
-                                                            <div className="grid min-w-[860px] gap-2 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                                                            <div className="grid min-w-[720px] gap-1.5 sm:grid-cols-2 xl:grid-cols-4">
                                                                 {weekdayOptions.map((day) => {
                                                                     const selectedTypeId = Number(weekdayMap[day.iso] || 0);
-                                                                    const options = (workTypes || []).filter((type) => (
-                                                                        type?.is_active || Number(type?.id || 0) === selectedTypeId
-                                                                    ));
+                                                                    const selectedType = workTypeById[selectedTypeId];
+                                                                    const selectedLabel = selectedType
+                                                                        ? workTypeLabel(selectedType)
+                                                                        : 'Chưa cấu hình';
                                                                     return (
-                                                                        <label key={`${item.id}-${day.iso}`} className="block">
-                                                                            <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.14em] text-text-subtle">
+                                                                        <div key={`${item.id}-${day.iso}`} className="rounded-xl border border-slate-200/80 bg-white px-2 py-1.5">
+                                                                            <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-text-subtle">
                                                                                 {day.label}
-                                                                            </span>
-                                                                            <select
-                                                                                className={inputClass}
-                                                                                value={selectedTypeId > 0 ? String(selectedTypeId) : ''}
-                                                                                disabled={savingStaffUserId === Number(item.id)}
-                                                                                onChange={(e) => updateStaffWeekdayType(item, day.iso, e.target.value)}
-                                                                            >
-                                                                                {options.map((type) => (
-                                                                                    <option key={type.id} value={type.id}>
-                                                                                        {workTypeLabel(type)}
-                                                                                    </option>
-                                                                                ))}
-                                                                            </select>
-                                                                        </label>
+                                                                            </div>
+                                                                            <div className="line-clamp-1 text-[11px] font-medium text-slate-700">{selectedLabel}</div>
+                                                                        </div>
                                                                     );
                                                                 })}
                                                             </div>
                                                         )}
+                                                        <div className="mt-1.5 text-[11px] text-text-muted">
+                                                            Bấm vào dòng để mở popup và chỉnh lịch theo từng thứ.
+                                                        </div>
                                                     </td>
                                                     <td className="px-4 py-3">
                                                         <Badge tone={item.is_active ? 'emerald' : 'slate'}>
@@ -1843,6 +1887,75 @@ export default function AttendanceWifi(props) {
                 <div className="mt-5 flex justify-end gap-3">
                     <button type="button" className={buttonSecondaryClass} onClick={() => setWorkTypeModal({ open: false, item: null })}>Hủy</button>
                     <button type="button" className={buttonPrimaryClass} onClick={saveWorkType} disabled={!isAdministrator}>Lưu loại</button>
+                </div>
+            </Modal>
+
+            <Modal
+                open={staffScheduleModal.open}
+                onClose={closeStaffScheduleModal}
+                title={staffScheduleModal.item ? `Lịch tuần: ${staffScheduleModal.item.name}` : 'Lịch tuần nhân sự'}
+                description="Thiết lập loại ca cho từng thứ trong tuần. Chỉ ngày có công > 0 mới được tính lịch làm."
+                size="lg"
+            >
+                {staffScheduleModal.item ? (
+                    <div className="space-y-4">
+                        <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3 text-xs text-text-muted">
+                            {staffScheduleModal.item.email || 'Không có email'} • {staffScheduleModal.item.role || '—'} • {staffScheduleModal.item.department || '—'}
+                        </div>
+                        {workTypes.length === 0 ? (
+                            <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                                Chưa có loại chấm công để thiết lập lịch tuần.
+                            </div>
+                        ) : (
+                            <div className="grid gap-3 md:grid-cols-2">
+                                {weekdayOptions.map((day) => {
+                                    const selectedTypeId = Number(staffScheduleModal.weekdayMap?.[day.iso] || 0);
+                                    const options = (workTypes || []).filter((type) => (
+                                        type?.is_active || Number(type?.id || 0) === selectedTypeId
+                                    ));
+                                    return (
+                                        <FormField key={`modal-day-${day.iso}`} label={day.label} required>
+                                            <select
+                                                className={inputClass}
+                                                value={selectedTypeId > 0 ? String(selectedTypeId) : ''}
+                                                onChange={(e) => updateStaffScheduleModalDay(day.iso, e.target.value)}
+                                                disabled={savingStaffUserId === Number(staffScheduleModal.item?.id || 0)}
+                                            >
+                                                <option value="">Chọn loại ca</option>
+                                                {options.map((type) => (
+                                                    <option key={type.id} value={type.id}>
+                                                        {workTypeLabel(type)}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </FormField>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                ) : null}
+                <div className="mt-5 flex justify-end gap-3">
+                    <button
+                        type="button"
+                        className={buttonSecondaryClass}
+                        onClick={closeStaffScheduleModal}
+                        disabled={savingStaffUserId === Number(staffScheduleModal.item?.id || 0)}
+                    >
+                        Hủy
+                    </button>
+                    <button
+                        type="button"
+                        className={buttonPrimaryClass}
+                        onClick={saveStaffScheduleModal}
+                        disabled={
+                            workTypes.length === 0
+                            || !staffScheduleModal.item
+                            || savingStaffUserId === Number(staffScheduleModal.item?.id || 0)
+                        }
+                    >
+                        {savingStaffUserId === Number(staffScheduleModal.item?.id || 0) ? 'Đang lưu...' : 'Lưu lịch tuần'}
+                    </button>
                 </div>
             </Modal>
 

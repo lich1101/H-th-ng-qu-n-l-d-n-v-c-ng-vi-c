@@ -40,14 +40,19 @@ const doneStatusSet = new Set(['won', 'success', 'thanh_cong', 'hoan_thanh', 'do
 const doneContractStatusSet = new Set(['success', 'active', 'approved', 'hoan_thanh']);
 
 const statusLabel = (value) => STATUS_LABELS[String(value || '').toLowerCase()] || value || '—';
-const opportunityStatusLabel = (row) => row?.computed_status_label || row?.computed_status || '—';
-
-const computedOppHex = (code) => ({
-    undetermined: '#64748B',
-    open: '#0ea5e9',
-    overdue: '#f59e0b',
-    success: '#10b981',
-}[String(code || '')] || '#64748B');
+const opportunityStatusLabel = (row) => row?.status_label || row?.computed_status_label || row?.status || row?.computed_status || '—';
+const opportunityStatusCode = (row) => String(row?.status || row?.computed_status || '').toLowerCase();
+const opportunityStatusHex = (row) => {
+    const explicitHex = String(row?.status_color_hex || '').trim();
+    if (explicitHex) return explicitHex;
+    const fallback = {
+        open: '#0ea5e9',
+        won: '#22C55E',
+        success: '#22C55E',
+        lost: '#EF4444',
+    };
+    return fallback[opportunityStatusCode(row)] || '#64748B';
+};
 
 const formatDate = (raw) => formatVietnamDate(raw);
 const formatDateTime = (raw) => formatVietnamDateTime(raw);
@@ -193,6 +198,7 @@ export default function ClientFlow({ auth, clientId }) {
     const [submittingCareNote, setSubmittingCareNote] = useState(false);
     const [deletingCommentId, setDeletingCommentId] = useState('');
     const [opportunityProducts, setOpportunityProducts] = useState([]);
+    const [opportunityStatuses, setOpportunityStatuses] = useState([]);
     const [showOpportunityModal, setShowOpportunityModal] = useState(false);
     const [editingOpportunityId, setEditingOpportunityId] = useState(null);
     const [savingOpportunity, setSavingOpportunity] = useState(false);
@@ -200,6 +206,7 @@ export default function ClientFlow({ auth, clientId }) {
     const [opportunityForm, setOpportunityForm] = useState({
         title: '',
         opportunity_type: '',
+        status: '',
         source: '',
         amount: '',
         success_probability: '',
@@ -421,21 +428,24 @@ export default function ClientFlow({ auth, clientId }) {
     const fetchLookups = async () => {
         setLoadingLookups(true);
         try {
-            const [leadRes, deptRes, userRes, productRes] = await Promise.all([
+            const [leadRes, deptRes, userRes, productRes, statusRes] = await Promise.all([
                 axios.get('/api/v1/lead-types').catch(() => ({ data: [] })),
                 axios.get('/api/v1/departments').catch(() => ({ data: [] })),
                 axios.get('/api/v1/users/lookup', { params: { purpose: 'operational_assignee' } }).catch(() => ({ data: { data: [] } })),
                 axios.get('/api/v1/products', { params: { per_page: 300, page: 1 } }).catch(() => ({ data: { data: [] } })),
+                axios.get('/api/v1/opportunity-statuses').catch(() => ({ data: [] })),
             ]);
             const nextLeadTypes = Array.isArray(leadRes.data) ? leadRes.data : [];
             const nextDepartments = Array.isArray(deptRes.data) ? deptRes.data : [];
             const nextUsers = Array.isArray(userRes.data?.data) ? userRes.data.data : [];
             const nextProducts = Array.isArray(productRes.data?.data) ? productRes.data.data : [];
+            const nextStatuses = Array.isArray(statusRes.data) ? statusRes.data : [];
 
             setLeadTypes(nextLeadTypes);
             setDepartments(nextDepartments);
             setStaffUsers(nextUsers);
             setOpportunityProducts(nextProducts);
+            setOpportunityStatuses(nextStatuses);
             return {
                 users: nextUsers,
             };
@@ -569,15 +579,17 @@ export default function ClientFlow({ auth, clientId }) {
 
     const openCreateOpportunityModal = async () => {
         if (loadingLookups) return;
-        if (!staffUsers.length) {
+        if (!staffUsers.length || !opportunityStatuses.length) {
             await fetchLookups();
         }
 
         const currentUserId = Number(auth?.user?.id || 0);
+        const defaultStatusCode = String((opportunityStatuses[0]?.code || '')).trim();
         setEditingOpportunityId(null);
         setOpportunityForm({
             title: '',
             opportunity_type: '',
+            status: defaultStatusCode,
             source: '',
             amount: '',
             success_probability: '',
@@ -593,6 +605,7 @@ export default function ClientFlow({ auth, clientId }) {
     const mapRowToOpportunityForm = (row) => ({
         title: row.title || '',
         opportunity_type: row.opportunity_type || '',
+        status: row.status ? String(row.status) : '',
         source: row.source || '',
         amount: row.amount !== null && row.amount !== undefined ? String(row.amount) : '',
         success_probability: row.success_probability != null && row.success_probability !== ''
@@ -609,7 +622,7 @@ export default function ClientFlow({ auth, clientId }) {
 
     const openEditOpportunityModal = async (row) => {
         if (!row?.id || loadingLookups) return;
-        if (!staffUsers.length) {
+        if (!staffUsers.length || !opportunityStatuses.length) {
             await fetchLookups();
         }
         setEditingOpportunityId(row.id);
@@ -662,6 +675,7 @@ export default function ClientFlow({ auth, clientId }) {
             title: String(opportunityForm.title || '').trim(),
             opportunity_type: String(opportunityForm.opportunity_type || '').trim() || null,
             client_id: Number(flow.client.id),
+            status: String(opportunityForm.status || '').trim() || null,
             source: String(opportunityForm.source || '').trim() || null,
             amount: amountParsed,
             success_probability: probParsed,
@@ -734,7 +748,9 @@ export default function ClientFlow({ auth, clientId }) {
     }, [tasks]);
 
     const summary = useMemo(() => {
-        const completedOpportunities = opportunities.filter((row) => String(row.computed_status || '') === 'success').length;
+        const completedOpportunities = opportunities.filter((row) => (
+            doneStatusSet.has(opportunityStatusCode(row))
+        )).length;
         const completedContracts = contracts.filter((row) => {
             const status = String(row.status || '').toLowerCase();
             const approval = String(row.approval_status || '').toLowerCase();
@@ -943,9 +959,9 @@ export default function ClientFlow({ auth, clientId }) {
                                                 <span
                                                     className="inline-flex rounded-full border px-2 py-1 font-semibold"
                                                     style={{
-                                                        borderColor: computedOppHex(row?.computed_status),
-                                                        color: computedOppHex(row?.computed_status),
-                                                        backgroundColor: `${computedOppHex(row?.computed_status)}20`,
+                                                        borderColor: opportunityStatusHex(row),
+                                                        color: opportunityStatusHex(row),
+                                                        backgroundColor: `${opportunityStatusHex(row)}20`,
                                                     }}
                                                 >
                                                     {opportunityStatusLabel(row)}
@@ -1577,6 +1593,20 @@ export default function ClientFlow({ auth, clientId }) {
                             onChange={(event) => setOpportunityForm((prev) => ({ ...prev, opportunity_type: event.target.value }))}
                             placeholder="Ví dụ: Dịch vụ SEO, Backlink"
                         />
+                    </Field>
+                    <Field label="Trạng thái cơ hội">
+                        <select
+                            className={filterControlClass}
+                            value={opportunityForm.status}
+                            onChange={(event) => setOpportunityForm((prev) => ({ ...prev, status: event.target.value }))}
+                        >
+                            <option value="">Chọn trạng thái</option>
+                            {opportunityStatuses.map((status) => (
+                                <option key={status.code} value={status.code}>
+                                    {status.name}
+                                </option>
+                            ))}
+                        </select>
                     </Field>
                     <Field label="Doanh số dự kiến (VNĐ)" required>
                         <input

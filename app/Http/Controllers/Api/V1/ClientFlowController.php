@@ -106,6 +106,7 @@ class ClientFlowController extends Controller
             ->with([
                 'assignee:id,name,email',
                 'creator:id,name,email',
+                'statusRelation:code,name,color_hex,sort_order',
                 'contract:id,code,title,opportunity_id',
             ])
             ->select([
@@ -114,6 +115,7 @@ class ClientFlowController extends Controller
                 'title',
                 'opportunity_type',
                 'amount',
+                'status',
                 'source',
                 'success_probability',
                 'product_id',
@@ -127,8 +129,15 @@ class ClientFlowController extends Controller
             ->get()
             ->each(function (Opportunity $o) {
                 $s = $o->computedStatusPayload();
-                $o->setAttribute('computed_status', $s['code']);
-                $o->setAttribute('computed_status_label', $s['label']);
+                $code = (string) ($s['code'] ?? '');
+                $label = (string) ($s['label'] ?? $code);
+                $colorHex = (string) ($s['color_hex'] ?? '#64748B');
+                $o->setAttribute('status', $code);
+                $o->setAttribute('status_label', $label);
+                $o->setAttribute('status_color_hex', $colorHex);
+                // Giữ tương thích ngược cho app/web cũ.
+                $o->setAttribute('computed_status', $code);
+                $o->setAttribute('computed_status_label', $label);
             });
 
         $projects = Project::query()

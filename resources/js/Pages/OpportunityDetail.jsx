@@ -27,6 +27,7 @@ const emptyForm = {
     title: '',
     opportunity_type: '',
     client_id: '',
+    status: '',
     source: '',
     amount: '',
     success_probability: '',
@@ -64,7 +65,30 @@ export default function OpportunityDetail({ auth, opportunityId }) {
     const [opportunity, setOpportunity] = useState(null);
     const [users, setUsers] = useState([]);
     const [products, setProducts] = useState([]);
+    const [statusOptions, setStatusOptions] = useState([]);
     const [form, setForm] = useState(emptyForm);
+
+    const statusMap = useMemo(() => {
+        return (statusOptions || []).reduce((acc, option) => {
+            const code = String(option?.code || '');
+            if (!code) return acc;
+            acc[code] = option;
+            return acc;
+        }, {});
+    }, [statusOptions]);
+
+    const opportunityStatusCode = String(opportunity?.status || opportunity?.computed_status || '');
+    const opportunityStatusLabel = String(
+        opportunity?.status_label
+        || opportunity?.computed_status_label
+        || opportunityStatusCode
+        || '—',
+    );
+    const opportunityStatusHex = String(
+        opportunity?.status_color_hex
+        || statusMap?.[opportunityStatusCode]?.color_hex
+        || '#64748B',
+    );
 
     const canEdit = useMemo(() => {
         if (['admin', 'administrator', 'ke_toan', 'quan_ly'].includes(userRole)) {
@@ -81,10 +105,10 @@ export default function OpportunityDetail({ auth, opportunityId }) {
 
     const stats = useMemo(() => ([
         { label: 'Khách hàng', value: opportunity?.client?.name || '—' },
-        { label: 'Trạng thái', value: opportunity?.computed_status_label || opportunity?.computed_status || '—' },
+        { label: 'Trạng thái', value: opportunityStatusLabel },
         { label: 'Phụ trách', value: opportunity?.assignee?.name || opportunity?.creator?.name || '—' },
         { label: 'Doanh số', value: formatCurrency(opportunity?.amount || 0) },
-    ]), [opportunity]);
+    ]), [opportunity, opportunityStatusLabel]);
 
     const watcherOptions = useMemo(() => (
         users.map((user) => ({
@@ -103,6 +127,7 @@ export default function OpportunityDetail({ auth, opportunityId }) {
             title: item.title || '',
             opportunity_type: item.opportunity_type || '',
             client_id: item.client_id ? String(item.client_id) : '',
+            status: item.status ? String(item.status) : '',
             source: item.source || '',
             amount: item.amount !== null && item.amount !== undefined ? String(item.amount) : '',
             success_probability: item.success_probability != null && item.success_probability !== ''
@@ -133,12 +158,14 @@ export default function OpportunityDetail({ auth, opportunityId }) {
 
     const fetchLookups = async () => {
         try {
-            const [userRes, productRes] = await Promise.all([
+            const [userRes, productRes, statusRes] = await Promise.all([
                 axios.get('/api/v1/users/lookup', { params: { purpose: 'operational_assignee' } }),
                 axios.get('/api/v1/products', { params: { per_page: 300, page: 1 } }),
+                axios.get('/api/v1/opportunity-statuses').catch(() => ({ data: [] })),
             ]);
             setUsers(userRes.data?.data || []);
             setProducts(productRes.data?.data || []);
+            setStatusOptions(Array.isArray(statusRes.data) ? statusRes.data : []);
         } catch {
             // ignore lookup failure, detail is still usable
         }
@@ -181,6 +208,7 @@ export default function OpportunityDetail({ auth, opportunityId }) {
                 title: String(form.title || '').trim(),
                 opportunity_type: String(form.opportunity_type || '').trim() || null,
                 client_id: Number(form.client_id),
+                status: String(form.status || '').trim() || null,
                 source: String(form.source || '').trim() || null,
                 amount: amountParsed,
                 success_probability: probParsed,
@@ -247,15 +275,8 @@ export default function OpportunityDetail({ auth, opportunityId }) {
                             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                                 <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">
                                     <div className="text-xs uppercase tracking-[0.14em] text-text-subtle">Trạng thái</div>
-                                    <span className="mt-2 inline-flex rounded-full border px-2 py-1 text-xs font-semibold" style={toColorStyle(
-                                        {
-                                            undetermined: '#64748B',
-                                            open: '#0ea5e9',
-                                            overdue: '#f59e0b',
-                                            success: '#10b981',
-                                        }[String(opportunity?.computed_status || '')] || '#64748B'
-                                    )}>
-                                        {opportunity?.computed_status_label || opportunity?.computed_status || '—'}
+                                    <span className="mt-2 inline-flex rounded-full border px-2 py-1 text-xs font-semibold" style={toColorStyle(opportunityStatusHex)}>
+                                        {opportunityStatusLabel}
                                     </span>
                                 </div>
                                 <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">
@@ -348,6 +369,20 @@ export default function OpportunityDetail({ auth, opportunityId }) {
                             value={form.opportunity_type}
                             onChange={(event) => setForm((prev) => ({ ...prev, opportunity_type: event.target.value }))}
                         />
+                    </Field>
+                    <Field label="Trạng thái cơ hội">
+                        <select
+                            className={filterControlClass}
+                            value={form.status}
+                            onChange={(event) => setForm((prev) => ({ ...prev, status: event.target.value }))}
+                        >
+                            <option value="">Chọn trạng thái</option>
+                            {statusOptions.map((option) => (
+                                <option key={option.code} value={option.code}>
+                                    {option.name}
+                                </option>
+                            ))}
+                        </select>
                     </Field>
                     <Field label="Doanh số dự kiến (VNĐ)" required>
                         <input

@@ -335,7 +335,7 @@ export default function Authenticated({ auth, header, children }) {
                 items: [
                     { label: 'Khách hàng', icon: 'users', routeName: 'crm.index', href: route('crm.index'), roles: ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'] },
                     { label: 'Phiếu chuyển phụ trách', icon: 'handover', routeName: 'crm.transfers.index', href: route('crm.transfers.index'), roles: ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'] },
-                    { label: 'Cơ hội', icon: 'trend', routeName: 'opportunities.index', href: route('opportunities.index'), roles: ['admin', 'quan_ly', 'nhan_vien'] },
+                    { label: 'Cơ hội', icon: 'trend', routeName: 'opportunities.index', href: route('opportunities.index'), roles: ['admin', 'administrator', 'quan_ly', 'nhan_vien'] },
                     { label: 'Form tư vấn', icon: 'form', routeName: 'lead-forms.index', href: route('lead-forms.index'), roles: ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'] },
                     { label: 'Facebook Pages', icon: 'facebook', routeName: 'facebook.pages', href: route('facebook.pages'), roles: ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'] },
                 ],
@@ -371,6 +371,7 @@ export default function Authenticated({ auth, header, children }) {
                 items: [
                     { label: 'Phòng ban', icon: 'department', routeName: 'departments.index', href: route('departments.index'), roles: ['admin', 'quan_ly'] },
                     { label: 'Trạng thái khách hàng', icon: 'tag', routeName: 'lead-types.index', href: route('lead-types.index'), roles: ['admin'] },
+                    { label: 'Trạng thái cơ hội', icon: 'tag', routeName: 'settings.opportunity-statuses', href: route('settings.opportunity-statuses'), roles: ['admin', 'administrator'] },
                     { label: 'Hạng doanh thu', icon: 'award', routeName: 'revenue-tiers.index', href: route('revenue-tiers.index'), roles: ['admin'] },
                     { label: 'Barem công việc', icon: 'workflow', routeName: 'services.workflows', href: route('services.workflows'), roles: ['admin', 'administrator', 'quan_ly', 'nhan_vien'] },
                     { label: 'Tải ứng dụng', icon: 'download', routeName: 'app-downloads.index', href: route('app-downloads.index'), roles: ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'] },

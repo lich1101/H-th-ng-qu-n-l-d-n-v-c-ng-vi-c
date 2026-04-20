@@ -38,6 +38,19 @@ class SendAttendanceReminders extends Command
         $attendance->trackedUsersQuery()
             ->get()
             ->each(function ($user) use ($attendance, $notifications, $now, $today, $minutesBefore) {
+                $plannedUnits = (float) $attendance->defaultWorkUnitsForUserOnDate($user, $now->copy());
+                if ($plannedUnits <= 0) {
+                    return;
+                }
+
+                $shiftDays = $attendance->shiftWeekdaysIso($user);
+                if (is_array($shiftDays) && count($shiftDays) > 0) {
+                    $iso = (int) $now->copy()->dayOfWeekIso;
+                    if (! in_array($iso, $shiftDays, true)) {
+                        return;
+                    }
+                }
+
                 $recordExists = AttendanceRecord::query()
                     ->where('user_id', $user->id)
                     ->whereDate('work_date', $today)

@@ -15,6 +15,12 @@ function FormField({ label, required = false, children, className = '' }) {
     );
 }
 
+const toSafeCount = (value) => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed < 0) return 0;
+    return Math.floor(parsed);
+};
+
 export default function OpportunityStatuses(props) {
     const toast = useToast();
     const [items, setItems] = useState([]);
@@ -38,9 +44,9 @@ export default function OpportunityStatuses(props) {
 
     const stats = useMemo(() => ([
         { label: 'Tổng trạng thái', value: String(items.length) },
-        { label: 'Đang dùng', value: String(items.length) },
-        { label: 'Màu thẻ', value: 'Tùy chỉnh' },
-        { label: 'Quyền', value: 'Admin' },
+        { label: 'Trạng thái đang dùng', value: String(items.filter((item) => toSafeCount(item?.opportunities_count) > 0).length) },
+        { label: 'Tổng cơ hội', value: String(items.reduce((sum, item) => sum + toSafeCount(item?.opportunities_count), 0)) },
+        { label: 'Quyền', value: 'Admin / Administrator' },
     ]), [items]);
 
     const resetForm = () => {
@@ -147,6 +153,7 @@ export default function OpportunityStatuses(props) {
                                     </span>
                                     <span className="text-xs text-text-muted">Mã nội bộ: {item.code || 'tự sinh'}</span>
                                     <span className="text-xs text-text-muted">Thứ tự: {item.sort_order ?? 0}</span>
+                                    <span className="text-xs text-text-muted">Số cơ hội: {toSafeCount(item.opportunities_count)}</span>
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <button

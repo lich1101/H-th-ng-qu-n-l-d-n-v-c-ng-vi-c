@@ -30,6 +30,7 @@ use App\Http\Controllers\Api\V1\DeadlineReminderController;
 use App\Http\Controllers\Api\V1\DeviceTokenController;
 use App\Http\Controllers\Api\V1\MeetingController;
 use App\Http\Controllers\Api\V1\NotificationCenterController;
+use App\Http\Controllers\Api\V1\OpportunityStatusController;
 use App\Http\Controllers\Api\V1\ProjectController;
 use App\Http\Controllers\Api\V1\ProjectDashboardController;
 use App\Http\Controllers\Api\V1\ProjectFileController;
@@ -385,15 +386,23 @@ Route::prefix('v1')->group(function () {
             ->middleware('role:admin,administrator,ke_toan');
 
         Route::get('/opportunities', [OpportunityController::class, 'index'])
-            ->middleware('role:admin,quan_ly,nhan_vien');
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien');
         Route::post('/opportunities', [OpportunityController::class, 'store'])
-            ->middleware('role:admin,quan_ly,nhan_vien');
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien');
         Route::get('/opportunities/{opportunity}', [OpportunityController::class, 'show'])
-            ->middleware('role:admin,quan_ly,nhan_vien');
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien');
         Route::put('/opportunities/{opportunity}', [OpportunityController::class, 'update'])
-            ->middleware('role:admin,quan_ly,nhan_vien');
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien');
         Route::delete('/opportunities/{opportunity}', [OpportunityController::class, 'destroy'])
-            ->middleware('role:admin');
+            ->middleware('role:admin,administrator');
+        Route::get('/opportunity-statuses', [OpportunityStatusController::class, 'index'])
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien');
+        Route::post('/opportunity-statuses', [OpportunityStatusController::class, 'store'])
+            ->middleware('role:admin,administrator');
+        Route::put('/opportunity-statuses/{opportunityStatus}', [OpportunityStatusController::class, 'update'])
+            ->middleware('role:admin,administrator');
+        Route::delete('/opportunity-statuses/{opportunityStatus}', [OpportunityStatusController::class, 'destroy'])
+            ->middleware('role:admin,administrator');
 
         Route::get('/products', [ProductController::class, 'index'])
             ->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
