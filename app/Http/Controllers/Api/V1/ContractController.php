@@ -295,12 +295,12 @@ class ContractController extends Controller
 
         $baseWithoutDateFilters = $this->contractIndexFilteredQuery($request, false);
 
-        $current = $this->contractComparisonMetricsForCreatedRange(
+        $current = $this->contractComparisonMetricsForBusinessDateRange(
             $baseWithoutDateFilters->clone(),
             $currentFrom,
             $currentTo
         );
-        $previous = $this->contractComparisonMetricsForCreatedRange(
+        $previous = $this->contractComparisonMetricsForBusinessDateRange(
             $baseWithoutDateFilters->clone(),
             $previousFrom,
             $previousTo
@@ -318,6 +318,7 @@ class ContractController extends Controller
                 'from' => $previousFrom,
                 'to' => $previousTo,
             ],
+            'date_basis' => 'approved_at_or_created_at',
             'current' => $current,
             'previous' => $previous,
             'change_percent' => [
@@ -329,15 +330,15 @@ class ContractController extends Controller
         ];
     }
 
-    private function contractComparisonMetricsForCreatedRange(
+    private function contractComparisonMetricsForBusinessDateRange(
         Builder $baseQuery,
         string $fromDate,
         string $toDate
     ): array {
         $rangeQuery = $baseQuery
             ->clone()
-            ->whereDate('contracts.created_at', '>=', $fromDate)
-            ->whereDate('contracts.created_at', '<=', $toDate);
+            ->whereRaw('DATE(COALESCE(contracts.approved_at, contracts.created_at)) >= ?', [$fromDate])
+            ->whereRaw('DATE(COALESCE(contracts.approved_at, contracts.created_at)) <= ?', [$toDate]);
 
         $contractsCount = (int) $rangeQuery->clone()->count();
         $clientsCount = (int) $rangeQuery->clone()

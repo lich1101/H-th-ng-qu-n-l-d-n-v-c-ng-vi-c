@@ -1608,6 +1608,9 @@ export default function Contracts(props) {
                     </div>
                 </FilterToolbar>
 
+                <p className="mb-2 text-xs text-slate-500">
+                    Card hợp đồng so sánh theo <strong>ngày duyệt</strong> (`approved_at`), nếu chưa duyệt sẽ dùng <strong>ngày tạo</strong> (`created_at`) để không mất dữ liệu.
+                </p>
                 <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                     <div className="group relative overflow-hidden rounded-3xl border border-sky-300/60 bg-gradient-to-br from-sky-600 via-cyan-600 to-blue-700 px-5 py-4 text-white shadow-card transition hover:-translate-y-0.5 hover:shadow-lg">
                         <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-white/10" />
