@@ -11,11 +11,13 @@ use App\Models\OpportunityStatus;
 use App\Models\User;
 use App\Services\NotificationService;
 use App\Services\StaffFilterOptionsService;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -36,6 +38,9 @@ class OpportunityController extends Controller
         $statusCounts = $isLinkableForContract
             ? $this->emptyOpportunityStatusCounts($statusOptions, (int) $filtered->clone()->count())
             : $this->buildOpportunityStatusCounts($scopeWithoutStatus, $statusOptions);
+        $comparison = $isLinkableForContract
+            ? $this->emptyOpportunityMonthlyComparison()
+            : $this->buildOpportunityMonthlyComparison($filtered->clone(), $statusOptions);
 
         $query = $filtered->clone()->with([
             'client:id,name,company,email,phone,notes,assigned_staff_id',
@@ -60,6 +65,7 @@ class OpportunityController extends Controller
         $payload['aggregates'] = [
             'revenue_total' => $revenueTotal,
             'status_counts' => $statusCounts,
+            'comparison' => $comparison,
         ];
         $payload['status_options'] = $statusOptions;
 
@@ -158,6 +164,264 @@ class OpportunityController extends Controller
         }
 
         return $counts;
+    }
+
+    private function buildOpportunityMonthlyComparison(Builder $baseFilteredQuery, array $statusOptions): array
+    {
+        $now = Carbon::now('Asia/Ho_Chi_Minh');
+        $currentFrom = $now->copy()->startOfMonth()->toDateString();
+        $currentTo = $now->copy()->endOfMonth()->toDateString();
+        $previousFrom = $now->copy()->subMonthNoOverflow()->startOfMonth()->toDateString();
+        $previousTo = $now->copy()->subMonthNoOverflow()->endOfMonth()->toDateString();
+
+        [$successCodes, $failedCodes] = $this->resolveOpportunityStatusBuckets($statusOptions);
+
+        $current = $this->opportunityComparisonMetricsForPeriod(
+            $baseFilteredQuery->clone(),
+            $currentFrom,
+            $currentTo,
+            $successCodes,
+            $failedCodes
+        );
+        $previous = $this->opportunityComparisonMetricsForPeriod(
+            $baseFilteredQuery->clone(),
+            $previousFrom,
+            $previousTo,
+            $successCodes,
+            $failedCodes
+        );
+
+        return [
+            'mode' => 'month',
+            'current_label' => 'Tháng này',
+            'previous_label' => 'Tháng trước',
+            'current_period' => [
+                'from' => $currentFrom,
+                'to' => $currentTo,
+            ],
+            'previous_period' => [
+                'from' => $previousFrom,
+                'to' => $previousTo,
+            ],
+            'current' => $current,
+            'previous' => $previous,
+            'change_percent' => [
+                'clients_count' => $this->percentChange($current['clients_count'], $previous['clients_count']),
+                'opportunities_count' => $this->percentChange($current['opportunities_count'], $previous['opportunities_count']),
+                'success_count' => $this->percentChange($current['success_count'], $previous['success_count']),
+                'revenue_total' => $this->percentChange($current['revenue_total'], $previous['revenue_total']),
+                'success_rate' => $this->percentChange($current['success_rate'], $previous['success_rate']),
+                'failure_rate' => $this->percentChange($current['failure_rate'], $previous['failure_rate']),
+                'avg_care_days' => $this->percentChange($current['avg_care_days'], $previous['avg_care_days']),
+            ],
+            'status_buckets' => [
+                'success' => array_values($successCodes),
+                'failed' => array_values($failedCodes),
+            ],
+        ];
+    }
+
+    private function opportunityComparisonMetricsForPeriod(
+        Builder $baseFilteredQuery,
+        string $fromDate,
+        string $toDate,
+        array $successStatusCodes,
+        array $failedStatusCodes
+    ): array {
+        $periodQuery = $baseFilteredQuery
+            ->clone()
+            ->whereDate('created_at', '>=', $fromDate)
+            ->whereDate('created_at', '<=', $toDate);
+
+        $opportunitiesCount = (int) $periodQuery->clone()->count();
+        $clientsCount = (int) $periodQuery->clone()
+            ->whereNotNull('client_id')
+            ->distinct()
+            ->count('client_id');
+        $revenueTotal = (float) ($periodQuery->clone()->sum('amount') ?? 0);
+
+        $successCount = ! empty($successStatusCodes)
+            ? (int) $periodQuery->clone()->whereIn('status', $successStatusCodes)->count()
+            : 0;
+        $failedCount = ! empty($failedStatusCodes)
+            ? (int) $periodQuery->clone()->whereIn('status', $failedStatusCodes)->count()
+            : 0;
+        $successClientCount = ! empty($successStatusCodes)
+            ? (int) $periodQuery->clone()
+                ->whereIn('status', $successStatusCodes)
+                ->whereNotNull('client_id')
+                ->distinct()
+                ->count('client_id')
+            : 0;
+
+        $createdAtRows = $periodQuery->clone()->pluck('created_at');
+        $avgCareDays = 0.0;
+        if ($createdAtRows->isNotEmpty()) {
+            $now = Carbon::now('Asia/Ho_Chi_Minh');
+            $avgCareDays = (float) $createdAtRows
+                ->map(function ($createdAt) use ($now) {
+                    if (! $createdAt) {
+                        return 0;
+                    }
+
+                    return Carbon::parse($createdAt, 'Asia/Ho_Chi_Minh')->diffInDays($now);
+                })
+                ->avg();
+        }
+
+        $successRate = $opportunitiesCount > 0
+            ? ($successCount / $opportunitiesCount) * 100
+            : 0.0;
+        $failureRate = $opportunitiesCount > 0
+            ? ($failedCount / $opportunitiesCount) * 100
+            : 0.0;
+
+        return [
+            'clients_count' => $clientsCount,
+            'opportunities_count' => $opportunitiesCount,
+            'success_count' => $successCount,
+            'failed_count' => $failedCount,
+            'success_clients_count' => $successClientCount,
+            'revenue_total' => round($revenueTotal, 2),
+            'success_rate' => round($successRate, 2),
+            'failure_rate' => round($failureRate, 2),
+            'avg_care_days' => round($avgCareDays, 2),
+        ];
+    }
+
+    private function emptyOpportunityMonthlyComparison(): array
+    {
+        $empty = [
+            'clients_count' => 0,
+            'opportunities_count' => 0,
+            'success_count' => 0,
+            'failed_count' => 0,
+            'success_clients_count' => 0,
+            'revenue_total' => 0.0,
+            'success_rate' => 0.0,
+            'failure_rate' => 0.0,
+            'avg_care_days' => 0.0,
+        ];
+
+        return [
+            'mode' => 'month',
+            'current_label' => 'Tháng này',
+            'previous_label' => 'Tháng trước',
+            'current_period' => ['from' => null, 'to' => null],
+            'previous_period' => ['from' => null, 'to' => null],
+            'current' => $empty,
+            'previous' => $empty,
+            'change_percent' => [
+                'clients_count' => 0.0,
+                'opportunities_count' => 0.0,
+                'success_count' => 0.0,
+                'revenue_total' => 0.0,
+                'success_rate' => 0.0,
+                'failure_rate' => 0.0,
+                'avg_care_days' => 0.0,
+            ],
+            'status_buckets' => [
+                'success' => [],
+                'failed' => [],
+            ],
+        ];
+    }
+
+    private function resolveOpportunityStatusBuckets(array $statusOptions): array
+    {
+        $successCodes = [];
+        $failedCodes = [];
+
+        foreach ($statusOptions as $status) {
+            $code = trim((string) ($status['code'] ?? ''));
+            if ($code === '') {
+                continue;
+            }
+
+            $name = trim((string) ($status['name'] ?? ''));
+            $haystack = Str::lower(Str::ascii($code.' '.$name));
+
+            if ($this->textContainsAny($haystack, [
+                'thanh cong',
+                'success',
+                'won',
+                'win',
+                'hoan tat',
+                'hoan thanh',
+                'chot',
+            ])) {
+                $successCodes[] = $code;
+            }
+
+            if ($this->textContainsAny($haystack, [
+                'that bai',
+                'fail',
+                'lost',
+                'huy',
+                'cancel',
+                'reject',
+                'tu choi',
+            ])) {
+                $failedCodes[] = $code;
+            }
+        }
+
+        if (empty($successCodes)) {
+            foreach ($statusOptions as $status) {
+                $code = trim((string) ($status['code'] ?? ''));
+                if ($code === '') {
+                    continue;
+                }
+                if (in_array($code, ['won', 'success'], true)) {
+                    $successCodes[] = $code;
+                }
+            }
+        }
+
+        if (empty($failedCodes)) {
+            foreach ($statusOptions as $status) {
+                $code = trim((string) ($status['code'] ?? ''));
+                if ($code === '') {
+                    continue;
+                }
+                if (in_array($code, ['lost', 'failed', 'cancelled'], true)) {
+                    $failedCodes[] = $code;
+                }
+            }
+        }
+
+        return [
+            array_values(array_unique($successCodes)),
+            array_values(array_unique($failedCodes)),
+        ];
+    }
+
+    private function textContainsAny(string $haystack, array $needles): bool
+    {
+        foreach ($needles as $needle) {
+            $normalizedNeedle = trim(Str::lower(Str::ascii((string) $needle)));
+            if ($normalizedNeedle !== '' && str_contains($haystack, $normalizedNeedle)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function percentChange($current, $previous): float
+    {
+        $currentValue = (float) $current;
+        $previousValue = (float) $previous;
+
+        if ($previousValue <= 0.0) {
+            if ($currentValue <= 0.0) {
+                return 0.0;
+            }
+
+            return 100.0;
+        }
+
+        return round((($currentValue - $previousValue) / $previousValue) * 100, 2);
     }
 
     public function store(Request $request): JsonResponse

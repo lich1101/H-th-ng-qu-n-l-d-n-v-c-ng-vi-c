@@ -199,14 +199,23 @@ export default function FilterToolbar({
     onSearch = undefined,
     /** Khi có: bọc toàn bộ (tiêu đề + nút + ô tìm + children) trong <form>. Nút Lọc dùng type="submit". Enter áp dụng lọc. */
     onSubmitFilters = undefined,
+    collapsible = false,
+    defaultCollapsed = false,
+    collapseLabel = 'Bộ lọc',
+    collapseHint = 'Nhấn để mở các trường lọc.',
     children,
 }) {
     const containerRef = useRef(null);
+    const [isCollapsed, setIsCollapsed] = useState(Boolean(defaultCollapsed));
 
-    const hasHeader = Boolean(title || description || actions);
+    useEffect(() => {
+        setIsCollapsed(Boolean(defaultCollapsed));
+    }, [defaultCollapsed]);
+
+    const hasHeader = Boolean(title || description || actions || collapsible);
     const hasTopBlock = hasHeader || enableSearch;
 
-    const filterBody = (
+    const filterBody = !isCollapsed ? (
         <>
             {enableSearch && (
                 <div className={hasHeader ? 'mt-4' : ''}>
@@ -220,6 +229,29 @@ export default function FilterToolbar({
             <div className={hasTopBlock ? 'mt-4' : ''}>
                 {children}
             </div>
+        </>
+    ) : (
+        <div className={hasTopBlock ? 'mt-4 rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3 text-xs text-slate-500' : ''}>
+            {collapseHint}
+        </div>
+    );
+
+    const toggleButton = collapsible ? (
+        <button
+            type="button"
+            className="inline-flex h-11 min-h-[2.75rem] items-center justify-center rounded-2xl border border-slate-200/80 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+            onClick={() => setIsCollapsed((prev) => !prev)}
+            aria-expanded={!isCollapsed}
+            aria-label={isCollapsed ? `Mở ${collapseLabel}` : `Thu gọn ${collapseLabel}`}
+        >
+            {isCollapsed ? `Mở ${collapseLabel}` : `Thu gọn ${collapseLabel}`}
+        </button>
+    ) : null;
+
+    const actionNodes = (
+        <>
+            {actions}
+            {toggleButton}
         </>
     );
 
@@ -242,9 +274,9 @@ export default function FilterToolbar({
                     ) : null}
                 </div>
             ) : null}
-            {actions ? (
+            {(actions || toggleButton) ? (
                 <div className="flex w-full shrink-0 flex-wrap items-center justify-end gap-2.5 xl:w-auto">
-                    {actions}
+                    {actionNodes}
                 </div>
             ) : null}
         </div>

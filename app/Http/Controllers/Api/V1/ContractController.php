@@ -39,6 +39,7 @@ class ContractController extends Controller
     {
         $baseQuery = $this->contractIndexFilteredQuery($request);
         $aggregates = $this->contractListAggregates($baseQuery);
+        $comparison = $this->contractYearComparisonAggregates($request);
 
         $query = $baseQuery->clone()
             ->select('contracts.*')
@@ -81,6 +82,7 @@ class ContractController extends Controller
 
         $payload = $contracts->toArray();
         $payload['aggregates'] = $aggregates;
+        $payload['aggregates']['comparison'] = $comparison;
 
         return response()->json($payload);
     }
@@ -88,7 +90,7 @@ class ContractController extends Controller
     /**
      * Danh sách hợp đồng sau CRM scope + filter (chưa eager load, sort, paginate).
      */
-    private function contractIndexFilteredQuery(Request $request): Builder
+    private function contractIndexFilteredQuery(Request $request, bool $applyDateFilters = true): Builder
     {
         $query = Contract::query();
         CrmScope::applyContractScope($query, $request->user());
@@ -197,26 +199,28 @@ class ContractController extends Controller
             });
         }
 
-        if ($request->filled('created_at_from')) {
-            $query->whereDate('contracts.created_at', '>=', (string) $request->input('created_at_from'));
-        }
-        if ($request->filled('created_at_to')) {
-            $query->whereDate('contracts.created_at', '<=', (string) $request->input('created_at_to'));
-        }
+        if ($applyDateFilters) {
+            if ($request->filled('created_at_from')) {
+                $query->whereDate('contracts.created_at', '>=', (string) $request->input('created_at_from'));
+            }
+            if ($request->filled('created_at_to')) {
+                $query->whereDate('contracts.created_at', '<=', (string) $request->input('created_at_to'));
+            }
 
-        if ($request->filled('approved_at_from') || $request->filled('approved_at_to')) {
-            $query->where(function (Builder $outer) use ($request) {
-                $outer->whereNull('contracts.approved_at')
-                    ->orWhere(function (Builder $inner) use ($request) {
-                        $inner->whereNotNull('contracts.approved_at');
-                        if ($request->filled('approved_at_from')) {
-                            $inner->whereDate('contracts.approved_at', '>=', (string) $request->input('approved_at_from'));
-                        }
-                        if ($request->filled('approved_at_to')) {
-                            $inner->whereDate('contracts.approved_at', '<=', (string) $request->input('approved_at_to'));
-                        }
-                    });
-            });
+            if ($request->filled('approved_at_from') || $request->filled('approved_at_to')) {
+                $query->where(function (Builder $outer) use ($request) {
+                    $outer->whereNull('contracts.approved_at')
+                        ->orWhere(function (Builder $inner) use ($request) {
+                            $inner->whereNotNull('contracts.approved_at');
+                            if ($request->filled('approved_at_from')) {
+                                $inner->whereDate('contracts.approved_at', '>=', (string) $request->input('approved_at_from'));
+                            }
+                            if ($request->filled('approved_at_to')) {
+                                $inner->whereDate('contracts.approved_at', '<=', (string) $request->input('approved_at_to'));
+                            }
+                        });
+                });
+            }
         }
 
         return $query;
@@ -279,6 +283,91 @@ class ContractController extends Controller
             'debt_total' => (float) ($row->debt_total ?? 0),
             'costs_total' => (float) ($row->costs_total ?? 0),
         ];
+    }
+
+    private function contractYearComparisonAggregates(Request $request): array
+    {
+        $today = Carbon::now('Asia/Ho_Chi_Minh')->startOfDay();
+        $currentFrom = $today->copy()->startOfYear()->toDateString();
+        $currentTo = $today->toDateString();
+        $previousFrom = $today->copy()->subYear()->startOfYear()->toDateString();
+        $previousTo = $today->copy()->subYear()->toDateString();
+
+        $baseWithoutDateFilters = $this->contractIndexFilteredQuery($request, false);
+
+        $current = $this->contractComparisonMetricsForCreatedRange(
+            $baseWithoutDateFilters->clone(),
+            $currentFrom,
+            $currentTo
+        );
+        $previous = $this->contractComparisonMetricsForCreatedRange(
+            $baseWithoutDateFilters->clone(),
+            $previousFrom,
+            $previousTo
+        );
+
+        return [
+            'mode' => 'year',
+            'current_label' => 'Năm nay',
+            'previous_label' => 'Năm trước',
+            'current_period' => [
+                'from' => $currentFrom,
+                'to' => $currentTo,
+            ],
+            'previous_period' => [
+                'from' => $previousFrom,
+                'to' => $previousTo,
+            ],
+            'current' => $current,
+            'previous' => $previous,
+            'change_percent' => [
+                'contracts_count' => $this->comparisonPercent($current['contracts_count'], $previous['contracts_count']),
+                'clients_count' => $this->comparisonPercent($current['clients_count'], $previous['clients_count']),
+                'sales_total' => $this->comparisonPercent($current['sales_total'], $previous['sales_total']),
+                'revenue_total' => $this->comparisonPercent($current['revenue_total'], $previous['revenue_total']),
+            ],
+        ];
+    }
+
+    private function contractComparisonMetricsForCreatedRange(
+        Builder $baseQuery,
+        string $fromDate,
+        string $toDate
+    ): array {
+        $rangeQuery = $baseQuery
+            ->clone()
+            ->whereDate('contracts.created_at', '>=', $fromDate)
+            ->whereDate('contracts.created_at', '<=', $toDate);
+
+        $contractsCount = (int) $rangeQuery->clone()->count();
+        $clientsCount = (int) $rangeQuery->clone()
+            ->whereNotNull('contracts.client_id')
+            ->distinct()
+            ->count('contracts.client_id');
+        $aggregates = $this->contractListAggregates($rangeQuery->clone());
+
+        return [
+            'contracts_count' => $contractsCount,
+            'clients_count' => $clientsCount,
+            'sales_total' => (float) ($aggregates['revenue_total'] ?? 0),
+            'revenue_total' => (float) ($aggregates['cashflow_total'] ?? 0),
+        ];
+    }
+
+    private function comparisonPercent($current, $previous): float
+    {
+        $currentValue = (float) $current;
+        $previousValue = (float) $previous;
+
+        if ($previousValue <= 0.0) {
+            if ($currentValue <= 0.0) {
+                return 0.0;
+            }
+
+            return 100.0;
+        }
+
+        return round((($currentValue - $previousValue) / $previousValue) * 100, 2);
     }
 
     public function show(Request $request, Contract $contract): JsonResponse

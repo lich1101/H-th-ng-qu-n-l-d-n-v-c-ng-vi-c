@@ -356,6 +356,14 @@ export default function ProjectsKanban(props) {
         return Math.min(100, Math.max(0, Math.round(value)));
     };
 
+    const contractOutstandingDebt = (project) => {
+        if (!project?.contract?.id) return null;
+        const rawDebt = project?.contract?.debt_outstanding ?? project?.contract?.debt;
+        const debt = Number(rawDebt ?? 0);
+        if (!Number.isFinite(debt)) return null;
+        return Math.max(0, debt);
+    };
+
     const sortedByDeadline = useMemo(() => (
         [...projects].sort((a, b) => {
             const da = a.deadline ? new Date(a.deadline).getTime() : 0;
@@ -916,6 +924,7 @@ export default function ProjectsKanban(props) {
                                             <th className="py-2">Ghi chú</th>
                                             <th className="py-2">Hạn chót</th>
                                             <th className="py-2">Ngân sách</th>
+                                            <th className="py-2">Công nợ HĐ</th>
                                             <th className="py-2"></th>
                                         </tr>
                                     </thead>
@@ -1059,6 +1068,11 @@ export default function ProjectsKanban(props) {
                                                 </td>
                                                 <td className="py-3 text-xs text-text-muted">
                                                     {p.budget ? Number(p.budget).toLocaleString('vi-VN') : '—'}
+                                                </td>
+                                                <td className="py-3 text-xs text-text-muted">
+                                                    {hasLinkedContract(p)
+                                                        ? Number(contractOutstandingDebt(p) || 0).toLocaleString('vi-VN')
+                                                        : '—'}
                                                 </td>
                                                 <td className="py-3 text-right space-x-2">
                                                     {canSubmitProjectHandover(p) && (

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import FilterDateInput from '@/Components/FilterDateInput';
 import PageContainer from '@/Components/PageContainer';
+import AppIcon from '@/Components/AppIcon';
 import FilterToolbar, {
     FILTER_GRID_SUBMIT_ROW,
     FILTER_GRID_WITH_SUBMIT,
@@ -72,6 +73,58 @@ const emptyOpportunityForm = () => ({
     notes: '',
 });
 
+const emptyOpportunityComparison = () => ({
+    mode: 'month',
+    current_label: 'Tháng này',
+    previous_label: 'Tháng trước',
+    current: {
+        clients_count: 0,
+        opportunities_count: 0,
+        success_count: 0,
+        failed_count: 0,
+        success_clients_count: 0,
+        revenue_total: 0,
+        success_rate: 0,
+        failure_rate: 0,
+        avg_care_days: 0,
+    },
+    previous: {
+        clients_count: 0,
+        opportunities_count: 0,
+        success_count: 0,
+        failed_count: 0,
+        success_clients_count: 0,
+        revenue_total: 0,
+        success_rate: 0,
+        failure_rate: 0,
+        avg_care_days: 0,
+    },
+    change_percent: {
+        clients_count: 0,
+        opportunities_count: 0,
+        success_count: 0,
+        revenue_total: 0,
+        success_rate: 0,
+        failure_rate: 0,
+        avg_care_days: 0,
+    },
+});
+
+const toSignedPercent = (value) => {
+    const parsed = Number(value ?? 0);
+    if (!Number.isFinite(parsed)) return '0%';
+    const rounded = Math.round(parsed * 100) / 100;
+    if (rounded > 0) return `+${rounded}%`;
+    return `${rounded}%`;
+};
+
+const percentBadgeClass = (value) => {
+    const parsed = Number(value ?? 0);
+    if (parsed > 0) return 'bg-emerald-100 text-emerald-700';
+    if (parsed < 0) return 'bg-rose-100 text-rose-700';
+    return 'bg-slate-100 text-slate-600';
+};
+
 function Field({ label, required = false, children, hint = '' }) {
     return (
         <div>
@@ -109,6 +162,7 @@ export default function Opportunities(props) {
     const [listAggregates, setListAggregates] = useState({
         revenue_total: 0,
         status_counts: { all: 0 },
+        comparison: emptyOpportunityComparison(),
     });
     const [filters, setFilters] = useState({
         search: '',
@@ -193,6 +247,29 @@ export default function Opportunities(props) {
             { label: 'Vai trò', value: userRole || '—' },
         ];
     }, [opportunityMeta.total, listAggregates.revenue_total, clients.length, userRole]);
+
+    const monthlyComparison = useMemo(() => {
+        if (!listAggregates?.comparison || typeof listAggregates.comparison !== 'object') {
+            return emptyOpportunityComparison();
+        }
+
+        return {
+            ...emptyOpportunityComparison(),
+            ...listAggregates.comparison,
+            current: {
+                ...emptyOpportunityComparison().current,
+                ...(listAggregates.comparison.current || {}),
+            },
+            previous: {
+                ...emptyOpportunityComparison().previous,
+                ...(listAggregates.comparison.previous || {}),
+            },
+            change_percent: {
+                ...emptyOpportunityComparison().change_percent,
+                ...(listAggregates.comparison.change_percent || {}),
+            },
+        };
+    }, [listAggregates?.comparison]);
 
     const fetchOptions = async () => {
         try {
@@ -289,6 +366,24 @@ export default function Opportunities(props) {
                 status_counts: (agg?.status_counts && typeof agg.status_counts === 'object')
                     ? agg.status_counts
                     : { all: Number(res.data?.total ?? 0) },
+                comparison: (agg?.comparison && typeof agg.comparison === 'object')
+                    ? {
+                        ...emptyOpportunityComparison(),
+                        ...agg.comparison,
+                        current: {
+                            ...emptyOpportunityComparison().current,
+                            ...(agg.comparison.current || {}),
+                        },
+                        previous: {
+                            ...emptyOpportunityComparison().previous,
+                            ...(agg.comparison.previous || {}),
+                        },
+                        change_percent: {
+                            ...emptyOpportunityComparison().change_percent,
+                            ...(agg.comparison.change_percent || {}),
+                        },
+                    }
+                    : emptyOpportunityComparison(),
             });
             setOpportunityMeta({
                 current_page: res.data?.current_page || 1,
@@ -516,6 +611,10 @@ export default function Opportunities(props) {
                 searchValue={filters.search}
                 onSearch={handleOpportunitySearch}
                 onSubmitFilters={applyOpportunityFilters}
+                collapsible
+                defaultCollapsed
+                collapseLabel="bộ lọc cơ hội"
+                collapseHint="Bộ lọc đang thu gọn. Bấm “Mở bộ lọc cơ hội” để chỉnh điều kiện lọc."
             >
                 <div className={FILTER_GRID_WITH_SUBMIT}>
                     <FilterField label="Trạng thái cơ hội">
@@ -602,6 +701,101 @@ export default function Opportunities(props) {
                     ))}
                 </div>
             </FilterToolbar>
+
+            <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div className="group relative overflow-hidden rounded-3xl border border-sky-300/60 bg-gradient-to-br from-sky-600 via-cyan-600 to-blue-700 px-5 py-4 text-white shadow-card transition hover:-translate-y-0.5 hover:shadow-lg">
+                    <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-white/10" />
+                    <div className="pointer-events-none absolute -left-10 -bottom-10 h-24 w-24 rounded-full bg-white/10" />
+                    <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                            <span className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-white/20 bg-white/15 text-white">
+                                <AppIcon name="users" className="h-4 w-4" />
+                            </span>
+                            <div className="text-xs font-semibold uppercase tracking-[0.14em] text-white/85">Khách hàng</div>
+                        </div>
+                        <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${percentBadgeClass(monthlyComparison.change_percent.clients_count)}`}>
+                            {toSignedPercent(monthlyComparison.change_percent.clients_count)}
+                        </span>
+                    </div>
+                    <div className="mt-2 text-3xl font-bold leading-none">{Number(monthlyComparison.current.clients_count || 0).toLocaleString('vi-VN')}</div>
+                    <div className="mt-3 text-sm text-white/90">
+                        {monthlyComparison.previous_label || 'Tháng trước'}: {Number(monthlyComparison.previous.clients_count || 0).toLocaleString('vi-VN')}
+                    </div>
+                </div>
+
+                <div className="group relative overflow-hidden rounded-3xl border border-indigo-300/60 bg-gradient-to-br from-indigo-600 via-blue-600 to-cyan-700 px-5 py-4 text-white shadow-card transition hover:-translate-y-0.5 hover:shadow-lg">
+                    <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-white/10" />
+                    <div className="pointer-events-none absolute -left-10 -bottom-10 h-24 w-24 rounded-full bg-white/10" />
+                    <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                            <span className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-white/20 bg-white/15 text-white">
+                                <AppIcon name="trend" className="h-4 w-4" />
+                            </span>
+                            <div className="text-xs font-semibold uppercase tracking-[0.14em] text-white/85">Cơ hội</div>
+                        </div>
+                        <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${percentBadgeClass(monthlyComparison.change_percent.opportunities_count)}`}>
+                            {toSignedPercent(monthlyComparison.change_percent.opportunities_count)}
+                        </span>
+                    </div>
+                    <div className="mt-2 text-3xl font-bold leading-none">{Number(monthlyComparison.current.opportunities_count || 0).toLocaleString('vi-VN')}</div>
+                    <div className="mt-3 text-sm text-white/90">
+                        {monthlyComparison.previous_label || 'Tháng trước'}: {Number(monthlyComparison.previous.opportunities_count || 0).toLocaleString('vi-VN')}
+                    </div>
+                </div>
+
+                <div className="group relative overflow-hidden rounded-3xl border border-emerald-300/60 bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-700 px-5 py-4 text-white shadow-card transition hover:-translate-y-0.5 hover:shadow-lg">
+                    <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-white/10" />
+                    <div className="pointer-events-none absolute -left-10 -bottom-10 h-24 w-24 rounded-full bg-white/10" />
+                    <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                            <span className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-white/20 bg-white/15 text-white">
+                                <AppIcon name="check" className="h-4 w-4" />
+                            </span>
+                            <div className="text-xs font-semibold uppercase tracking-[0.14em] text-white/85">Thành công</div>
+                        </div>
+                        <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${percentBadgeClass(monthlyComparison.change_percent.success_count)}`}>
+                            {toSignedPercent(monthlyComparison.change_percent.success_count)}
+                        </span>
+                    </div>
+                    <div className="mt-2 text-3xl font-bold leading-none">{Number(monthlyComparison.current.success_count || 0).toLocaleString('vi-VN')}</div>
+                    <div className="mt-3 text-sm text-white/90">
+                        {monthlyComparison.previous_label || 'Tháng trước'}: {Number(monthlyComparison.previous.success_count || 0).toLocaleString('vi-VN')}
+                    </div>
+                </div>
+
+                <div className="group relative overflow-hidden rounded-3xl border border-teal-300/60 bg-gradient-to-br from-teal-600 via-emerald-600 to-cyan-700 px-5 py-4 text-white shadow-card transition hover:-translate-y-0.5 hover:shadow-lg">
+                    <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-white/10" />
+                    <div className="pointer-events-none absolute -left-10 -bottom-10 h-24 w-24 rounded-full bg-white/10" />
+                    <div className="flex items-center gap-2">
+                        <span className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-white/20 bg-white/15 text-white">
+                            <AppIcon name="chart" className="h-4 w-4" />
+                        </span>
+                        <div className="text-xs font-semibold uppercase tracking-[0.14em] text-white/85">Hiệu suất</div>
+                    </div>
+                    <ul className="mt-2 space-y-1.5 text-sm text-white/95">
+                        <li className="flex items-center justify-between gap-3">
+                            <span>Thành cơ hội</span>
+                            <strong>{Number(monthlyComparison.current.success_count || 0).toLocaleString('vi-VN')}</strong>
+                        </li>
+                        <li className="flex items-center justify-between gap-3">
+                            <span>Thành khách hàng</span>
+                            <strong>{Number(monthlyComparison.current.success_clients_count || 0).toLocaleString('vi-VN')}</strong>
+                        </li>
+                        <li className="flex items-center justify-between gap-3">
+                            <span>Tỷ lệ thành công</span>
+                            <strong>{Number(monthlyComparison.current.success_rate || 0).toLocaleString('vi-VN', { maximumFractionDigits: 2 })}%</strong>
+                        </li>
+                        <li className="flex items-center justify-between gap-3">
+                            <span>Tỷ lệ thất bại</span>
+                            <strong>{Number(monthlyComparison.current.failure_rate || 0).toLocaleString('vi-VN', { maximumFractionDigits: 2 })}%</strong>
+                        </li>
+                        <li className="flex items-center justify-between gap-3">
+                            <span>TG chăm sóc TB</span>
+                            <strong>{Number(monthlyComparison.current.avg_care_days || 0).toLocaleString('vi-VN', { maximumFractionDigits: 1 })} ngày</strong>
+                        </li>
+                    </ul>
+                </div>
+            </div>
 
             <Modal
                 open={Boolean(showForm && canCreate)}

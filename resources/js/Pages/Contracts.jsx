@@ -67,6 +67,45 @@ const HANDOVER_RECEIVE_LABELS = {
 const approvalLabel = (value) => APPROVAL_LABELS[value] || APPROVAL_LABELS.pending;
 const formatCurrency = (value) => Number(value || 0).toLocaleString('vi-VN');
 const formatDateDisplay = (value) => formatVietnamDate(value);
+const emptyContractYearComparison = () => ({
+    mode: 'year',
+    current_label: 'Năm nay',
+    previous_label: 'Năm trước',
+    current: {
+        contracts_count: 0,
+        clients_count: 0,
+        sales_total: 0,
+        revenue_total: 0,
+    },
+    previous: {
+        contracts_count: 0,
+        clients_count: 0,
+        sales_total: 0,
+        revenue_total: 0,
+    },
+    change_percent: {
+        contracts_count: 0,
+        clients_count: 0,
+        sales_total: 0,
+        revenue_total: 0,
+    },
+});
+
+const toSignedPercent = (value) => {
+    const parsed = Number(value ?? 0);
+    if (!Number.isFinite(parsed)) return '0%';
+    const rounded = Math.round(parsed * 100) / 100;
+    if (rounded > 0) return `+${rounded}%`;
+    return `${rounded}%`;
+};
+
+const percentBadgeClass = (value) => {
+    const parsed = Number(value ?? 0);
+    if (parsed > 0) return 'bg-emerald-100 text-emerald-700';
+    if (parsed < 0) return 'bg-rose-100 text-rose-700';
+    return 'bg-slate-100 text-slate-600';
+};
+
 const parseNumberInput = (value) => {
     if (value === null || value === undefined || value === '') return 0;
     if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
@@ -239,6 +278,7 @@ export default function Contracts(props) {
         cashflow_total: 0,
         debt_total: 0,
         costs_total: 0,
+        comparison: emptyContractYearComparison(),
     });
     const [filters, setFilters] = useState(() => ({
         search: '',
@@ -498,6 +538,24 @@ export default function Contracts(props) {
                 cashflow_total: Number(agg?.cashflow_total ?? 0),
                 debt_total: Number(agg?.debt_total ?? 0),
                 costs_total: Number(agg?.costs_total ?? 0),
+                comparison: (agg?.comparison && typeof agg.comparison === 'object')
+                    ? {
+                        ...emptyContractYearComparison(),
+                        ...agg.comparison,
+                        current: {
+                            ...emptyContractYearComparison().current,
+                            ...(agg.comparison.current || {}),
+                        },
+                        previous: {
+                            ...emptyContractYearComparison().previous,
+                            ...(agg.comparison.previous || {}),
+                        },
+                        change_percent: {
+                            ...emptyContractYearComparison().change_percent,
+                            ...(agg.comparison.change_percent || {}),
+                        },
+                    }
+                    : emptyContractYearComparison(),
             });
             const visibleIds = new Set(rows.map((row) => Number(row.id)));
             setSelectedContractIds((prev) => prev.filter((id) => visibleIds.has(Number(id))));
@@ -597,6 +655,29 @@ export default function Contracts(props) {
             { label: 'Chờ duyệt', value: String(pendingApproval) },
         ];
     }, [contractMeta.total, contracts]);
+
+    const yearComparison = useMemo(() => {
+        if (!listAggregates?.comparison || typeof listAggregates.comparison !== 'object') {
+            return emptyContractYearComparison();
+        }
+
+        return {
+            ...emptyContractYearComparison(),
+            ...listAggregates.comparison,
+            current: {
+                ...emptyContractYearComparison().current,
+                ...(listAggregates.comparison.current || {}),
+            },
+            previous: {
+                ...emptyContractYearComparison().previous,
+                ...(listAggregates.comparison.previous || {}),
+            },
+            change_percent: {
+                ...emptyContractYearComparison().change_percent,
+                ...(listAggregates.comparison.change_percent || {}),
+            },
+        };
+    }, [listAggregates?.comparison]);
 
     const visibleContractIds = useMemo(
         () => contracts.map((contract) => Number(contract.id)).filter((id) => id > 0),
@@ -1433,6 +1514,10 @@ export default function Contracts(props) {
                     searchValue={filters.search}
                     onSearch={handleContractSearch}
                     onSubmitFilters={applyFilters}
+                    collapsible
+                    defaultCollapsed
+                    collapseLabel="bộ lọc hợp đồng"
+                    collapseHint="Bộ lọc đang thu gọn. Bấm “Mở bộ lọc hợp đồng” để áp dụng điều kiện."
                 >
                     <div className={FILTER_GRID_RESPONSIVE}>
                         <FilterField
@@ -1522,6 +1607,89 @@ export default function Contracts(props) {
                         </FilterActionGroup>
                     </div>
                 </FilterToolbar>
+
+                <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    <div className="group relative overflow-hidden rounded-3xl border border-sky-300/60 bg-gradient-to-br from-sky-600 via-cyan-600 to-blue-700 px-5 py-4 text-white shadow-card transition hover:-translate-y-0.5 hover:shadow-lg">
+                        <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-white/10" />
+                        <div className="pointer-events-none absolute -left-10 -bottom-10 h-24 w-24 rounded-full bg-white/10" />
+                        <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                                <span className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-white/20 bg-white/15 text-white">
+                                    <AppIcon name="document" className="h-4 w-4" />
+                                </span>
+                                <div className="text-xs font-semibold uppercase tracking-[0.14em] text-white/85">Hợp đồng</div>
+                            </div>
+                            <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${percentBadgeClass(yearComparison.change_percent.contracts_count)}`}>
+                                {toSignedPercent(yearComparison.change_percent.contracts_count)}
+                            </span>
+                        </div>
+                        <div className="mt-2 text-3xl font-bold leading-none">{Number(yearComparison.current.contracts_count || 0).toLocaleString('vi-VN')}</div>
+                        <div className="mt-3 text-sm text-white/90">
+                            {yearComparison.previous_label || 'Năm trước'}: {Number(yearComparison.previous.contracts_count || 0).toLocaleString('vi-VN')}
+                        </div>
+                    </div>
+
+                    <div className="group relative overflow-hidden rounded-3xl border border-indigo-300/60 bg-gradient-to-br from-indigo-600 via-blue-600 to-cyan-700 px-5 py-4 text-white shadow-card transition hover:-translate-y-0.5 hover:shadow-lg">
+                        <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-white/10" />
+                        <div className="pointer-events-none absolute -left-10 -bottom-10 h-24 w-24 rounded-full bg-white/10" />
+                        <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                                <span className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-white/20 bg-white/15 text-white">
+                                    <AppIcon name="users" className="h-4 w-4" />
+                                </span>
+                                <div className="text-xs font-semibold uppercase tracking-[0.14em] text-white/85">Khách hàng</div>
+                            </div>
+                            <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${percentBadgeClass(yearComparison.change_percent.clients_count)}`}>
+                                {toSignedPercent(yearComparison.change_percent.clients_count)}
+                            </span>
+                        </div>
+                        <div className="mt-2 text-3xl font-bold leading-none">{Number(yearComparison.current.clients_count || 0).toLocaleString('vi-VN')}</div>
+                        <div className="mt-3 text-sm text-white/90">
+                            {yearComparison.previous_label || 'Năm trước'}: {Number(yearComparison.previous.clients_count || 0).toLocaleString('vi-VN')}
+                        </div>
+                    </div>
+
+                    <div className="group relative overflow-hidden rounded-3xl border border-emerald-300/60 bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-700 px-5 py-4 text-white shadow-card transition hover:-translate-y-0.5 hover:shadow-lg">
+                        <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-white/10" />
+                        <div className="pointer-events-none absolute -left-10 -bottom-10 h-24 w-24 rounded-full bg-white/10" />
+                        <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                                <span className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-white/20 bg-white/15 text-white">
+                                    <AppIcon name="chart" className="h-4 w-4" />
+                                </span>
+                                <div className="text-xs font-semibold uppercase tracking-[0.14em] text-white/85">Doanh số</div>
+                            </div>
+                            <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${percentBadgeClass(yearComparison.change_percent.sales_total)}`}>
+                                {toSignedPercent(yearComparison.change_percent.sales_total)}
+                            </span>
+                        </div>
+                        <div className="mt-2 text-3xl font-bold leading-none">{Number(yearComparison.current.sales_total || 0).toLocaleString('vi-VN')}</div>
+                        <div className="mt-3 text-sm text-white/90">
+                            {yearComparison.previous_label || 'Năm trước'}: {Number(yearComparison.previous.sales_total || 0).toLocaleString('vi-VN')}
+                        </div>
+                    </div>
+
+                    <div className="group relative overflow-hidden rounded-3xl border border-teal-300/60 bg-gradient-to-br from-teal-600 via-emerald-600 to-cyan-700 px-5 py-4 text-white shadow-card transition hover:-translate-y-0.5 hover:shadow-lg">
+                        <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-white/10" />
+                        <div className="pointer-events-none absolute -left-10 -bottom-10 h-24 w-24 rounded-full bg-white/10" />
+                        <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                                <span className="inline-flex h-8 w-8 items-center justify-center rounded-2xl border border-white/20 bg-white/15 text-white">
+                                    <AppIcon name="trend" className="h-4 w-4" />
+                                </span>
+                                <div className="text-xs font-semibold uppercase tracking-[0.14em] text-white/85">Doanh thu</div>
+                            </div>
+                            <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${percentBadgeClass(yearComparison.change_percent.revenue_total)}`}>
+                                {toSignedPercent(yearComparison.change_percent.revenue_total)}
+                            </span>
+                        </div>
+                        <div className="mt-2 text-3xl font-bold leading-none">{Number(yearComparison.current.revenue_total || 0).toLocaleString('vi-VN')}</div>
+                        <div className="mt-3 text-sm text-white/90">
+                            {yearComparison.previous_label || 'Năm trước'}: {Number(yearComparison.previous.revenue_total || 0).toLocaleString('vi-VN')}
+                        </div>
+                    </div>
+                </div>
+
                 <div className="mb-4 rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3 text-xs text-slate-600">
                     {isEmployee
                         ? 'Nhân viên có thể tạo hợp đồng mới trong phạm vi khách hàng phụ trách, nhưng không có quyền duyệt và không được sửa/xóa hợp đồng đã tạo.'
