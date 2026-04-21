@@ -44,6 +44,10 @@ class Kernel extends ConsoleKernel
         $schedule->command('gsc:sync-projects')
             ->everyMinute()
             ->timezone('Asia/Ho_Chi_Minh');
+        $schedule->command('clients:process-auto-rotation')
+            ->dailyAt('12:00')
+            ->timezone('Asia/Ho_Chi_Minh')
+            ->withoutOverlapping();
     }
 
     /**

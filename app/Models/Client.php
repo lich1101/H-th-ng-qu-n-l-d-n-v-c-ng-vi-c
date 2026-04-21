@@ -19,6 +19,7 @@ class Client extends Model
         'phone',
         'notes',
         'comments_history_json',
+        'care_rotation_reset_at',
         'sales_owner_id',
         'assigned_department_id',
         'assigned_staff_id',
@@ -48,6 +49,7 @@ class Client extends Model
         'has_purchased' => 'boolean',
         'company_profiles' => 'array',
         'comments_history_json' => 'array',
+        'care_rotation_reset_at' => 'datetime',
     ];
 
     public function setPhoneAttribute($value): void
@@ -126,5 +128,15 @@ class Client extends Model
     public function staffTransferRequests()
     {
         return $this->hasMany(ClientStaffTransferRequest::class)->orderByDesc('id');
+    }
+
+    public function rotationHistories()
+    {
+        return $this->hasMany(ClientRotationHistory::class)->orderByDesc('transferred_at');
+    }
+
+    public function rotationWarningLogs()
+    {
+        return $this->hasMany(ClientRotationWarningLog::class)->orderByDesc('warning_date');
     }
 }

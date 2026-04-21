@@ -50,6 +50,96 @@ const parseProductCategories = (rawValue) => {
         .filter(Boolean);
 };
 
+const DEFAULT_CLIENT_PAGE = 1;
+
+const DEFAULT_CLIENT_FILTERS = Object.freeze({
+    search: '',
+    per_page: 10,
+    lead_type_id: '',
+    type: '',
+    revenue_tier_id: '',
+    assigned_department_id: '',
+    assigned_staff_ids: [],
+    created_from: '',
+    created_to: '',
+    sort_by: 'last_activity_at',
+    sort_dir: 'desc',
+});
+
+function parseAssignedStaffIdsFromSearchParams(params) {
+    const rawValues = [
+        params.get('assigned_staff_ids'),
+        params.get('assigned_staff_id'),
+        ...params.getAll('assigned_staff_ids[]'),
+    ];
+
+    return Array.from(new Set(
+        rawValues
+            .flatMap((value) => String(value || '').split(/[\s,;|]+/))
+            .map((value) => Number(value))
+            .filter((value) => Number.isInteger(value) && value > 0)
+    ));
+}
+
+function readInitialCrmListState() {
+    const params = typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search)
+        : new URLSearchParams();
+    const page = Number(params.get('page') || DEFAULT_CLIENT_PAGE);
+    const perPage = Number(params.get('per_page') || DEFAULT_CLIENT_FILTERS.per_page);
+    const sortDir = String(params.get('sort_dir') || DEFAULT_CLIENT_FILTERS.sort_dir).trim().toLowerCase();
+
+    return {
+        page: Number.isInteger(page) && page > 0 ? page : DEFAULT_CLIENT_PAGE,
+        filters: {
+            ...DEFAULT_CLIENT_FILTERS,
+            search: String(params.get('search') || '').trim(),
+            per_page: Number.isInteger(perPage) && perPage > 0 ? perPage : DEFAULT_CLIENT_FILTERS.per_page,
+            lead_type_id: String(params.get('lead_type_id') || '').trim(),
+            type: String(params.get('type') || '').trim(),
+            revenue_tier_id: String(params.get('revenue_tier_id') || '').trim(),
+            assigned_department_id: String(params.get('assigned_department_id') || '').trim(),
+            assigned_staff_ids: parseAssignedStaffIdsFromSearchParams(params),
+            created_from: String(params.get('created_from') || '').trim(),
+            created_to: String(params.get('created_to') || '').trim(),
+            sort_by: String(params.get('sort_by') || DEFAULT_CLIENT_FILTERS.sort_by).trim() || DEFAULT_CLIENT_FILTERS.sort_by,
+            sort_dir: sortDir === 'asc' ? 'asc' : DEFAULT_CLIENT_FILTERS.sort_dir,
+        },
+    };
+}
+
+function syncCrmListStateToUrl(filtersArg, page) {
+    if (typeof window === 'undefined') {
+        return;
+    }
+
+    const params = new URLSearchParams();
+    const assignedStaffIds = Array.isArray(filtersArg.assigned_staff_ids)
+        ? filtersArg.assigned_staff_ids
+            .map((id) => Number(id))
+            .filter((id) => Number.isInteger(id) && id > 0)
+        : [];
+
+    if (String(filtersArg.search || '').trim() !== '') params.set('search', String(filtersArg.search).trim());
+    if (Number(filtersArg.per_page) !== DEFAULT_CLIENT_FILTERS.per_page) params.set('per_page', String(filtersArg.per_page));
+    if (String(filtersArg.lead_type_id || '').trim() !== '') params.set('lead_type_id', String(filtersArg.lead_type_id).trim());
+    if (String(filtersArg.type || '').trim() !== '') params.set('type', String(filtersArg.type).trim());
+    if (String(filtersArg.revenue_tier_id || '').trim() !== '') params.set('revenue_tier_id', String(filtersArg.revenue_tier_id).trim());
+    if (String(filtersArg.assigned_department_id || '').trim() !== '') params.set('assigned_department_id', String(filtersArg.assigned_department_id).trim());
+    if (assignedStaffIds.length > 0) params.set('assigned_staff_ids', assignedStaffIds.join(','));
+    if (String(filtersArg.created_from || '').trim() !== '') params.set('created_from', String(filtersArg.created_from).trim());
+    if (String(filtersArg.created_to || '').trim() !== '') params.set('created_to', String(filtersArg.created_to).trim());
+    if (String(filtersArg.sort_by || '').trim() !== '' && String(filtersArg.sort_by) !== DEFAULT_CLIENT_FILTERS.sort_by) {
+        params.set('sort_by', String(filtersArg.sort_by).trim());
+    }
+    if (String(filtersArg.sort_dir || '').trim() === 'asc') params.set('sort_dir', 'asc');
+    if (Number(page) > DEFAULT_CLIENT_PAGE) params.set('page', String(page));
+
+    const query = params.toString();
+    const nextUrl = query ? `${window.location.pathname}?${query}` : window.location.pathname;
+    window.history.replaceState({}, document.title, nextUrl);
+}
+
 /** Query GET: gửi assigned_staff_ids dạng "1,2" để Laravel nhận ổn định (tránh lỗi serialize mảng trên một số proxy/stack). */
 function buildCrmClientsQueryParams(filtersArg, page) {
     const f = { ...filtersArg };
@@ -125,6 +215,7 @@ export default function CRM(props) {
     const canBulkClientActions = canManageClients || canDeleteClients;
     /** POST /crm/clients/{id}/staff-transfer-requests — khớp middleware API */
     const canUseStaffTransferApi = ['admin', 'administrator', 'quan_ly', 'nhan_vien'].includes(normalizedRole);
+    const initialClientListState = useMemo(() => readInitialCrmListState(), []);
 
     const [clients, setClients] = useState([]);
     const [leadTypes, setLeadTypes] = useState([]);
@@ -134,7 +225,7 @@ export default function CRM(props) {
     const [crmStaffFilterReady, setCrmStaffFilterReady] = useState(false);
     const [departments, setDepartments] = useState([]);
     const [clientMeta, setClientMeta] = useState({ current_page: 1, last_page: 1, total: 0 });
-    const [clientPage, setClientPage] = useState(1);
+    const [clientPage, setClientPage] = useState(initialClientListState.page);
     const [selectedClientIds, setSelectedClientIds] = useState([]);
     const [bulkLoading, setBulkLoading] = useState(false);
     const clientTableRef = useRef(null);
@@ -142,19 +233,7 @@ export default function CRM(props) {
         lead_type_id: '',
         assigned_staff_id: '',
     });
-    const [clientFilters, setClientFilters] = useState({
-        search: '',
-        per_page: 10,
-        lead_type_id: '',
-        type: '',
-        revenue_tier_id: '',
-        assigned_department_id: '',
-        assigned_staff_ids: [],
-        created_from: '',
-        created_to: '',
-        sort_by: 'last_activity_at',
-        sort_dir: 'desc',
-    });
+    const [clientFilters, setClientFilters] = useState(initialClientListState.filters);
     const [editingClientId, setEditingClientId] = useState(null);
     const [showClientForm, setShowClientForm] = useState(false);
     const [submittingClient, setSubmittingClient] = useState(false);
@@ -530,9 +609,13 @@ export default function CRM(props) {
         fetchStaffUsers();
         fetchCrmStaffFilterOptions();
         fetchDepartments();
-        fetchClients(1, clientFilters);
+        fetchClients(clientPage, clientFilters);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    useEffect(() => {
+        syncCrmListStateToUrl(clientFilters, clientPage);
+    }, [clientFilters, clientPage]);
 
     /** Làm mới danh sách nhân sự trong bộ lọc khi quay lại tab / trang (dữ liệu khách có thể đã đổi). */
     useEffect(() => {

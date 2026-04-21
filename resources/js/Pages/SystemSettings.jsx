@@ -6,17 +6,50 @@ import PaginationControls from '@/Components/PaginationControls';
 import { useToast } from '@/Contexts/ToastContext';
 import { formatVietnamDateTime } from '@/lib/vietnamTime';
 
-const TABS = [
-    { key: 'branding', label: 'Thương hiệu' },
-    { key: 'contact', label: 'Liên hệ & pháp lý' },
-    { key: 'chatbot', label: 'AI Chatbot' },
-    { key: 'gsc', label: 'Google Search Console' },
-    { key: 'notifications', label: 'Thông báo thiết bị' },
-    { key: 'diagnostics', label: 'Kết nối & thiết bị' },
-    { key: 'mobile_app', label: 'Tải app mobile' },
-    { key: 'mobile_devices', label: 'Thiết bị di động người dùng' },
+const TAB_GROUPS = [
+    {
+        key: 'core',
+        label: 'Cơ Bản',
+        tabs: [
+            { key: 'branding', label: 'Thương hiệu' },
+            { key: 'contact', label: 'Liên hệ & pháp lý' },
+            { key: 'mobile_app', label: 'App mobile' },
+        ],
+    },
+    {
+        key: 'automation',
+        label: 'Tự Động & CRM',
+        tabs: [
+            { key: 'notification_channels', label: 'Kênh thông báo' },
+            { key: 'task_notifications', label: 'Task & họp' },
+            { key: 'crm_contract_notifications', label: 'CRM & hợp đồng' },
+            { key: 'smtp', label: 'SMTP email' },
+            { key: 'push_testing', label: 'Test push' },
+            { key: 'client_rotation', label: 'Xoay khách hàng' },
+        ],
+    },
+    {
+        key: 'integrations',
+        label: 'Tích Hợp',
+        tabs: [
+            { key: 'chatbot', label: 'AI Chatbot' },
+            { key: 'gsc', label: 'Google Search Console' },
+        ],
+    },
+    {
+        key: 'ops',
+        label: 'Thiết Bị & Kiểm Tra',
+        tabs: [
+            { key: 'mobile_devices', label: 'Thiết bị người dùng' },
+            { key: 'diagnostics', label: 'Chẩn đoán hệ thống' },
+        ],
+    },
 ];
+const TABS = TAB_GROUPS.flatMap((group) => group.tabs);
 const TAB_KEYS = new Set(TABS.map((tab) => tab.key));
+const LEGACY_TAB_ALIASES = {
+    notifications: 'notification_channels',
+};
 
 const DEFAULT_GEMINI_MODEL_OPTIONS = [
     { id: 'gemini-2.0-flash', name: 'gemini-2.0-flash', display_name: 'Gemini 2.0 Flash' },
@@ -25,6 +58,14 @@ const DEFAULT_GEMINI_MODEL_OPTIONS = [
     { id: 'gemini-1.5-flash', name: 'gemini-1.5-flash', display_name: 'Gemini 1.5 Flash' },
     { id: 'gemini-1.5-flash-8b', name: 'gemini-1.5-flash-8b', display_name: 'Gemini 1.5 Flash 8B' },
 ];
+
+const ROLE_LABELS = {
+    administrator: 'Administrator',
+    admin: 'Admin',
+    quan_ly: 'Quản lý',
+    nhan_vien: 'Nhân viên',
+    ke_toan: 'Kế toán',
+};
 
 const initialSettings = (settings) => ({
     brand_name: settings?.brand_name || '',
@@ -77,11 +118,31 @@ const initialSettings = (settings) => ({
     gsc_recipes_path_token: settings?.gsc_recipes_path_token || '/recipes',
     gsc_brand_terms: Array.isArray(settings?.gsc_brand_terms) ? settings.gsc_brand_terms.join('\n') : '',
     gsc_sync_time: settings?.gsc_sync_time || '11:17',
+    client_rotation_enabled: settings?.client_rotation_enabled ?? false,
+    client_rotation_comment_stale_days: settings?.client_rotation_comment_stale_days ?? 3,
+    client_rotation_opportunity_stale_days: settings?.client_rotation_opportunity_stale_days ?? 30,
+    client_rotation_contract_stale_days: settings?.client_rotation_contract_stale_days ?? 90,
+    client_rotation_warning_days: settings?.client_rotation_warning_days ?? 3,
+    client_rotation_daily_receive_limit: settings?.client_rotation_daily_receive_limit ?? 5,
+    client_rotation_lead_type_ids: Array.isArray(settings?.client_rotation_lead_type_ids)
+        ? settings.client_rotation_lead_type_ids.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)
+        : [],
+    client_rotation_participant_user_ids: Array.isArray(settings?.client_rotation_participant_user_ids)
+        ? settings.client_rotation_participant_user_ids.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)
+        : [],
     app_android_apk_url: settings?.app_android_apk_url || '',
     app_ios_testflight_url: settings?.app_ios_testflight_url || '',
     app_release_notes: settings?.app_release_notes || '',
     app_release_version: settings?.app_release_version || '',
 });
+
+const normalizeIdList = (value) => (
+    Array.isArray(value)
+        ? value
+            .map((id) => Number(id))
+            .filter((id) => Number.isInteger(id) && id > 0)
+        : []
+);
 
 const initialBotForm = (bot = null) => ({
     name: bot?.name || '',
@@ -215,6 +276,8 @@ export default function SystemSettings(props) {
         per_page: 20,
     });
     const [users, setUsers] = useState([]);
+    const [rotationLeadTypes, setRotationLeadTypes] = useState([]);
+    const [rotationParticipants, setRotationParticipants] = useState([]);
     const [testingPush, setTestingPush] = useState(false);
     const [lastTestResult, setLastTestResult] = useState(null);
     const [testForm, setTestForm] = useState({
@@ -263,6 +326,41 @@ export default function SystemSettings(props) {
         } catch {
             // ignore user lookup failures
         }
+    };
+
+    const fetchClientRotationLookups = async () => {
+        try {
+            const [leadRes, staffRes] = await Promise.all([
+                axios.get('/api/v1/lead-types').catch(() => ({ data: [] })),
+                axios.get('/api/v1/users/lookup', {
+                    params: { purpose: 'client_rotation_staff' },
+                }).catch(() => ({ data: { data: [] } })),
+            ]);
+
+            setRotationLeadTypes(Array.isArray(leadRes.data) ? leadRes.data : []);
+            setRotationParticipants(Array.isArray(staffRes.data?.data) ? staffRes.data.data : []);
+        } catch {
+            setRotationLeadTypes([]);
+            setRotationParticipants([]);
+        }
+    };
+
+    const toggleRotationSelection = (field, rawId) => {
+        const targetId = Number(rawId || 0);
+        if (!Number.isInteger(targetId) || targetId <= 0) return;
+
+        setForm((prev) => {
+            const current = normalizeIdList(prev[field]);
+            const exists = current.includes(targetId);
+            const next = exists
+                ? current.filter((id) => id !== targetId)
+                : [...current, targetId];
+
+            return {
+                ...prev,
+                [field]: next,
+            };
+        });
     };
 
     const loadAdminSettings = async () => {
@@ -580,14 +678,16 @@ export default function SystemSettings(props) {
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         const tab = String(params.get('tab') || '').trim();
-        if (tab && TAB_KEYS.has(tab)) {
-            setActiveTab(tab);
+        const normalizedTab = LEGACY_TAB_ALIASES[tab] || tab;
+        if (normalizedTab && TAB_KEYS.has(normalizedTab)) {
+            setActiveTab(normalizedTab);
         }
     }, []);
 
     useEffect(() => {
         reloadSystemStatus();
         fetchUsers();
+        fetchClientRotationLookups();
         loadAdminSettings();
         loadChatbotBots();
         fetchDevices();
@@ -610,9 +710,10 @@ export default function SystemSettings(props) {
         }
 
         const tab = String(params.get('tab') || '').trim();
+        const normalizedTab = LEGACY_TAB_ALIASES[tab] || tab;
         const nextParams = new URLSearchParams();
-        if (tab && TAB_KEYS.has(tab)) {
-            nextParams.set('tab', tab);
+        if (normalizedTab && TAB_KEYS.has(normalizedTab)) {
+            nextParams.set('tab', normalizedTab);
         }
 
         const nextQuery = nextParams.toString();
@@ -721,6 +822,20 @@ export default function SystemSettings(props) {
             formData.append('gsc_recipes_path_token', form.gsc_recipes_path_token || '/recipes');
             formData.append('gsc_brand_terms', form.gsc_brand_terms || '');
             formData.append('gsc_sync_time', form.gsc_sync_time || '11:17');
+            formData.append('client_rotation_enabled', form.client_rotation_enabled ? '1' : '0');
+            formData.append('client_rotation_comment_stale_days', String(form.client_rotation_comment_stale_days ?? 3));
+            formData.append('client_rotation_opportunity_stale_days', String(form.client_rotation_opportunity_stale_days ?? 30));
+            formData.append('client_rotation_contract_stale_days', String(form.client_rotation_contract_stale_days ?? 90));
+            formData.append('client_rotation_warning_days', String(form.client_rotation_warning_days ?? 3));
+            formData.append('client_rotation_daily_receive_limit', String(form.client_rotation_daily_receive_limit ?? 5));
+            formData.append(
+                'client_rotation_lead_type_ids',
+                JSON.stringify(normalizeIdList(form.client_rotation_lead_type_ids))
+            );
+            formData.append(
+                'client_rotation_participant_user_ids',
+                JSON.stringify(normalizeIdList(form.client_rotation_participant_user_ids))
+            );
             formData.append('app_android_apk_url', form.app_android_apk_url || '');
             formData.append('app_ios_testflight_url', form.app_ios_testflight_url || '');
             formData.append('app_release_notes', form.app_release_notes || '');
@@ -907,6 +1022,8 @@ export default function SystemSettings(props) {
         if (token.length <= 24) return token;
         return `${token.slice(0, 10)}...${token.slice(-10)}`;
     };
+    const selectedRotationLeadTypeIds = normalizeIdList(form.client_rotation_lead_type_ids);
+    const selectedRotationParticipantIds = normalizeIdList(form.client_rotation_participant_user_ids);
 
     return (
         <PageContainer
@@ -917,21 +1034,47 @@ export default function SystemSettings(props) {
         >
             <div className="lg:col-span-2 space-y-4">
                 <div className="rounded-2xl border border-slate-200/80 bg-white p-3 shadow-card">
-                    <div className="flex flex-wrap gap-2">
-                        {TABS.map((tab) => (
-                            <button
-                                key={tab.key}
-                                type="button"
-                                onClick={() => setActiveTab(tab.key)}
-                                className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
-                                    activeTab === tab.key
-                                        ? 'bg-primary text-white'
-                                        : 'border border-slate-200 text-slate-600 hover:bg-slate-50'
-                                }`}
-                            >
-                                {tab.label}
-                            </button>
+                    <div className="grid gap-3 xl:grid-cols-2">
+                        {TAB_GROUPS.map((group) => (
+                            <div key={group.key} className="rounded-2xl border border-slate-200/80 bg-slate-50 p-3">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-subtle">
+                                    {group.label}
+                                </div>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                    {group.tabs.map((tab) => (
+                                        <button
+                                            key={tab.key}
+                                            type="button"
+                                            onClick={() => setActiveTab(tab.key)}
+                                            className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
+                                                activeTab === tab.key
+                                                    ? 'bg-primary text-white'
+                                                    : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                                            }`}
+                                        >
+                                            {tab.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
                         ))}
+                    </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-card">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                        <div>
+                            <h3 className="text-sm font-semibold text-slate-900">Phần setting đang tách riêng</h3>
+                            <p className="mt-1 text-xs text-text-muted">
+                                Cấu hình chấm công, giờ làm, nhắc chấm công và WiFi đang nằm ở màn riêng để không nhồi quá nhiều vào trang này.
+                            </p>
+                        </div>
+                        <a
+                            href={route('attendance.index')}
+                            className="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                        >
+                            Mở cài đặt chấm công & WiFi
+                        </a>
                     </div>
                 </div>
 
@@ -1565,14 +1708,14 @@ export default function SystemSettings(props) {
                     </div>
                 )}
 
-                {activeTab === 'notifications' && (
+                {activeTab === 'notification_channels' && (
                     <div className="space-y-4">
                         <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
                             <div className="flex items-center justify-between gap-3">
                                 <div>
-                                    <h3 className="text-sm font-semibold text-slate-900">Cấu hình thông báo & lịch gửi</h3>
+                                    <h3 className="text-sm font-semibold text-slate-900">Kênh thông báo hệ thống</h3>
                                     <p className="text-xs text-text-muted mt-1">
-                                        Mỗi loại thông báo được mô tả rõ gửi cho ai, nội dung gì và thời gian chạy để administrator dễ kiểm soát.
+                                        Chỉ giữ lại phần bật/tắt kênh gửi và chống gửi trùng để administrator xử lý nhanh.
                                     </p>
                                 </div>
                                 <div className="text-xs text-text-muted">
@@ -1597,12 +1740,12 @@ export default function SystemSettings(props) {
                                     checked={!!form.notifications_email_fallback_enabled}
                                     onChange={(value) => setForm((s) => ({ ...s, notifications_email_fallback_enabled: value }))}
                                     label="Email fallback"
-                                    description="Nếu push thất bại thì hệ thống sẽ thử gửi email bằng cấu hình SMTP bên dưới."
+                                    description="Nếu push thất bại thì hệ thống sẽ thử gửi email bằng cấu hình SMTP."
                                 />
                                 <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">
                                     <div className="text-sm font-semibold text-slate-900">Khoảng chống trùng thông báo</div>
                                     <div className="mt-1 text-xs text-text-muted">
-                                        Dùng để chặn việc bắn lặp cùng một thông báo trong thời gian quá ngắn.
+                                        Chặn việc bắn lặp cùng một thông báo trong thời gian quá ngắn.
                                     </div>
                                     <input
                                         type="number"
@@ -1615,7 +1758,11 @@ export default function SystemSettings(props) {
                                 </div>
                             </div>
                         </div>
+                    </div>
+                )}
 
+                {activeTab === 'task_notifications' && (
+                    <div className="space-y-4">
                         <NotificationCard
                             title="Nhắc đầu việc chậm tiến độ"
                             subtitle="Cron kiểm tra đầu việc đang chậm so với tiến độ kỳ vọng và bắn nhắc đúng theo giờ bạn cấu hình."
@@ -1699,7 +1846,11 @@ export default function SystemSettings(props) {
                                 </div>
                             </div>
                         </NotificationCard>
+                    </div>
+                )}
 
+                {activeTab === 'crm_contract_notifications' && (
+                    <div className="space-y-4">
                         <NotificationCard
                             title="Thông báo khách hàng mới"
                             subtitle="Áp dụng cho khách vào từ Form tư vấn, Facebook Page hoặc CRM do nhân viên nhập tay."
@@ -1801,13 +1952,17 @@ export default function SystemSettings(props) {
                                 </div>
                             </div>
                         </NotificationCard>
+                    </div>
+                )}
 
+                {activeTab === 'smtp' && (
+                    <div className="space-y-4">
                         <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
                             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                                 <div className="max-w-2xl">
                                     <h3 className="text-sm font-semibold text-slate-900">Cấu hình SMTP</h3>
                                     <p className="mt-1 text-xs text-text-muted">
-                                        Dùng cho email fallback khi push thất bại. Có thể dùng cấu hình riêng của hệ thống hoặc giữ theo file `.env`.
+                                        Dùng cho email fallback khi push thất bại. Tách riêng khỏi tab thông báo để admin thao tác mail dễ hơn.
                                     </p>
                                 </div>
                                 <div className="w-full max-w-[280px] lg:w-auto">
@@ -1910,12 +2065,18 @@ export default function SystemSettings(props) {
                                 </div>
                             </div>
                         </div>
+                    </div>
+                )}
 
+                {activeTab === 'push_testing' && (
+                    <div className="space-y-4">
                         <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
                             <div className="flex items-center justify-between gap-3">
                                 <div>
                                     <h3 className="text-sm font-semibold text-slate-900">Test bắn thông báo thiết bị</h3>
-                                    <p className="text-xs text-text-muted mt-1">Chọn tài khoản đích và gửi ngay một push test.</p>
+                                    <p className="text-xs text-text-muted mt-1">
+                                        Tách riêng khỏi cấu hình kênh gửi để admin test nhanh mà không phải kéo qua cả trang thông báo.
+                                    </p>
                                 </div>
                             </div>
 
@@ -2015,6 +2176,231 @@ export default function SystemSettings(props) {
                                     )}
                                 </div>
                             )}
+                        </div>
+                    </div>
+                )}
+
+                {activeTab === 'client_rotation' && (
+                    <div className="space-y-4">
+                        <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card">
+                            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                <div className="max-w-3xl">
+                                    <h3 className="text-sm font-semibold text-slate-900">Cơ chế xoay vòng khách hàng không được chăm sóc</h3>
+                                    <p className="mt-1 text-xs leading-5 text-text-muted">
+                                        Cron chạy lúc <span className="font-semibold text-slate-900">12:00 trưa mỗi ngày</span> để vừa bắn cảnh báo,
+                                        vừa điều chuyển khách theo thứ tự ưu tiên <span className="font-semibold text-slate-900">đã có hợp đồng</span> →
+                                        <span className="font-semibold text-slate-900"> đã có cơ hội</span> →
+                                        <span className="font-semibold text-slate-900"> khách tiềm năng</span>.
+                                        Chỉ khi khách đã quá hạn cả 3 mốc bình luận, cơ hội và hợp đồng thì mới đủ điều kiện xoay.
+                                    </p>
+                                </div>
+                                <div className="w-full max-w-[320px]">
+                                    <ToggleSwitch
+                                        checked={form.client_rotation_enabled}
+                                        onChange={(value) => setForm((s) => ({ ...s, client_rotation_enabled: value }))}
+                                        label={form.client_rotation_enabled ? 'Đang bật tự động xoay' : 'Đang tắt tự động xoay'}
+                                        description="Nếu tắt, cron vẫn có thể chạy nhưng sẽ bỏ qua toàn bộ khách hàng."
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                                <div>
+                                    <label className="text-xs text-text-muted">Quá hạn bình luận / ghi chú</label>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        max="3650"
+                                        className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                        value={form.client_rotation_comment_stale_days}
+                                        onChange={(e) => setForm((s) => ({
+                                            ...s,
+                                            client_rotation_comment_stale_days: Number(e.target.value || 1),
+                                        }))}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs text-text-muted">Quá hạn cơ hội mới</label>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        max="3650"
+                                        className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                        value={form.client_rotation_opportunity_stale_days}
+                                        onChange={(e) => setForm((s) => ({
+                                            ...s,
+                                            client_rotation_opportunity_stale_days: Number(e.target.value || 1),
+                                        }))}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs text-text-muted">Quá hạn hợp đồng mới</label>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        max="3650"
+                                        className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                        value={form.client_rotation_contract_stale_days}
+                                        onChange={(e) => setForm((s) => ({
+                                            ...s,
+                                            client_rotation_contract_stale_days: Number(e.target.value || 1),
+                                        }))}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs text-text-muted">Cảnh báo trước</label>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        max="60"
+                                        className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                        value={form.client_rotation_warning_days}
+                                        onChange={(e) => setForm((s) => ({
+                                            ...s,
+                                            client_rotation_warning_days: Number(e.target.value || 0),
+                                        }))}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs text-text-muted">Max nhận / người / ngày</label>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        max="100"
+                                        className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                        value={form.client_rotation_daily_receive_limit}
+                                        onChange={(e) => setForm((s) => ({
+                                            ...s,
+                                            client_rotation_daily_receive_limit: Number(e.target.value || 1),
+                                        }))}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                                <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">
+                                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-subtle">Điều kiện xoay</div>
+                                    <p className="mt-1 text-sm text-slate-700">
+                                        Chỉ điều chuyển khi khách đồng thời quá hạn cả 3 mốc: bình luận/ghi chú, cơ hội mới, hợp đồng mới.
+                                    </p>
+                                </div>
+                                <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">
+                                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-subtle">Chọn người nhận</div>
+                                    <p className="mt-1 text-sm text-slate-700">
+                                        Ưu tiên nhân sự cùng phòng ban có số nhận hôm nay ít nhất, rồi đến số khách đang phụ trách ít nhất, cuối cùng random khi bằng nhau.
+                                    </p>
+                                </div>
+                                <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">
+                                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-subtle">Thông báo</div>
+                                    <p className="mt-1 text-sm text-slate-700">
+                                        Trước hạn {form.client_rotation_warning_days || 0} ngày sẽ cảnh báo cho người phụ trách hiện tại. Khi xoay xong, người mất khách và người nhận khách đều được báo nhưng không thấy tên đối phương.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="grid gap-4 xl:grid-cols-2">
+                            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                        <h3 className="text-sm font-semibold text-slate-900">Loại khách áp dụng</h3>
+                                        <p className="mt-1 text-xs text-text-muted">
+                                            Chỉ các khách thuộc loại được chọn mới đi vào cơ chế xoay vòng.
+                                        </p>
+                                    </div>
+                                    <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                                        Đã chọn {selectedRotationLeadTypeIds.length}
+                                    </div>
+                                </div>
+
+                                <div className="mt-4 max-h-[360px] space-y-2 overflow-y-auto pr-1">
+                                    {rotationLeadTypes.length === 0 ? (
+                                        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+                                            Chưa tải được danh sách loại khách.
+                                        </div>
+                                    ) : rotationLeadTypes.map((leadType) => {
+                                        const leadTypeId = Number(leadType.id || 0);
+                                        const checked = selectedRotationLeadTypeIds.includes(leadTypeId);
+
+                                        return (
+                                            <label
+                                                key={leadTypeId}
+                                                className={`flex cursor-pointer items-start gap-3 rounded-2xl border px-4 py-3 transition ${
+                                                    checked
+                                                        ? 'border-primary/30 bg-primary/5'
+                                                        : 'border-slate-200/80 bg-white hover:bg-slate-50'
+                                                }`}
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    className="mt-1 h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary"
+                                                    checked={checked}
+                                                    onChange={() => toggleRotationSelection('client_rotation_lead_type_ids', leadTypeId)}
+                                                />
+                                                <div className="min-w-0">
+                                                    <div className="text-sm font-semibold text-slate-900">{leadType.name || `Loại #${leadTypeId}`}</div>
+                                                    <div className="mt-1 text-xs text-text-muted">
+                                                        ID: {leadTypeId}{leadType.color_hex ? ` • ${leadType.color_hex}` : ''}
+                                                    </div>
+                                                </div>
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                        <h3 className="text-sm font-semibold text-slate-900">Nhân sự tham gia xoay vòng</h3>
+                                        <p className="mt-1 text-xs text-text-muted">
+                                            Chỉ quản lý/nhân viên đang hoạt động mới hợp lệ. Người phụ trách hiện tại và người nhận đều phải nằm trong danh sách này.
+                                        </p>
+                                    </div>
+                                    <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                                        Đã chọn {selectedRotationParticipantIds.length}
+                                    </div>
+                                </div>
+
+                                <div className="mt-4 max-h-[360px] space-y-2 overflow-y-auto pr-1">
+                                    {rotationParticipants.length === 0 ? (
+                                        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+                                            Chưa tải được danh sách nhân sự xoay vòng.
+                                        </div>
+                                    ) : rotationParticipants.map((user) => {
+                                        const userId = Number(user.id || 0);
+                                        const checked = selectedRotationParticipantIds.includes(userId);
+
+                                        return (
+                                            <label
+                                                key={userId}
+                                                className={`flex cursor-pointer items-start gap-3 rounded-2xl border px-4 py-3 transition ${
+                                                    checked
+                                                        ? 'border-primary/30 bg-primary/5'
+                                                        : 'border-slate-200/80 bg-white hover:bg-slate-50'
+                                                }`}
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    className="mt-1 h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary"
+                                                    checked={checked}
+                                                    onChange={() => toggleRotationSelection('client_rotation_participant_user_ids', userId)}
+                                                />
+                                                <div className="min-w-0">
+                                                    <div className="text-sm font-semibold text-slate-900">{user.name || `User #${userId}`}</div>
+                                                    <div className="mt-1 text-xs text-text-muted">
+                                                        {ROLE_LABELS[String(user.role || '').toLowerCase()] || user.role || 'Nhân sự'}
+                                                        {user.email ? ` • ${user.email}` : ''}
+                                                    </div>
+                                                    <div className="mt-1 text-xs text-text-muted">
+                                                        User ID: {userId}{user.department_id ? ` • Phòng ban #${user.department_id}` : ''}
+                                                    </div>
+                                                </div>
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                            </div>
                         </div>
                     </div>
                 )}

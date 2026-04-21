@@ -148,6 +148,15 @@ export default function UserAccountsDashboard(props) {
 
     const toRoleLabel = (role) => roleLabels[role] || role;
 
+    const openManagedClients = (user) => {
+        const userId = Number(user?.id || 0);
+        if (userId <= 0) return;
+
+        const url = new URL(route('crm.index'), window.location.origin);
+        url.searchParams.set('assigned_staff_id', String(userId));
+        window.location.assign(url.toString());
+    };
+
     const loginAsUser = async (user) => {
         if (!user?.id) return;
         if (
@@ -681,6 +690,7 @@ export default function UserAccountsDashboard(props) {
                                     <th className="px-3 py-2 text-left">Tên</th>
                                     <th className="px-3 py-2 text-left">Vai trò</th>
                                     <th className="px-3 py-2 text-left">Phòng ban</th>
+                                    <th className="px-3 py-2 text-center">Khách phụ trách</th>
                                     <th className="px-3 py-2 text-left">Trạng thái</th>
                                     <th className="px-3 py-2 text-right">Thao tác</th>
                                 </tr>
@@ -695,6 +705,16 @@ export default function UserAccountsDashboard(props) {
                                         <td className="px-3 py-2">{toRoleLabel(user.role)}</td>
                                         <td className="px-3 py-2">
                                             {departments.find((d) => d.id === user.department_id)?.name || user.department || '—'}
+                                        </td>
+                                        <td className="px-3 py-2 text-center">
+                                            <button
+                                                type="button"
+                                                onClick={() => openManagedClients(user)}
+                                                className="inline-flex min-w-[5.5rem] items-center justify-center rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700 transition hover:border-sky-300 hover:bg-sky-100 hover:text-sky-900"
+                                                title={`Lọc CRM theo nhân sự phụ trách ${user.name}`}
+                                            >
+                                                {Number(user.managed_clients_count || 0)} khách
+                                            </button>
                                         </td>
                                         <td className="px-3 py-2">
                                             <span
@@ -739,7 +759,7 @@ export default function UserAccountsDashboard(props) {
                                 ))}
                                 {usersData.length === 0 && !loading && (
                                     <tr>
-                                        <td colSpan={5} className="px-3 py-6 text-center text-sm text-text-muted">
+                                        <td colSpan={6} className="px-3 py-6 text-center text-sm text-text-muted">
                                             Không có dữ liệu.
                                         </td>
                                     </tr>

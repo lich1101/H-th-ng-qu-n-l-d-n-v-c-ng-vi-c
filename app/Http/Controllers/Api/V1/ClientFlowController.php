@@ -11,6 +11,7 @@ use App\Models\Project;
 use App\Models\Task;
 use App\Models\TaskItem;
 use App\Models\User;
+use App\Services\ClientAutoRotationService;
 use App\Services\ClientStaffTransferService;
 use App\Services\ContractLifecycleStatusService;
 use App\Services\NotificationService;
@@ -26,6 +27,8 @@ class ClientFlowController extends Controller
     {
         $user = $request->user();
         $transferService = app(ClientStaffTransferService::class);
+        $rotationService = app(ClientAutoRotationService::class);
+        $canViewRotationHistory = in_array($user?->role, ['admin', 'administrator'], true);
 
         if ($transferService->viewerMustOnlyRespondTransfer($user, $client)) {
             $pending = $transferService->pendingForClient((int) $client->id);
@@ -57,6 +60,8 @@ class ClientFlowController extends Controller
                 'items' => [],
                 'care_notes' => [],
                 'comments_history' => [],
+                'client_rotation' => null,
+                'rotation_history' => [],
                 'crm_access_mode' => 'transfer_receiver_pending',
                 'pending_staff_transfer' => $pending ? $transferService->transferToArray($pending) : null,
                 'permissions' => [
@@ -64,6 +69,7 @@ class ClientFlowController extends Controller
                     'can_add_comment' => false,
                     'can_manage_client' => false,
                     'can_delete_any_comment' => false,
+                    'can_view_rotation_history' => $canViewRotationHistory,
                 ],
             ]);
         }
@@ -198,6 +204,10 @@ class ClientFlowController extends Controller
 
         $transferService = app(ClientStaffTransferService::class);
         $pendingTransfer = $transferService->pendingForClient((int) $client->id);
+        $rotationInsight = $rotationService->buildClientRotationInsight($client);
+        $rotationHistory = $canViewRotationHistory
+            ? $rotationService->historyPayloadForClient($client)
+            : [];
 
         return response()->json([
             'client' => [
@@ -289,11 +299,14 @@ class ClientFlowController extends Controller
                 })
                 ->values(),
             'comments_history' => $this->normalizedCommentsHistory($client, $user),
+            'client_rotation' => $rotationInsight,
+            'rotation_history' => $rotationHistory,
             'permissions' => [
                 'can_add_care_note' => $this->canAddCareNote($user, $client),
                 'can_add_comment' => $this->canAddCareNote($user, $client),
                 'can_manage_client' => $this->canManageClient($user, $client),
                 'can_delete_any_comment' => in_array($user?->role, ['admin', 'administrator'], true),
+                'can_view_rotation_history' => $canViewRotationHistory,
             ],
             'crm_access_mode' => 'full',
             'pending_staff_transfer' => $pendingTransfer ? $transferService->transferToArray($pendingTransfer) : null,

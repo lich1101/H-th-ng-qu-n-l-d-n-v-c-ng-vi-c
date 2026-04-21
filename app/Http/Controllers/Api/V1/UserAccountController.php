@@ -59,7 +59,18 @@ class UserAccountController extends Controller
                 'workload_capacity',
                 'created_at',
                 'updated_at',
-            ]);
+            ])
+            ->selectSub(function ($clientQuery) {
+                $clientQuery->from('clients')
+                    ->selectRaw('COUNT(*)')
+                    ->where(function ($builder) {
+                        $builder->whereColumn('clients.assigned_staff_id', 'users.id')
+                            ->orWhere(function ($fallback) {
+                                $fallback->whereNull('clients.assigned_staff_id')
+                                    ->whereColumn('clients.sales_owner_id', 'users.id');
+                            });
+                    });
+            }, 'managed_clients_count');
         if ($request->user()->role === 'admin') {
             $query->where('role', '!=', 'administrator');
         }

@@ -734,6 +734,8 @@ export default function ClientFlow({ auth, clientId }) {
     const projects = flow?.projects || [];
     const tasks = flow?.tasks || [];
     const items = flow?.items || [];
+    const rotation = flow?.client_rotation || null;
+    const rotationHistory = Array.isArray(flow?.rotation_history) ? flow.rotation_history : [];
 
     const projectById = useMemo(() => {
         const map = new Map();
@@ -892,29 +894,105 @@ export default function ClientFlow({ auth, clientId }) {
                     )}
 
                     {!loading && activeTab === 'tong_quan' && (
-                        <div className="mt-5 grid gap-4 lg:grid-cols-2">
-                            <div className="rounded-2xl border border-slate-200/80 p-4">
-                                <h4 className="text-sm font-semibold text-slate-900">Thông tin chung</h4>
-                                <div className="mt-3 space-y-2 text-sm">
-                                    <div className="flex justify-between gap-2"><span className="text-slate-500">Email</span><span className="font-medium text-slate-800">{flow?.client?.email || '—'}</span></div>
-                                    <div className="flex justify-between gap-2"><span className="text-slate-500">Nguồn</span><span className="font-medium text-slate-800">{flow?.client?.lead_source || '—'} {flow?.client?.lead_channel ? `• ${flow.client.lead_channel}` : ''}</span></div>
-                                    <div className="flex justify-between gap-2"><span className="text-slate-500">Doanh thu</span><span className="font-medium text-slate-800">{formatCurrency(flow?.client?.total_revenue)} VNĐ</span></div>
-                                    <div className="flex justify-between gap-2"><span className="text-slate-500">Phụ trách chính</span><span className="font-medium text-slate-800">{flow?.client?.assigned_staff?.name || flow?.client?.sales_owner?.name || '—'}</span></div>
+                        <div className="mt-5 space-y-4">
+                            <div className="grid gap-4 lg:grid-cols-2">
+                                <div className="rounded-2xl border border-slate-200/80 p-4">
+                                    <h4 className="text-sm font-semibold text-slate-900">Thông tin chung</h4>
+                                    <div className="mt-3 space-y-2 text-sm">
+                                        <div className="flex justify-between gap-2"><span className="text-slate-500">Email</span><span className="font-medium text-slate-800">{flow?.client?.email || '—'}</span></div>
+                                        <div className="flex justify-between gap-2"><span className="text-slate-500">Nguồn</span><span className="font-medium text-slate-800">{flow?.client?.lead_source || '—'} {flow?.client?.lead_channel ? `• ${flow.client.lead_channel}` : ''}</span></div>
+                                        <div className="flex justify-between gap-2"><span className="text-slate-500">Doanh thu</span><span className="font-medium text-slate-800">{formatCurrency(flow?.client?.total_revenue)} VNĐ</span></div>
+                                        <div className="flex justify-between gap-2"><span className="text-slate-500">Phụ trách chính</span><span className="font-medium text-slate-800">{flow?.client?.assigned_staff?.name || flow?.client?.sales_owner?.name || '—'}</span></div>
+                                    </div>
+                                </div>
+
+                                <div className="rounded-2xl border border-slate-200/80 p-4">
+                                    <h4 className="text-sm font-semibold text-slate-900">Nhân sự chăm sóc</h4>
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                        {(flow?.client?.care_staff_users || []).length > 0 ? flow.client.care_staff_users.map((staff) => (
+                                            <span key={staff.id} className="rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
+                                                {staff.name}
+                                            </span>
+                                        )) : (
+                                            <span className="text-sm text-slate-500">Chưa có nhân sự chăm sóc.</span>
+                                        )}
+                                    </div>
+                                    <p className="mt-4 text-xs leading-5 text-slate-500">Khi thêm bình luận, hệ thống tự lưu người gửi và thời gian để tiện theo dõi lịch sử trao đổi.</p>
                                 </div>
                             </div>
-                            <div className="rounded-2xl border border-slate-200/80 p-4">
-                                <h4 className="text-sm font-semibold text-slate-900">Nhân sự chăm sóc</h4>
-                                <div className="mt-3 flex flex-wrap gap-2">
-                                    {(flow?.client?.care_staff_users || []).length > 0 ? flow.client.care_staff_users.map((staff) => (
-                                        <span key={staff.id} className="rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-                                            {staff.name}
+
+                            {rotation && (
+                                <div className="rounded-2xl border border-slate-200/80 p-4">
+                                    <div className="flex flex-wrap items-start justify-between gap-3">
+                                        <div>
+                                            <h4 className="text-sm font-semibold text-slate-900">Theo dõi xoay khách hàng</h4>
+                                            <p className="mt-1 text-xs leading-5 text-slate-500">
+                                                {rotation.protecting_label || 'Khách sẽ chỉ bị điều chuyển khi đã quá hạn đồng thời bình luận/ghi chú, cơ hội mới và hợp đồng mới.'}
+                                            </p>
+                                        </div>
+                                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                                            rotation.eligible_for_auto_rotation
+                                                ? 'bg-rose-100 text-rose-700'
+                                                : rotation.warning_due
+                                                    ? 'bg-amber-100 text-amber-700'
+                                                    : rotation.in_scope
+                                                        ? 'bg-emerald-100 text-emerald-700'
+                                                        : 'bg-slate-100 text-slate-700'
+                                        }`}>
+                                            {rotation.status_label || 'Chưa có trạng thái'}
                                         </span>
-                                    )) : (
-                                        <span className="text-sm text-slate-500">Chưa có nhân sự chăm sóc.</span>
+                                    </div>
+
+                                    <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                                        <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">
+                                            <div className="text-xs uppercase tracking-[0.12em] text-slate-400">Bình luận / ghi chú</div>
+                                            <div className="mt-1 text-lg font-semibold text-slate-900">{rotation.days_since_comment ?? '—'} ngày</div>
+                                            <div className="mt-1 text-xs text-slate-500">Mốc xoay: {rotation.thresholds?.comment_stale_days ?? '—'} ngày</div>
+                                        </div>
+                                        <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">
+                                            <div className="text-xs uppercase tracking-[0.12em] text-slate-400">Cơ hội mới</div>
+                                            <div className="mt-1 text-lg font-semibold text-slate-900">{rotation.days_since_opportunity ?? '—'} ngày</div>
+                                            <div className="mt-1 text-xs text-slate-500">Mốc xoay: {rotation.thresholds?.opportunity_stale_days ?? '—'} ngày</div>
+                                        </div>
+                                        <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">
+                                            <div className="text-xs uppercase tracking-[0.12em] text-slate-400">Hợp đồng mới</div>
+                                            <div className="mt-1 text-lg font-semibold text-slate-900">{rotation.days_since_contract ?? '—'} ngày</div>
+                                            <div className="mt-1 text-xs text-slate-500">Mốc xoay: {rotation.thresholds?.contract_stale_days ?? '—'} ngày</div>
+                                        </div>
+                                        <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">
+                                            <div className="text-xs uppercase tracking-[0.12em] text-slate-400">Còn lại đến hạn</div>
+                                            <div className="mt-1 text-lg font-semibold text-slate-900">
+                                                {rotation.eligible_for_auto_rotation ? 'Đến hạn' : `${rotation.days_until_rotation ?? 0} ngày`}
+                                            </div>
+                                            <div className="mt-1 text-xs text-slate-500">
+                                                Reset gần nhất: {formatDateTime(rotation.rotation_reset_at)}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {flow?.permissions?.can_view_rotation_history && (
+                                        <div className="mt-4 rounded-2xl border border-slate-200/80 bg-slate-50 p-4">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <h5 className="text-sm font-semibold text-slate-900">Lịch sử đã từng phụ trách</h5>
+                                                <span className="text-xs text-slate-500">{rotationHistory.length} bản ghi</span>
+                                            </div>
+                                            <div className="mt-3 space-y-2">
+                                                {rotationHistory.length === 0 ? (
+                                                    <div className="text-sm text-slate-500">Khách hàng này chưa có lịch sử điều chuyển.</div>
+                                                ) : rotationHistory.slice(0, 8).map((row) => (
+                                                    <div key={row.id} className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                                                        <div className="text-sm font-semibold text-slate-900">{row.action_label || 'Điều chuyển'}</div>
+                                                        <div className="mt-1 text-xs text-slate-600">
+                                                            {row.from_staff?.name || 'Chưa rõ'} → {row.to_staff?.name || 'Chưa rõ'} • {formatDateTime(row.transferred_at)}
+                                                        </div>
+                                                        {row.note ? <div className="mt-1 text-xs text-slate-500">{row.note}</div> : null}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
                                     )}
                                 </div>
-                                <p className="mt-4 text-xs leading-5 text-slate-500">Khi thêm bình luận, hệ thống tự lưu người gửi và thời gian để tiện theo dõi lịch sử trao đổi.</p>
-                            </div>
+                            )}
                         </div>
                     )}
 

@@ -11,6 +11,7 @@ use App\Models\Department;
 use App\Models\LeadType;
 use App\Models\RevenueTier;
 use App\Models\User;
+use App\Services\ClientAutoRotationService;
 use App\Services\ClientPhoneDuplicateService;
 use App\Services\ContractLifecycleStatusService;
 use App\Services\ClientStaffTransferService;
@@ -461,6 +462,15 @@ class CRMController extends Controller
             ], 422);
         }
 
+        $newAssignedStaffCandidateId = array_key_exists('assigned_staff_id', $validated)
+            ? (int) ($validated['assigned_staff_id'] ?? 0)
+            : $oldAssignedStaffId;
+        $willChangeAssignedStaff = $newAssignedStaffCandidateId !== $oldAssignedStaffId;
+        $rotationService = $willChangeAssignedStaff ? app(ClientAutoRotationService::class) : null;
+        $preAssignmentInsight = $willChangeAssignedStaff && $rotationService
+            ? $rotationService->buildClientRotationInsight($client)
+            : null;
+
         $client->update($validated);
 
         if (array_key_exists('care_staff_ids', $validated)) {
@@ -468,6 +478,23 @@ class CRMController extends Controller
                 $client,
                 $validated['care_staff_ids'] ?? [],
                 (int) $user->id
+            );
+        }
+
+        $newAssignedStaffId = (int) ($client->assigned_staff_id ?? 0);
+        if ($newAssignedStaffId !== $oldAssignedStaffId) {
+            $rotationService = $rotationService ?: app(ClientAutoRotationService::class);
+            $rotationService->resetClientRotationAnchor($client);
+            $rotationService->recordAssignmentHistory(
+                $client,
+                $oldAssignedStaffId > 0 ? $oldAssignedStaffId : null,
+                $newAssignedStaffId > 0 ? $newAssignedStaffId : null,
+                ClientAutoRotationService::ACTION_MANUAL_DIRECT_ASSIGNMENT,
+                (int) $user->id,
+                $preAssignmentInsight,
+                null,
+                'manual_direct_assignment',
+                'Đổi phụ trách trực tiếp từ màn sửa khách hàng.'
             );
         }
 

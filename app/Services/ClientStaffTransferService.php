@@ -7,6 +7,7 @@ use App\Models\Client;
 use App\Models\ClientStaffTransferRequest;
 use App\Models\Department;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -353,11 +354,17 @@ class ClientStaffTransferService
         }
 
         return DB::transaction(function () use ($actor, $transfer, $client, $toUser) {
+            $now = Carbon::now('Asia/Ho_Chi_Minh');
+            $rotationService = app(ClientAutoRotationService::class);
+            $fromStaffId = (int) ($client->assigned_staff_id ?? 0);
+            $preTransferInsight = $rotationService->buildClientRotationInsight($client);
+
             $client->assigned_staff_id = (int) $toUser->id;
             $client->sales_owner_id = (int) $toUser->id;
             if ($toUser->department_id) {
                 $client->assigned_department_id = (int) $toUser->department_id;
             }
+            $client->care_rotation_reset_at = $now->toDateTimeString();
             $client->save();
 
             $transfer->update([
@@ -365,6 +372,19 @@ class ClientStaffTransferService
                 'responded_by_user_id' => (int) $actor->id,
                 'responded_at' => now(),
             ]);
+
+            $rotationService->recordAssignmentHistory(
+                $client,
+                $fromStaffId > 0 ? $fromStaffId : null,
+                (int) $toUser->id,
+                ClientAutoRotationService::ACTION_MANUAL_TRANSFER_REQUEST,
+                (int) $actor->id,
+                $preTransferInsight,
+                (int) $transfer->id,
+                'transfer_request_accepted',
+                $transfer->note,
+                $now
+            );
 
             $transfer->load(['client', 'fromStaff', 'toStaff', 'requestedBy']);
 

@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\AppSetting;
+use App\Models\LeadType;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -82,6 +84,14 @@ class AppSettingController extends Controller
             'gsc_recipes_path_token' => ['nullable', 'string', 'max:120'],
             'gsc_brand_terms' => ['nullable', 'string', 'max:12000'],
             'gsc_sync_time' => ['nullable', 'regex:/^\d{2}:\d{2}$/'],
+            'client_rotation_enabled' => ['nullable', 'boolean'],
+            'client_rotation_comment_stale_days' => ['nullable', 'integer', 'min:1', 'max:3650'],
+            'client_rotation_opportunity_stale_days' => ['nullable', 'integer', 'min:1', 'max:3650'],
+            'client_rotation_contract_stale_days' => ['nullable', 'integer', 'min:1', 'max:3650'],
+            'client_rotation_warning_days' => ['nullable', 'integer', 'min:0', 'max:60'],
+            'client_rotation_daily_receive_limit' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'client_rotation_lead_type_ids' => ['nullable'],
+            'client_rotation_participant_user_ids' => ['nullable'],
             'app_android_apk_url' => ['nullable', 'string', 'max:255'],
             'app_ios_testflight_url' => ['nullable', 'string', 'max:255'],
             'app_release_notes' => ['nullable', 'string', 'max:20000'],
@@ -98,6 +108,34 @@ class AppSettingController extends Controller
         $brandTerms = array_key_exists('gsc_brand_terms', $validated)
             ? $this->normalizeBrandTerms($validated['gsc_brand_terms'] ?? null)
             : $this->extractBrandTermsFromSetting($setting);
+        $clientRotationLeadTypeIds = array_key_exists('client_rotation_lead_type_ids', $validated)
+            ? $this->normalizeIntegerList($request->input('client_rotation_lead_type_ids'))
+            : $this->extractIntegerListFromSetting($setting?->client_rotation_lead_type_ids);
+        $clientRotationParticipantUserIds = array_key_exists('client_rotation_participant_user_ids', $validated)
+            ? $this->normalizeIntegerList($request->input('client_rotation_participant_user_ids'))
+            : $this->extractIntegerListFromSetting($setting?->client_rotation_participant_user_ids);
+
+        if (! empty($clientRotationLeadTypeIds)) {
+            $leadTypeCount = LeadType::query()
+                ->whereIn('id', $clientRotationLeadTypeIds)
+                ->count();
+            if ($leadTypeCount !== count($clientRotationLeadTypeIds)) {
+                return response()->json(['message' => 'Danh sách loại khách xoay vòng không hợp lệ.'], 422);
+            }
+        }
+
+        if (! empty($clientRotationParticipantUserIds)) {
+            $participantCount = User::query()
+                ->whereIn('id', $clientRotationParticipantUserIds)
+                ->whereIn('role', ['quan_ly', 'nhan_vien'])
+                ->where(function ($query) {
+                    $query->whereNull('is_active')->orWhere('is_active', true);
+                })
+                ->count();
+            if ($participantCount !== count($clientRotationParticipantUserIds)) {
+                return response()->json(['message' => 'Danh sách nhân sự xoay vòng chỉ được gồm quản lý/nhân viên đang hoạt động.'], 422);
+            }
+        }
 
         $logoUrl = $validated['logo_url'] ?? $setting->logo_url ?? AppSetting::defaults()['logo_url'];
         if ($request->hasFile('logo')) {
@@ -253,6 +291,26 @@ class AppSettingController extends Controller
             'gsc_sync_time' => array_key_exists('gsc_sync_time', $validated)
                 ? (string) $validated['gsc_sync_time']
                 : (string) ($setting->gsc_sync_time ?: '11:17'),
+            'client_rotation_enabled' => array_key_exists('client_rotation_enabled', $validated)
+                ? (bool) $validated['client_rotation_enabled']
+                : (bool) ($setting->client_rotation_enabled ?? false),
+            'client_rotation_comment_stale_days' => array_key_exists('client_rotation_comment_stale_days', $validated)
+                ? (int) $validated['client_rotation_comment_stale_days']
+                : (int) ($setting->client_rotation_comment_stale_days ?? 3),
+            'client_rotation_opportunity_stale_days' => array_key_exists('client_rotation_opportunity_stale_days', $validated)
+                ? (int) $validated['client_rotation_opportunity_stale_days']
+                : (int) ($setting->client_rotation_opportunity_stale_days ?? 30),
+            'client_rotation_contract_stale_days' => array_key_exists('client_rotation_contract_stale_days', $validated)
+                ? (int) $validated['client_rotation_contract_stale_days']
+                : (int) ($setting->client_rotation_contract_stale_days ?? 90),
+            'client_rotation_warning_days' => array_key_exists('client_rotation_warning_days', $validated)
+                ? (int) $validated['client_rotation_warning_days']
+                : (int) ($setting->client_rotation_warning_days ?? 3),
+            'client_rotation_daily_receive_limit' => array_key_exists('client_rotation_daily_receive_limit', $validated)
+                ? (int) $validated['client_rotation_daily_receive_limit']
+                : (int) ($setting->client_rotation_daily_receive_limit ?? 5),
+            'client_rotation_lead_type_ids' => $clientRotationLeadTypeIds,
+            'client_rotation_participant_user_ids' => $clientRotationParticipantUserIds,
             'app_android_apk_url' => $apkUrl,
             'app_ios_testflight_url' => $iosTestflightUrl,
             'app_release_notes' => array_key_exists('app_release_notes', $validated)
@@ -301,6 +359,14 @@ class AppSettingController extends Controller
             'attendance_late_grace_minutes' => $setting ? (int) ($setting->attendance_late_grace_minutes ?? 10) : 10,
             'attendance_reminder_enabled' => $setting ? (bool) ($setting->attendance_reminder_enabled ?? true) : true,
             'attendance_reminder_minutes_before' => $setting ? (int) ($setting->attendance_reminder_minutes_before ?? 10) : 10,
+            'client_rotation_enabled' => $setting ? (bool) ($setting->client_rotation_enabled ?? false) : false,
+            'client_rotation_comment_stale_days' => $setting ? (int) ($setting->client_rotation_comment_stale_days ?? 3) : 3,
+            'client_rotation_opportunity_stale_days' => $setting ? (int) ($setting->client_rotation_opportunity_stale_days ?? 30) : 30,
+            'client_rotation_contract_stale_days' => $setting ? (int) ($setting->client_rotation_contract_stale_days ?? 90) : 90,
+            'client_rotation_warning_days' => $setting ? (int) ($setting->client_rotation_warning_days ?? 3) : 3,
+            'client_rotation_daily_receive_limit' => $setting ? (int) ($setting->client_rotation_daily_receive_limit ?? 5) : 5,
+            'client_rotation_lead_type_ids' => $this->extractIntegerListFromSetting($setting?->client_rotation_lead_type_ids),
+            'client_rotation_participant_user_ids' => $this->extractIntegerListFromSetting($setting?->client_rotation_participant_user_ids),
             'app_android_apk_url' => $setting ? $setting->app_android_apk_url : null,
             'app_ios_testflight_url' => $setting ? $setting->app_ios_testflight_url : null,
             'app_release_notes' => $setting ? $setting->app_release_notes : null,
@@ -382,5 +448,38 @@ class AppSettingController extends Controller
         }
 
         return array_values(array_unique($clean));
+    }
+
+    private function normalizeIntegerList($value): array
+    {
+        if (is_string($value)) {
+            $trimmed = trim($value);
+            if ($trimmed === '') {
+                return [];
+            }
+
+            $decoded = json_decode($trimmed, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                $value = $decoded;
+            } else {
+                $value = preg_split('/[\s,;|]+/', $trimmed) ?: [];
+            }
+        }
+
+        if (! is_array($value)) {
+            return [];
+        }
+
+        return collect($value)
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    private function extractIntegerListFromSetting($value): array
+    {
+        return $this->normalizeIntegerList($value);
     }
 }
