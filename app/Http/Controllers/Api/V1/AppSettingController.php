@@ -92,6 +92,7 @@ class AppSettingController extends Controller
             'client_rotation_daily_receive_limit' => ['nullable', 'integer', 'min:1', 'max:100'],
             'client_rotation_lead_type_ids' => ['nullable'],
             'client_rotation_participant_user_ids' => ['nullable'],
+            'client_rotation_same_department_only' => ['nullable', 'boolean'],
             'app_android_apk_url' => ['nullable', 'string', 'max:255'],
             'app_ios_testflight_url' => ['nullable', 'string', 'max:255'],
             'app_release_notes' => ['nullable', 'string', 'max:20000'],
@@ -311,6 +312,9 @@ class AppSettingController extends Controller
                 : (int) ($setting->client_rotation_daily_receive_limit ?? 5),
             'client_rotation_lead_type_ids' => $clientRotationLeadTypeIds,
             'client_rotation_participant_user_ids' => $clientRotationParticipantUserIds,
+            'client_rotation_same_department_only' => array_key_exists('client_rotation_same_department_only', $validated)
+                ? (bool) $validated['client_rotation_same_department_only']
+                : (bool) ($setting->client_rotation_same_department_only ?? false),
             'app_android_apk_url' => $apkUrl,
             'app_ios_testflight_url' => $iosTestflightUrl,
             'app_release_notes' => array_key_exists('app_release_notes', $validated)
@@ -367,6 +371,7 @@ class AppSettingController extends Controller
             'client_rotation_daily_receive_limit' => $setting ? (int) ($setting->client_rotation_daily_receive_limit ?? 5) : 5,
             'client_rotation_lead_type_ids' => $this->extractIntegerListFromSetting($setting?->client_rotation_lead_type_ids),
             'client_rotation_participant_user_ids' => $this->extractIntegerListFromSetting($setting?->client_rotation_participant_user_ids),
+            'client_rotation_same_department_only' => $setting ? (bool) ($setting->client_rotation_same_department_only ?? false) : false,
             'app_android_apk_url' => $setting ? $setting->app_android_apk_url : null,
             'app_ios_testflight_url' => $setting ? $setting->app_ios_testflight_url : null,
             'app_release_notes' => $setting ? $setting->app_release_notes : null,

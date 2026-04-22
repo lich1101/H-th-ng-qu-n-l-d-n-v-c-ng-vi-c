@@ -72,6 +72,7 @@ class AppSetting extends Model
         'client_rotation_daily_receive_limit',
         'client_rotation_lead_type_ids',
         'client_rotation_participant_user_ids',
+        'client_rotation_same_department_only',
         'app_android_apk_url',
         'app_ios_testflight_url',
         'app_release_notes',
@@ -116,6 +117,7 @@ class AppSetting extends Model
         'client_rotation_daily_receive_limit' => 'integer',
         'client_rotation_lead_type_ids' => 'array',
         'client_rotation_participant_user_ids' => 'array',
+        'client_rotation_same_department_only' => 'boolean',
     ];
 
     public static function defaults(): array
@@ -186,6 +188,7 @@ class AppSetting extends Model
             'client_rotation_daily_receive_limit' => 5,
             'client_rotation_lead_type_ids' => [],
             'client_rotation_participant_user_ids' => [],
+            'client_rotation_same_department_only' => false,
             'app_android_apk_url' => null,
             'app_ios_testflight_url' => null,
             'app_release_notes' => null,

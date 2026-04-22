@@ -124,6 +124,7 @@ const initialSettings = (settings) => ({
     client_rotation_contract_stale_days: settings?.client_rotation_contract_stale_days ?? 90,
     client_rotation_warning_days: settings?.client_rotation_warning_days ?? 3,
     client_rotation_daily_receive_limit: settings?.client_rotation_daily_receive_limit ?? 5,
+    client_rotation_same_department_only: settings?.client_rotation_same_department_only ?? false,
     client_rotation_lead_type_ids: Array.isArray(settings?.client_rotation_lead_type_ids)
         ? settings.client_rotation_lead_type_ids.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)
         : [],
@@ -828,6 +829,7 @@ export default function SystemSettings(props) {
             formData.append('client_rotation_contract_stale_days', String(form.client_rotation_contract_stale_days ?? 90));
             formData.append('client_rotation_warning_days', String(form.client_rotation_warning_days ?? 3));
             formData.append('client_rotation_daily_receive_limit', String(form.client_rotation_daily_receive_limit ?? 5));
+            formData.append('client_rotation_same_department_only', form.client_rotation_same_department_only ? '1' : '0');
             formData.append(
                 'client_rotation_lead_type_ids',
                 JSON.stringify(normalizeIdList(form.client_rotation_lead_type_ids))
@@ -2277,6 +2279,40 @@ export default function SystemSettings(props) {
                                 </div>
                             </div>
 
+                            <div className="mt-4">
+                                <div className="text-xs font-semibold uppercase tracking-[0.14em] text-text-subtle">Phạm vi nhận khách</div>
+                                <div className="mt-2 grid gap-3 md:grid-cols-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setForm((s) => ({ ...s, client_rotation_same_department_only: true }))}
+                                        className={`rounded-2xl border px-4 py-3 text-left transition ${
+                                            form.client_rotation_same_department_only
+                                                ? 'border-primary/40 bg-primary/5'
+                                                : 'border-slate-200/80 bg-white hover:bg-slate-50'
+                                        }`}
+                                    >
+                                        <div className="text-sm font-semibold text-slate-900">Chỉ trong cùng phòng ban</div>
+                                        <div className="mt-1 text-xs text-text-muted">
+                                            Chỉ những nhân sự đã chọn và cùng phòng ban với người đang giữ khách mới được nhận xoay.
+                                        </div>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setForm((s) => ({ ...s, client_rotation_same_department_only: false }))}
+                                        className={`rounded-2xl border px-4 py-3 text-left transition ${
+                                            !form.client_rotation_same_department_only
+                                                ? 'border-primary/40 bg-primary/5'
+                                                : 'border-slate-200/80 bg-white hover:bg-slate-50'
+                                        }`}
+                                    >
+                                        <div className="text-sm font-semibold text-slate-900">Toàn bộ nhân sự đã chọn</div>
+                                        <div className="mt-1 text-xs text-text-muted">
+                                            Không giới hạn theo phòng ban, miễn là người nhận nằm trong danh sách xoay và chưa vượt quota/ngày.
+                                        </div>
+                                    </button>
+                                </div>
+                            </div>
+
                             <div className="mt-4 grid gap-3 lg:grid-cols-3">
                                 <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">
                                     <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-subtle">Điều kiện xoay</div>
@@ -2287,7 +2323,9 @@ export default function SystemSettings(props) {
                                 <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">
                                     <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-subtle">Chọn người nhận</div>
                                     <p className="mt-1 text-sm text-slate-700">
-                                        Ưu tiên nhân sự cùng phòng ban có số nhận hôm nay ít nhất, rồi đến số khách đang phụ trách ít nhất, cuối cùng random khi bằng nhau.
+                                        {form.client_rotation_same_department_only
+                                            ? 'Chỉ xét nhóm nhân sự đã chọn và cùng phòng ban. Hệ thống ưu tiên người có số auto-rotation tích lũy ít nhất, rồi đến số khách đang phụ trách ít nhất, rồi đến số nhận hôm nay ít nhất, cuối cùng random khi bằng nhau.'
+                                            : 'Xét trên toàn bộ nhân sự đã chọn trong cấu hình. Hệ thống ưu tiên người có số auto-rotation tích lũy ít nhất, rồi đến số khách đang phụ trách ít nhất, rồi đến số nhận hôm nay ít nhất, cuối cùng random khi bằng nhau.'}
                                     </p>
                                 </div>
                                 <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">

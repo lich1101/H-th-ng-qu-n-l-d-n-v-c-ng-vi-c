@@ -10,10 +10,12 @@ Tai lieu nay dung de QA/tester test nhanh co che xoay khach hang tu dong.
 - `contract_stale_days = 90`
 - `warning_days = 3`
 - `daily_receive_limit = 5`
+- `client_rotation_same_department_only = false`
 - Loai khach dang duoc chon trong setting: `Khach hang tiem nang`
 - Danh sach nhan su tham gia xoay: `A`, `B`, `C`, `D`
 - `A` la nguoi dang phu trach khach trong cac scenario duoi day.
-- `B`, `C`, `D` cung phong ban voi `A`, dang active, va deu nam trong danh sach xoay.
+- `B`, `C`, `D` dang active, va deu nam trong danh sach xoay.
+- Pham vi chon nguoi nhan la toan bo nhan su da duoc tick trong setting, khong con gioi han theo phong ban.
 
 ## Quy uoc doc bang
 
@@ -37,6 +39,8 @@ Tai lieu nay dung de QA/tester test nhanh co che xoay khach hang tu dong.
 | S09 | Giong `S01`, nhung `B(auto_today=5)`, `C(auto_today=5)`, `D(auto_today=5)`. | `2026-04-18 12:00` | `2026-04-21 12:00` nhung `khong chuyen duoc` | `Khong co` | Khach da du dieu kien xoay nhung tat ca nguoi nhan deu het quota trong ngay, nen khach phai duoc giu lai va cron ngay hom sau thu lai. |
 | S10 | Giong `S01`. Truoc `2026-04-21 12:00`, `B` da nhan `4` khach auto trong ngay. Luc `09:30`, `B` nhan them `1` khach qua `manual transfer request accepted`. | `2026-04-18 12:00` | `2026-04-21 12:00` | `B` | Manual transfer khong duoc tinh vao `daily auto receive limit`. Sau hanh dong tay, `B` van chi bi tinh `auto_today = 4`, nen van duoc nhan them 1 khach auto de thanh `5`. |
 | S11 | Giong `S01`. Truoc `2026-04-21 12:00`, `B` da nhan `4` khach auto trong ngay. Luc `10:00`, admin doi phu trach truc tiep `1` khach khac sang `B` tu man sua CRM. | `2026-04-18 12:00` | `2026-04-21 12:00` | `B` | `manual_direct_assignment` cung khong duoc tinh vao `daily auto receive limit`. He thong chi dem `action_type = auto_rotation`. |
+| S12 | Giong `S01`, nhung `B` thuoc phong `Sales`, `C` thuoc phong `CSKH`, `D` thuoc phong `Backoffice`. `B(hist=2, load=9, auto_today=1)`, `C(hist=1, load=8, auto_today=0)`, `D(hist=3, load=4, auto_today=0)`. | `2026-04-18 12:00` | `2026-04-21 12:00` | `C` | Case xac nhan pham vi moi: auto-rotation duoc phep chuyen khach cho nhan su khac phong ban, mien la nguoi do da duoc chon trong setting va chua vuot quota/ngay. |
+| S13 | Giong `S12`, nhung bat them `client_rotation_same_department_only = true`. `A` va `B` cung phong `Sales`, `C` va `D` khac phong. `B(hist=2, load=9, auto_today=1)`, `C(hist=1, load=8, auto_today=0)`, `D(hist=3, load=4, auto_today=0)`. | `2026-04-18 12:00` | `2026-04-21 12:00` | `B` | Case xac nhan setting moi: du `C` dep hon ve ranking, he thong van phai bo qua `C`, `D` vi khac phong ban khi bat che do chi xoay trong cung phong. |
 
 ## Checklist UI/API can doi chieu nhanh
 

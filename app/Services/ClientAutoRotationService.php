@@ -42,6 +42,7 @@ class ClientAutoRotationService
             'daily_receive_limit' => max(1, (int) ($setting->client_rotation_daily_receive_limit ?? ($defaults['client_rotation_daily_receive_limit'] ?? 5))),
             'lead_type_ids' => $this->normalizeIdList($setting?->client_rotation_lead_type_ids ?? ($defaults['client_rotation_lead_type_ids'] ?? [])),
             'participant_user_ids' => $this->normalizeIdList($setting?->client_rotation_participant_user_ids ?? ($defaults['client_rotation_participant_user_ids'] ?? [])),
+            'same_department_only' => $setting ? (bool) ($setting->client_rotation_same_department_only ?? ($defaults['client_rotation_same_department_only'] ?? false)) : (bool) ($defaults['client_rotation_same_department_only'] ?? false),
         ];
     }
 
@@ -227,9 +228,6 @@ class ClientAutoRotationService
         $receivedTodayCounts = $this->receivedTodayCounts($participantIds, $now);
         $historicalReceiveCounts = $this->historicalReceiveCounts($participantIds);
         $clientLoadCounts = $this->participantClientLoadCounts($participantIds, $settings['lead_type_ids']);
-        $participantsByDepartment = $participants->groupBy(function (User $user) {
-            return (int) ($user->department_id ?? 0);
-        });
 
         foreach ($clients as $client) {
             $clientId = (int) $client->id;
@@ -287,11 +285,12 @@ class ClientAutoRotationService
 
             $rankedRecipients = $this->rankRecipientsForClient(
                 $client,
-                $participantsByDepartment,
+                $participants,
                 $historicalReceiveCounts,
                 $receivedTodayCounts,
                 $clientLoadCounts,
-                $settings['daily_receive_limit']
+                $settings['daily_receive_limit'],
+                (bool) ($settings['same_department_only'] ?? false)
             );
 
             if ($rankedRecipients->isEmpty()) {
@@ -495,10 +494,14 @@ class ClientAutoRotationService
 
         $currentOwnerId = $this->currentOwnerId($client);
         $currentDepartmentId = $this->currentDepartmentId($client);
+        $sameDepartmentOnly = (bool) ($settings['same_department_only'] ?? false);
         $leadTypeId = (int) ($client->lead_type_id ?? 0);
         $leadTypeSelected = $leadTypeId > 0 && in_array($leadTypeId, $settings['lead_type_ids'], true);
         $ownerSelected = $currentOwnerId > 0 && in_array($currentOwnerId, $settings['participant_user_ids'], true);
-        $inScope = $settings['enabled'] && $leadTypeSelected && $ownerSelected && $currentDepartmentId > 0;
+        $inScope = $settings['enabled']
+            && $leadTypeSelected
+            && $ownerSelected
+            && (! $sameDepartmentOnly || $currentDepartmentId > 0);
 
         $protectingSignal = null;
         if ($daysSinceContract < (int) $settings['contract_stale_days']) {
@@ -529,7 +532,7 @@ class ClientAutoRotationService
         if (! $ownerSelected) {
             $scopeReasons[] = 'owner_not_selected';
         }
-        if ($currentDepartmentId <= 0) {
+        if ($sameDepartmentOnly && $currentDepartmentId <= 0) {
             $scopeReasons[] = 'department_missing';
         }
 
@@ -571,6 +574,7 @@ class ClientAutoRotationService
                 'contract_stale_days' => (int) $settings['contract_stale_days'],
                 'warning_days' => (int) $settings['warning_days'],
                 'daily_receive_limit' => (int) $settings['daily_receive_limit'],
+                'same_department_only' => $sameDepartmentOnly,
             ],
             'status_label' => $this->rotationStatusLabel($inScope, $protectingSignal, $eligible, $daysUntilRotation, $scopeReasons),
         ];
@@ -690,6 +694,9 @@ class ClientAutoRotationService
             if (in_array('owner_not_selected', $scopeReasons, true)) {
                 return 'Nhân sự phụ trách chưa nằm trong danh sách xoay';
             }
+            if (in_array('department_missing', $scopeReasons, true)) {
+                return 'Thiếu phòng ban để xoay trong cùng phòng ban';
+            }
 
             return 'Chưa đủ điều kiện cấu hình để xoay';
         }
@@ -781,22 +788,24 @@ class ClientAutoRotationService
 
     private function rankRecipientsForClient(
         Client $client,
-        Collection $participantsByDepartment,
+        Collection $participants,
         array $historicalReceiveCounts,
         array $receivedTodayCounts,
         array $clientLoadCounts,
-        int $dailyReceiveLimit
+        int $dailyReceiveLimit,
+        bool $sameDepartmentOnly = false
     ): Collection {
-        $departmentId = $this->currentDepartmentId($client);
-        if ($departmentId <= 0) {
+        $departmentId = $sameDepartmentOnly ? $this->currentDepartmentId($client) : 0;
+        if ($sameDepartmentOnly && $departmentId <= 0) {
             return collect();
         }
 
         /** @var Collection<int, User> $candidates */
-        $candidates = $participantsByDepartment->get($departmentId, collect())
-            ->filter(function (User $user) use ($client, $receivedTodayCounts, $dailyReceiveLimit) {
+        $candidates = $participants
+            ->filter(function (User $user) use ($client, $receivedTodayCounts, $dailyReceiveLimit, $sameDepartmentOnly, $departmentId) {
                 return (int) $user->id !== $this->currentOwnerId($client)
                     && in_array((string) $user->role, self::ALLOWED_PARTICIPANT_ROLES, true)
+                    && (! $sameDepartmentOnly || (int) ($user->department_id ?? 0) === $departmentId)
                     && (int) ($receivedTodayCounts[(int) $user->id] ?? 0) < $dailyReceiveLimit;
             })
             ->values();
@@ -942,9 +951,11 @@ class ClientAutoRotationService
             return false;
         }
 
-        $departmentId = $this->currentDepartmentId($client);
-        if ($departmentId <= 0 || (int) ($recipient->department_id ?? 0) !== $departmentId) {
-            return false;
+        if ((bool) ($settings['same_department_only'] ?? false)) {
+            $departmentId = $this->currentDepartmentId($client);
+            if ($departmentId <= 0 || (int) ($recipient->department_id ?? 0) !== $departmentId) {
+                return false;
+            }
         }
 
         return $this->receivedTodayAutoRotationCountForUser($recipientId, $now) < (int) $settings['daily_receive_limit'];
