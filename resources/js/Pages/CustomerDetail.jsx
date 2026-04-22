@@ -119,7 +119,7 @@ export default function CustomerDetail({ auth, clientId }) {
                                         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-text-subtle">Theo dõi xoay khách</p>
                                         <h2 className="mt-2 text-lg font-semibold text-slate-900">{rotation.status_label || 'Chưa có trạng thái'}</h2>
                                         <p className="mt-1 text-sm text-slate-600">
-                                            {rotation.protecting_label || 'Khách sẽ chỉ bị điều chuyển khi đồng thời quá hạn cả bình luận, cơ hội và hợp đồng.'}
+                                            {rotation.trigger_label || rotation.protecting_label || 'Chạm mốc nào trước thì xoay theo mốc đó: quá hạn bình luận, cơ hội hoặc hợp đồng đều có thể điều chuyển ngay.'}
                                         </p>
                                     </div>
                                     <div className={`rounded-full px-3 py-1 text-xs font-semibold ${
@@ -148,12 +148,18 @@ export default function CustomerDetail({ auth, clientId }) {
                                         <div className="mt-1 text-xs text-slate-500">
                                             Mốc xoay: {rotation.thresholds?.comment_stale_days ?? '—'} ngày
                                         </div>
+                                        <div className="mt-1 text-xs text-slate-400">
+                                            Tính từ: {rotation.effective_comment_at ? formatVietnamDateTime(rotation.effective_comment_at) : '—'}
+                                        </div>
                                     </div>
                                     <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">
                                         <div className="text-xs text-slate-500">Cơ hội gần nhất</div>
                                         <div className="mt-1 text-lg font-semibold text-slate-900">{rotation.days_since_opportunity ?? '—'} ngày</div>
                                         <div className="mt-1 text-xs text-slate-500">
                                             Mốc xoay: {rotation.thresholds?.opportunity_stale_days ?? '—'} ngày
+                                        </div>
+                                        <div className="mt-1 text-xs text-slate-400">
+                                            Tính từ: {rotation.effective_opportunity_at ? formatVietnamDateTime(rotation.effective_opportunity_at) : '—'}
                                         </div>
                                     </div>
                                     <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">
@@ -162,14 +168,20 @@ export default function CustomerDetail({ auth, clientId }) {
                                         <div className="mt-1 text-xs text-slate-500">
                                             Mốc xoay: {rotation.thresholds?.contract_stale_days ?? '—'} ngày
                                         </div>
+                                        <div className="mt-1 text-xs text-slate-400">
+                                            Tính từ: {rotation.effective_contract_at ? formatVietnamDateTime(rotation.effective_contract_at) : '—'}
+                                        </div>
                                     </div>
                                 </div>
 
                                 <div className="mt-4 grid gap-3 md:grid-cols-2">
                                     <div className="rounded-2xl border border-slate-200/80 px-4 py-3">
-                                        <div className="text-xs text-slate-500">Lần reset bộ đếm gần nhất</div>
+                                        <div className="text-xs text-slate-500">Mốc reset chung</div>
                                         <div className="mt-1 text-sm font-semibold text-slate-900">
-                                            {rotation.rotation_reset_at ? formatVietnamDateTime(rotation.rotation_reset_at) : '—'}
+                                            {rotation.rotation_anchor_at ? formatVietnamDateTime(rotation.rotation_anchor_at) : '—'}
+                                        </div>
+                                        <div className="mt-1 text-xs text-slate-500">
+                                            {rotation.rotation_anchor_label || 'Hệ thống lấy mốc reset hiện tại để tính lại các ngày quá hạn.'}
                                         </div>
                                     </div>
                                     <div className="rounded-2xl border border-slate-200/80 px-4 py-3">

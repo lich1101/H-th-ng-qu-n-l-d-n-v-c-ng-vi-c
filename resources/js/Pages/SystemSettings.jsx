@@ -2249,19 +2249,13 @@ export default function SystemSettings(props) {
                                         }))}
                                     />
                                 </div>
-                                <div>
-                                    <label className="text-xs text-text-muted">Cảnh báo trước</label>
-                                    <input
-                                        type="number"
-                                        min="0"
-                                        max="60"
-                                        className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
-                                        value={form.client_rotation_warning_days}
-                                        onChange={(e) => setForm((s) => ({
-                                            ...s,
-                                            client_rotation_warning_days: Number(e.target.value || 0),
-                                        }))}
-                                    />
+                                <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">
+                                    <div className="text-xs font-semibold uppercase tracking-[0.14em] text-text-subtle">Nhịp cảnh báo cố định</div>
+                                    <div className="mt-2 space-y-1 text-sm text-slate-700">
+                                        <div>Chăm sóc: còn 2 ngày thì nhắc mỗi ngày.</div>
+                                        <div>Cơ hội: còn 14 ngày thì nhắc mỗi 3 ngày.</div>
+                                        <div>Hợp đồng: còn 45 ngày thì nhắc mỗi 7 ngày.</div>
+                                    </div>
                                 </div>
                                 <div>
                                     <label className="text-xs text-text-muted">Max nhận / người / ngày</label>
@@ -2317,7 +2311,10 @@ export default function SystemSettings(props) {
                                 <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">
                                     <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-subtle">Điều kiện xoay</div>
                                     <p className="mt-1 text-sm text-slate-700">
-                                        Chỉ điều chuyển khi khách đồng thời quá hạn cả 3 mốc: bình luận/ghi chú, cơ hội mới, hợp đồng mới.
+                                        Chạm mốc nào trước thì điều chuyển theo mốc đó: quá {form.client_rotation_comment_stale_days || 0} ngày không có bình luận/ghi chú mới, hoặc quá {form.client_rotation_opportunity_stale_days || 0} ngày không có cơ hội mới, hoặc quá {form.client_rotation_contract_stale_days || 0} ngày không có hợp đồng mới.
+                                    </p>
+                                    <p className="mt-2 text-xs text-slate-500">
+                                        Bình luận mới chỉ reset mốc chăm sóc. Cơ hội mới reset cả mốc cơ hội và mốc chăm sóc. Hợp đồng mới reset cả 3 mốc: bình luận, cơ hội và hợp đồng.
                                     </p>
                                 </div>
                                 <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">
@@ -2331,7 +2328,7 @@ export default function SystemSettings(props) {
                                 <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">
                                     <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-subtle">Thông báo</div>
                                     <p className="mt-1 text-sm text-slate-700">
-                                        Trước hạn {form.client_rotation_warning_days || 0} ngày sẽ cảnh báo cho người phụ trách hiện tại. Khi xoay xong, người mất khách và người nhận khách đều được báo nhưng không thấy tên đối phương.
+                                        Cảnh báo chạy theo từng tầng: chăm sóc còn 2 ngày thì nhắc mỗi ngày, cơ hội còn 14 ngày thì nhắc mỗi 3 ngày, hợp đồng còn 45 ngày thì nhắc mỗi 7 ngày. Khi có hợp đồng mới, bộ đếm sẽ reset theo hợp đồng đó; khi xoay hoặc đổi phụ trách thành công, bộ đếm cũng reset lại từ đầu.
                                     </p>
                                 </div>
                             </div>
