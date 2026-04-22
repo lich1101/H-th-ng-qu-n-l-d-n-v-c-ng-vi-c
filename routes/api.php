@@ -405,22 +405,22 @@ Route::prefix('v1')->group(function () {
             ->middleware('role:admin,administrator');
 
         Route::get('/products', [ProductController::class, 'index'])
-            ->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
         Route::get('/product-categories', [ProductCategoryController::class, 'index'])
-            ->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
         Route::post('/products', [ProductController::class, 'store'])
-            ->middleware('role:admin,ke_toan');
+            ->middleware('role:admin,administrator,ke_toan');
         Route::post('/product-categories', [ProductCategoryController::class, 'store'])
-            ->middleware('role:admin');
+            ->middleware('role:admin,administrator');
         Route::get('/products/{product}', [ProductController::class, 'show']);
         Route::put('/products/{product}', [ProductController::class, 'update'])
-            ->middleware('role:admin,ke_toan');
+            ->middleware('role:admin,administrator,ke_toan');
         Route::put('/product-categories/{productCategory}', [ProductCategoryController::class, 'update'])
-            ->middleware('role:admin');
+            ->middleware('role:admin,administrator');
         Route::delete('/products/{product}', [ProductController::class, 'destroy'])
-            ->middleware('role:admin');
+            ->middleware('role:admin,administrator');
         Route::delete('/product-categories/{productCategory}', [ProductCategoryController::class, 'destroy'])
-            ->middleware('role:admin');
+            ->middleware('role:admin,administrator');
 
         Route::get('/lead-types', [LeadTypeController::class, 'index']);
         Route::post('/lead-types', [LeadTypeController::class, 'store'])->middleware('role:admin');
