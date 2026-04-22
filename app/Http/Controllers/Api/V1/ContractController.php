@@ -279,10 +279,12 @@ class ContractController extends Controller
     private function contractYearComparisonAggregates(Request $request): array
     {
         $today = Carbon::now('Asia/Ho_Chi_Minh')->startOfDay();
+        $currentYear = $today->year;
+        $previousYear = $today->copy()->subYear()->year;
         $currentFrom = $today->copy()->startOfYear()->toDateString();
-        $currentTo = $today->toDateString();
+        $currentTo = $today->copy()->endOfYear()->toDateString();
         $previousFrom = $today->copy()->subYear()->startOfYear()->toDateString();
-        $previousTo = $today->copy()->subYear()->toDateString();
+        $previousTo = $today->copy()->subYear()->endOfYear()->toDateString();
 
         $baseWithoutDateFilters = $this->contractIndexFilteredQuery($request, false);
 
@@ -299,8 +301,8 @@ class ContractController extends Controller
 
         return [
             'mode' => 'year',
-            'current_label' => 'Năm nay',
-            'previous_label' => 'Năm trước',
+            'current_label' => 'Năm '.$currentYear,
+            'previous_label' => 'Năm '.$previousYear,
             'current_period' => [
                 'from' => $currentFrom,
                 'to' => $currentTo,
@@ -310,6 +312,7 @@ class ContractController extends Controller
                 'to' => $previousTo,
             ],
             'date_basis' => 'approved_at_or_created_at',
+            'ignores_date_filters' => true,
             'current' => $current,
             'previous' => $previous,
             'change_percent' => [
