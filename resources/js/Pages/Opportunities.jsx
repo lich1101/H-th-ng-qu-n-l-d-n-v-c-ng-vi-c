@@ -703,7 +703,25 @@ export default function Opportunities(props) {
             </FilterToolbar>
 
             <p className="mb-2 text-xs text-slate-500">
-                Card cơ hội so sánh theo <strong>ngày tạo cơ hội</strong> (`created_at`): tháng này so với tháng trước.
+                Card cơ hội đang so sánh theo <strong>ngày tạo cơ hội</strong> (`created_at`)
+                {' '}
+                từ
+                {' '}
+                <strong>{monthlyComparison.current_period?.from || '—'}</strong>
+                {' '}
+                đến
+                {' '}
+                <strong>{monthlyComparison.current_period?.to || '—'}</strong>
+                {' '}
+                so với
+                {' '}
+                <strong>{monthlyComparison.previous_period?.from || '—'}</strong>
+                {' '}
+                đến
+                {' '}
+                <strong>{monthlyComparison.previous_period?.to || '—'}</strong>.
+                {' '}
+                Filter <strong>ngày dự kiến chốt</strong> của bảng bên dưới không làm thay đổi các card này.
             </p>
             <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 <div className="group relative overflow-hidden rounded-3xl border border-sky-300/60 bg-gradient-to-br from-sky-600 via-cyan-600 to-blue-700 px-5 py-4 text-white shadow-card transition hover:-translate-y-0.5 hover:shadow-lg">

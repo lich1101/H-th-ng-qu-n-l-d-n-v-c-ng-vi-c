@@ -33,6 +33,7 @@ class OpportunityController extends Controller
         $statusOptions = $this->statusOptions();
         $scopeWithoutStatus = $this->opportunityIndexFilteredQuery($request, $viewer, false);
         $filtered = $this->opportunityIndexFilteredQuery($request, $viewer, true);
+        $comparisonBase = $this->opportunityIndexFilteredQuery($request, $viewer, true, false);
 
         $revenueTotal = (float) ($filtered->clone()->sum('amount') ?? 0);
         $statusCounts = $isLinkableForContract
@@ -40,7 +41,7 @@ class OpportunityController extends Controller
             : $this->buildOpportunityStatusCounts($scopeWithoutStatus, $statusOptions);
         $comparison = $isLinkableForContract
             ? $this->emptyOpportunityMonthlyComparison()
-            : $this->buildOpportunityMonthlyComparison($filtered->clone(), $statusOptions);
+            : $this->buildOpportunityMonthlyComparison($comparisonBase->clone(), $statusOptions);
 
         $query = $filtered->clone()->with([
             'client:id,name,company,email,phone,notes,assigned_staff_id',
@@ -72,7 +73,12 @@ class OpportunityController extends Controller
         return response()->json($payload);
     }
 
-    private function opportunityIndexFilteredQuery(Request $request, User $viewer, bool $applyStatusFilter = true): Builder
+    private function opportunityIndexFilteredQuery(
+        Request $request,
+        User $viewer,
+        bool $applyStatusFilter = true,
+        bool $applyExpectedCloseFilters = true
+    ): Builder
     {
         $query = Opportunity::query();
         CrmScope::applyOpportunityScope($query, $viewer);
@@ -136,10 +142,10 @@ class OpportunityController extends Controller
                     });
             });
         }
-        if ($request->filled('expected_close_from')) {
+        if ($applyExpectedCloseFilters && $request->filled('expected_close_from')) {
             $query->whereDate('expected_close_date', '>=', (string) $request->input('expected_close_from'));
         }
-        if ($request->filled('expected_close_to')) {
+        if ($applyExpectedCloseFilters && $request->filled('expected_close_to')) {
             $query->whereDate('expected_close_date', '<=', (string) $request->input('expected_close_to'));
         }
 
@@ -193,8 +199,8 @@ class OpportunityController extends Controller
 
         return [
             'mode' => 'month',
-            'current_label' => 'Tháng này',
-            'previous_label' => 'Tháng trước',
+            'current_label' => 'Tháng '.$now->format('m/Y'),
+            'previous_label' => 'Tháng '.$now->copy()->subMonthNoOverflow()->format('m/Y'),
             'current_period' => [
                 'from' => $currentFrom,
                 'to' => $currentTo,
@@ -203,6 +209,8 @@ class OpportunityController extends Controller
                 'from' => $previousFrom,
                 'to' => $previousTo,
             ],
+            'date_basis' => 'created_at',
+            'ignores_expected_close_filters' => true,
             'current' => $current,
             'previous' => $previous,
             'change_percent' => [
@@ -305,10 +313,12 @@ class OpportunityController extends Controller
 
         return [
             'mode' => 'month',
-            'current_label' => 'Tháng này',
+            'current_label' => 'Tháng hiện tại',
             'previous_label' => 'Tháng trước',
             'current_period' => ['from' => null, 'to' => null],
             'previous_period' => ['from' => null, 'to' => null],
+            'date_basis' => 'created_at',
+            'ignores_expected_close_filters' => true,
             'current' => $empty,
             'previous' => $empty,
             'change_percent' => [
