@@ -192,6 +192,15 @@ const buildContractDateFilterParams = (source = {}) => CONTRACT_DATE_FIELD_OPTIO
 const findContractDateFieldLabel = (field) => (
     CONTRACT_DATE_FIELD_OPTIONS.find((item) => item.value === field)?.label || field
 );
+const BULK_DATE_SYNC_BATCH_SIZE = 250;
+const chunkArray = (items = [], size = BULK_DATE_SYNC_BATCH_SIZE) => {
+    const normalizedSize = Math.max(1, Number(size) || BULK_DATE_SYNC_BATCH_SIZE);
+    const chunks = [];
+    for (let index = 0; index < items.length; index += normalizedSize) {
+        chunks.push(items.slice(index, index + normalizedSize));
+    }
+    return chunks;
+};
 const calculateItemTotal = (item) => {
     const price = parseNumberInput(item?.unit_price);
     const quantity = Math.max(1, parseNumberInput(item?.quantity) || 1);
@@ -857,6 +866,7 @@ export default function Contracts(props) {
             '',
             `• Trường cần cập nhật: ${targetLabel}.`,
             `• Ngày tham chiếu: ${referenceLabel}.`,
+            `• Hệ thống sẽ tự chia thành từng đợt ${BULK_DATE_SYNC_BATCH_SIZE} hợp đồng để tránh lỗi khi chọn quá nhiều.`,
             '• Hệ thống sẽ ghi đè giá trị ngày đích theo ngày tham chiếu nếu hợp đồng có đủ dữ liệu.',
             '• Hợp đồng thiếu ngày tham chiếu hoặc làm sai thứ tự ngày sẽ được giữ nguyên và báo lý do.',
             '',
@@ -866,23 +876,48 @@ export default function Contracts(props) {
 
         setBulkLoading(true);
         try {
-            const res = await axios.post('/api/v1/contracts/sync-dates', {
-                contract_ids: selectedContractIds.map((id) => Number(id)),
-                target_date_field: bulkDateSyncForm.target_date_field,
-                reference_date_field: bulkDateSyncForm.reference_date_field,
-            });
-            const { data } = res;
-            toast.success(data?.message || 'Đã đồng bộ.');
-            const skipped = data?.skipped || [];
-            const failed = data?.failed || [];
-            if (failed.length > 0) {
-                const first = failed[0];
+            const batches = chunkArray(
+                selectedContractIds.map((id) => Number(id)),
+                BULK_DATE_SYNC_BATCH_SIZE,
+            );
+            const merged = {
+                updated: [],
+                skipped: [],
+                failed: [],
+            };
+
+            for (const batchIds of batches) {
+                const res = await axios.post('/api/v1/contracts/sync-dates', {
+                    contract_ids: batchIds,
+                    target_date_field: bulkDateSyncForm.target_date_field,
+                    reference_date_field: bulkDateSyncForm.reference_date_field,
+                });
+                const data = res?.data || {};
+                merged.updated.push(...(Array.isArray(data.updated) ? data.updated : []));
+                merged.skipped.push(...(Array.isArray(data.skipped) ? data.skipped : []));
+                merged.failed.push(...(Array.isArray(data.failed) ? data.failed : []));
+            }
+
+            const parts = [];
+            if (merged.updated.length > 0) {
+                parts.push(`Đã đồng bộ ${merged.updated.length} hợp đồng.`);
+            }
+            if (merged.skipped.length > 0) {
+                parts.push(`Giữ nguyên ${merged.skipped.length} hợp đồng chưa phù hợp điều kiện.`);
+            }
+            if (merged.failed.length > 0) {
+                parts.push(`${merged.failed.length} hợp đồng lỗi xử lý.`);
+            }
+            toast.success(parts.join(' ') || 'Đã đồng bộ.');
+
+            if (merged.failed.length > 0) {
+                const first = merged.failed[0];
                 toast.error(
                     `Một số hợp đồng không xử lý được (ví dụ #${first.id ?? '?'}): ${first.message || 'Lỗi'}.`,
                 );
             }
-            if (skipped.length > 0) {
-                const first = skipped[0];
+            if (merged.skipped.length > 0) {
+                const first = merged.skipped[0];
                 toast.error(
                     `Một số hợp đồng được giữ nguyên (ví dụ #${first.id ?? '?'}): ${first.message || first.reason || 'Không đủ điều kiện đồng bộ'}.`,
                 );
@@ -2803,6 +2838,11 @@ export default function Contracts(props) {
                         <p className="mt-1">
                             {selectedContractIds.length} hợp đồng đang được chọn. Nếu ngày tham chiếu bị trống hoặc làm sai thứ tự ngày ký / hiệu lực / kết thúc, hợp đồng đó sẽ được giữ nguyên.
                         </p>
+                        {selectedContractIds.length > BULK_DATE_SYNC_BATCH_SIZE && (
+                            <p className="mt-2">
+                                Hệ thống sẽ tự chia thành khoảng {Math.ceil(selectedContractIds.length / BULK_DATE_SYNC_BATCH_SIZE)} đợt để tránh lỗi khi đồng bộ số lượng lớn.
+                            </p>
+                        )}
                     </div>
 
                     <LabeledField

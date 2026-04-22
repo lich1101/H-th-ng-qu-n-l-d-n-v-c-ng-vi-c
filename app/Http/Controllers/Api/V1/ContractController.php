@@ -858,11 +858,12 @@ class ContractController extends Controller
     {
         $dateFieldKeys = array_keys($this->contractDateFieldMap());
         $validated = $request->validate([
-            'contract_ids' => ['required', 'array', 'min:1', 'max:500'],
+            'contract_ids' => ['required', 'array', 'min:1', 'max:5000'],
             'contract_ids.*' => ['integer', 'exists:contracts,id'],
             'target_date_field' => ['required', 'string', 'in:'.implode(',', $dateFieldKeys)],
             'reference_date_field' => ['required', 'string', 'in:'.implode(',', $dateFieldKeys)],
         ], [
+            'contract_ids.max' => 'Mỗi lần đồng bộ tối đa 5000 hợp đồng.',
             'target_date_field.required' => 'Vui lòng chọn trường ngày cần cập nhật.',
             'target_date_field.in' => 'Trường ngày cần cập nhật không hợp lệ.',
             'reference_date_field.required' => 'Vui lòng chọn ngày tham chiếu.',
