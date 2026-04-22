@@ -200,26 +200,17 @@ class ContractController extends Controller
         }
 
         if ($applyDateFilters) {
-            if ($request->filled('created_at_from')) {
-                $query->whereDate('contracts.created_at', '>=', (string) $request->input('created_at_from'));
-            }
-            if ($request->filled('created_at_to')) {
-                $query->whereDate('contracts.created_at', '<=', (string) $request->input('created_at_to'));
-            }
+            foreach ($this->contractDateFieldMap() as $field => $config) {
+                $fromKey = $field.'_from';
+                $toKey = $field.'_to';
 
-            if ($request->filled('approved_at_from') || $request->filled('approved_at_to')) {
-                $query->where(function (Builder $outer) use ($request) {
-                    $outer->whereNull('contracts.approved_at')
-                        ->orWhere(function (Builder $inner) use ($request) {
-                            $inner->whereNotNull('contracts.approved_at');
-                            if ($request->filled('approved_at_from')) {
-                                $inner->whereDate('contracts.approved_at', '>=', (string) $request->input('approved_at_from'));
-                            }
-                            if ($request->filled('approved_at_to')) {
-                                $inner->whereDate('contracts.approved_at', '<=', (string) $request->input('approved_at_to'));
-                            }
-                        });
-                });
+                if ($request->filled($fromKey)) {
+                    $query->whereDate($config['column'], '>=', (string) $request->input($fromKey));
+                }
+
+                if ($request->filled($toKey)) {
+                    $query->whereDate($config['column'], '<=', (string) $request->input($toKey));
+                }
             }
         }
 
@@ -865,13 +856,42 @@ class ContractController extends Controller
      */
     public function syncDates(Request $request): JsonResponse
     {
+        $dateFieldKeys = array_keys($this->contractDateFieldMap());
         $validated = $request->validate([
             'contract_ids' => ['required', 'array', 'min:1', 'max:500'],
             'contract_ids.*' => ['integer', 'exists:contracts,id'],
+            'target_date_field' => ['required', 'string', 'in:'.implode(',', $dateFieldKeys)],
+            'reference_date_field' => ['required', 'string', 'in:'.implode(',', $dateFieldKeys)],
+        ], [
+            'target_date_field.required' => 'Vui lòng chọn trường ngày cần cập nhật.',
+            'target_date_field.in' => 'Trường ngày cần cập nhật không hợp lệ.',
+            'reference_date_field.required' => 'Vui lòng chọn ngày tham chiếu.',
+            'reference_date_field.in' => 'Ngày tham chiếu không hợp lệ.',
         ]);
 
         $ids = array_values(array_unique(array_map('intval', $validated['contract_ids'])));
         $tz = 'Asia/Ho_Chi_Minh';
+        $user = $request->user();
+        $targetField = (string) $validated['target_date_field'];
+        $referenceField = (string) $validated['reference_date_field'];
+
+        if ($targetField === $referenceField) {
+            return response()->json([
+                'message' => 'Trường ngày cần cập nhật phải khác ngày tham chiếu.',
+            ], 422);
+        }
+
+        if ($targetField === 'approved_at' && ! $this->canApprove($user)) {
+            return response()->json([
+                'message' => 'Chỉ admin, administrator hoặc kế toán mới được đồng bộ ngày duyệt.',
+            ], 403);
+        }
+
+        if ($targetField === 'created_at' && ! in_array((string) $user->role, ['admin', 'administrator'], true)) {
+            return response()->json([
+                'message' => 'Chỉ admin hoặc administrator mới được chỉnh ngày tạo hệ thống.',
+            ], 403);
+        }
 
         $updated = [];
         $skipped = [];
@@ -885,7 +905,7 @@ class ContractController extends Controller
                 continue;
             }
 
-            if (! $this->canEditContract($request->user(), $contract)) {
+            if (! $this->canEditContract($user, $contract)) {
                 $failed[] = ['id' => $id, 'message' => 'Không có quyền cập nhật hợp đồng.'];
 
                 continue;
@@ -898,52 +918,59 @@ class ContractController extends Controller
                 continue;
             }
 
-            if (! $this->canMutateContractForClient($request->user(), $contract->client, $contract)) {
+            if (! $this->canMutateContractForClient($user, $contract->client, $contract)) {
                 $failed[] = ['id' => $id, 'message' => 'Không có quyền theo phạm vi khách hàng.'];
 
                 continue;
             }
 
-            if ($contract->start_date !== null) {
+            $sourceValue = $this->resolveContractDateFieldValue($contract, $referenceField, $tz);
+            if (! $sourceValue) {
                 $skipped[] = [
                     'id' => $id,
                     'code' => $contract->code,
-                    'reason' => 'already_has_start_date',
+                    'reason' => 'missing_reference_date',
+                    'message' => sprintf(
+                        'Hợp đồng chưa có %s để làm mốc.',
+                        mb_strtolower($this->contractDateFieldLabel($referenceField))
+                    ),
                 ];
 
                 continue;
             }
 
-            $createdDateStr = $contract->created_at
-                ? $contract->created_at->copy()->timezone($tz)->format('Y-m-d')
-                : null;
+            $normalizedTargetValue = $this->normalizeContractDateForField($sourceValue, $targetField, $tz);
+            $currentTargetValue = $this->resolveContractDateFieldValue($contract, $targetField, $tz);
+            if ($currentTargetValue && $this->contractDateValuesEqual($currentTargetValue, $normalizedTargetValue, $targetField)) {
+                $skipped[] = [
+                    'id' => $id,
+                    'code' => $contract->code,
+                    'reason' => 'already_synced',
+                    'message' => sprintf(
+                        '%s đã trùng với %s.',
+                        $this->contractDateFieldLabel($targetField),
+                        mb_strtolower($this->contractDateFieldLabel($referenceField))
+                    ),
+                ];
 
-            $payload = [];
-
-            if ($contract->signed_at !== null) {
-                $payload['start_date'] = $contract->signed_at->format('Y-m-d');
-            } else {
-                if ($createdDateStr === null) {
-                    $failed[] = ['id' => $id, 'message' => 'Không có ngày ký và không có ngày tạo để gán.'];
-
-                    continue;
-                }
-                $payload['signed_at'] = $createdDateStr;
-                $payload['start_date'] = $createdDateStr;
+                continue;
             }
 
-            $newStart = Carbon::parse($payload['start_date'], $tz)->startOfDay();
+            $consistencyError = $this->validateContractDateSyncConsistency($contract, $targetField, $normalizedTargetValue, $tz);
+            if ($consistencyError !== null) {
+                $skipped[] = [
+                    'id' => $id,
+                    'code' => $contract->code,
+                    'reason' => 'invalid_date_order',
+                    'message' => $consistencyError,
+                ];
 
-            if ($contract->end_date !== null) {
-                $end = Carbon::parse($contract->end_date->format('Y-m-d'), $tz)->startOfDay();
-                if ($end->lte($newStart)) {
-                    $payload['end_date'] = $newStart->copy()->addDay()->format('Y-m-d');
-                }
+                continue;
             }
 
             try {
-                DB::transaction(function () use ($contract, $payload) {
-                    $contract->update($payload);
+                DB::transaction(function () use ($contract, $targetField, $normalizedTargetValue, $tz) {
+                    $this->persistContractSyncedDate($contract, $targetField, $normalizedTargetValue, $tz);
                     $contract->refreshFinancials();
                 });
                 $contract->refresh();
@@ -953,9 +980,9 @@ class ContractController extends Controller
                 $updated[] = [
                     'id' => $id,
                     'code' => $contract->code,
-                    'start_date' => $payload['start_date'],
-                    'signed_at_filled' => array_key_exists('signed_at', $payload),
-                    'end_date_adjusted' => array_key_exists('end_date', $payload),
+                    'target_field' => $targetField,
+                    'reference_field' => $referenceField,
+                    'value' => $this->serializeContractDateForResponse($normalizedTargetValue, $targetField),
                 ];
             } catch (\Throwable $e) {
                 report($e);
@@ -965,10 +992,15 @@ class ContractController extends Controller
 
         $parts = [];
         if (count($updated) > 0) {
-            $parts[] = 'Đã cập nhật '.count($updated).' hợp đồng.';
+            $parts[] = sprintf(
+                'Đã đồng bộ %d hợp đồng (%s theo %s).',
+                count($updated),
+                mb_strtolower($this->contractDateFieldLabel($targetField)),
+                mb_strtolower($this->contractDateFieldLabel($referenceField))
+            );
         }
         if (count($skipped) > 0) {
-            $parts[] = 'Bỏ qua '.count($skipped).' hợp đồng (đã có ngày bắt đầu hiệu lực).';
+            $parts[] = 'Bỏ qua '.count($skipped).' hợp đồng do thiếu mốc ngày hoặc vướng thứ tự ngày.';
         }
         if (count($failed) > 0) {
             $parts[] = count($failed).' hợp đồng không xử lý được.';
@@ -976,10 +1008,135 @@ class ContractController extends Controller
 
         return response()->json([
             'message' => count($parts) > 0 ? implode(' ', $parts) : 'Không có thay đổi.',
+            'target_field' => $targetField,
+            'reference_field' => $referenceField,
             'updated' => $updated,
             'skipped' => $skipped,
             'failed' => $failed,
         ]);
+    }
+
+    private function contractDateFieldMap(): array
+    {
+        return [
+            'created_at' => ['column' => 'contracts.created_at', 'type' => 'datetime', 'label' => 'Ngày tạo'],
+            'signed_at' => ['column' => 'contracts.signed_at', 'type' => 'date', 'label' => 'Ngày ký'],
+            'approved_at' => ['column' => 'contracts.approved_at', 'type' => 'datetime', 'label' => 'Ngày duyệt'],
+            'start_date' => ['column' => 'contracts.start_date', 'type' => 'date', 'label' => 'Ngày bắt đầu hiệu lực'],
+            'end_date' => ['column' => 'contracts.end_date', 'type' => 'date', 'label' => 'Ngày kết thúc'],
+        ];
+    }
+
+    private function contractDateFieldLabel(string $field): string
+    {
+        return $this->contractDateFieldMap()[$field]['label'] ?? $field;
+    }
+
+    private function resolveContractDateFieldValue(Contract $contract, string $field, string $tz): ?Carbon
+    {
+        $value = match ($field) {
+            'created_at' => $contract->created_at,
+            'signed_at' => $contract->signed_at,
+            'approved_at' => $contract->approved_at,
+            'start_date' => $contract->start_date,
+            'end_date' => $contract->end_date,
+            default => null,
+        };
+
+        if (! $value) {
+            return null;
+        }
+
+        $date = $value instanceof Carbon ? $value->copy() : Carbon::parse((string) $value, $tz);
+
+        return $this->normalizeContractDateForField($date, $field, $tz);
+    }
+
+    private function normalizeContractDateForField(Carbon $value, string $field, string $tz): Carbon
+    {
+        $config = $this->contractDateFieldMap()[$field] ?? ['type' => 'date'];
+        $normalized = $value->copy()->timezone($tz);
+
+        return $config['type'] === 'date'
+            ? $normalized->startOfDay()
+            : $normalized;
+    }
+
+    private function contractDateValuesEqual(Carbon $left, Carbon $right, string $field): bool
+    {
+        $config = $this->contractDateFieldMap()[$field] ?? ['type' => 'date'];
+        $format = $config['type'] === 'date' ? 'Y-m-d' : 'Y-m-d H:i:s';
+
+        return $left->format($format) === $right->format($format);
+    }
+
+    private function validateContractDateSyncConsistency(
+        Contract $contract,
+        string $targetField,
+        Carbon $targetValue,
+        string $tz
+    ): ?string {
+        if ($targetField === 'approved_at' && (string) ($contract->approval_status ?? '') !== 'approved') {
+            return 'Chỉ đồng bộ ngày duyệt cho hợp đồng đã duyệt.';
+        }
+
+        $signedAt = $this->resolveContractDateFieldValue($contract, 'signed_at', $tz);
+        $startDate = $this->resolveContractDateFieldValue($contract, 'start_date', $tz);
+        $endDate = $this->resolveContractDateFieldValue($contract, 'end_date', $tz);
+
+        if ($targetField === 'signed_at') {
+            $signedAt = $targetValue->copy();
+        } elseif ($targetField === 'start_date') {
+            $startDate = $targetValue->copy();
+        } elseif ($targetField === 'end_date') {
+            $endDate = $targetValue->copy();
+        }
+
+        if ($signedAt && $startDate && $startDate->lt($signedAt)) {
+            return 'Ngày bắt đầu hiệu lực phải cùng ngày hoặc sau ngày ký.';
+        }
+
+        if ($startDate && $endDate && ! $endDate->gt($startDate)) {
+            return 'Ngày kết thúc phải sau ngày bắt đầu hiệu lực.';
+        }
+
+        return null;
+    }
+
+    private function persistContractSyncedDate(
+        Contract $contract,
+        string $targetField,
+        Carbon $targetValue,
+        string $tz
+    ): void {
+        $normalized = $this->normalizeContractDateForField($targetValue, $targetField, $tz);
+        $serialized = $this->serializeContractDateForDatabase($normalized, $targetField);
+
+        if ($targetField === 'created_at') {
+            $contract->timestamps = false;
+            $contract->forceFill(['created_at' => $serialized])->save();
+            $contract->timestamps = true;
+
+            return;
+        }
+
+        $contract->update([
+            $targetField => $serialized,
+        ]);
+    }
+
+    private function serializeContractDateForDatabase(Carbon $value, string $field): string
+    {
+        $config = $this->contractDateFieldMap()[$field] ?? ['type' => 'date'];
+
+        return $config['type'] === 'date'
+            ? $value->format('Y-m-d')
+            : $value->format('Y-m-d H:i:s');
+    }
+
+    private function serializeContractDateForResponse(Carbon $value, string $field): string
+    {
+        return $this->serializeContractDateForDatabase($value, $field);
     }
 
     public function approve(Request $request, Contract $contract): JsonResponse

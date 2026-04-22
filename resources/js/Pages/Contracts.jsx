@@ -164,8 +164,34 @@ const currentMonthCreatedRange = () => {
     const to = `${y}-${pad(m + 1)}-${pad(new Date(y, m + 1, 0).getDate())}`;
     return { created_at_from: from, created_at_to: to };
 };
-/** Mặc định bộ lọc ngày duyệt để trống. */
-const emptyApprovedRange = () => ({ approved_at_from: '', approved_at_to: '' });
+const CONTRACT_DATE_FIELD_OPTIONS = [
+    { value: 'created_at', label: 'Ngày tạo' },
+    { value: 'signed_at', label: 'Ngày ký' },
+    { value: 'approved_at', label: 'Ngày duyệt' },
+    { value: 'start_date', label: 'Ngày bắt đầu hiệu lực' },
+    { value: 'end_date', label: 'Ngày kết thúc' },
+];
+const emptyContractDateRanges = () => CONTRACT_DATE_FIELD_OPTIONS.reduce((accumulator, field) => ({
+    ...accumulator,
+    [`${field.value}_from`]: '',
+    [`${field.value}_to`]: '',
+}), {});
+const defaultContractDateFilters = () => ({
+    ...emptyContractDateRanges(),
+    ...currentMonthCreatedRange(),
+});
+const buildContractDateFilterParams = (source = {}) => CONTRACT_DATE_FIELD_OPTIONS.reduce((accumulator, field) => {
+    const fromKey = `${field.value}_from`;
+    const toKey = `${field.value}_to`;
+
+    if (source[fromKey]) accumulator[fromKey] = source[fromKey];
+    if (source[toKey]) accumulator[toKey] = source[toKey];
+
+    return accumulator;
+}, {});
+const findContractDateFieldLabel = (field) => (
+    CONTRACT_DATE_FIELD_OPTIONS.find((item) => item.value === field)?.label || field
+);
 const calculateItemTotal = (item) => {
     const price = parseNumberInput(item?.unit_price);
     const quantity = Math.max(1, parseNumberInput(item?.quantity) || 1);
@@ -293,8 +319,7 @@ export default function Contracts(props) {
         page: 1,
         sort_by: 'created_at',
         sort_dir: 'desc',
-        ...currentMonthCreatedRange(),
-        ...emptyApprovedRange(),
+        ...defaultContractDateFilters(),
     }));
     const [form, setForm] = useState({
         title: '',
@@ -345,7 +370,30 @@ export default function Contracts(props) {
     const [reviewingRequestId, setReviewingRequestId] = useState(null);
     const [selectedContractIds, setSelectedContractIds] = useState([]);
     const [bulkLoading, setBulkLoading] = useState(false);
+    const [showBulkDateSyncModal, setShowBulkDateSyncModal] = useState(false);
+    const [bulkDateSyncForm, setBulkDateSyncForm] = useState({
+        target_date_field: 'approved_at',
+        reference_date_field: 'signed_at',
+    });
     const contractTableRef = useRef(null);
+    const bulkSyncTargetOptions = useMemo(() => (
+        CONTRACT_DATE_FIELD_OPTIONS.filter((item) => {
+            if (item.value === 'approved_at') return canApprove;
+            if (item.value === 'created_at') return canDelete;
+            return true;
+        })
+    ), [canApprove, canDelete]);
+    const bulkSyncTargetLabel = useMemo(
+        () => findContractDateFieldLabel(bulkDateSyncForm.target_date_field),
+        [bulkDateSyncForm.target_date_field]
+    );
+    const bulkSyncReferenceOptions = useMemo(() => (
+        CONTRACT_DATE_FIELD_OPTIONS.filter((item) => item.value !== bulkDateSyncForm.target_date_field)
+    ), [bulkDateSyncForm.target_date_field]);
+    const bulkSyncReferenceLabel = useMemo(
+        () => findContractDateFieldLabel(bulkDateSyncForm.reference_date_field),
+        [bulkDateSyncForm.reference_date_field]
+    );
 
     const extractValidationMessages = (error) => {
         const errors = error?.response?.data?.errors;
@@ -522,10 +570,7 @@ export default function Contracts(props) {
                     ...(nextFilters.has_project ? { has_project: nextFilters.has_project } : {}),
                     ...(nextFilters.project_status ? { project_status: nextFilters.project_status } : {}),
                     ...(Array.isArray(nextFilters.staff_ids) && nextFilters.staff_ids.length > 0 ? { staff_ids: nextFilters.staff_ids } : {}),
-                    ...(nextFilters.created_at_from ? { created_at_from: nextFilters.created_at_from } : {}),
-                    ...(nextFilters.created_at_to ? { created_at_to: nextFilters.created_at_to } : {}),
-                    ...(nextFilters.approved_at_from ? { approved_at_from: nextFilters.approved_at_from } : {}),
-                    ...(nextFilters.approved_at_to ? { approved_at_to: nextFilters.approved_at_to } : {}),
+                    ...buildContractDateFilterParams(nextFilters),
                     sort_by: nextFilters.sort_by || 'created_at',
                     sort_dir: nextFilters.sort_dir || 'desc',
                 },
@@ -587,6 +632,24 @@ export default function Contracts(props) {
         fetchContracts();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    useEffect(() => {
+        if (!bulkSyncTargetOptions.some((item) => item.value === bulkDateSyncForm.target_date_field)) {
+            setBulkDateSyncForm((prev) => ({
+                ...prev,
+                target_date_field: bulkSyncTargetOptions[0]?.value || 'start_date',
+            }));
+        }
+    }, [bulkDateSyncForm.target_date_field, bulkSyncTargetOptions]);
+
+    useEffect(() => {
+        if (!bulkSyncReferenceOptions.some((item) => item.value === bulkDateSyncForm.reference_date_field)) {
+            setBulkDateSyncForm((prev) => ({
+                ...prev,
+                reference_date_field: bulkSyncReferenceOptions[0]?.value || 'signed_at',
+            }));
+        }
+    }, [bulkDateSyncForm.reference_date_field, bulkSyncReferenceOptions]);
 
     useEffect(() => {
         const clientId = Number(form.client_id || 0);
@@ -760,6 +823,19 @@ export default function Contracts(props) {
         }
     };
 
+    const openBulkDateSyncModal = () => {
+        if (!canManage) {
+            toast.error('Bạn không có quyền cập nhật hợp đồng.');
+            return;
+        }
+        if (!selectedContractIds.length) {
+            toast.error('Vui lòng chọn ít nhất một hợp đồng.');
+            return;
+        }
+
+        setShowBulkDateSyncModal(true);
+    };
+
     const bulkSyncContractDates = async () => {
         if (!canManage) {
             toast.error('Bạn không có quyền cập nhật hợp đồng.');
@@ -769,12 +845,20 @@ export default function Contracts(props) {
             toast.error('Vui lòng chọn ít nhất một hợp đồng.');
             return;
         }
+        if (bulkDateSyncForm.target_date_field === bulkDateSyncForm.reference_date_field) {
+            toast.error('Trường cần đồng bộ phải khác ngày tham chiếu.');
+            return;
+        }
+
+        const targetLabel = findContractDateFieldLabel(bulkDateSyncForm.target_date_field);
+        const referenceLabel = findContractDateFieldLabel(bulkDateSyncForm.reference_date_field);
         const msg = [
-            'Đồng bộ ngày cho các hợp đồng đã chọn (chỉ áp dụng khi hợp đồng chưa có «Ngày bắt đầu hiệu lực»):',
+            'Đồng bộ ngày cho các hợp đồng đã chọn:',
             '',
-            '• Đã có ngày ký: gán ngày bắt đầu = ngày ký.',
-            '• Chưa có ngày ký: gán ngày ký và ngày bắt đầu = ngày tạo hợp đồng (theo múi Việt Nam).',
-            '• Nếu ngày kết thúc hiện có không sau ngày bắt đầu mới: đẩy ngày kết thúc sang ngày liền sau ngày bắt đầu.',
+            `• Trường cần cập nhật: ${targetLabel}.`,
+            `• Ngày tham chiếu: ${referenceLabel}.`,
+            '• Hệ thống sẽ ghi đè giá trị ngày đích theo ngày tham chiếu nếu hợp đồng có đủ dữ liệu.',
+            '• Hợp đồng thiếu ngày tham chiếu hoặc làm sai thứ tự ngày sẽ được giữ nguyên và báo lý do.',
             '',
             `Thực hiện cho ${selectedContractIds.length} hợp đồng đã chọn?`,
         ].join('\n');
@@ -784,9 +868,12 @@ export default function Contracts(props) {
         try {
             const res = await axios.post('/api/v1/contracts/sync-dates', {
                 contract_ids: selectedContractIds.map((id) => Number(id)),
+                target_date_field: bulkDateSyncForm.target_date_field,
+                reference_date_field: bulkDateSyncForm.reference_date_field,
             });
             const { data } = res;
             toast.success(data?.message || 'Đã đồng bộ.');
+            const skipped = data?.skipped || [];
             const failed = data?.failed || [];
             if (failed.length > 0) {
                 const first = failed[0];
@@ -794,6 +881,13 @@ export default function Contracts(props) {
                     `Một số hợp đồng không xử lý được (ví dụ #${first.id ?? '?'}): ${first.message || 'Lỗi'}.`,
                 );
             }
+            if (skipped.length > 0) {
+                const first = skipped[0];
+                toast.error(
+                    `Một số hợp đồng được giữ nguyên (ví dụ #${first.id ?? '?'}): ${first.message || first.reason || 'Không đủ điều kiện đồng bộ'}.`,
+                );
+            }
+            setShowBulkDateSyncModal(false);
             setSelectedContractIds([]);
             await fetchContracts(filters);
         } catch (error) {
@@ -1510,7 +1604,7 @@ export default function Contracts(props) {
                 <FilterToolbar enableSearch
                     className="mb-4 border-0 p-0 shadow-none"
                     title="Danh sách hợp đồng"
-                    description="Lọc theo mã, trạng thái, duyệt và khoảng ngày tạo (mặc định tháng hiện tại). Ngày duyệt để trống mặc định để không ẩn hợp đồng chưa duyệt."
+                    description="Lọc theo mã, trạng thái, duyệt, dự án và đầy đủ các mốc ngày của hợp đồng. Mặc định hệ thống chỉ khóa sẵn khoảng ngày tạo trong tháng hiện tại."
                     searchValue={filters.search}
                     onSearch={handleContractSearch}
                     onSubmitFilters={applyFilters}
@@ -1574,34 +1668,24 @@ export default function Contracts(props) {
                                 emptyLabel="Để trống để xem toàn bộ trong phạm vi."
                             />
                         </FilterField>
-                        <FilterField label="Ngày tạo từ">
-                            <FilterDateInput
-                                className={filterControlClass}
-                                value={filters.created_at_from || ''}
-                                onChange={(e) => setFilters((s) => ({ ...s, created_at_from: e.target.value }))}
-                            />
-                        </FilterField>
-                        <FilterField label="Ngày tạo đến">
-                            <FilterDateInput
-                                className={filterControlClass}
-                                value={filters.created_at_to || ''}
-                                onChange={(e) => setFilters((s) => ({ ...s, created_at_to: e.target.value }))}
-                            />
-                        </FilterField>
-                        <FilterField label="Ngày duyệt từ">
-                            <FilterDateInput
-                                className={filterControlClass}
-                                value={filters.approved_at_from || ''}
-                                onChange={(e) => setFilters((s) => ({ ...s, approved_at_from: e.target.value }))}
-                            />
-                        </FilterField>
-                        <FilterField label="Ngày duyệt đến">
-                            <FilterDateInput
-                                className={filterControlClass}
-                                value={filters.approved_at_to || ''}
-                                onChange={(e) => setFilters((s) => ({ ...s, approved_at_to: e.target.value }))}
-                            />
-                        </FilterField>
+                        {CONTRACT_DATE_FIELD_OPTIONS.map((field) => (
+                            <React.Fragment key={field.value}>
+                                <FilterField label={`${field.label} từ`}>
+                                    <FilterDateInput
+                                        className={filterControlClass}
+                                        value={filters[`${field.value}_from`] || ''}
+                                        onChange={(e) => setFilters((s) => ({ ...s, [`${field.value}_from`]: e.target.value }))}
+                                    />
+                                </FilterField>
+                                <FilterField label={`${field.label} đến`}>
+                                    <FilterDateInput
+                                        className={filterControlClass}
+                                        value={filters[`${field.value}_to`] || ''}
+                                        onChange={(e) => setFilters((s) => ({ ...s, [`${field.value}_to`]: e.target.value }))}
+                                    />
+                                </FilterField>
+                            </React.Fragment>
+                        ))}
                         <FilterActionGroup className={FILTER_GRID_SUBMIT_ROW}>
                             <button type="submit" className={FILTER_SUBMIT_BUTTON_CLASS}>Lọc</button>
                         </FilterActionGroup>
@@ -1702,10 +1786,17 @@ export default function Contracts(props) {
                                 ? 'Admin và Kế toán có thể theo dõi toàn bộ hợp đồng, duyệt nhanh, gắn nhóm chăm sóc và quản lý công nợ trên cùng một màn.'
                                 : 'Theo dõi hợp đồng theo phạm vi khách hàng bạn đang quản lý.'}
                 </div>
-                            {canBulkActions && selectedContractIds.length > 0 && (
+                {canBulkActions && selectedContractIds.length > 0 && (
                     <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3">
-                        <div className="text-sm font-medium text-cyan-900">
-                            Đã chọn {selectedContractIds.length} hợp đồng.
+                        <div>
+                            <div className="text-sm font-medium text-cyan-900">
+                                Đã chọn {selectedContractIds.length} hợp đồng.
+                            </div>
+                            {canManage && (
+                                <div className="mt-1 text-xs text-cyan-800/80">
+                                    Đồng bộ hiện tại: <strong>{bulkSyncTargetLabel}</strong> theo <strong>{bulkSyncReferenceLabel}</strong>.
+                                </div>
+                            )}
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
                             <button
@@ -1720,9 +1811,9 @@ export default function Contracts(props) {
                                 <button
                                     type="button"
                                     className="rounded-xl border border-sky-300 bg-sky-100 px-3 py-2 text-xs font-semibold text-sky-900"
-                                    onClick={bulkSyncContractDates}
+                                    onClick={openBulkDateSyncModal}
                                     disabled={bulkLoading}
-                                    title="Chỉ cập nhật hợp đồng chưa có ngày bắt đầu hiệu lực"
+                                    title="Chọn trường ngày cần đồng bộ và ngày tham chiếu trước khi chạy"
                                 >
                                     {bulkLoading ? 'Đang xử lý...' : 'Đồng bộ ngày đã chọn'}
                                 </button>
@@ -2694,6 +2785,86 @@ export default function Contracts(props) {
                         </button>
                     </div>
                 </form>
+            </Modal>
+
+            <Modal
+                open={showBulkDateSyncModal}
+                onClose={() => {
+                    if (bulkLoading) return;
+                    setShowBulkDateSyncModal(false);
+                }}
+                title="Đồng bộ ngày cho hợp đồng đã chọn"
+                description="Chọn trường ngày cần cập nhật và mốc ngày tham chiếu. Hệ thống sẽ chỉ ghi đè khi hợp đồng có đủ dữ liệu và không làm vỡ thứ tự ngày."
+                size="md"
+            >
+                <div className="space-y-4 text-sm">
+                    <div className="rounded-2xl border border-sky-100 bg-sky-50/80 px-4 py-3 text-xs text-sky-900">
+                        <div className="font-semibold">Phạm vi chạy</div>
+                        <p className="mt-1">
+                            {selectedContractIds.length} hợp đồng đang được chọn. Nếu ngày tham chiếu bị trống hoặc làm sai thứ tự ngày ký / hiệu lực / kết thúc, hợp đồng đó sẽ được giữ nguyên.
+                        </p>
+                    </div>
+
+                    <LabeledField
+                        label="Ngày bị đồng bộ"
+                        required
+                        hint="Trường đích sẽ được cập nhật bằng giá trị của ngày tham chiếu."
+                    >
+                        <select
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            value={bulkDateSyncForm.target_date_field}
+                            onChange={(e) => setBulkDateSyncForm((prev) => ({ ...prev, target_date_field: e.target.value }))}
+                            disabled={bulkLoading}
+                        >
+                            {bulkSyncTargetOptions.map((option) => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                        </select>
+                    </LabeledField>
+
+                    <LabeledField
+                        label="Ngày tham chiếu"
+                        required
+                        hint="Hệ thống đọc giá trị từ trường này để chép sang trường đích."
+                    >
+                        <select
+                            className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
+                            value={bulkDateSyncForm.reference_date_field}
+                            onChange={(e) => setBulkDateSyncForm((prev) => ({ ...prev, reference_date_field: e.target.value }))}
+                            disabled={bulkLoading}
+                        >
+                            {bulkSyncReferenceOptions.map((option) => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                        </select>
+                    </LabeledField>
+
+                    <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3 text-xs text-slate-600">
+                        Sắp chạy: <strong>{bulkSyncTargetLabel}</strong> theo <strong>{bulkSyncReferenceLabel}</strong>.
+                        {bulkDateSyncForm.target_date_field === 'created_at'
+                            ? ' Đây là ngày tạo hệ thống, chỉ nên dùng khi cần sửa dữ liệu lịch sử.'
+                            : ''}
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            className="flex-1 rounded-2xl bg-primary px-3 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                            onClick={bulkSyncContractDates}
+                            disabled={bulkLoading}
+                        >
+                            {bulkLoading ? 'Đang đồng bộ...' : 'Chạy đồng bộ'}
+                        </button>
+                        <button
+                            type="button"
+                            className="flex-1 rounded-2xl border border-slate-200 px-3 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+                            onClick={() => setShowBulkDateSyncModal(false)}
+                            disabled={bulkLoading}
+                        >
+                            Hủy
+                        </button>
+                    </div>
+                </div>
             </Modal>
 
             <Modal

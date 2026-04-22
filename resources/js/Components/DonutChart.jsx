@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 
 const palette = ['#10B981', '#F59E0B', '#3B82F6', '#F97316', '#8B5CF6', '#EF4444', '#14B8A6'];
 
@@ -74,6 +74,14 @@ export default function DonutChart({
     layout = 'vertical',
 }) {
     const [hoveredSegment, setHoveredSegment] = useState(null);
+    const [isReady, setIsReady] = useState(false);
+
+    useEffect(() => {
+        setIsReady(false);
+        const frame = requestAnimationFrame(() => setIsReady(true));
+        return () => cancelAnimationFrame(frame);
+    }, [data, size, thickness, layout]);
+
     const normalized = data.map((item, idx) => ({
         label: item.label,
         value: Math.max(0, Number(item.value || 0)),
@@ -126,6 +134,7 @@ export default function DonutChart({
                     width={size}
                     height={size}
                     viewBox={`0 0 ${size} ${size}`}
+                    className="overflow-visible"
                 >
                     <path
                         d={describeFullDonutRing(size / 2, size / 2, outerRadius, innerRadius)}
@@ -136,7 +145,13 @@ export default function DonutChart({
                             key={`donut-path-${seg.segmentIndex}`}
                             d={seg.path}
                             fill={seg.color}
-                            className="pointer-events-none transition-opacity duration-150"
+                            className="pointer-events-none transition-all duration-500 ease-out"
+                            style={{
+                                opacity: isReady ? 1 : 0,
+                                transform: hoveredSegment?.segmentIndex === seg.segmentIndex ? 'scale(1.02)' : 'scale(1)',
+                                transformOrigin: `${size / 2}px ${size / 2}px`,
+                                transitionDelay: `${seg.segmentIndex * 45}ms`,
+                            }}
                         />
                     )) : null}
                     {total > 0 ? segments.map((seg) => (
@@ -155,7 +170,7 @@ export default function DonutChart({
                     )) : null}
                 </svg>
                 <div
-                    className="absolute rounded-full bg-white flex flex-col items-center justify-center text-center"
+                    className="absolute flex flex-col items-center justify-center rounded-full border border-slate-100 bg-[radial-gradient(circle_at_top,_#ffffff,_#f8fafc_68%,_#e0f2fe)] text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_18px_40px_-32px_rgba(14,165,233,0.45)]"
                     style={{
                         width: innerSize,
                         height: innerSize,
@@ -163,8 +178,11 @@ export default function DonutChart({
                         left: thickness,
                     }}
                 >
-                    <p className="text-[13px] font-medium text-text-muted">{centerLabel}</p>
-                    <p className="mt-1 text-[28px] font-semibold leading-none text-slate-900">{total.toLocaleString('vi-VN')}</p>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{centerLabel}</p>
+                    <p className="mt-2 text-[28px] font-semibold leading-none text-slate-900">{total.toLocaleString('vi-VN')}</p>
+                    <p className="mt-2 text-[11px] font-medium text-slate-500">
+                        {normalized.length} hạng mục
+                    </p>
                 </div>
                 </div>
             </div>
@@ -173,18 +191,28 @@ export default function DonutChart({
                     <button
                         key={`donut-legend-${idx}`}
                         type="button"
-                        className={`flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white text-left shadow-sm transition hover:border-slate-300 hover:bg-slate-50 ${isHorizontal ? 'px-3.5 py-3' : 'px-3 py-2.5'}`}
+                        className={`flex w-full items-center justify-between gap-3 rounded-2xl border text-left shadow-sm transition ${hoveredSegment?.segmentIndex === idx ? 'border-slate-300 bg-slate-50 shadow-[0_14px_36px_-28px_rgba(15,23,42,0.55)]' : 'border-slate-200/80 bg-white hover:border-slate-300 hover:bg-slate-50'} ${isHorizontal ? 'px-3.5 py-3' : 'px-3 py-2.5'}`}
                         onMouseEnter={() => {
                             const segment = segments[idx];
                             if (segment) setHoveredSegment(segment);
                         }}
                         onMouseLeave={() => setHoveredSegment((current) => (current?.segmentIndex === idx ? null : current))}
+                        style={{
+                            opacity: isReady ? 1 : 0,
+                            transform: isReady ? 'translateY(0)' : 'translateY(8px)',
+                            transition: `opacity 360ms ease ${140 + (idx * 35)}ms, transform 360ms ease ${140 + (idx * 35)}ms`,
+                        }}
                     >
                         <div className="flex min-w-0 items-center gap-2.5">
                             <span className="h-3 w-3 flex-none rounded-full ring-4 ring-slate-50" style={{ background: item.color }} />
                             <span className="line-clamp-2 text-sm font-medium leading-5 text-slate-700">{item.label}</span>
                         </div>
-                        <span className="flex-none text-xs font-semibold text-slate-900 sm:text-sm">{item.value.toLocaleString('vi-VN')}</span>
+                        <div className="flex-none text-right">
+                            <div className="text-xs font-semibold text-slate-900 sm:text-sm">{item.value.toLocaleString('vi-VN')}</div>
+                            <div className="text-[11px] font-medium text-slate-500">
+                                {(segments[idx]?.percent || 0).toLocaleString('vi-VN', { maximumFractionDigits: 1 })}%
+                            </div>
+                        </div>
                     </button>
                 ))}
                 {normalized.length === 0 && (

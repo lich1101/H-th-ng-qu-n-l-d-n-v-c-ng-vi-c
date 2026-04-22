@@ -1,10 +1,11 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 
 const svgWidth = 760;
 const svgHeight = 260;
 const padding = { top: 16, right: 20, bottom: 38, left: 42 };
 
 export default function CustomerGrowthChart({ data = [] }) {
+    const [isReady, setIsReady] = useState(false);
     const chart = useMemo(() => {
         const normalized = Array.isArray(data) ? data : [];
         const maxBar = Math.max(
@@ -56,6 +57,12 @@ export default function CustomerGrowthChart({ data = [] }) {
         };
     }, [data]);
 
+    useEffect(() => {
+        setIsReady(false);
+        const frame = requestAnimationFrame(() => setIsReady(true));
+        return () => cancelAnimationFrame(frame);
+    }, [data]);
+
     if (!chart.normalized.length) {
         return <p className="text-sm text-text-muted">Chưa có dữ liệu tăng trưởng khách hàng.</p>;
     }
@@ -69,27 +76,35 @@ export default function CustomerGrowthChart({ data = [] }) {
         : '';
 
     return (
-        <div className="space-y-2.5">
-            <div className="flex flex-wrap items-center gap-4 text-xs font-medium text-slate-500">
-                <span className="inline-flex items-center gap-1.5">
+        <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2.5 text-xs font-medium text-slate-500">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-100 bg-emerald-50/80 px-3 py-1.5">
                     <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: '#16A34A' }} />
                     Mua lần đầu
                 </span>
-                <span className="inline-flex items-center gap-1.5">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-cyan-100 bg-cyan-50/80 px-3 py-1.5">
                     <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: '#0891B2' }} />
                     Mua lại
                 </span>
-                <span className="inline-flex items-center gap-1.5">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-100 bg-violet-50/85 px-3 py-1.5">
                     <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: '#7C3AED' }} />
                     Tạo mới (đường)
                 </span>
             </div>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto rounded-[24px] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.94))] p-3 shadow-[0_24px_60px_-42px_rgba(15,23,42,0.4)]">
                 <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} className="w-full" style={{ maxHeight: 280 }}>
                     <defs>
                         <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
                             <stop offset="0%" stopColor="#7C3AED" stopOpacity="0.10" />
                             <stop offset="100%" stopColor="#7C3AED" stopOpacity="0.01" />
+                        </linearGradient>
+                        <linearGradient id="firstPurchaseBar" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#22C55E" stopOpacity="0.95" />
+                            <stop offset="100%" stopColor="#15803D" stopOpacity="0.88" />
+                        </linearGradient>
+                        <linearGradient id="repeatPurchaseBar" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#06B6D4" stopOpacity="0.95" />
+                            <stop offset="100%" stopColor="#0F766E" stopOpacity="0.88" />
                         </linearGradient>
                     </defs>
 
@@ -131,21 +146,27 @@ export default function CustomerGrowthChart({ data = [] }) {
                             <g key={item.label || index}>
                                 <rect
                                     x={firstX}
-                                    y={firstY}
+                                    y={isReady ? firstY : padding.top + chart.innerHeight}
                                     width={chart.barWidth}
-                                    height={Math.max(firstHeight, 1)}
+                                    height={Math.max(isReady ? firstHeight : 0, 1)}
                                     rx="4"
-                                    fill="#16A34A"
-                                    opacity="0.85"
+                                    fill="url(#firstPurchaseBar)"
+                                    opacity="0.92"
+                                    style={{
+                                        transition: `y 560ms cubic-bezier(0.22, 1, 0.36, 1) ${index * 45}ms, height 560ms cubic-bezier(0.22, 1, 0.36, 1) ${index * 45}ms`,
+                                    }}
                                 />
                                 <rect
                                     x={repeatX}
-                                    y={repeatY}
+                                    y={isReady ? repeatY : padding.top + chart.innerHeight}
                                     width={chart.barWidth}
-                                    height={Math.max(repeatHeight, 1)}
+                                    height={Math.max(isReady ? repeatHeight : 0, 1)}
                                     rx="4"
-                                    fill="#0891B2"
-                                    opacity="0.85"
+                                    fill="url(#repeatPurchaseBar)"
+                                    opacity="0.92"
+                                    style={{
+                                        transition: `y 560ms cubic-bezier(0.22, 1, 0.36, 1) ${120 + (index * 45)}ms, height 560ms cubic-bezier(0.22, 1, 0.36, 1) ${120 + (index * 45)}ms`,
+                                    }}
                                 />
                                 <text
                                     x={centerX}
@@ -162,7 +183,7 @@ export default function CustomerGrowthChart({ data = [] }) {
                     })}
 
                     {areaPath && (
-                        <path d={areaPath} fill="url(#areaGrad)" />
+                        <path d={areaPath} fill="url(#areaGrad)" style={{ opacity: isReady ? 1 : 0, transition: 'opacity 540ms ease 280ms' }} />
                     )}
                     <path
                         d={linePath}
@@ -171,10 +192,26 @@ export default function CustomerGrowthChart({ data = [] }) {
                         strokeWidth="2"
                         strokeLinecap="round"
                         strokeLinejoin="round"
+                        style={{
+                            opacity: isReady ? 1 : 0,
+                            strokeDasharray: isReady ? 'none' : '8 10',
+                            transition: 'opacity 560ms ease 260ms',
+                        }}
                     />
                     {chart.linePoints.map((point, index) => (
                         <g key={`point-${index}`}>
-                            <circle cx={point.x} cy={point.y} r="3" fill="#fff" stroke="#7C3AED" strokeWidth="2" />
+                            <circle
+                                cx={point.x}
+                                cy={isReady ? point.y : padding.top + chart.innerHeight}
+                                r="3.5"
+                                fill="#fff"
+                                stroke="#7C3AED"
+                                strokeWidth="2"
+                                style={{
+                                    opacity: isReady ? 1 : 0,
+                                    transition: `opacity 420ms ease ${320 + (index * 30)}ms, cy 520ms ease ${320 + (index * 30)}ms`,
+                                }}
+                            />
                         </g>
                     ))}
                 </svg>

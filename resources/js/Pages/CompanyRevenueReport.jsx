@@ -55,18 +55,50 @@ const getCurrentMonthRange = () => {
     };
 };
 
+const getRecentRange = (days) => {
+    const now = new Date();
+    const from = new Date(now);
+    from.setDate(now.getDate() - Math.max(days - 1, 0));
+    return {
+        from: formatDateInput(from),
+        to: formatDateInput(now),
+    };
+};
+
+const describeAppliedPeriod = (from, to, fallback = 'Toàn thời gian') => {
+    if (from && to) {
+        return `${formatDate(from)} đến ${formatDate(to)}`;
+    }
+    return fallback;
+};
+
 const initials = (name) => {
     const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
     if (!parts.length) return 'NV';
     if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
     return `${parts[0][0] || ''}${parts[parts.length - 1][0] || ''}`.toUpperCase();
 };
+const hasStaffFinancialActivity = (item) => (
+    Number(item?.revenue || 0) > 0
+    || Number(item?.cashflow || 0) > 0
+    || Number(item?.debt || 0) > 0
+    || Number(item?.costs || 0) > 0
+    || Number(item?.contracts_count || 0) > 0
+);
 
-function SummaryTile({ label, value, note }) {
+function SummaryTile({ label, value, note, tone = 'slate' }) {
+    const toneClasses = {
+        sky: 'border-sky-100 bg-[linear-gradient(180deg,rgba(239,246,255,0.96),rgba(255,255,255,0.98))] text-sky-600',
+        emerald: 'border-emerald-100 bg-[linear-gradient(180deg,rgba(236,253,245,0.95),rgba(255,255,255,0.98))] text-emerald-600',
+        amber: 'border-amber-100 bg-[linear-gradient(180deg,rgba(255,251,235,0.95),rgba(255,255,255,0.98))] text-amber-600',
+        rose: 'border-rose-100 bg-[linear-gradient(180deg,rgba(255,241,242,0.95),rgba(255,255,255,0.98))] text-rose-600',
+        slate: 'border-slate-200/80 bg-white text-slate-600',
+    }[tone] || 'border-slate-200/80 bg-white text-slate-600';
+
     return (
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-card">
+        <div className={`rounded-[24px] border p-4 shadow-[0_20px_50px_-36px_rgba(15,23,42,0.45)] ${toneClasses}`}>
             <p className="text-xs uppercase tracking-[0.16em] text-text-subtle">{label}</p>
-            <p className="mt-2 text-xl font-semibold text-slate-900">{value}</p>
+            <p className="mt-3 text-xl font-semibold text-slate-900">{value}</p>
             {note ? <p className="mt-1 text-xs text-text-muted">{note}</p> : null}
         </div>
     );
@@ -74,6 +106,7 @@ function SummaryTile({ label, value, note }) {
 
 function RevenueStaffBreakdown({ data = [] }) {
     const [hoveredSegment, setHoveredSegment] = useState(null);
+    const [isReady, setIsReady] = useState(false);
     const series = [
         { key: 'revenue', label: 'Doanh thu', color: 'bg-sky-500' },
         { key: 'cashflow', label: 'Dòng tiền', color: 'bg-emerald-500' },
@@ -81,8 +114,14 @@ function RevenueStaffBreakdown({ data = [] }) {
         { key: 'costs', label: 'Chi phí', color: 'bg-rose-400' },
     ];
 
+    useEffect(() => {
+        setIsReady(false);
+        const frame = requestAnimationFrame(() => setIsReady(true));
+        return () => cancelAnimationFrame(frame);
+    }, [data]);
+
     return (
-        <div className="flex h-full flex-col rounded-2xl border border-slate-200/80 bg-white p-5 shadow-card">
+        <div className="flex h-full flex-col rounded-[24px] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.94))] p-5 shadow-[0_24px_60px_-40px_rgba(15,23,42,0.4)]">
             <div className="flex items-start justify-between gap-4">
                 <div>
                     <h3 className="text-base font-semibold text-slate-900">Doanh thu theo nhân viên</h3>
@@ -98,10 +137,10 @@ function RevenueStaffBreakdown({ data = [] }) {
                 </div>
             </div>
 
-            <div className="mt-4 min-h-0 flex-1 overflow-auto rounded-2xl border border-slate-200/70">
+            <div className="mt-4 min-h-0 flex-1 overflow-auto rounded-2xl border border-slate-200/70 bg-white/90">
                 <table className="min-w-[920px] text-sm">
                     <thead>
-                        <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-[0.14em] text-text-subtle">
+                        <tr className="border-b border-slate-200 bg-slate-50/90 text-left text-xs uppercase tracking-[0.14em] text-text-subtle">
                             <th className="py-2.5 pr-3">Nhân viên</th>
                             <th className="py-2.5 px-3">Biểu đồ</th>
                             <th className="py-2.5 px-3">Doanh thu</th>
@@ -119,7 +158,7 @@ function RevenueStaffBreakdown({ data = [] }) {
                             const total = rowSeries.reduce((sum, seriesItem) => sum + seriesItem.value, 0);
 
                             return (
-                            <tr key={`${item.staff_id || 'unassigned'}-${item.staff_name}`} className="border-b border-slate-100 last:border-b-0">
+                            <tr key={`${item.staff_id || 'unassigned'}-${item.staff_name}`} className="border-b border-slate-100 last:border-b-0 odd:bg-white even:bg-slate-50/40">
                                 <td className="py-3 pr-3">
                                     <div className="flex items-center gap-3">
                                         {item.avatar_url ? (
@@ -135,7 +174,12 @@ function RevenueStaffBreakdown({ data = [] }) {
                                         )}
                                         <div>
                                             <p className="font-semibold text-slate-900">{item.staff_name}</p>
-                                            <p className="text-xs text-text-muted">{item.contracts_count || 0} hợp đồng</p>
+                                            <div className="flex flex-wrap items-center gap-2 text-xs text-text-muted">
+                                                <span>{item.contracts_count || 0} hợp đồng</span>
+                                                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+                                                    {Number(item.revenue || 0) > 0 ? 'Có doanh số' : 'Chưa phát sinh'}
+                                                </span>
+                                            </div>
                                         </div>
                                     </div>
                                 </td>
@@ -154,8 +198,11 @@ function RevenueStaffBreakdown({ data = [] }) {
                                                 {total > 0 ? rowSeries.map((seriesItem) => (
                                                     <div
                                                         key={seriesItem.key}
-                                                        className={`${seriesItem.color} h-full transition-all`}
-                                                        style={{ width: `${(seriesItem.value / total) * 100}%` }}
+                                                        className={`${seriesItem.color} h-full transition-all duration-700 ease-out`}
+                                                        style={{
+                                                            width: `${isReady ? (seriesItem.value / total) * 100 : 0}%`,
+                                                            transitionDelay: `${index * 40}ms`,
+                                                        }}
                                                         onMouseEnter={() => setHoveredSegment({
                                                             staffKey: `${item.staff_id || 'unassigned'}-${item.staff_name}`,
                                                             staffName: item.staff_name,
@@ -214,6 +261,7 @@ export default function CompanyRevenueReport(props) {
     const [report, setReport] = useState({});
     const [loading, setLoading] = useState(true);
     const [availableRange, setAvailableRange] = useState({ from: '', to: '' });
+    const [refreshKey, setRefreshKey] = useState(0);
 
     const fetchReport = async () => {
         setLoading(true);
@@ -247,7 +295,7 @@ export default function CompanyRevenueReport(props) {
     useEffect(() => {
         fetchReport();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [filters.from, filters.to, filters.target_revenue]);
+    }, [filters.from, filters.to, filters.target_revenue, refreshKey]);
 
     const periodTotals = report.period_totals || {};
     const rows = report.daily_rows || [];
@@ -255,7 +303,7 @@ export default function CompanyRevenueReport(props) {
         label: item.label,
         value: Number(item.value || 0),
     }));
-    const staffBreakdown = report.staff_breakdown || [];
+    const staffBreakdown = (report.staff_breakdown || []).filter(hasStaffFinancialActivity);
     const periodLabel = availableRange.from && availableRange.to
         ? `${formatDate(filters.from || availableRange.from)} đến ${formatDate(filters.to || availableRange.to)}`
         : 'Toàn thời gian';
@@ -267,21 +315,25 @@ export default function CompanyRevenueReport(props) {
             note: periodTotals.target_revenue
                 ? `Đạt ${formatPercent(periodTotals.target_rate)} chỉ tiêu`
                 : `Khoảng lọc: ${periodLabel}`,
+            tone: 'sky',
         },
         {
             label: 'Dòng tiền trong kỳ',
             value: formatCurrency(periodTotals.cashflow),
             note: 'Tổng thanh toán của các hợp đồng trong giai đoạn đang lọc',
+            tone: 'emerald',
         },
         {
             label: 'Công nợ còn lại',
             value: formatCurrency(periodTotals.debt),
             note: 'Tổng nợ chưa thanh toán của các hợp đồng đang xem',
+            tone: 'amber',
         },
         {
             label: 'Chi phí phát sinh',
             value: formatCurrency(periodTotals.costs),
             note: `${periodTotals.contracts_total || 0} hợp đồng đã duyệt trong khoảng lọc`,
+            tone: 'rose',
         },
     ];
 
@@ -291,6 +343,7 @@ export default function CompanyRevenueReport(props) {
             to: draftFilters.to || '',
             target_revenue: draftFilters.target_revenue || '',
         });
+        setRefreshKey((current) => current + 1);
     };
 
     const resetFilters = () => {
@@ -301,7 +354,21 @@ export default function CompanyRevenueReport(props) {
         };
         setDraftFilters(next);
         setFilters(next);
+        setRefreshKey((current) => current + 1);
     };
+
+    const applyQuickRange = (rangeFactory) => {
+        const nextRange = rangeFactory();
+        const next = {
+            ...nextRange,
+            target_revenue: draftFilters.target_revenue || '',
+        };
+        setDraftFilters(next);
+        setFilters(next);
+        setRefreshKey((current) => current + 1);
+    };
+
+    const appliedPeriodLabel = describeAppliedPeriod(filters.from, filters.to, periodLabel);
 
     return (
         <PageContainer
@@ -340,15 +407,40 @@ export default function CompanyRevenueReport(props) {
                         />
                     </FilterField>
                     <FilterActionGroup className={FILTER_GRID_SUBMIT_ROW}>
-                        <button type="submit" className={FILTER_SUBMIT_PRIMARY_BUTTON_CLASS}>
-                            Áp dụng
+                        <button type="submit" className={`${FILTER_SUBMIT_PRIMARY_BUTTON_CLASS} ${loading ? 'cursor-wait opacity-70' : ''}`} disabled={loading}>
+                            {loading ? 'Đang áp dụng...' : 'Áp dụng'}
                         </button>
-                        <button type="button" onClick={resetFilters} className={FILTER_SUBMIT_BUTTON_CLASS}>
+                        <button type="button" onClick={resetFilters} className={`${FILTER_SUBMIT_BUTTON_CLASS} ${loading ? 'cursor-wait opacity-70' : ''}`} disabled={loading}>
                             Toàn thời gian
                         </button>
                     </FilterActionGroup>
+                    <div className="col-span-full flex flex-wrap items-center gap-2">
+                        <button type="button" className="inline-flex h-9 items-center justify-center rounded-full border border-slate-200 bg-white px-3.5 text-xs font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50" onClick={() => applyQuickRange(() => getRecentRange(7))}>
+                            7 ngày gần đây
+                        </button>
+                        <button type="button" className="inline-flex h-9 items-center justify-center rounded-full border border-slate-200 bg-white px-3.5 text-xs font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50" onClick={() => applyQuickRange(() => getRecentRange(30))}>
+                            30 ngày gần đây
+                        </button>
+                        <button type="button" className="inline-flex h-9 items-center justify-center rounded-full border border-slate-200 bg-white px-3.5 text-xs font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50" onClick={() => applyQuickRange(getCurrentMonthRange)}>
+                            Tháng này
+                        </button>
+                    </div>
                 </div>
             </FilterToolbar>
+
+            <div className="mb-6 flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 shadow-sm">
+                    Đang xem: {appliedPeriodLabel}
+                </span>
+                <span className="inline-flex items-center gap-2 rounded-full border border-cyan-100 bg-cyan-50/80 px-3.5 py-1.5 text-xs font-semibold text-cyan-700">
+                    Có thể nhập tay `dd/mm/yyyy` rồi bấm Áp dụng
+                </span>
+                {loading ? (
+                    <span className="inline-flex items-center gap-2 rounded-full border border-amber-100 bg-amber-50/80 px-3.5 py-1.5 text-xs font-semibold text-amber-700">
+                        Đang tải lại báo cáo
+                    </span>
+                ) : null}
+            </div>
 
             <div className="mb-6 grid gap-4 lg:grid-cols-4">
                 {summaryTiles.map((tile) => (
@@ -357,6 +449,7 @@ export default function CompanyRevenueReport(props) {
                         label={tile.label}
                         value={tile.value}
                         note={tile.note}
+                        tone={tile.tone}
                     />
                 ))}
             </div>

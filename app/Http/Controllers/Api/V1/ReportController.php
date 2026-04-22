@@ -791,6 +791,9 @@ class ReportController extends Controller
         }
 
         $staffSalesBreakdown = $staffSalesBreakdown
+            ->filter(function (array $item) {
+                return $this->hasMeaningfulStaffFinancialMetrics($item);
+            })
             ->sortByDesc('revenue')
             ->values();
 
@@ -834,6 +837,9 @@ class ReportController extends Controller
                     'active_tasks' => (int) ($activeTasksByStaff[$user->id] ?? 0),
                     'is_active' => $hasUserActive ? (bool) $user->is_active : true,
                 ];
+            })
+            ->filter(function (array $item) {
+                return (float) ($item['revenue'] ?? 0) > 0;
             })
             ->sortByDesc('revenue')
             ->values();
@@ -1746,6 +1752,10 @@ class ReportController extends Controller
                     'contracts_count' => (int) $metrics['contracts_count'],
                 ];
             }
+            $staffBreakdown = array_values(array_filter($staffBreakdown, function (array $item) {
+                return $this->hasMeaningfulStaffFinancialMetrics($item);
+            }));
+
             usort($staffBreakdown, function ($left, $right) {
                 $revenueCompare = ($right['revenue'] <=> $left['revenue']);
                 if ($revenueCompare !== 0) {
@@ -1821,6 +1831,15 @@ class ReportController extends Controller
             ->values();
 
         return $dates->isEmpty() ? null : $dates->last();
+    }
+
+    private function hasMeaningfulStaffFinancialMetrics(array $metrics): bool
+    {
+        return (float) ($metrics['revenue'] ?? 0) > 0
+            || (float) ($metrics['cashflow'] ?? 0) > 0
+            || (float) ($metrics['debt'] ?? 0) > 0
+            || (float) ($metrics['costs'] ?? 0) > 0
+            || (int) ($metrics['contracts_count'] ?? 0) > 0;
     }
 
     private function roleLabel(string $role): string

@@ -32,6 +32,42 @@ const serviceLabels = {
 
 const formatCurrency = (value) => `${Number(value || 0).toLocaleString('vi-VN')} đ`;
 
+const formatDateInput = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+const formatDisplayDate = (value) => {
+    const [year, month, day] = String(value || '').split('-');
+    if (!year || !month || !day) return value || '—';
+    return `${day}/${month}/${year}`;
+};
+
+const getCurrentMonthRange = () => {
+    const now = new Date();
+    return {
+        from: formatDateInput(new Date(now.getFullYear(), now.getMonth(), 1)),
+        to: formatDateInput(new Date(now.getFullYear(), now.getMonth() + 1, 0)),
+    };
+};
+
+const getRecentRange = (days) => {
+    const today = new Date();
+    const start = new Date(today);
+    start.setDate(today.getDate() - Math.max(days - 1, 0));
+    return {
+        from: formatDateInput(start),
+        to: formatDateInput(today),
+    };
+};
+
+const describeAppliedPeriod = (from, to, fallback = 'Tháng hiện tại') => {
+    if (from && to) return `${formatDisplayDate(from)} - ${formatDisplayDate(to)}`;
+    return fallback;
+};
+
 const growthTone = (value) => {
     const numeric = Number(value || 0);
     if (numeric > 0) return 'text-emerald-600';
@@ -43,6 +79,12 @@ const signedPercent = (value) => {
     const numeric = Number(value || 0);
     return `${numeric > 0 ? '+' : ''}${numeric.toLocaleString('vi-VN', { maximumFractionDigits: 1 })}%`;
 };
+const hasStaffFinancialActivity = (item) => (
+    Number(item?.revenue || 0) > 0
+    || Number(item?.cashflow || 0) > 0
+    || Number(item?.contracts_count || 0) > 0
+);
+const hasEmployeeRevenue = (item) => Number(item?.revenue || 0) > 0;
 
 function SectionChip({ children, tone = 'slate' }) {
     const toneClass = {
@@ -80,6 +122,7 @@ export default function Dashboard(props) {
     const [draftReportFilters, setDraftReportFilters] = useState({ from: '', to: '' });
     const [availablePeriod, setAvailablePeriod] = useState({ from: '', to: '' });
     const [loading, setLoading] = useState(false);
+    const [reportReloadKey, setReportReloadKey] = useState(0);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -131,7 +174,7 @@ export default function Dashboard(props) {
             }
         };
         fetchData();
-    }, [reportFilters.from, reportFilters.to]);
+    }, [reportFilters.from, reportFilters.to, reportReloadKey]);
 
     /** Doanh thu theo danh mục/dòng hàng — chỉ từ product_breakdown (API: ngày duyệt + giá trị hiệu lực). */
     const serviceBreakdown = useMemo(() => {
@@ -145,9 +188,9 @@ export default function Dashboard(props) {
     }, [report.product_breakdown]);
 
     const employeeSummary = report.employee_summary || {};
-    const staffSales = report.staff_sales_breakdown || [];
+    const staffSales = (report.staff_sales_breakdown || []).filter(hasStaffFinancialActivity);
     const customerGrowth = report.customer_growth || [];
-    const employeeStats = report.employee_stats || [];
+    const employeeStats = (report.employee_stats || []).filter(hasEmployeeRevenue);
     const roleBreakdown = useMemo(() => {
         const palette = ['#0EA5E9', '#10B981', '#F59E0B', '#A855F7', '#F43F5E'];
         return (report.employee_role_breakdown || []).map((item, index) => ({
@@ -198,26 +241,38 @@ export default function Dashboard(props) {
             from: draftReportFilters.from || '',
             to: draftReportFilters.to || '',
         });
+        setReportReloadKey((current) => current + 1);
     };
 
     const viewAllTime = () => {
-        setReportFilters({
+        const nextRange = {
             from: availablePeriod.from || '',
             to: availablePeriod.to || '',
-        });
-        setDraftReportFilters({
-            from: availablePeriod.from || '',
-            to: availablePeriod.to || '',
-        });
+        };
+        setReportFilters(nextRange);
+        setDraftReportFilters(nextRange);
+        setReportReloadKey((current) => current + 1);
     };
 
     const resetReportFilters = () => {
-        setReportFilters({ from: '', to: '' });
-        setDraftReportFilters({
-            from: report?.period?.current_from || '',
-            to: report?.period?.current_to || '',
-        });
+        const nextRange = getCurrentMonthRange();
+        setReportFilters(nextRange);
+        setDraftReportFilters(nextRange);
+        setReportReloadKey((current) => current + 1);
     };
+
+    const applyQuickRange = (rangeFactory) => {
+        const nextRange = rangeFactory();
+        setDraftReportFilters(nextRange);
+        setReportFilters(nextRange);
+        setReportReloadKey((current) => current + 1);
+    };
+
+    const appliedPeriodLabel = describeAppliedPeriod(
+        reportFilters.from || report?.period?.current_from || '',
+        reportFilters.to || report?.period?.current_to || '',
+        report.period?.current_label || 'Tháng hiện tại',
+    );
 
     return (
         <PageContainer
@@ -254,18 +309,35 @@ export default function Dashboard(props) {
                         />
                     </FilterField>
                     <FilterActionGroup className={FILTER_GRID_SUBMIT_ROW}>
-                        <button type="submit" className={FILTER_SUBMIT_PRIMARY_BUTTON_CLASS}>
-                            Áp dụng
+                        <button type="submit" className={`${FILTER_SUBMIT_PRIMARY_BUTTON_CLASS} ${loading ? 'cursor-wait opacity-70' : ''}`} disabled={loading}>
+                            {loading ? 'Đang áp dụng...' : 'Áp dụng'}
                         </button>
-                        <button type="button" onClick={viewAllTime} className={FILTER_SUBMIT_BUTTON_CLASS}>
+                        <button type="button" onClick={viewAllTime} className={`${FILTER_SUBMIT_BUTTON_CLASS} ${loading ? 'cursor-wait opacity-70' : ''}`} disabled={loading}>
                             Toàn thời gian
                         </button>
-                        <button type="button" onClick={resetReportFilters} className={FILTER_SUBMIT_BUTTON_CLASS}>
+                        <button type="button" onClick={resetReportFilters} className={`${FILTER_SUBMIT_BUTTON_CLASS} ${loading ? 'cursor-wait opacity-70' : ''}`} disabled={loading}>
                             Tháng hiện tại
                         </button>
                     </FilterActionGroup>
+                    <div className="col-span-full flex flex-wrap items-center gap-2">
+                        <button type="button" className="inline-flex h-9 items-center justify-center rounded-full border border-slate-200 bg-white px-3.5 text-xs font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50" onClick={() => applyQuickRange(() => getRecentRange(7))}>
+                            7 ngày gần đây
+                        </button>
+                        <button type="button" className="inline-flex h-9 items-center justify-center rounded-full border border-slate-200 bg-white px-3.5 text-xs font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50" onClick={() => applyQuickRange(() => getRecentRange(30))}>
+                            30 ngày gần đây
+                        </button>
+                        <button type="button" className="inline-flex h-9 items-center justify-center rounded-full border border-slate-200 bg-white px-3.5 text-xs font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50" onClick={() => applyQuickRange(getCurrentMonthRange)}>
+                            Tháng này
+                        </button>
+                    </div>
                 </div>
             </FilterToolbar>
+
+            <div className="mb-5 flex flex-wrap items-center gap-2">
+                <SectionChip tone="slate">Đang xem: {appliedPeriodLabel}</SectionChip>
+                <SectionChip tone="cyan">Có thể nhập tay `dd/mm/yyyy` hoặc bấm biểu tượng lịch</SectionChip>
+                {loading ? <SectionChip tone="amber">Đang tải lại số liệu biểu đồ</SectionChip> : <SectionChip tone="emerald">Bộ lọc đã đồng bộ</SectionChip>}
+            </div>
 
             <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-2">
                 <section className={cardClass}>
