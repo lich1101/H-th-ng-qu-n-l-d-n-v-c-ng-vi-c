@@ -350,7 +350,7 @@ class AttendanceService
         }
         $t = trim((string) ($user->attendance_earliest_checkin_time ?? ''));
         if ($t === '' || ! preg_match('/^\d{2}:\d{2}$/', $t)) {
-            $t = $settings['work_start_time'];
+            return $this->requiredStartAt($user, $date, $settings);
         }
         [$h, $m] = array_map('intval', explode(':', $t));
 

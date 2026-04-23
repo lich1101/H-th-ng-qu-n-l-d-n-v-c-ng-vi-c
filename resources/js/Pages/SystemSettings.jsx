@@ -2190,10 +2190,10 @@ export default function SystemSettings(props) {
                                     <h3 className="text-sm font-semibold text-slate-900">Cơ chế xoay vòng khách hàng không được chăm sóc</h3>
                                     <p className="mt-1 text-xs leading-5 text-text-muted">
                                         Cron chạy lúc <span className="font-semibold text-slate-900">12:00 trưa mỗi ngày</span> để vừa bắn cảnh báo,
-                                        vừa điều chuyển khách theo thứ tự ưu tiên <span className="font-semibold text-slate-900">đã có hợp đồng</span> →
-                                        <span className="font-semibold text-slate-900"> đã có cơ hội</span> →
-                                        <span className="font-semibold text-slate-900"> khách tiềm năng</span>.
-                                        Chỉ khi khách đã quá hạn cả 3 mốc bình luận, cơ hội và hợp đồng thì mới đủ điều kiện xoay.
+                                        vừa điều chuyển khách theo thứ tự ưu tiên <span className="font-semibold text-slate-900">nhiều hợp đồng hơn</span> →
+                                        <span className="font-semibold text-slate-900"> nếu bằng nhau thì nhiều cơ hội hơn</span> →
+                                        <span className="font-semibold text-slate-900"> nếu đều là lead thuần thì random</span>.
+                                        Chạm mốc nào trước thì xoay theo mốc đó, không còn yêu cầu phải quá hạn đồng thời cả 3 tầng.
                                     </p>
                                 </div>
                                 <div className="w-full max-w-[320px]">
@@ -2323,6 +2323,9 @@ export default function SystemSettings(props) {
                                         {form.client_rotation_same_department_only
                                             ? 'Chỉ xét nhóm nhân sự đã chọn và cùng phòng ban. Hệ thống ưu tiên người có số auto-rotation tích lũy ít nhất, rồi đến số khách đang phụ trách ít nhất, rồi đến số nhận hôm nay ít nhất, cuối cùng random khi bằng nhau.'
                                             : 'Xét trên toàn bộ nhân sự đã chọn trong cấu hình. Hệ thống ưu tiên người có số auto-rotation tích lũy ít nhất, rồi đến số khách đang phụ trách ít nhất, rồi đến số nhận hôm nay ít nhất, cuối cùng random khi bằng nhau.'}
+                                    </p>
+                                    <p className="mt-2 text-xs text-slate-500">
+                                        Thứ tự đưa khách vào hàng chờ xoay là: số hợp đồng giảm dần, nếu bằng nhau thì số cơ hội giảm dần; nếu cả hai cùng là khách tiềm năng thuần thì random trong nhóm đồng hạng, sau đó mới xét tới mức độ quá hạn và các tie-break còn lại.
                                     </p>
                                 </div>
                                 <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">

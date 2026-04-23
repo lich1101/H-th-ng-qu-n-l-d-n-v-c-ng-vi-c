@@ -48,6 +48,12 @@ class AttendanceController extends Controller
         $checkBlock = $this->canTrackAttendance($user)
             ? $attendance->checkInBlockedReason($user, $nowTz, $settings)
             : null;
+        if ($this->canTrackAttendance($user) && ! $settings['enabled']) {
+            $checkBlock = 'Chức năng chấm công WiFi hiện đang tạm tắt.';
+        }
+        if ($this->canTrackAttendance($user) && $todayRecord && (string) $todayRecord->status === 'approved_no_count') {
+            $checkBlock = 'Hôm nay bạn đã có đơn nghỉ được duyệt không tính công.';
+        }
 
         return response()->json([
             'settings' => $settings,
@@ -60,8 +66,9 @@ class AttendanceController extends Controller
             'check_in_allowed' => $checkBlock === null,
             'check_in_block_reason' => $checkBlock,
             'shift_weekdays' => $attendance->shiftWeekdaysIso($user),
-            'earliest_checkin_time' => $user->attendance_earliest_checkin_time
-                ?: ($settings['work_start_time'] ?? '08:30'),
+            'earliest_checkin_time' => $this->canTrackAttendance($user)
+                ? $attendance->earliestCheckinAt($user, $nowTz, $settings)->format('H:i')
+                : ($settings['work_start_time'] ?? '08:30'),
             'pending_counts' => $this->canManageAttendance($user)
                 ? [
                     'devices' => AttendanceDevice::query()->where('status', 'pending')->count(),
@@ -1505,7 +1512,17 @@ class AttendanceController extends Controller
 
         $attendance = app(AttendanceService::class);
         $trackedUserQuery = $attendance->trackedUsersQuery()
-            ->select(['id', 'name', 'email', 'role', 'department', 'attendance_employment_type'])
+            ->select([
+                'id',
+                'name',
+                'email',
+                'role',
+                'department',
+                'attendance_employment_type',
+                'attendance_shift_weekdays',
+                'attendance_weekday_work_types',
+                'attendance_earliest_checkin_time',
+            ])
             ->orderBy('name');
         if ($visibleIds !== null) {
             if (count($visibleIds) === 0) {
@@ -1679,7 +1696,15 @@ class AttendanceController extends Controller
         $visibleIds = $this->visibleUserIdsForAttendance($request->user());
 
         $userQuery = $attendance->trackedUsersQuery()
-            ->select(['id', 'name', 'email', 'attendance_employment_type'])
+            ->select([
+                'id',
+                'name',
+                'email',
+                'attendance_employment_type',
+                'attendance_shift_weekdays',
+                'attendance_weekday_work_types',
+                'attendance_earliest_checkin_time',
+            ])
             ->orderBy('name');
 
         if ($visibleIds !== null) {

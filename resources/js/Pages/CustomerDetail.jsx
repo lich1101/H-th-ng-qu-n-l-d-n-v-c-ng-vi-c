@@ -186,12 +186,11 @@ export default function CustomerDetail({ auth, clientId }) {
                                     </div>
                                     <div className="rounded-2xl border border-slate-200/80 px-4 py-3">
                                         <div className="text-xs text-slate-500">Ưu tiên khi đưa vào hàng chờ xoay</div>
-                                        <div className="mt-1 text-sm font-semibold capitalize text-slate-900">
-                                            {rotation.priority_bucket === 'contract'
-                                                ? 'Khách đã có hợp đồng'
-                                                : rotation.priority_bucket === 'opportunity'
-                                                    ? 'Khách đã có cơ hội'
-                                                    : 'Khách tiềm năng'}
+                                        <div className="mt-1 text-sm font-semibold text-slate-900">
+                                            {rotation.priority_label || 'Khách tiềm năng thuần'}
+                                        </div>
+                                        <div className="mt-1 text-xs text-slate-500">
+                                            {rotation.priority_rule_label || 'Ưu tiên số hợp đồng giảm dần, nếu bằng nhau thì xét số cơ hội; nếu cả hai đều là khách tiềm năng thì random.'}
                                         </div>
                                     </div>
                                 </div>

@@ -54,7 +54,11 @@ class SendAttendanceReminders extends Command
                 $recordExists = AttendanceRecord::query()
                     ->where('user_id', $user->id)
                     ->whereDate('work_date', $today)
-                    ->whereNotNull('check_in_at')
+                    ->where(function ($query) {
+                        $query->whereNotNull('check_in_at')
+                            ->orWhereIn('status', ['approved_full', 'approved_partial', 'approved_no_count', 'holiday_auto'])
+                            ->orWhereIn('source', ['request_approval', 'manual_adjustment', 'holiday_auto']);
+                    })
                     ->exists();
 
                 if ($recordExists) {

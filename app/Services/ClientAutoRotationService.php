@@ -266,21 +266,49 @@ class ClientAutoRotationService
             }
         }
 
-        $candidates = $clients
+        $candidateCollection = $clients
             ->filter(function (Client $client) use ($insights, $pendingTransferSet) {
                 $insight = $insights[(int) $client->id] ?? null;
 
                 return is_array($insight)
                     && ($insight['eligible_for_auto_rotation'] ?? false)
                     && ! isset($pendingTransferSet[(int) $client->id]);
-            })
-            ->sort(function (Client $left, Client $right) use ($insights) {
+            });
+
+        $leadTieBreakers = $candidateCollection->mapWithKeys(function (Client $client) use ($insights) {
+            $insight = $insights[(int) $client->id] ?? [];
+            $contractCount = (int) ($insight['contract_count'] ?? 0);
+            $opportunityCount = (int) ($insight['opportunity_count'] ?? 0);
+
+            return [
+                (int) $client->id => ($contractCount === 0 && $opportunityCount === 0)
+                    ? random_int(0, PHP_INT_MAX)
+                    : 0,
+            ];
+        })->all();
+
+        $candidates = $candidateCollection
+            ->sort(function (Client $left, Client $right) use ($insights, $leadTieBreakers) {
                 $a = $insights[(int) $left->id];
                 $b = $insights[(int) $right->id];
 
-                $priorityDiff = ((int) ($b['priority_order'] ?? 0)) <=> ((int) ($a['priority_order'] ?? 0));
-                if ($priorityDiff !== 0) {
-                    return $priorityDiff;
+                $contractCountDiff = ((int) ($b['contract_count'] ?? 0)) <=> ((int) ($a['contract_count'] ?? 0));
+                if ($contractCountDiff !== 0) {
+                    return $contractCountDiff;
+                }
+
+                $opportunityCountDiff = ((int) ($b['opportunity_count'] ?? 0)) <=> ((int) ($a['opportunity_count'] ?? 0));
+                if ($opportunityCountDiff !== 0) {
+                    return $opportunityCountDiff;
+                }
+
+                $aIsLead = (int) ($a['contract_count'] ?? 0) === 0 && (int) ($a['opportunity_count'] ?? 0) === 0;
+                $bIsLead = (int) ($b['contract_count'] ?? 0) === 0 && (int) ($b['opportunity_count'] ?? 0) === 0;
+                if ($aIsLead && $bIsLead) {
+                    $leadTieDiff = ((int) ($leadTieBreakers[(int) $left->id] ?? 0)) <=> ((int) ($leadTieBreakers[(int) $right->id] ?? 0));
+                    if ($leadTieDiff !== 0) {
+                        return $leadTieDiff;
+                    }
                 }
 
                 $triggerPriorityDiff = ((int) ($b['trigger_priority'] ?? 0)) <=> ((int) ($a['trigger_priority'] ?? 0));
@@ -420,7 +448,7 @@ class ClientAutoRotationService
     }
 
     /**
-     * @return array<string, array<int, CarbonInterface|null>|array<int, bool>>
+     * @return array<string, array<int, CarbonInterface|null>|array<int, int>>
      */
     private function loadActivityStatsForClients(EloquentCollection $clients): array
     {
@@ -430,9 +458,9 @@ class ClientAutoRotationService
                 'care_note_last' => [],
                 'comment_history_last' => [],
                 'opportunity_last' => [],
-                'opportunity_any' => [],
+                'opportunity_count' => [],
                 'contract_last' => [],
-                'contract_any' => [],
+                'contract_count' => [],
             ];
         }
 
@@ -454,8 +482,8 @@ class ClientAutoRotationService
         $opportunityLast = $opportunityRows->mapWithKeys(function ($row) {
             return [(int) $row->client_id => $row->last_at ? Carbon::parse($row->last_at) : null];
         })->all();
-        $opportunityAny = $opportunityRows->mapWithKeys(function ($row) {
-            return [(int) $row->client_id => (int) $row->total > 0];
+        $opportunityCount = $opportunityRows->mapWithKeys(function ($row) {
+            return [(int) $row->client_id => (int) $row->total];
         })->all();
 
         $contractRows = Contract::query()
@@ -466,8 +494,8 @@ class ClientAutoRotationService
         $contractLast = $contractRows->mapWithKeys(function ($row) {
             return [(int) $row->client_id => $row->last_at ? Carbon::parse($row->last_at) : null];
         })->all();
-        $contractAny = $contractRows->mapWithKeys(function ($row) {
-            return [(int) $row->client_id => (int) $row->total > 0];
+        $contractCount = $contractRows->mapWithKeys(function ($row) {
+            return [(int) $row->client_id => (int) $row->total];
         })->all();
 
         $commentHistoryLast = [];
@@ -479,14 +507,14 @@ class ClientAutoRotationService
             'care_note_last' => $careNoteLast,
             'comment_history_last' => $commentHistoryLast,
             'opportunity_last' => $opportunityLast,
-            'opportunity_any' => $opportunityAny,
+            'opportunity_count' => $opportunityCount,
             'contract_last' => $contractLast,
-            'contract_any' => $contractAny,
+            'contract_count' => $contractCount,
         ];
     }
 
     /**
-     * @param  array<string, array<int, CarbonInterface|null>|array<int, bool>>  $stats
+     * @param  array<string, array<int, CarbonInterface|null>|array<int, int>>  $stats
      * @return array<string, mixed>
      */
     private function buildInsightFromStats(
@@ -599,9 +627,9 @@ class ClientAutoRotationService
             : [];
         $warningDue = ! $eligible && ! empty($warningRulesDue);
 
-        $hasAnyContract = (bool) ($stats['contract_any'][$clientId] ?? false);
-        $hasAnyOpportunity = (bool) ($stats['opportunity_any'][$clientId] ?? false);
-        [$priorityBucket, $priorityOrder] = $this->priorityBucket($hasAnyContract, $hasAnyOpportunity);
+        $contractCount = max(0, (int) ($stats['contract_count'][$clientId] ?? 0));
+        $opportunityCount = max(0, (int) ($stats['opportunity_count'][$clientId] ?? 0));
+        [$priorityBucket, $priorityOrder] = $this->priorityBucket($contractCount, $opportunityCount);
 
         $scopeReasons = [];
         if (! $settings['enabled']) {
@@ -669,6 +697,10 @@ class ClientAutoRotationService
             'protecting_label' => $this->rotationRuleLabel($triggerRule, $eligible),
             'priority_bucket' => $priorityBucket,
             'priority_order' => $priorityOrder,
+            'contract_count' => $contractCount,
+            'opportunity_count' => $opportunityCount,
+            'priority_label' => $this->priorityLabel($contractCount, $opportunityCount),
+            'priority_rule_label' => 'Ưu tiên số hợp đồng giảm dần, nếu bằng nhau thì xét số cơ hội; nếu cả hai đều là khách tiềm năng thì random trong nhóm đồng hạng.',
             'last_meaningful_activity_at' => $lastMeaningfulActivityAt->toIso8601String(),
             'thresholds' => [
                 'comment_stale_days' => (int) $settings['comment_stale_days'],
@@ -752,17 +784,30 @@ class ClientAutoRotationService
     /**
      * @return array{0: string, 1: int}
      */
-    private function priorityBucket(bool $hasAnyContract, bool $hasAnyOpportunity): array
+    private function priorityBucket(int $contractCount, int $opportunityCount): array
     {
-        if ($hasAnyContract) {
-            return ['contract', 3];
+        if ($contractCount > 0) {
+            return ['contract', 2000000000 + ($contractCount * 1000000) + min($opportunityCount, 999999)];
         }
 
-        if ($hasAnyOpportunity) {
-            return ['opportunity', 2];
+        if ($opportunityCount > 0) {
+            return ['opportunity', 1000000000 + $opportunityCount];
         }
 
-        return ['lead', 1];
+        return ['lead', 0];
+    }
+
+    private function priorityLabel(int $contractCount, int $opportunityCount): string
+    {
+        if ($contractCount > 0) {
+            return sprintf('%d hợp đồng • %d cơ hội', $contractCount, $opportunityCount);
+        }
+
+        if ($opportunityCount > 0) {
+            return sprintf('0 hợp đồng • %d cơ hội', $opportunityCount);
+        }
+
+        return 'Khách tiềm năng thuần';
     }
 
     /**
