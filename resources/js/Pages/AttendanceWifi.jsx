@@ -39,6 +39,7 @@ const statusLabels = {
     late_pending: 'Đi muộn',
     late: 'Đi muộn',
     approved_full: 'Duyệt đủ công',
+    approved_no_count: 'Nghỉ duyệt không công',
     approved_partial: 'Duyệt công thủ công',
     holiday_auto: 'Ngày lễ tự động',
     pending: 'Chờ duyệt',
@@ -127,6 +128,7 @@ function Badge({ children, tone = 'slate' }) {
 
 function toneForStatus(status) {
     if (['present', 'approved', 'approved_full', 'holiday_auto'].includes(status)) return 'emerald';
+    if (['approved_no_count'].includes(status)) return 'blue';
     if (['late_pending', 'late', 'pending', 'approved_partial'].includes(status)) return 'amber';
     if (['rejected'].includes(status)) return 'rose';
     return 'slate';
@@ -232,6 +234,7 @@ export default function AttendanceWifi(props) {
     const toast = useToast();
     const role = props?.auth?.user?.role || '';
     const canManage = ['admin', 'administrator', 'ke_toan'].includes(role);
+    const canReviewRequests = canManage || role === 'quan_ly';
     const isAdministrator = String(role).toLowerCase() === 'administrator';
     const canManageWifi = isAdministrator;
     const canExport = canManage;
@@ -1191,7 +1194,7 @@ export default function AttendanceWifi(props) {
                                                     </div>
                                                 ) : null}
                                             </div>
-                                            {canManage && item.status === 'pending' ? (
+                                            {canReviewRequests && item.status === 'pending' ? (
                                                 <div className="flex flex-wrap gap-2">
                                                     <button type="button" className={buttonPrimaryClass} onClick={() => openReview(item)}>Duyệt / từ chối</button>
                                                 </div>

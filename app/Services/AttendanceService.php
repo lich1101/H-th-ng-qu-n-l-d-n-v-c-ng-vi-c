@@ -269,8 +269,16 @@ class AttendanceService
             'work_date' => $workDate->toDateString(),
         ]);
 
-        if ($record->exists && $record->check_in_at) {
-            return $record;
+        if ($record->exists) {
+            $existingSource = (string) ($record->source ?? '');
+            $existingStatus = (string) ($record->status ?? '');
+            if (
+                $record->check_in_at
+                || ! in_array($existingSource, ['', 'holiday_auto'], true)
+                || ($existingSource === '' && ! in_array($existingStatus, ['', 'absent', 'holiday_auto'], true))
+            ) {
+                return $record;
+            }
         }
 
         $record->fill([
@@ -412,7 +420,20 @@ class AttendanceService
 
         $mode = trim((string) ($attendanceRequest->approval_mode ?? 'full_work'));
         if ($mode === 'no_count') {
-            return null;
+            $last = null;
+            $cursor = Carbon::parse($attendanceRequest->request_date, 'Asia/Ho_Chi_Minh')->startOfDay();
+            $endRaw = $attendanceRequest->request_end_date ?? $attendanceRequest->request_date;
+            $end = Carbon::parse($endRaw, 'Asia/Ho_Chi_Minh')->startOfDay();
+            if ($end->lt($cursor)) {
+                [$cursor, $end] = [$end, $cursor];
+            }
+
+            while ($cursor->lte($end)) {
+                $last = $this->upsertLeaveApprovedNoCountDay($user, $cursor, $attendanceRequest, $approver, $settings);
+                $cursor->addDay();
+            }
+
+            return $last;
         }
         if ($mode !== 'full_work') {
             $mode = 'full_work';
@@ -433,6 +454,50 @@ class AttendanceService
         }
 
         return $last;
+    }
+
+    private function upsertLeaveApprovedNoCountDay(
+        User $user,
+        Carbon $day,
+        AttendanceRequest $attendanceRequest,
+        User $approver,
+        array $settings
+    ): AttendanceRecord {
+        $evaluation = $this->evaluateCheckIn($user, $day->copy()->setTime(12, 0), $settings);
+        $defaultWorkUnits = (float) $evaluation['default_work_units'];
+
+        $record = AttendanceRecord::query()->firstOrNew([
+            'user_id' => (int) $user->id,
+            'work_date' => $day->toDateString(),
+        ]);
+
+        $existingNote = trim((string) ($record->note ?? ''));
+        $decisionNote = trim((string) ($attendanceRequest->decision_note ?? ''));
+        $noteParts = array_values(array_filter([$existingNote, $decisionNote]));
+
+        $record->fill([
+            'check_in_at' => null,
+            'required_start_at' => $evaluation['required_start_at'],
+            'allowed_late_until' => $evaluation['allowed_late_until'],
+            'minutes_late' => 0,
+            'default_work_units' => $defaultWorkUnits,
+            'work_units' => 0.0,
+            'employment_type' => $evaluation['employment_type'],
+            'status' => 'approved_no_count',
+            'source' => 'request_approval',
+            'attendance_request_id' => (int) $attendanceRequest->id,
+            'approved_by' => (int) $approver->id,
+            'wifi_ssid' => null,
+            'wifi_bssid' => null,
+            'device_uuid' => null,
+            'device_name' => null,
+            'device_platform' => null,
+            'edited_after_wifi' => true,
+            'note' => empty($noteParts) ? null : implode("\n", $noteParts),
+        ]);
+        $record->save();
+
+        return $record->refresh();
     }
 
     private function upsertLeaveApprovedDay(
@@ -506,6 +571,26 @@ class AttendanceService
             'work_date' => $date->toDateString(),
         ]);
 
+        $existingNote = trim((string) ($record->note ?? ''));
+        $decisionNote = trim((string) ($attendanceRequest->decision_note ?? ''));
+        $noteParts = array_values(array_filter([$existingNote, $decisionNote]));
+
+        if ($mode === 'no_change') {
+            if (! $record->exists) {
+                return null;
+            }
+
+            $record->fill([
+                'attendance_request_id' => (int) $attendanceRequest->id,
+                'approved_by' => (int) $approver->id,
+                'edited_after_wifi' => true,
+                'note' => empty($noteParts) ? null : implode("\n", $noteParts),
+            ]);
+            $record->save();
+
+            return $record->refresh();
+        }
+
         $actualForLate = $record->check_in_at;
         if (! $actualForLate && $expectedTime !== '' && preg_match('/^\d{2}:\d{2}$/', $expectedTime)) {
             [$hour, $minute] = array_map('intval', explode(':', $expectedTime));
@@ -519,14 +604,9 @@ class AttendanceService
                 : max(0, (int) $allowedLateUntil->diffInMinutes($actualForLate, false));
         }
 
-        $workUnits = $mode === 'no_change'
-            ? (float) ($record->work_units ?? $defaultWorkUnits)
-            : $defaultWorkUnits;
+        $workUnits = $defaultWorkUnits;
 
         $status = $workUnits >= $defaultWorkUnits ? 'approved_full' : 'approved_partial';
-        $existingNote = trim((string) ($record->note ?? ''));
-        $decisionNote = trim((string) ($attendanceRequest->decision_note ?? ''));
-        $noteParts = array_values(array_filter([$existingNote, $decisionNote]));
 
         $record->fill([
             'required_start_at' => $requiredStartAt,

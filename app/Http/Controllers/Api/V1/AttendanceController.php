@@ -735,6 +735,13 @@ class AttendanceController extends Controller
             'work_date' => $now->toDateString(),
         ]);
 
+        if ($record->exists && (string) $record->status === 'approved_no_count') {
+            return response()->json([
+                'message' => 'Bạn đã có đơn nghỉ được duyệt không tính công cho hôm nay. Nếu cần chấm công, vui lòng liên hệ Administrator để điều chỉnh.',
+                'record' => $this->recordPayload($record),
+            ], 422);
+        }
+
         if ($record->exists && $record->check_in_at) {
             return response()->json([
                 'message' => 'Bạn đã chấm công hôm nay rồi.',
@@ -882,6 +889,11 @@ class AttendanceController extends Controller
         if ($requestType === 'late_arrival' && empty($validated['expected_check_in_time'])) {
             return response()->json(['message' => 'Đơn đi muộn cần có giờ dự kiến vào làm (HH:mm).'], 422);
         }
+        if ($this->hasConflictingAttendanceRequest((int) $user->id, $start, $end)) {
+            return response()->json([
+                'message' => 'Đã có đơn chấm công đang chờ duyệt hoặc đã duyệt trong khoảng ngày này.',
+            ], 422);
+        }
 
         $item = AttendanceRequestModel::create([
             'user_id' => $user->id,
@@ -933,8 +945,14 @@ class AttendanceController extends Controller
         AttendanceService $attendance,
         NotificationService $notifications
     ): JsonResponse {
-        if (! $this->canManageAttendance($request->user())) {
+        $attendanceRequest->loadMissing('user:id,department_id');
+        if (! $this->canReviewAttendanceRequest($request->user(), $attendanceRequest)) {
             return response()->json(['message' => 'Không có quyền duyệt đơn chấm công.'], 403);
+        }
+        if ((string) $attendanceRequest->status !== 'pending') {
+            return response()->json([
+                'message' => 'Đơn này đã được xử lý trước đó. Vui lòng tải lại danh sách.',
+            ], 422);
         }
 
         $requestType = (string) $attendanceRequest->request_type;
@@ -963,6 +981,16 @@ class AttendanceController extends Controller
                     ], 422);
                 }
                 $approvalMode = $rawMode;
+            }
+
+            $start = Carbon::parse($attendanceRequest->request_date, 'Asia/Ho_Chi_Minh')->startOfDay();
+            $end = $attendanceRequest->request_end_date
+                ? Carbon::parse($attendanceRequest->request_end_date, 'Asia/Ho_Chi_Minh')->startOfDay()
+                : $start->copy();
+            if ($this->hasConflictingAttendanceRequest((int) $attendanceRequest->user_id, $start, $end, (int) $attendanceRequest->id)) {
+                return response()->json([
+                    'message' => 'Nhân sự này đã có một đơn khác trong cùng khoảng ngày đang chờ duyệt hoặc đã được duyệt.',
+                ], 422);
             }
         }
 
@@ -1163,6 +1191,12 @@ class AttendanceController extends Controller
             return response()->json(['message' => 'Không có quyền cập nhật ngày lễ.'], 403);
         }
 
+        $previousHoliday = $attendanceHoliday->replicate();
+        $previousHoliday->start_date = $attendanceHoliday->start_date;
+        $previousHoliday->end_date = $attendanceHoliday->end_date;
+        $previousHoliday->holiday_date = $attendanceHoliday->holiday_date;
+        $previousHoliday->is_active = $attendanceHoliday->is_active;
+
         $validated = $request->validate([
             'holiday_date' => ['nullable', 'date'],
             'start_date' => ['nullable', 'date'],
@@ -1188,6 +1222,7 @@ class AttendanceController extends Controller
                 : (bool) $attendanceHoliday->is_active,
         ]);
 
+        $this->cleanupHolidayRange($previousHoliday);
         $this->syncHolidayRangeUntilToday($attendanceHoliday->fresh());
 
         return response()->json([
@@ -1202,6 +1237,7 @@ class AttendanceController extends Controller
             return response()->json(['message' => 'Không có quyền xóa ngày lễ.'], 403);
         }
 
+        $this->cleanupHolidayRange($attendanceHoliday);
         $attendanceHoliday->delete();
 
         return response()->json(['message' => 'Đã xóa ngày lễ.']);
@@ -1873,6 +1909,23 @@ class AttendanceController extends Controller
         return $user && in_array($user->role, ['admin', 'administrator', 'ke_toan'], true);
     }
 
+    private function canReviewAttendanceRequest(?User $user, ?AttendanceRequestModel $attendanceRequest = null): bool
+    {
+        if (! $user || ! $user->is_active) {
+            return false;
+        }
+        if ($this->canManageAttendance($user)) {
+            return true;
+        }
+        if ($user->role !== 'quan_ly' || ! $attendanceRequest || ! $attendanceRequest->user) {
+            return false;
+        }
+
+        $deptIds = Department::query()->where('manager_id', $user->id)->pluck('id');
+
+        return $deptIds->contains((int) $attendanceRequest->user->department_id);
+    }
+
     private function canManageAttendanceWifi(?User $user): bool
     {
         return $user && $user->role === 'administrator';
@@ -1936,6 +1989,25 @@ class AttendanceController extends Controller
             }
             $cursor->addDay();
         }
+    }
+
+    private function cleanupHolidayRange(?AttendanceHoliday $holiday): void
+    {
+        if (! $holiday || ! $holiday->is_active) {
+            return;
+        }
+
+        $startDate = $holiday->resolvedStartDate();
+        $endDate = $holiday->resolvedEndDate();
+        if (! $startDate || ! $endDate) {
+            return;
+        }
+
+        AttendanceRecord::query()
+            ->where('source', 'holiday_auto')
+            ->where('status', 'holiday_auto')
+            ->whereBetween('work_date', [$startDate->toDateString(), $endDate->toDateString()])
+            ->delete();
     }
 
     private function devicePayload(AttendanceDevice $item): array
@@ -2072,6 +2144,9 @@ class AttendanceController extends Controller
             case 'approved_full':
                 $statusLabel = 'Duyệt đủ công';
                 break;
+            case 'approved_no_count':
+                $statusLabel = 'Nghỉ đã duyệt không tính công';
+                break;
             case 'approved_partial':
                 $statusLabel = 'Duyệt công thủ công';
                 break;
@@ -2145,6 +2220,34 @@ class AttendanceController extends Controller
             default:
                 return 'Đơn xin đi muộn';
         }
+    }
+
+    private function hasConflictingAttendanceRequest(
+        int $userId,
+        Carbon $startDate,
+        Carbon $endDate,
+        ?int $ignoreId = null
+    ): bool {
+        $query = AttendanceRequestModel::query()
+            ->where('user_id', $userId)
+            ->whereIn('status', ['pending', 'approved'])
+            ->where(function ($builder) use ($startDate, $endDate) {
+                $builder->where(function ($inner) use ($startDate, $endDate) {
+                    $inner->where('request_type', 'leave_request')
+                        ->whereDate('request_date', '<=', $endDate->toDateString())
+                        ->whereDate(\Illuminate\Support\Facades\DB::raw('COALESCE(request_end_date, request_date)'), '>=', $startDate->toDateString());
+                })->orWhere(function ($inner) use ($startDate, $endDate) {
+                    $inner->where('request_type', 'late_arrival')
+                        ->whereDate('request_date', '>=', $startDate->toDateString())
+                        ->whereDate('request_date', '<=', $endDate->toDateString());
+                });
+            });
+
+        if ($ignoreId) {
+            $query->where('id', '!=', $ignoreId);
+        }
+
+        return $query->exists();
     }
 
     private function resolveHolidayRangeFromPayload(array $validated): array
