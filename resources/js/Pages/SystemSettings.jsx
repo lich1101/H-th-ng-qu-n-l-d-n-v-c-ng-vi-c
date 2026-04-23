@@ -145,6 +145,17 @@ const normalizeIdList = (value) => (
         : []
 );
 
+const moveIdInList = (list, targetId, direction) => {
+    const current = normalizeIdList(list);
+    const index = current.indexOf(targetId);
+    if (index < 0) return current;
+    const nextIndex = index + direction;
+    if (nextIndex < 0 || nextIndex >= current.length) return current;
+    const next = [...current];
+    [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+    return next;
+};
+
 const initialBotForm = (bot = null) => ({
     name: bot?.name || '',
     description: bot?.description || '',
@@ -362,6 +373,16 @@ export default function SystemSettings(props) {
                 [field]: next,
             };
         });
+    };
+
+    const moveRotationLeadTypePriority = (rawId, direction) => {
+        const targetId = Number(rawId || 0);
+        if (!Number.isInteger(targetId) || targetId <= 0) return;
+
+        setForm((prev) => ({
+            ...prev,
+            client_rotation_lead_type_ids: moveIdInList(prev.client_rotation_lead_type_ids, targetId, direction),
+        }));
     };
 
     const loadAdminSettings = async () => {
@@ -1026,6 +1047,20 @@ export default function SystemSettings(props) {
     };
     const selectedRotationLeadTypeIds = normalizeIdList(form.client_rotation_lead_type_ids);
     const selectedRotationParticipantIds = normalizeIdList(form.client_rotation_participant_user_ids);
+    const selectedRotationLeadTypes = useMemo(() => {
+        const byId = new Map(
+            (rotationLeadTypes || []).map((item) => [Number(item?.id || 0), item])
+        );
+        return selectedRotationLeadTypeIds
+            .map((id) => byId.get(id))
+            .filter(Boolean);
+    }, [rotationLeadTypes, selectedRotationLeadTypeIds]);
+    const orderedRotationLeadTypes = useMemo(() => {
+        const selectedIdSet = new Set(selectedRotationLeadTypeIds);
+        const selected = selectedRotationLeadTypes;
+        const unselected = (rotationLeadTypes || []).filter((item) => !selectedIdSet.has(Number(item?.id || 0)));
+        return [...selected, ...unselected];
+    }, [rotationLeadTypes, selectedRotationLeadTypeIds, selectedRotationLeadTypes]);
 
     return (
         <PageContainer
@@ -2316,6 +2351,9 @@ export default function SystemSettings(props) {
                                     <p className="mt-2 text-xs text-slate-500">
                                         Bình luận mới chỉ reset mốc chăm sóc. Cơ hội mới reset cả mốc cơ hội và mốc chăm sóc. Hợp đồng mới reset cả 3 mốc: bình luận, cơ hội và hợp đồng.
                                     </p>
+                                    <p className="mt-2 text-xs text-slate-500">
+                                        Nếu chọn nhiều loại khách, hệ thống sẽ xét theo đúng thứ tự loại khách bạn sắp xếp ở danh sách bên dưới, rồi mới áp dụng rule ưu tiên trong từng loại.
+                                    </p>
                                 </div>
                                 <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">
                                     <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-subtle">Chọn người nhận</div>
@@ -2343,7 +2381,7 @@ export default function SystemSettings(props) {
                                     <div>
                                         <h3 className="text-sm font-semibold text-slate-900">Loại khách áp dụng</h3>
                                         <p className="mt-1 text-xs text-text-muted">
-                                            Chỉ các khách thuộc loại được chọn mới đi vào cơ chế xoay vòng.
+                                            Chỉ các khách thuộc loại được chọn mới đi vào cơ chế xoay vòng. Nếu chọn nhiều loại, thứ tự ở danh sách ưu tiên bên dưới sẽ quyết định loại nào được xét trước.
                                         </p>
                                     </div>
                                     <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
@@ -2351,14 +2389,74 @@ export default function SystemSettings(props) {
                                     </div>
                                 </div>
 
+                                {selectedRotationLeadTypes.length > 0 ? (
+                                    <div className="mt-4 rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-4">
+                                        <div className="flex items-center justify-between gap-3">
+                                            <div>
+                                                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-subtle">Thứ tự ưu tiên loại khách</div>
+                                                <p className="mt-1 text-xs text-slate-500">
+                                                    #1 là ưu tiên cao nhất. Trong cùng một loại khách, hệ thống vẫn giữ nguyên rule hiện tại: xét loại khách trước, rồi mới tới số hợp đồng, số cơ hội và các tie-break còn lại.
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className="mt-3 space-y-2">
+                                            {selectedRotationLeadTypes.map((leadType, index) => {
+                                                const leadTypeId = Number(leadType?.id || 0);
+
+                                                return (
+                                                    <div
+                                                        key={`priority-${leadTypeId}`}
+                                                        className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white px-3 py-3"
+                                                    >
+                                                        <div className="min-w-0">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="inline-flex h-7 min-w-[44px] items-center justify-center rounded-full bg-primary/10 px-2 text-xs font-semibold text-primary">
+                                                                    #{index + 1}
+                                                                </span>
+                                                                <span className="truncate text-sm font-semibold text-slate-900">
+                                                                    {leadType?.name || `Loại #${leadTypeId}`}
+                                                                </span>
+                                                            </div>
+                                                            <div className="mt-1 text-xs text-slate-500">
+                                                                ID: {leadTypeId}{leadType?.color_hex ? ` • ${leadType.color_hex}` : ''}
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => moveRotationLeadTypePriority(leadTypeId, -1)}
+                                                                disabled={index === 0}
+                                                                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                                                                aria-label={`Đẩy ${leadType?.name || `loại ${leadTypeId}`} lên ưu tiên cao hơn`}
+                                                            >
+                                                                ↑
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => moveRotationLeadTypePriority(leadTypeId, 1)}
+                                                                disabled={index === selectedRotationLeadTypes.length - 1}
+                                                                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                                                                aria-label={`Đẩy ${leadType?.name || `loại ${leadTypeId}`} xuống ưu tiên thấp hơn`}
+                                                            >
+                                                                ↓
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                ) : null}
+
                                 <div className="mt-4 max-h-[360px] space-y-2 overflow-y-auto pr-1">
-                                    {rotationLeadTypes.length === 0 ? (
+                                    {orderedRotationLeadTypes.length === 0 ? (
                                         <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
                                             Chưa tải được danh sách loại khách.
                                         </div>
-                                    ) : rotationLeadTypes.map((leadType) => {
+                                    ) : orderedRotationLeadTypes.map((leadType) => {
                                         const leadTypeId = Number(leadType.id || 0);
                                         const checked = selectedRotationLeadTypeIds.includes(leadTypeId);
+                                        const checkedIndex = selectedRotationLeadTypeIds.indexOf(leadTypeId);
 
                                         return (
                                             <label
@@ -2376,7 +2474,14 @@ export default function SystemSettings(props) {
                                                     onChange={() => toggleRotationSelection('client_rotation_lead_type_ids', leadTypeId)}
                                                 />
                                                 <div className="min-w-0">
-                                                    <div className="text-sm font-semibold text-slate-900">{leadType.name || `Loại #${leadTypeId}`}</div>
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="text-sm font-semibold text-slate-900">{leadType.name || `Loại #${leadTypeId}`}</div>
+                                                        {checked ? (
+                                                            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                                                                Ưu tiên #{checkedIndex + 1}
+                                                            </span>
+                                                        ) : null}
+                                                    </div>
                                                     <div className="mt-1 text-xs text-text-muted">
                                                         ID: {leadTypeId}{leadType.color_hex ? ` • ${leadType.color_hex}` : ''}
                                                     </div>

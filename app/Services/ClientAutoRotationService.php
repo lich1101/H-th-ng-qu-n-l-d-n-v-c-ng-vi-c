@@ -292,6 +292,11 @@ class ClientAutoRotationService
                 $a = $insights[(int) $left->id];
                 $b = $insights[(int) $right->id];
 
+                $leadTypePriorityDiff = ((int) ($a['lead_type_priority_rank'] ?? PHP_INT_MAX)) <=> ((int) ($b['lead_type_priority_rank'] ?? PHP_INT_MAX));
+                if ($leadTypePriorityDiff !== 0) {
+                    return $leadTypePriorityDiff;
+                }
+
                 $contractCountDiff = ((int) ($b['contract_count'] ?? 0)) <=> ((int) ($a['contract_count'] ?? 0));
                 if ($contractCountDiff !== 0) {
                     return $contractCountDiff;
@@ -598,6 +603,7 @@ class ClientAutoRotationService
         $sameDepartmentOnly = (bool) ($settings['same_department_only'] ?? false);
         $leadTypeId = (int) ($client->lead_type_id ?? 0);
         $leadTypeSelected = $leadTypeId > 0 && in_array($leadTypeId, $settings['lead_type_ids'], true);
+        $leadTypePriorityRank = $this->leadTypePriorityRank($leadTypeId, $settings['lead_type_ids']);
         $ownerSelected = $currentOwnerId > 0 && in_array($currentOwnerId, $settings['participant_user_ids'], true);
         $inScope = $settings['enabled']
             && $leadTypeSelected
@@ -666,6 +672,10 @@ class ClientAutoRotationService
             'current_department_id' => $currentDepartmentId > 0 ? $currentDepartmentId : null,
             'lead_type_id' => $leadTypeId > 0 ? $leadTypeId : null,
             'lead_type_name' => $client->leadType ? (string) $client->leadType->name : null,
+            'lead_type_priority_rank' => $leadTypePriorityRank,
+            'lead_type_priority_label' => $leadTypePriorityRank !== null
+                ? sprintf('Loại khách ưu tiên #%d', $leadTypePriorityRank)
+                : null,
             'rotation_reset_at' => optional($resetAt)->toIso8601String(),
             'rotation_anchor_at' => optional($rotationAnchorAt)->toIso8601String(),
             'rotation_anchor_source' => $rotationAnchorSource,
@@ -700,7 +710,7 @@ class ClientAutoRotationService
             'contract_count' => $contractCount,
             'opportunity_count' => $opportunityCount,
             'priority_label' => $this->priorityLabel($contractCount, $opportunityCount),
-            'priority_rule_label' => 'Ưu tiên số hợp đồng giảm dần, nếu bằng nhau thì xét số cơ hội; nếu cả hai đều là khách tiềm năng thì random trong nhóm đồng hạng.',
+            'priority_rule_label' => 'Nếu chọn nhiều loại khách, hệ thống xét theo thứ tự loại khách đã cấu hình trước. Trong cùng loại khách, ưu tiên số hợp đồng giảm dần, nếu bằng nhau thì xét số cơ hội; nếu cả hai đều là khách tiềm năng thì random trong nhóm đồng hạng.',
             'last_meaningful_activity_at' => $lastMeaningfulActivityAt->toIso8601String(),
             'thresholds' => [
                 'comment_stale_days' => (int) $settings['comment_stale_days'],
@@ -808,6 +818,17 @@ class ClientAutoRotationService
         }
 
         return 'Khách tiềm năng thuần';
+    }
+
+    private function leadTypePriorityRank(int $leadTypeId, array $orderedLeadTypeIds): ?int
+    {
+        if ($leadTypeId <= 0 || empty($orderedLeadTypeIds)) {
+            return null;
+        }
+
+        $position = array_search($leadTypeId, $orderedLeadTypeIds, true);
+
+        return $position === false ? null : ($position + 1);
     }
 
     /**

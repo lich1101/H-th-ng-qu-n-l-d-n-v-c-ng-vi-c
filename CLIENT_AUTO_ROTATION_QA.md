@@ -16,6 +16,7 @@ Tai lieu nay dung de QA/tester test nhanh co che xoay khach hang tu dong.
 - `B`, `C`, `D` dang active, va deu nam trong danh sach xoay.
 - Pham vi chon nguoi nhan la toan bo nhan su da duoc tick trong setting, khong con gioi han theo phong ban.
 - Thu tu dua khach vao hang cho xoay:
+  - neu chon nhieu `loai khach`, he thong se xet theo thu tu loai khach da cau hinh truoc
   - nhieu hop dong hon se duoc xu ly truoc
   - neu bang so hop dong thi so co hoi nhieu hon se duoc xu ly truoc
   - neu ca 2 cung la lead thuan (`0 hop dong`, `0 co hoi`) thi random trong nhom dong hang
@@ -56,6 +57,7 @@ Tai lieu nay dung de QA/tester test nhanh co che xoay khach hang tu dong.
 | S18 | `opportunity_stale_days = 30`, `last_opportunity_at = 2026-04-06 12:00`, `last_comment_at = 2026-04-06 12:00`, `last_contract_at = 2026-04-06 12:00`. | `2026-04-22 12:00` | `2026-05-06 12:00` | `Khong co` tai `2026-04-22` | Nhac co hoi phai bat dau khi con `14` ngay va lap lai moi `3` ngay: `2026-04-22`, `2026-04-25`, `2026-04-28`, `2026-05-01`, `2026-05-04`. |
 | S19 | `contract_stale_days = 90`, `last_contract_at = 2026-01-22 12:00`, `last_opportunity_at = 2026-01-22 12:00`, `last_comment_at = 2026-01-22 12:00`. | `2026-03-08 12:00` | `2026-04-22 12:00` | `Khong co` tai `2026-03-08` | Nhac hop dong phai bat dau khi con `45` ngay va lap lai moi `7` ngay: `2026-03-08`, `2026-03-15`, `2026-03-22`, `2026-03-29`, `2026-04-05`, `2026-04-12`, `2026-04-19`. |
 | S20 | Cung du dieu kien xoay tai mot lan cron: `C1(contract=4, opportunity=2)`, `C2(contract=4, opportunity=5)`, `C3(contract=1, opportunity=9)`, `C4(contract=0, opportunity=7)`, `C5(contract=0, opportunity=0)`, `C6(contract=0, opportunity=0)`. | `Khong ap dung` | `2026-04-23 12:00` | `Khong ap dung` | Thu tu dua vao hang cho xoay phai la `C2 -> C1 -> C3 -> C4 -> (C5/C6 random)`. Case nay chi test uu tien xep khach, khong test nguoi nhan. |
+| S21 | Chon `loai khach` theo thu tu uu tien `[Dang cham soc (#2), Khach hang tiem nang (#1), Khach hang (#5)]`. Cung du dieu kien xoay tai mot lan cron: `L2-A(contract=1, opportunity=0)`, `L1-A(contract=9, opportunity=3)`, `L5-A(contract=12, opportunity=2)`. | `Khong ap dung` | `2026-04-23 12:00` | `Khong ap dung` | Thu tu phai la `L2-A -> L1-A -> L5-A` du `L5-A` co nhieu hop dong hon, vi uu tien theo `loai khach` phai duoc ap dung truoc. Trong tung nhom loai khach, moi so sanh tiep `hop dong -> co hoi -> tie-break`. |
 
 ## Checklist UI/API can doi chieu nhanh
 
@@ -70,6 +72,7 @@ Tai lieu nay dung de QA/tester test nhanh co che xoay khach hang tu dong.
   - `effective_comment_at`
   - `effective_opportunity_at`
   - `effective_contract_at`
+  - `lead_type_priority_rank`
   - `contract_count`
   - `opportunity_count`
   - `priority_label`
