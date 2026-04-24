@@ -1028,7 +1028,7 @@ export default function AttendanceWifi(props) {
                                 <h3 className="text-lg font-semibold text-slate-900">Công cá nhân</h3>
                                 <p className="mt-1 text-sm text-text-muted">Theo dõi bản ghi công của bạn trong khoảng ngày cần xem.</p>
                             </div>
-                            <FilterToolbar enableSearch
+                            <FilterToolbar
                                 className="mt-4 mb-4"
                                 title="Bộ lọc bảng công"
                                 description="Chọn khoảng ngày để xem lịch sử công cá nhân theo đúng chuẩn hiển thị chung của hệ thống."

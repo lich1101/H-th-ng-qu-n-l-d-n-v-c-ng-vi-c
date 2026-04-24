@@ -371,17 +371,19 @@ export default function TasksBoard(props) {
         return true;
     };
 
+    const isAdminRole = ['admin', 'administrator'].includes(userRole);
+
     const canApproveItemReports = (taskRecord = itemsTask) => {
         if (!taskRecord) return false;
         const projectOwnerId = Number(taskRecord?.project?.owner_id || 0);
-        return userRole === 'admin' || projectOwnerId === currentUserId;
+        return isAdminRole || projectOwnerId === currentUserId;
     };
 
     const canManageTaskRecord = (taskRecord) => {
         if (!taskRecord) return false;
         if (isContractCollectorReadOnly(taskRecord.project)) return false;
         const projectOwnerId = Number(taskRecord?.project?.owner_id || 0);
-        return userRole === 'admin' || projectOwnerId === currentUserId;
+        return isAdminRole || projectOwnerId === currentUserId;
     };
 
     const canManageTaskItems = (taskRecord = itemsTask) => {
@@ -389,7 +391,7 @@ export default function TasksBoard(props) {
         if (isContractCollectorReadOnly(taskRecord.project)) return false;
         const projectOwnerId = Number(taskRecord?.project?.owner_id || 0);
         const taskOwnerId = Number(taskRecord?.assignee_id || 0);
-        return userRole === 'admin'
+        return isAdminRole
             || projectOwnerId === currentUserId
             || taskOwnerId === currentUserId;
     };
@@ -398,7 +400,7 @@ export default function TasksBoard(props) {
         if (!item) return false;
         if (isContractCollectorReadOnly(taskRecord?.project)) return false;
         const taskOwnerId = Number(taskRecord?.assignee_id || 0);
-        return userRole === 'admin'
+        return isAdminRole
             || taskOwnerId === currentUserId
             || Number(item.assignee_id || 0) === currentUserId;
     };
@@ -1455,14 +1457,14 @@ export default function TasksBoard(props) {
         ? toDateInputValue(selectedProject.deadline)
         : '';
     const availableProjectOptions = useMemo(
-        () => (userRole === 'admin'
+        () => (isAdminRole
             ? projects
             : projects.filter((project) => Number(project?.owner_id || 0) === currentUserId)),
-        [projects, userRole, currentUserId]
+        [projects, isAdminRole, currentUserId]
     );
     const canCreate = useMemo(
-        () => userRole === 'admin' || availableProjectOptions.length > 0,
-        [userRole, availableProjectOptions]
+        () => isAdminRole || availableProjectOptions.length > 0,
+        [isAdminRole, availableProjectOptions]
     );
     const siblingProjectTasks = useMemo(
         () => projectWeightReference.filter((task) => Number(task.id) !== Number(editingId || 0)),
@@ -1491,7 +1493,7 @@ export default function TasksBoard(props) {
         if (selectedDepartment?.staff?.length) {
             return selectedDepartment.staff.filter(isAllowedRole);
         }
-        if (userRole === 'admin' && departments.length) {
+        if (isAdminRole && departments.length) {
             const all = departments.flatMap((d) => d.staff || []);
             const map = new Map();
             all.forEach((u) => {
@@ -1500,7 +1502,7 @@ export default function TasksBoard(props) {
             return Array.from(map.values());
         }
         return [];
-    }, [selectedDepartment, departments, userRole]);
+    }, [selectedDepartment, departments, isAdminRole]);
 
     const itemStaffOptions = useMemo(() => {
         const isAllowedRole = (user) => !BLOCKED_ASSIGNMENT_ROLES.includes(String(user?.role || '').toLowerCase());
@@ -1508,7 +1510,7 @@ export default function TasksBoard(props) {
         const deptId = itemsTask.department_id || itemsTask.department?.id;
         const dept = departments.find((d) => String(d.id) === String(deptId));
         if (dept?.staff?.length) return dept.staff.filter(isAllowedRole);
-        if (userRole === 'admin') {
+        if (isAdminRole) {
             const all = departments.flatMap((d) => d.staff || []);
             const map = new Map();
             all.forEach((u) => {
@@ -1517,7 +1519,7 @@ export default function TasksBoard(props) {
             return Array.from(map.values());
         }
         return [];
-    }, [itemsTask, departments, userRole]);
+    }, [itemsTask, departments, isAdminRole]);
 
     const assignableUserOptions = useMemo(
         () => userOptions.filter((user) => !BLOCKED_ASSIGNMENT_ROLES.includes(String(user?.role || '').toLowerCase())),
@@ -1847,7 +1849,7 @@ export default function TasksBoard(props) {
                                 onChange={(e) => setFilters((s) => ({ ...s, project_id: e.target.value }))}
                             >
                                 <option value="">Tất cả dự án</option>
-                                {(userRole === 'admin' ? projects : availableProjectOptions).map((p) => <option key={p.id} value={p.id}>{p.code}</option>)}
+                                {(isAdminRole ? projects : availableProjectOptions).map((p) => <option key={p.id} value={p.id}>{p.code}</option>)}
                             </select>
                         </FilterField>
                         <FilterField label="Trạng thái">

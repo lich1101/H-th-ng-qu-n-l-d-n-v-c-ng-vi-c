@@ -288,7 +288,7 @@ export default function Dashboard(props) {
                 {loading ? <SectionChip tone="amber">Đang đồng bộ dữ liệu</SectionChip> : null}
             </div>
 
-            <FilterToolbar enableSearch
+            <FilterToolbar
                 title="Bộ lọc thời gian"
                 description="Mặc định trang chủ hiển thị dữ liệu của tháng hiện tại. Bạn có thể thay đổi khoảng thời gian để quan sát chi tiết hơn."
                 onSubmitFilters={applyReportFilters}

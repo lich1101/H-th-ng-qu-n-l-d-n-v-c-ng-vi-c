@@ -181,6 +181,17 @@ export default function TaskItemsBoard(props) {
 
     const currentUserId = Number(props?.auth?.user?.id || 0);
     const userRole = (props?.auth?.user?.role || '').toString();
+    const isAdminRole = ['admin', 'administrator'].includes(userRole);
+
+    const isContractCollectorReadOnly = (project) => {
+        if (!project) return false;
+        const collectorId = Number(project.collector_user_id ?? project.contract?.collector_user_id ?? 0);
+        const ownerId = Number(project.owner_id ?? 0);
+        if (collectorId <= 0 || collectorId !== currentUserId) return false;
+        if (isAdminRole) return false;
+        if (ownerId > 0 && ownerId === currentUserId) return false;
+        return true;
+    };
 
     const selectedTaskForAddItem = useMemo(() => {
         if (!filters.task_id) return null;
@@ -190,16 +201,19 @@ export default function TaskItemsBoard(props) {
     const canManageTaskItemsForSelected = useMemo(() => {
         const taskRecord = selectedTaskForAddItem;
         if (!taskRecord) return false;
+        const projectRecord = taskRecord?.project
+            || projects.find((p) => String(p.id) === String(taskRecord?.project_id))
+            || null;
+        if (isContractCollectorReadOnly(projectRecord)) return false;
         const projectOwnerId = Number(
-            taskRecord?.project?.owner_id
-                ?? projects.find((p) => String(p.id) === String(taskRecord?.project_id))?.owner_id
+            projectRecord?.owner_id
                 ?? 0,
         );
         const taskAssigneeId = Number(taskRecord?.assignee_id || 0);
-        return userRole === 'admin'
+        return isAdminRole
             || (projectOwnerId > 0 && projectOwnerId === currentUserId)
             || (taskAssigneeId > 0 && taskAssigneeId === currentUserId);
-    }, [selectedTaskForAddItem, projects, userRole, currentUserId]);
+    }, [selectedTaskForAddItem, projects, isAdminRole, currentUserId]);
 
     /** Ẩn nút khi đã chọn công việc nhưng user không thuộc phạm vi được tạo đầu việc (giống TaskDetail / TasksBoard). */
     const hideAddTaskItemButton = Boolean(
@@ -207,12 +221,12 @@ export default function TaskItemsBoard(props) {
     );
 
     const addTaskItemButtonTitle = !filters.task_id
-        ? 'Chọn công việc trong bộ lọc để thêm đầu việc'
-        : !selectedTaskForAddItem
-            ? 'Đang tải hoặc không tìm thấy công việc đã chọn trong danh sách.'
-            : !canManageTaskItemsForSelected
-                ? 'Bạn không có quyền thêm đầu việc cho công việc này (admin, chủ dự án hoặc phụ trách công việc).'
-                : undefined;
+            ? 'Chọn công việc trong bộ lọc để thêm đầu việc'
+            : !selectedTaskForAddItem
+                ? 'Đang tải hoặc không tìm thấy công việc đã chọn trong danh sách.'
+                : !canManageTaskItemsForSelected
+                    ? 'Bạn không có quyền thêm đầu việc cho công việc này (admin/administrator, chủ dự án hoặc phụ trách công việc).'
+                    : undefined;
 
     const addTaskItemButtonEnabled = Boolean(
         filters.task_id && selectedTaskForAddItem && canManageTaskItemsForSelected,

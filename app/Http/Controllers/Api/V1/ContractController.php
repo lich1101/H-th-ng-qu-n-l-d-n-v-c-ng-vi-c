@@ -199,6 +199,9 @@ class ContractController extends Controller
             });
         }
 
+        $this->applyContractColumnFilters($query, $request);
+        $this->applyContractNumericRangeFilters($query, $request);
+
         if ($applyDateFilters) {
             foreach ($this->contractDateFieldMap() as $field => $config) {
                 $fromKey = $field.'_from';
@@ -215,6 +218,155 @@ class ContractController extends Controller
         }
 
         return $query;
+    }
+
+    private function contractTextFilter(Request $request, string $key): ?string
+    {
+        if (! $request->filled($key)) {
+            return null;
+        }
+
+        $term = trim((string) $request->input($key));
+
+        return $term === '' ? null : $term;
+    }
+
+    private function applyContractColumnFilters(Builder $query, Request $request): void
+    {
+        $term = $this->contractTextFilter($request, 'contract_query');
+        if ($term !== null) {
+            $query->where(function (Builder $builder) use ($term) {
+                $builder->where('contracts.code', 'like', "%{$term}%")
+                    ->orWhere('contracts.title', 'like', "%{$term}%");
+            });
+        }
+
+        $term = $this->contractTextFilter($request, 'client_query');
+        if ($term !== null) {
+            $query->whereHas('client', function (Builder $clientQuery) use ($term) {
+                $clientQuery->where('name', 'like', "%{$term}%")
+                    ->orWhere('company', 'like', "%{$term}%")
+                    ->orWhere('email', 'like', "%{$term}%");
+            });
+        }
+
+        $term = $this->contractTextFilter($request, 'client_phone');
+        if ($term !== null) {
+            $query->whereHas('client', function (Builder $clientQuery) use ($term) {
+                $clientQuery->where('phone', 'like', "%{$term}%");
+            });
+        }
+
+        $term = $this->contractTextFilter($request, 'opportunity_query');
+        if ($term !== null) {
+            $normalized = preg_replace('/\s+/', '', $term);
+            $opportunityId = null;
+            if (preg_match('/^(?:CH-?)?(\d+)$/i', $normalized, $matches)) {
+                $opportunityId = (int) $matches[1];
+            }
+
+            $query->whereHas('opportunity', function (Builder $oppQuery) use ($term, $opportunityId) {
+                $oppQuery->where('title', 'like', "%{$term}%")
+                    ->orWhere('notes', 'like', "%{$term}%");
+                if ($opportunityId) {
+                    $oppQuery->orWhere('id', $opportunityId);
+                }
+            });
+        }
+
+        $term = $this->contractTextFilter($request, 'project_query');
+        if ($term !== null) {
+            $query->where(function (Builder $builder) use ($term) {
+                $builder->whereHas('project', function (Builder $projectQuery) use ($term) {
+                    $projectQuery->where('name', 'like', "%{$term}%")
+                        ->orWhere('code', 'like', "%{$term}%");
+                })->orWhereHas('linkedProject', function (Builder $projectQuery) use ($term) {
+                    $projectQuery->where('name', 'like', "%{$term}%")
+                        ->orWhere('code', 'like', "%{$term}%");
+                });
+            });
+        }
+
+        $term = $this->contractTextFilter($request, 'notes_query');
+        if ($term !== null) {
+            $query->where(function (Builder $builder) use ($term) {
+                $builder->where('contracts.notes', 'like', "%{$term}%")
+                    ->orWhere('contracts.approval_note', 'like', "%{$term}%");
+            });
+        }
+    }
+
+    private function applyContractNumericRangeFilters(Builder $query, Request $request): void
+    {
+        $this->applyNumericRangeFilter($query, $request, 'value', $this->contractValueFilterSql());
+        $this->applyNumericRangeFilter($query, $request, 'payments_total', $this->contractPaymentsTotalFilterSql());
+        $this->applyNumericRangeFilter($query, $request, 'debt_outstanding', $this->contractDebtOutstandingFilterSql());
+        $this->applyNumericRangeFilter($query, $request, 'costs_total', $this->contractCostsTotalFilterSql());
+        $this->applyNumericRangeFilter($query, $request, 'payments_count', $this->contractPaymentsCountFilterSql());
+        $this->applyNumericRangeFilter($query, $request, 'payment_times', 'COALESCE(contracts.payment_times, 1)');
+    }
+
+    private function applyNumericRangeFilter(Builder $query, Request $request, string $key, string $expression): void
+    {
+        $fromKey = $key.'_min';
+        $toKey = $key.'_max';
+
+        if ($request->filled($fromKey)) {
+            $query->whereRaw('('.$expression.') >= ?', [$this->parseNumericInput($request->input($fromKey))]);
+        }
+
+        if ($request->filled($toKey)) {
+            $query->whereRaw('('.$expression.') <= ?', [$this->parseNumericInput($request->input($toKey))]);
+        }
+    }
+
+    private function contractItemsTotalFilterSql(): string
+    {
+        return 'COALESCE((SELECT SUM(contract_items.total_price) FROM contract_items WHERE contract_items.contract_id = contracts.id), 0)';
+    }
+
+    private function contractSubtotalFilterSql(): string
+    {
+        return '(CASE WHEN contracts.subtotal_value IS NOT NULL THEN COALESCE(contracts.subtotal_value, 0) WHEN EXISTS (SELECT 1 FROM contract_items WHERE contract_items.contract_id = contracts.id) THEN '.$this->contractItemsTotalFilterSql().' ELSE COALESCE(contracts.value, 0) END)';
+    }
+
+    private function contractVatAmountFilterSql(): string
+    {
+        $subtotalSql = $this->contractSubtotalFilterSql();
+        $rateSql = '(CASE WHEN COALESCE(contracts.vat_rate, 0) > 0 THEN COALESCE(contracts.vat_rate, 0) ELSE 0 END)';
+        $amountSql = '(CASE WHEN COALESCE(contracts.vat_amount, 0) > 0 THEN COALESCE(contracts.vat_amount, 0) ELSE 0 END)';
+
+        return "(CASE WHEN COALESCE(contracts.vat_enabled, 0) = 1 THEN CASE WHEN contracts.vat_mode = 'percent' THEN ({$subtotalSql} * {$rateSql} / 100) ELSE {$amountSql} END ELSE 0 END)";
+    }
+
+    private function contractValueFilterSql(): string
+    {
+        $subtotalSql = $this->contractSubtotalFilterSql();
+        $vatSql = $this->contractVatAmountFilterSql();
+
+        return "(CASE WHEN contracts.value IS NOT NULL THEN COALESCE(contracts.value, 0) ELSE ({$subtotalSql} + {$vatSql}) END)";
+    }
+
+    private function contractPaymentsTotalFilterSql(): string
+    {
+        return 'COALESCE((SELECT SUM(contract_payments.amount) FROM contract_payments WHERE contract_payments.contract_id = contracts.id), 0)';
+    }
+
+    private function contractCostsTotalFilterSql(): string
+    {
+        return 'COALESCE((SELECT SUM(contract_costs.amount) FROM contract_costs WHERE contract_costs.contract_id = contracts.id), 0)';
+    }
+
+    private function contractPaymentsCountFilterSql(): string
+    {
+        return '(SELECT COUNT(*) FROM contract_payments WHERE contract_payments.contract_id = contracts.id)';
+    }
+
+    private function contractDebtOutstandingFilterSql(): string
+    {
+        $debtSql = '('.$this->contractValueFilterSql().' - '.$this->contractPaymentsTotalFilterSql().')';
+
+        return "(CASE WHEN {$debtSql} > 0 THEN {$debtSql} ELSE 0 END)";
     }
 
     /**
@@ -238,7 +390,11 @@ class ContractController extends Controller
             ->selectRaw('contract_id, COALESCE(SUM(amount), 0) as cost_sum')
             ->groupBy('contract_id');
 
-        $effSql = '(CASE WHEN contracts.value IS NOT NULL THEN COALESCE(contracts.value, 0) WHEN COALESCE(items_agg.items_cnt, 0) > 0 THEN COALESCE(items_agg.items_sum, 0) ELSE COALESCE(contracts.subtotal_value, 0) END)';
+        $subtotalSql = '(CASE WHEN contracts.subtotal_value IS NOT NULL THEN COALESCE(contracts.subtotal_value, 0) WHEN COALESCE(items_agg.items_cnt, 0) > 0 THEN COALESCE(items_agg.items_sum, 0) ELSE COALESCE(contracts.value, 0) END)';
+        $vatRateSql = '(CASE WHEN COALESCE(contracts.vat_rate, 0) > 0 THEN COALESCE(contracts.vat_rate, 0) ELSE 0 END)';
+        $vatAmountSql = '(CASE WHEN COALESCE(contracts.vat_amount, 0) > 0 THEN COALESCE(contracts.vat_amount, 0) ELSE 0 END)';
+        $vatSql = "(CASE WHEN COALESCE(contracts.vat_enabled, 0) = 1 THEN CASE WHEN contracts.vat_mode = 'percent' THEN ({$subtotalSql} * {$vatRateSql} / 100) ELSE {$vatAmountSql} END ELSE 0 END)";
+        $effSql = "(CASE WHEN contracts.value IS NOT NULL THEN COALESCE(contracts.value, 0) ELSE ({$subtotalSql} + {$vatSql}) END)";
 
         $row = Contract::query()
             ->whereIn('contracts.id', $idsSub)
@@ -589,13 +745,13 @@ class ContractController extends Controller
                 );
                 break;
             case 'value':
-                $query->orderBy('contracts.value', $direction);
+                $query->orderByRaw('('.$this->contractValueFilterSql().') '.$rawDirection);
                 break;
             case 'payments_total':
                 $query->orderBy('payments_total', $direction);
                 break;
             case 'debt_outstanding':
-                $query->orderByRaw('(COALESCE(contracts.value, 0) - COALESCE(payments_total, 0)) ' . $rawDirection);
+                $query->orderByRaw('('.$this->contractDebtOutstandingFilterSql().') '.$rawDirection);
                 break;
             case 'costs_total':
                 $query->orderBy('costs_total', $direction);

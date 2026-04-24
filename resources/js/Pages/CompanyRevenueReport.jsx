@@ -377,7 +377,7 @@ export default function CompanyRevenueReport(props) {
             description="Xem toàn bộ doanh thu công ty theo thời gian, sản phẩm và nhân viên thu hợp đồng."
             stats={[]}
         >
-            <FilterToolbar enableSearch
+            <FilterToolbar
                 title="Bộ lọc thời gian"
                 description="Khi vừa vào trang, hệ thống mặc định lọc đúng tháng hiện tại. Bấm “Toàn thời gian” nếu bạn muốn xem toàn bộ dữ liệu."
                 onSubmitFilters={applyFilters}

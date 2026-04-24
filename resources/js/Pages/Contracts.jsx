@@ -154,16 +154,6 @@ const dateInputAddDays = (days) => {
     return d.toISOString().slice(0, 10);
 };
 
-/** Mặc định lọc theo ngày tạo: từ đầu tháng đến cuối tháng hiện tại. */
-const currentMonthCreatedRange = () => {
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = now.getMonth();
-    const pad = (n) => String(n).padStart(2, '0');
-    const from = `${y}-${pad(m + 1)}-01`;
-    const to = `${y}-${pad(m + 1)}-${pad(new Date(y, m + 1, 0).getDate())}`;
-    return { created_at_from: from, created_at_to: to };
-};
 const CONTRACT_DATE_FIELD_OPTIONS = [
     { value: 'created_at', label: 'Ngày tạo' },
     { value: 'signed_at', label: 'Ngày ký' },
@@ -178,7 +168,6 @@ const emptyContractDateRanges = () => CONTRACT_DATE_FIELD_OPTIONS.reduce((accumu
 }), {});
 const defaultContractDateFilters = () => ({
     ...emptyContractDateRanges(),
-    ...currentMonthCreatedRange(),
 });
 const buildContractDateFilterParams = (source = {}) => CONTRACT_DATE_FIELD_OPTIONS.reduce((accumulator, field) => {
     const fromKey = `${field.value}_from`;
@@ -192,6 +181,164 @@ const buildContractDateFilterParams = (source = {}) => CONTRACT_DATE_FIELD_OPTIO
 const findContractDateFieldLabel = (field) => (
     CONTRACT_DATE_FIELD_OPTIONS.find((item) => item.value === field)?.label || field
 );
+const CONTRACT_TEXT_FILTER_FIELDS = [
+    { key: 'contract_query', label: 'Hợp đồng', placeholder: 'Mã hoặc tên hợp đồng' },
+    { key: 'client_query', label: 'Khách hàng', placeholder: 'Tên, công ty hoặc email' },
+    { key: 'client_phone', label: 'SĐT khách hàng', placeholder: 'Số điện thoại' },
+    { key: 'opportunity_query', label: 'Cơ hội', placeholder: 'Mã CH hoặc tên cơ hội' },
+    { key: 'project_query', label: 'Dự án liên kết', placeholder: 'Mã hoặc tên dự án' },
+    { key: 'notes_query', label: 'Ghi chú', placeholder: 'Ghi chú / ghi chú duyệt' },
+];
+const CONTRACT_NUMERIC_RANGE_FIELDS = [
+    { key: 'value', label: 'Giá trị' },
+    { key: 'payments_total', label: 'Đã thu' },
+    { key: 'debt_outstanding', label: 'Công nợ' },
+    { key: 'costs_total', label: 'Chi phí' },
+    { key: 'payments_count', label: 'Số lần đã TT' },
+    { key: 'payment_times', label: 'Số kỳ TT' },
+];
+const emptyContractColumnFilters = () => ({
+    ...CONTRACT_TEXT_FILTER_FIELDS.reduce((accumulator, field) => ({
+        ...accumulator,
+        [field.key]: '',
+    }), {}),
+    ...CONTRACT_NUMERIC_RANGE_FIELDS.reduce((accumulator, field) => ({
+        ...accumulator,
+        [`${field.key}_min`]: '',
+        [`${field.key}_max`]: '',
+    }), {}),
+});
+const buildContractColumnFilterParams = (source = {}) => {
+    const params = {};
+
+    CONTRACT_TEXT_FILTER_FIELDS.forEach((field) => {
+        const value = String(source[field.key] || '').trim();
+        if (value) params[field.key] = value;
+    });
+
+    CONTRACT_NUMERIC_RANGE_FIELDS.forEach((field) => {
+        const minKey = `${field.key}_min`;
+        const maxKey = `${field.key}_max`;
+        if (source[minKey] !== undefined && source[minKey] !== null && String(source[minKey]).trim() !== '') {
+            params[minKey] = source[minKey];
+        }
+        if (source[maxKey] !== undefined && source[maxKey] !== null && String(source[maxKey]).trim() !== '') {
+            params[maxKey] = source[maxKey];
+        }
+    });
+
+    return params;
+};
+const emptyContractFilters = () => ({
+    search: '',
+    ...emptyContractColumnFilters(),
+    status: '',
+    client_id: '',
+    approval_status: '',
+    handover_receive_status: '',
+    has_project: '',
+    project_status: '',
+    staff_ids: [],
+    per_page: 20,
+    page: 1,
+    sort_by: 'created_at',
+    sort_dir: 'desc',
+    ...defaultContractDateFilters(),
+});
+const parseContractMultiIdsFromSearchParams = (params, keys) => (
+    Array.from(new Set(
+        keys
+            .flatMap((key) => [params.get(key), ...params.getAll(`${key}[]`)])
+            .flatMap((value) => String(value || '').split(/[\s,;|]+/))
+            .map((value) => Number(value))
+            .filter((value) => Number.isInteger(value) && value > 0)
+    ))
+);
+const readInitialContractFilters = () => {
+    const params = typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search)
+        : new URLSearchParams();
+    const base = emptyContractFilters();
+    const perPage = Number(params.get('per_page') || base.per_page);
+    const page = Number(params.get('page') || base.page);
+
+    CONTRACT_TEXT_FILTER_FIELDS.forEach((field) => {
+        base[field.key] = String(params.get(field.key) || '').trim();
+    });
+    CONTRACT_NUMERIC_RANGE_FIELDS.forEach((field) => {
+        const minKey = `${field.key}_min`;
+        const maxKey = `${field.key}_max`;
+        base[minKey] = String(params.get(minKey) || '').trim();
+        base[maxKey] = String(params.get(maxKey) || '').trim();
+    });
+    CONTRACT_DATE_FIELD_OPTIONS.forEach((field) => {
+        const fromKey = `${field.value}_from`;
+        const toKey = `${field.value}_to`;
+        base[fromKey] = String(params.get(fromKey) || '').trim();
+        base[toKey] = String(params.get(toKey) || '').trim();
+    });
+
+    return {
+        ...base,
+        search: String(params.get('search') || '').trim(),
+        status: String(params.get('status') || '').trim(),
+        client_id: String(params.get('client_id') || '').trim(),
+        approval_status: String(params.get('approval_status') || '').trim(),
+        handover_receive_status: String(params.get('handover_receive_status') || '').trim(),
+        has_project: String(params.get('has_project') || '').trim(),
+        project_status: String(params.get('project_status') || '').trim(),
+        staff_ids: parseContractMultiIdsFromSearchParams(params, ['staff_ids', 'staff_id']),
+        per_page: Number.isInteger(perPage) && perPage > 0 ? perPage : base.per_page,
+        page: Number.isInteger(page) && page > 0 ? page : base.page,
+        sort_by: String(params.get('sort_by') || base.sort_by).trim() || base.sort_by,
+        sort_dir: String(params.get('sort_dir') || '').trim().toLowerCase() === 'asc' ? 'asc' : base.sort_dir,
+    };
+};
+const syncContractFiltersToUrl = (filtersArg, page = 1) => {
+    if (typeof window === 'undefined') return;
+
+    const defaults = emptyContractFilters();
+    const params = new URLSearchParams();
+    const put = (key, value, defaultValue = '') => {
+        const normalized = String(value ?? '').trim();
+        if (normalized !== '' && normalized !== String(defaultValue ?? '').trim()) {
+            params.set(key, normalized);
+        }
+    };
+
+    put('search', filtersArg.search);
+    put('status', filtersArg.status);
+    put('client_id', filtersArg.client_id);
+    put('approval_status', filtersArg.approval_status);
+    put('handover_receive_status', filtersArg.handover_receive_status);
+    put('has_project', filtersArg.has_project);
+    put('project_status', filtersArg.project_status);
+
+    CONTRACT_TEXT_FILTER_FIELDS.forEach((field) => put(field.key, filtersArg[field.key]));
+    CONTRACT_NUMERIC_RANGE_FIELDS.forEach((field) => {
+        put(`${field.key}_min`, filtersArg[`${field.key}_min`]);
+        put(`${field.key}_max`, filtersArg[`${field.key}_max`]);
+    });
+    CONTRACT_DATE_FIELD_OPTIONS.forEach((field) => {
+        put(`${field.value}_from`, filtersArg[`${field.value}_from`]);
+        put(`${field.value}_to`, filtersArg[`${field.value}_to`]);
+    });
+
+    const staffIds = Array.isArray(filtersArg.staff_ids)
+        ? filtersArg.staff_ids
+            .map((id) => Number(id))
+            .filter((id) => Number.isInteger(id) && id > 0)
+        : [];
+    if (staffIds.length > 0) params.set('staff_ids', staffIds.join(','));
+    if (Number(filtersArg.per_page) !== defaults.per_page) params.set('per_page', String(Number(filtersArg.per_page) || defaults.per_page));
+    if (Number(page) > 1) params.set('page', String(Number(page) || 1));
+    put('sort_by', filtersArg.sort_by, defaults.sort_by);
+    if (String(filtersArg.sort_dir || '').trim().toLowerCase() === 'asc') params.set('sort_dir', 'asc');
+
+    const query = params.toString();
+    const nextUrl = query ? `${window.location.pathname}?${query}` : window.location.pathname;
+    window.history.replaceState({}, document.title, nextUrl);
+};
 const BULK_DATE_SYNC_BATCH_SIZE = 250;
 const chunkArray = (items = [], size = BULK_DATE_SYNC_BATCH_SIZE) => {
     const normalizedSize = Math.max(1, Number(size) || BULK_DATE_SYNC_BATCH_SIZE);
@@ -315,21 +462,7 @@ export default function Contracts(props) {
         costs_total: 0,
         comparison: emptyContractYearComparison(),
     });
-    const [filters, setFilters] = useState(() => ({
-        search: '',
-        status: '',
-        client_id: '',
-        approval_status: '',
-        handover_receive_status: '',
-        has_project: '',
-        project_status: '',
-        staff_ids: [],
-        per_page: 20,
-        page: 1,
-        sort_by: 'created_at',
-        sort_dir: 'desc',
-        ...defaultContractDateFilters(),
-    }));
+    const [filters, setFilters] = useState(() => readInitialContractFilters());
     const [form, setForm] = useState({
         title: '',
         client_id: '',
@@ -579,6 +712,7 @@ export default function Contracts(props) {
                     ...(nextFilters.has_project ? { has_project: nextFilters.has_project } : {}),
                     ...(nextFilters.project_status ? { project_status: nextFilters.project_status } : {}),
                     ...(Array.isArray(nextFilters.staff_ids) && nextFilters.staff_ids.length > 0 ? { staff_ids: nextFilters.staff_ids } : {}),
+                    ...buildContractColumnFilterParams(nextFilters),
                     ...buildContractDateFilterParams(nextFilters),
                     sort_by: nextFilters.sort_by || 'created_at',
                     sort_dir: nextFilters.sort_dir || 'desc',
@@ -614,6 +748,11 @@ export default function Contracts(props) {
             const visibleIds = new Set(rows.map((row) => Number(row.id)));
             setSelectedContractIds((prev) => prev.filter((id) => visibleIds.has(Number(id))));
             const metaPerPage = Number(res.data?.per_page) || nextFilters.per_page || 20;
+            const syncedFilters = {
+                ...nextFilters,
+                page: res.data?.current_page || nextPage,
+                per_page: metaPerPage,
+            };
             setContractMeta({
                 current_page: res.data?.current_page || 1,
                 last_page: res.data?.last_page || 1,
@@ -624,9 +763,10 @@ export default function Contracts(props) {
             });
             setFilters((prev) => ({
                 ...prev,
-                page: res.data?.current_page || nextPage,
-                per_page: metaPerPage,
+                page: syncedFilters.page,
+                per_page: syncedFilters.per_page,
             }));
+            syncContractFiltersToUrl(syncedFilters, syncedFilters.page);
         } catch (e) {
             toast.error(e?.response?.data?.message || 'Không tải được danh sách hợp đồng.');
         } finally {
@@ -1575,6 +1715,12 @@ export default function Contracts(props) {
         });
     };
 
+    const resetFilters = () => {
+        const next = emptyContractFilters();
+        setFilters(next);
+        fetchContracts(1, next);
+    };
+
     const submitCareNote = async () => {
         if (!detailContract) return;
         if (!careNoteForm.title.trim() || !careNoteForm.detail.trim()) {
@@ -1639,16 +1785,26 @@ export default function Contracts(props) {
                 <FilterToolbar enableSearch
                     className="mb-4 border-0 p-0 shadow-none"
                     title="Danh sách hợp đồng"
-                    description="Lọc theo mã, trạng thái, duyệt, dự án và đầy đủ các mốc ngày của hợp đồng. Mặc định hệ thống chỉ khóa sẵn khoảng ngày tạo trong tháng hiện tại."
+                    description="Tìm kiếm nhanh hoặc lọc chi tiết theo từng cột hợp đồng. Danh sách ban đầu không tự áp dụng khoảng ngày trong tháng hiện tại."
                     searchValue={filters.search}
                     onSearch={handleContractSearch}
                     onSubmitFilters={applyFilters}
                     collapsible
                     defaultCollapsed
                     collapseLabel="bộ lọc hợp đồng"
-                    collapseHint="Bộ lọc đang thu gọn. Bấm “Mở bộ lọc hợp đồng” để áp dụng điều kiện."
+                    collapseHint="Bộ lọc đang thu gọn. Mở bộ lọc để lọc theo từng cột, tiền, số lần thanh toán và các mốc ngày."
                 >
                     <div className={FILTER_GRID_RESPONSIVE}>
+                        {CONTRACT_TEXT_FILTER_FIELDS.map((field) => (
+                            <FilterField key={field.key} label={field.label}>
+                                <input
+                                    className={filterControlClass}
+                                    value={filters[field.key] || ''}
+                                    onChange={(e) => setFilters((s) => ({ ...s, [field.key]: e.target.value }))}
+                                    placeholder={field.placeholder}
+                                />
+                            </FilterField>
+                        ))}
                         <FilterField
                             label={(
                                 <span className="inline-flex items-center gap-1.5">
@@ -1703,6 +1859,28 @@ export default function Contracts(props) {
                                 emptyLabel="Để trống để xem toàn bộ trong phạm vi."
                             />
                         </FilterField>
+                        {CONTRACT_NUMERIC_RANGE_FIELDS.map((field) => (
+                            <React.Fragment key={field.key}>
+                                <FilterField label={`${field.label} từ`}>
+                                    <input
+                                        className={filterControlClass}
+                                        value={filters[`${field.key}_min`] || ''}
+                                        onChange={(e) => setFilters((s) => ({ ...s, [`${field.key}_min`]: e.target.value }))}
+                                        placeholder="Tối thiểu"
+                                        inputMode="decimal"
+                                    />
+                                </FilterField>
+                                <FilterField label={`${field.label} đến`}>
+                                    <input
+                                        className={filterControlClass}
+                                        value={filters[`${field.key}_max`] || ''}
+                                        onChange={(e) => setFilters((s) => ({ ...s, [`${field.key}_max`]: e.target.value }))}
+                                        placeholder="Tối đa"
+                                        inputMode="decimal"
+                                    />
+                                </FilterField>
+                            </React.Fragment>
+                        ))}
                         {CONTRACT_DATE_FIELD_OPTIONS.map((field) => (
                             <React.Fragment key={field.value}>
                                 <FilterField label={`${field.label} từ`}>
@@ -1722,6 +1900,13 @@ export default function Contracts(props) {
                             </React.Fragment>
                         ))}
                         <FilterActionGroup className={FILTER_GRID_SUBMIT_ROW}>
+                            <button
+                                type="button"
+                                className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+                                onClick={resetFilters}
+                            >
+                                Xóa lọc
+                            </button>
                             <button type="submit" className={FILTER_SUBMIT_BUTTON_CLASS}>Lọc</button>
                         </FilterActionGroup>
                     </div>
