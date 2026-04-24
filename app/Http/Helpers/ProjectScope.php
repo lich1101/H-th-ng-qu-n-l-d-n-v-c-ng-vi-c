@@ -130,33 +130,7 @@ class ProjectScope
 
     public static function applyTaskListScope(Builder $query, ?User $user): Builder
     {
-        if (! $user) {
-            return $query->whereRaw('1 = 0');
-        }
-
-        if (self::isAdminRole($user)) {
-            return $query;
-        }
-
-        if ($user->role === 'ke_toan') {
-            return $query->whereRaw('1 = 0');
-        }
-
-        if ($user->role === 'quan_ly') {
-            $managedDepartmentIds = self::managedDepartmentIds($user);
-            if ($managedDepartmentIds->isEmpty()) {
-                return $query->whereRaw('1 = 0');
-            }
-
-            return $query->where(function (Builder $builder) use ($managedDepartmentIds) {
-                $builder->whereIn('department_id', $managedDepartmentIds)
-                    ->orWhereHas('assignee', function (Builder $assigneeQuery) use ($managedDepartmentIds) {
-                        $assigneeQuery->whereIn('department_id', $managedDepartmentIds);
-                    });
-            });
-        }
-
-        return $query->where('assignee_id', $user->id);
+        return self::applyTaskScope($query, $user);
     }
 
     public static function canAccessTask(?User $user, Task $task): bool
@@ -235,37 +209,7 @@ class ProjectScope
 
     public static function applyTaskItemListScope(Builder $query, ?User $user): Builder
     {
-        if (! $user) {
-            return $query->whereRaw('1 = 0');
-        }
-
-        if (self::isAdminRole($user)) {
-            return $query;
-        }
-
-        if ($user->role === 'ke_toan') {
-            return $query->whereRaw('1 = 0');
-        }
-
-        if ($user->role === 'quan_ly') {
-            $managedDepartmentIds = self::managedDepartmentIds($user);
-            if ($managedDepartmentIds->isEmpty()) {
-                return $query->whereRaw('1 = 0');
-            }
-
-            return $query->where(function (Builder $builder) use ($managedDepartmentIds) {
-                $builder->whereHas('task', function (Builder $taskQuery) use ($managedDepartmentIds) {
-                    $taskQuery->whereIn('department_id', $managedDepartmentIds)
-                        ->orWhereHas('assignee', function (Builder $assigneeQuery) use ($managedDepartmentIds) {
-                            $assigneeQuery->whereIn('department_id', $managedDepartmentIds);
-                        });
-                })->orWhereHas('assignee', function (Builder $assigneeQuery) use ($managedDepartmentIds) {
-                    $assigneeQuery->whereIn('department_id', $managedDepartmentIds);
-                });
-            });
-        }
-
-        return $query->where('assignee_id', $user->id);
+        return self::applyTaskItemScope($query, $user);
     }
 
     public static function canAccessTaskItem(?User $user, TaskItem $item): bool

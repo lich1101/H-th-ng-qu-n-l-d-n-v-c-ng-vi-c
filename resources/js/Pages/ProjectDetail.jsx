@@ -220,7 +220,7 @@ export default function ProjectDetail(props) {
         try {
             const [dRes, uRes, metaRes, wfRes, ownRes] = await Promise.all([
                 axios.get('/api/v1/departments'),
-                axios.get('/api/v1/users/lookup'),
+                axios.get('/api/v1/users/lookup', { params: { purpose: 'task_assignment_staff' } }),
                 axios.get('/api/v1/meta'),
                 axios.get('/api/v1/workflow-topics', { params: { per_page: 200, is_active: true } }),
                 axios.get('/api/v1/users/lookup', { params: { purpose: 'project_owner' } }),

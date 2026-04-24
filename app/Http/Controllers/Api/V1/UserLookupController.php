@@ -57,24 +57,17 @@ class UserLookupController extends Controller
             $skipDefaultRoleScope = true;
             if (! $user) {
                 $query->whereRaw('1 = 0');
-            } elseif ($user->role === 'nhan_vien') {
-                $query->where('id', $user->id)
-                    ->whereNotIn('role', $blockedAssignmentRoles);
-            } elseif ($user->role === 'quan_ly') {
-                $deptIds = $user->managedDepartments()->pluck('id');
-                $query->where(function ($builder) use ($deptIds, $user, $blockedAssignmentRoles) {
-                    $builder->where(function ($selfBuilder) use ($user, $blockedAssignmentRoles) {
-                        $selfBuilder->where('id', $user->id)
-                            ->whereNotIn('role', $blockedAssignmentRoles);
-                    })->orWhere(function ($staffBuilder) use ($deptIds, $blockedAssignmentRoles) {
-                        $staffBuilder->whereNotIn('role', $blockedAssignmentRoles)
-                            ->whereIn('department_id', $deptIds);
-                    });
-                });
-            } elseif (in_array($user->role, ['admin', 'administrator', 'ke_toan'], true)) {
-                $query->whereNotIn('role', $blockedAssignmentRoles);
             } else {
+                $query->whereIn('role', ['quan_ly', 'nhan_vien']);
+            }
+        }
+
+        if ($purpose === 'task_assignment_staff') {
+            $skipDefaultRoleScope = true;
+            if (! $user) {
                 $query->whereRaw('1 = 0');
+            } else {
+                $query->whereIn('role', ['quan_ly', 'nhan_vien']);
             }
         }
 

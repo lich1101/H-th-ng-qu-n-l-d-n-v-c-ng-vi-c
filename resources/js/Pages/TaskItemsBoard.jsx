@@ -76,7 +76,7 @@ export default function TaskItemsBoard(props) {
     const fetchUsers = async () => {
         try {
             const res = await axios.get('/api/v1/users/lookup', {
-                params: { purpose: 'operational_assignee' },
+                params: { purpose: 'task_assignment_staff' },
             });
             setUsers(res.data?.data || []);
         } catch {

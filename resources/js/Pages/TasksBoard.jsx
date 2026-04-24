@@ -361,6 +361,17 @@ export default function TasksBoard(props) {
         return fallback;
     };
 
+    const dedupeUsersById = (rows = []) => {
+        const map = new Map();
+        rows.forEach((row) => {
+            const id = Number(row?.id || 0);
+            if (id > 0 && !map.has(id)) {
+                map.set(id, row);
+            }
+        });
+        return Array.from(map.values());
+    };
+
     const isContractCollectorReadOnly = (project) => {
         if (!project) return false;
         const collectorId = Number(project.collector_user_id ?? project.contract?.collector_user_id ?? 0);
@@ -450,7 +461,7 @@ export default function TasksBoard(props) {
         try {
             const [lookupRes, filterRows] = await Promise.all([
                 axios.get('/api/v1/users/lookup', {
-                    params: { purpose: 'operational_assignee' },
+                    params: { purpose: 'task_assignment_staff' },
                 }),
                 fetchStaffFilterOptions('tasks'),
             ]);
@@ -1489,37 +1500,12 @@ export default function TasksBoard(props) {
     );
 
     const staffOptions = useMemo(() => {
-        const isAllowedRole = (user) => !BLOCKED_ASSIGNMENT_ROLES.includes(String(user?.role || '').toLowerCase());
-        if (selectedDepartment?.staff?.length) {
-            return selectedDepartment.staff.filter(isAllowedRole);
-        }
-        if (isAdminRole && departments.length) {
-            const all = departments.flatMap((d) => d.staff || []);
-            const map = new Map();
-            all.forEach((u) => {
-                if (u?.id && isAllowedRole(u)) map.set(u.id, u);
-            });
-            return Array.from(map.values());
-        }
-        return [];
-    }, [selectedDepartment, departments, isAdminRole]);
+        return assignableUserOptions;
+    }, [assignableUserOptions]);
 
     const itemStaffOptions = useMemo(() => {
-        const isAllowedRole = (user) => !BLOCKED_ASSIGNMENT_ROLES.includes(String(user?.role || '').toLowerCase());
-        if (!itemsTask) return [];
-        const deptId = itemsTask.department_id || itemsTask.department?.id;
-        const dept = departments.find((d) => String(d.id) === String(deptId));
-        if (dept?.staff?.length) return dept.staff.filter(isAllowedRole);
-        if (isAdminRole) {
-            const all = departments.flatMap((d) => d.staff || []);
-            const map = new Map();
-            all.forEach((u) => {
-                if (u?.id && isAllowedRole(u)) map.set(u.id, u);
-            });
-            return Array.from(map.values());
-        }
-        return [];
-    }, [itemsTask, departments, isAdminRole]);
+        return assignableUserOptions;
+    }, [assignableUserOptions]);
 
     const assignableUserOptions = useMemo(
         () => userOptions.filter((user) => !BLOCKED_ASSIGNMENT_ROLES.includes(String(user?.role || '').toLowerCase())),
@@ -2352,7 +2338,7 @@ export default function TasksBoard(props) {
                         <select
                             className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
                             value={form.department_id}
-                            onChange={(e) => setForm((s) => ({ ...s, department_id: e.target.value, assignee_id: '' }))}
+                            onChange={(e) => setForm((s) => ({ ...s, department_id: e.target.value }))}
                         >
                             <option value="">-- Chọn phòng ban --</option>
                             {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}

@@ -133,7 +133,9 @@ export default function TaskItemDetail(props) {
 
     const fetchEditUsers = async () => {
         try {
-            const res = await axios.get('/api/v1/users/lookup');
+            const res = await axios.get('/api/v1/users/lookup', {
+                params: { purpose: 'task_assignment_staff' },
+            });
             setEditUsers(res.data?.data || []);
         } catch { /* ignore */ }
     };

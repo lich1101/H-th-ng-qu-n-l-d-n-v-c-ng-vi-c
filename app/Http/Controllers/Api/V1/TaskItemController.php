@@ -185,7 +185,7 @@ class TaskItemController extends Controller
             return response()->json(['message' => 'Tổng tỷ trọng của các đầu việc không được vượt quá 100%.'], 422);
         }
 
-        $this->assertAssigneeInDepartment($request->user(), $task, $validated['assignee_id'] ?? null);
+        $this->assertAssignableAssignee($validated['assignee_id'] ?? null);
 
         $this->assertTaskItemDatesWithinTask(
             $task,
@@ -273,7 +273,7 @@ class TaskItemController extends Controller
         }
 
         if (isset($validated['assignee_id'])) {
-            $this->assertAssigneeInDepartment($request->user(), $task, $validated['assignee_id']);
+            $this->assertAssignableAssignee($validated['assignee_id']);
         }
 
         $nextStart = array_key_exists('start_date', $validated) ? $validated['start_date'] : $item->start_date;
@@ -357,7 +357,7 @@ class TaskItemController extends Controller
         }
     }
 
-    private function assertAssigneeInDepartment(User $user, Task $task, ?int $assigneeId): void
+    private function assertAssignableAssignee(?int $assigneeId): void
     {
         if (! $assigneeId) {
             return;
@@ -368,16 +368,6 @@ class TaskItemController extends Controller
         }
         if (in_array((string) $assignee->role, ['admin', 'administrator', 'ke_toan'], true)) {
             abort(response()->json(['message' => 'Nhân sự phụ trách đầu việc không được chọn role admin/administrator/kế toán.'], 422));
-        }
-        if ($task->department_id && $assignee->department_id
-            && (int) $assignee->department_id !== (int) $task->department_id) {
-            abort(response()->json(['message' => 'Nhân sự không thuộc phòng ban của công việc.'], 422));
-        }
-        if ($user->role === 'quan_ly') {
-            $deptIds = $user->managedDepartments()->pluck('id');
-            if ($assignee->department_id && ! $deptIds->contains($assignee->department_id)) {
-                abort(response()->json(['message' => 'Nhân sự không thuộc phòng ban bạn quản lý.'], 403));
-            }
         }
     }
 

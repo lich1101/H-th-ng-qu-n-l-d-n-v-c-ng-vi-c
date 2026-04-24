@@ -317,11 +317,6 @@ class TaskController extends Controller
 
     private function applyDepartmentRules(Request $request, array &$validated, ?Task $task = null): void
     {
-        $user = $request->user();
-        if (! $user) {
-            return;
-        }
-
         if (isset($validated['assignee_id'])) {
             $this->assertAssignableStaffRole($validated['assignee_id'], 'Nhân sự phụ trách công việc');
             $assignee = User::find($validated['assignee_id']);
@@ -329,24 +324,6 @@ class TaskController extends Controller
                 $validated['department_id'] = $assignee->department_id;
             }
         }
-
-        if ($user->role !== 'quan_ly') {
-            return;
-        }
-
-        $deptIds = $user->managedDepartments()->pluck('id');
-        $departmentId = $validated['department_id'] ?? ($task ? $task->department_id : null);
-        if ($departmentId && ! $deptIds->contains($departmentId)) {
-            abort(response()->json(['message' => 'Bạn không có quyền giao việc cho phòng ban này.'], 403));
-        }
-
-        if (isset($validated['assignee_id'])) {
-            $assignee = User::find($validated['assignee_id']);
-            if ($assignee && $assignee->department_id && ! $deptIds->contains($assignee->department_id)) {
-                abort(response()->json(['message' => 'Nhân sự không thuộc phòng ban bạn quản lý.'], 403));
-            }
-        }
-
     }
 
     private function assertAssignableStaffRole($assigneeId, string $label): void

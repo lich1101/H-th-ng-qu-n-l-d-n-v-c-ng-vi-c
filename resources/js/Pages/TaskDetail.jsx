@@ -21,6 +21,7 @@ const PRIORITY_STYLES = {
     high: 'bg-orange-50 text-orange-700 border-orange-200',
     urgent: 'bg-rose-50 text-rose-700 border-rose-200',
 };
+const BLOCKED_ASSIGNMENT_ROLES = ['admin', 'administrator', 'ke_toan'];
 
 const formatDate = (raw) => formatVietnamDate(raw, '—');
 
@@ -63,7 +64,9 @@ export default function TaskDetail(props) {
 
     const fetchUsers = async () => {
         try {
-            const res = await axios.get('/api/v1/users/lookup');
+            const res = await axios.get('/api/v1/users/lookup', {
+                params: { purpose: 'task_assignment_staff' },
+            });
             setUsers(res.data?.data || []);
         } catch { /* ignore */ }
     };
@@ -115,6 +118,10 @@ export default function TaskDetail(props) {
         if (task?.deadline) return toDateInputValue(task.deadline);
         return taskDefaultsFromProject(task?.project).end || '';
     }, [task]);
+
+    const assignableUsers = useMemo(() => {
+        return users.filter((user) => !BLOCKED_ASSIGNMENT_ROLES.includes(String(user?.role || '').toLowerCase()));
+    }, [users]);
 
     // Item form
     const openItemForm = (item = null) => {
@@ -413,7 +420,7 @@ export default function TaskDetail(props) {
                             <label className="text-xs text-text-muted">Nhân sự phụ trách</label>
                             <select className="mt-2 w-full rounded-xl border border-slate-200/80 px-3 py-2" value={itemForm.assignee_id} onChange={(e) => setItemForm((s) => ({ ...s, assignee_id: e.target.value }))}>
                                 <option value="">-- Chọn --</option>
-                                {users.filter((u) => !['admin', 'administrator', 'ke_toan'].includes(u.role)).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                                {assignableUsers.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                             </select>
                         </div>
                         <div>
