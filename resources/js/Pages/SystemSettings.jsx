@@ -67,7 +67,106 @@ const ROLE_LABELS = {
     ke_toan: 'Kế toán',
 };
 
+const CLIENT_ROTATION_SCOPE_OPTIONS = [
+    {
+        value: 'same_department',
+        title: 'Chỉ trong cùng phòng ban',
+        description: 'Chỉ những nhân sự đã chọn và cùng phòng ban với người đang giữ khách mới được nhận xoay.',
+    },
+    {
+        value: 'global_staff',
+        title: 'Toàn bộ nhân sự đã chọn',
+        description: 'Không giới hạn theo phòng ban, miễn là người nhận nằm trong danh sách xoay và chưa vượt quota/ngày.',
+    },
+    {
+        value: 'balanced_department',
+        title: 'Chia đều theo phòng ban',
+        description: 'Khách đủ điều kiện sẽ được điều chuyển sang phòng ban khác phòng ban hiện tại, rồi chia đều tiếp cho nhân sự trong phòng ban nhận.',
+    },
+];
+
+const normalizeRotationScopeMode = (settings) => {
+    const scopeMode = String(settings?.client_rotation_scope_mode || '').trim();
+    if (['same_department', 'global_staff', 'balanced_department'].includes(scopeMode)) {
+        return scopeMode;
+    }
+
+    return settings?.client_rotation_same_department_only ? 'same_department' : 'global_staff';
+};
+
+const normalizeParticipantModeMap = (value, participantIds = []) => {
+    const raw = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const selected = new Set(normalizeIdList(participantIds));
+    const next = {};
+
+    Object.entries(raw).forEach(([rawUserId, mode]) => {
+        const userId = Number(rawUserId || 0);
+        if (!Number.isInteger(userId) || userId <= 0 || !selected.has(userId) || !mode || typeof mode !== 'object') {
+            return;
+        }
+
+        const onlyReceive = Boolean(mode.only_receive);
+        const onlyGive = Boolean(mode.only_give);
+        if (!onlyReceive && !onlyGive) {
+            return;
+        }
+
+        next[String(userId)] = {
+            only_receive: onlyReceive,
+            only_give: onlyGive,
+        };
+    });
+
+    return next;
+};
+
+const participantRotationMode = (participantModes, userId) => {
+    const key = String(Number(userId || 0));
+    const mode = participantModes?.[key] || {};
+    const onlyReceive = Boolean(mode.only_receive);
+    const onlyGive = Boolean(mode.only_give);
+
+    if (onlyReceive && !onlyGive) {
+        return {
+            onlyReceive,
+            onlyGive,
+            modeKey: 'only_receive',
+            label: 'Chỉ nhận vào',
+            hint: 'Khách của nhân sự này không bị xoay ra, nhưng vẫn được nhận khách mới.',
+        };
+    }
+
+    if (onlyGive && !onlyReceive) {
+        return {
+            onlyReceive,
+            onlyGive,
+            modeKey: 'only_give',
+            label: 'Chỉ cho đi',
+            hint: 'Nhân sự này vẫn có thể mất khách khi quá hạn nhưng sẽ không nhận khách auto-rotation vào.',
+        };
+    }
+
+    if (onlyReceive && onlyGive) {
+        return {
+            onlyReceive,
+            onlyGive,
+            modeKey: 'normal',
+            label: 'Đang bật cả 2 nên xử lý như bình thường',
+            hint: 'Khi bật đồng thời cả 2, hệ thống coi nhân sự này như chế độ bình thường.',
+        };
+    }
+
+    return {
+        onlyReceive,
+        onlyGive,
+        modeKey: 'normal',
+        label: 'Bình thường',
+        hint: 'Nhân sự này vừa có thể nhận vào, vừa có thể bị xoay khách ra nếu quá hạn.',
+    };
+};
+
 const initialSettings = (settings) => ({
+    client_rotation_scope_mode: normalizeRotationScopeMode(settings),
     brand_name: settings?.brand_name || '',
     primary_color: settings?.primary_color || '#04BC5C',
     logo_url: settings?.logo_url || '',
@@ -124,13 +223,17 @@ const initialSettings = (settings) => ({
     client_rotation_contract_stale_days: settings?.client_rotation_contract_stale_days ?? 90,
     client_rotation_warning_days: settings?.client_rotation_warning_days ?? 3,
     client_rotation_daily_receive_limit: settings?.client_rotation_daily_receive_limit ?? 5,
-    client_rotation_same_department_only: settings?.client_rotation_same_department_only ?? false,
+    client_rotation_same_department_only: normalizeRotationScopeMode(settings) === 'same_department',
     client_rotation_lead_type_ids: Array.isArray(settings?.client_rotation_lead_type_ids)
         ? settings.client_rotation_lead_type_ids.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)
         : [],
     client_rotation_participant_user_ids: Array.isArray(settings?.client_rotation_participant_user_ids)
         ? settings.client_rotation_participant_user_ids.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)
         : [],
+    client_rotation_participant_modes: normalizeParticipantModeMap(
+        settings?.client_rotation_participant_modes,
+        Array.isArray(settings?.client_rotation_participant_user_ids) ? settings.client_rotation_participant_user_ids : []
+    ),
     app_android_apk_url: settings?.app_android_apk_url || '',
     app_ios_testflight_url: settings?.app_ios_testflight_url || '',
     app_release_notes: settings?.app_release_notes || '',
@@ -367,10 +470,44 @@ export default function SystemSettings(props) {
             const next = exists
                 ? current.filter((id) => id !== targetId)
                 : [...current, targetId];
+            const nextParticipantModes = field === 'client_rotation_participant_user_ids'
+                ? normalizeParticipantModeMap(prev.client_rotation_participant_modes, next)
+                : prev.client_rotation_participant_modes;
 
             return {
                 ...prev,
                 [field]: next,
+                client_rotation_participant_modes: nextParticipantModes,
+            };
+        });
+    };
+
+    const toggleRotationParticipantMode = (rawId, field) => {
+        const userId = Number(rawId || 0);
+        if (!Number.isInteger(userId) || userId <= 0) return;
+
+        setForm((prev) => {
+            const selectedIds = normalizeIdList(prev.client_rotation_participant_user_ids);
+            if (!selectedIds.includes(userId)) {
+                return prev;
+            }
+
+            const modes = normalizeParticipantModeMap(prev.client_rotation_participant_modes, selectedIds);
+            const current = modes[String(userId)] || {};
+            const nextMode = {
+                only_receive: field === 'only_receive' ? !Boolean(current.only_receive) : Boolean(current.only_receive),
+                only_give: field === 'only_give' ? !Boolean(current.only_give) : Boolean(current.only_give),
+            };
+
+            if (!nextMode.only_receive && !nextMode.only_give) {
+                delete modes[String(userId)];
+            } else {
+                modes[String(userId)] = nextMode;
+            }
+
+            return {
+                ...prev,
+                client_rotation_participant_modes: modes,
             };
         });
     };
@@ -850,7 +987,8 @@ export default function SystemSettings(props) {
             formData.append('client_rotation_contract_stale_days', String(form.client_rotation_contract_stale_days ?? 90));
             formData.append('client_rotation_warning_days', String(form.client_rotation_warning_days ?? 3));
             formData.append('client_rotation_daily_receive_limit', String(form.client_rotation_daily_receive_limit ?? 5));
-            formData.append('client_rotation_same_department_only', form.client_rotation_same_department_only ? '1' : '0');
+            formData.append('client_rotation_scope_mode', form.client_rotation_scope_mode || 'global_staff');
+            formData.append('client_rotation_same_department_only', (form.client_rotation_scope_mode || 'global_staff') === 'same_department' ? '1' : '0');
             formData.append(
                 'client_rotation_lead_type_ids',
                 JSON.stringify(normalizeIdList(form.client_rotation_lead_type_ids))
@@ -858,6 +996,15 @@ export default function SystemSettings(props) {
             formData.append(
                 'client_rotation_participant_user_ids',
                 JSON.stringify(normalizeIdList(form.client_rotation_participant_user_ids))
+            );
+            formData.append(
+                'client_rotation_participant_modes',
+                JSON.stringify(
+                    normalizeParticipantModeMap(
+                        form.client_rotation_participant_modes,
+                        form.client_rotation_participant_user_ids
+                    )
+                )
             );
             formData.append('app_android_apk_url', form.app_android_apk_url || '');
             formData.append('app_ios_testflight_url', form.app_ios_testflight_url || '');
@@ -1047,6 +1194,11 @@ export default function SystemSettings(props) {
     };
     const selectedRotationLeadTypeIds = normalizeIdList(form.client_rotation_lead_type_ids);
     const selectedRotationParticipantIds = normalizeIdList(form.client_rotation_participant_user_ids);
+    const rotationScopeMode = form.client_rotation_scope_mode || 'global_staff';
+    const selectedRotationParticipantModes = useMemo(
+        () => normalizeParticipantModeMap(form.client_rotation_participant_modes, selectedRotationParticipantIds),
+        [form.client_rotation_participant_modes, selectedRotationParticipantIds]
+    );
     const selectedRotationLeadTypes = useMemo(() => {
         const byId = new Map(
             (rotationLeadTypes || []).map((item) => [Number(item?.id || 0), item])
@@ -2310,35 +2462,26 @@ export default function SystemSettings(props) {
 
                             <div className="mt-4">
                                 <div className="text-xs font-semibold uppercase tracking-[0.14em] text-text-subtle">Phạm vi nhận khách</div>
-                                <div className="mt-2 grid gap-3 md:grid-cols-2">
-                                    <button
-                                        type="button"
-                                        onClick={() => setForm((s) => ({ ...s, client_rotation_same_department_only: true }))}
-                                        className={`rounded-2xl border px-4 py-3 text-left transition ${
-                                            form.client_rotation_same_department_only
-                                                ? 'border-primary/40 bg-primary/5'
-                                                : 'border-slate-200/80 bg-white hover:bg-slate-50'
-                                        }`}
-                                    >
-                                        <div className="text-sm font-semibold text-slate-900">Chỉ trong cùng phòng ban</div>
-                                        <div className="mt-1 text-xs text-text-muted">
-                                            Chỉ những nhân sự đã chọn và cùng phòng ban với người đang giữ khách mới được nhận xoay.
-                                        </div>
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setForm((s) => ({ ...s, client_rotation_same_department_only: false }))}
-                                        className={`rounded-2xl border px-4 py-3 text-left transition ${
-                                            !form.client_rotation_same_department_only
-                                                ? 'border-primary/40 bg-primary/5'
-                                                : 'border-slate-200/80 bg-white hover:bg-slate-50'
-                                        }`}
-                                    >
-                                        <div className="text-sm font-semibold text-slate-900">Toàn bộ nhân sự đã chọn</div>
-                                        <div className="mt-1 text-xs text-text-muted">
-                                            Không giới hạn theo phòng ban, miễn là người nhận nằm trong danh sách xoay và chưa vượt quota/ngày.
-                                        </div>
-                                    </button>
+                                <div className="mt-2 grid gap-3 md:grid-cols-3">
+                                    {CLIENT_ROTATION_SCOPE_OPTIONS.map((option) => (
+                                        <button
+                                            key={option.value}
+                                            type="button"
+                                            onClick={() => setForm((s) => ({
+                                                ...s,
+                                                client_rotation_scope_mode: option.value,
+                                                client_rotation_same_department_only: option.value === 'same_department',
+                                            }))}
+                                            className={`rounded-2xl border px-4 py-3 text-left transition ${
+                                                rotationScopeMode === option.value
+                                                    ? 'border-primary/40 bg-primary/5'
+                                                    : 'border-slate-200/80 bg-white hover:bg-slate-50'
+                                            }`}
+                                        >
+                                            <div className="text-sm font-semibold text-slate-900">{option.title}</div>
+                                            <div className="mt-1 text-xs text-text-muted">{option.description}</div>
+                                        </button>
+                                    ))}
                                 </div>
                             </div>
 
@@ -2358,9 +2501,11 @@ export default function SystemSettings(props) {
                                 <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">
                                     <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-subtle">Chọn người nhận</div>
                                     <p className="mt-1 text-sm text-slate-700">
-                                        {form.client_rotation_same_department_only
+                                        {rotationScopeMode === 'same_department'
                                             ? 'Chỉ xét nhóm nhân sự đã chọn và cùng phòng ban. Hệ thống ưu tiên người có số auto-rotation tích lũy ít nhất, rồi đến số khách đang phụ trách ít nhất, rồi đến số nhận hôm nay ít nhất, cuối cùng random khi bằng nhau.'
-                                            : 'Xét trên toàn bộ nhân sự đã chọn trong cấu hình. Hệ thống ưu tiên người có số auto-rotation tích lũy ít nhất, rồi đến số khách đang phụ trách ít nhất, rồi đến số nhận hôm nay ít nhất, cuối cùng random khi bằng nhau.'}
+                                            : rotationScopeMode === 'balanced_department'
+                                                ? 'Cron gom toàn bộ khách đủ điều kiện, chọn phòng ban nhận khác phòng ban hiện tại theo thứ tự: số auto-rotation đổ về phòng ít nhất, rồi tổng tải khách của nhóm nhận ít nhất, rồi số khách phòng ban đó đã nhận hôm nay ít nhất, cuối cùng random. Sau khi chốt phòng ban, hệ thống mới chia đều tiếp cho nhân sự trong phòng đó theo rule hiện tại.'
+                                                : 'Xét trên toàn bộ nhân sự đã chọn trong cấu hình. Hệ thống ưu tiên người có số auto-rotation tích lũy ít nhất, rồi đến số khách đang phụ trách ít nhất, rồi đến số nhận hôm nay ít nhất, cuối cùng random khi bằng nhau.'}
                                     </p>
                                     <p className="mt-2 text-xs text-slate-500">
                                         Thứ tự đưa khách vào hàng chờ xoay là: số hợp đồng giảm dần, nếu bằng nhau thì số cơ hội giảm dần; nếu cả hai cùng là khách tiềm năng thuần thì random trong nhóm đồng hạng, sau đó mới xét tới mức độ quá hạn và các tie-break còn lại.
@@ -2513,33 +2658,80 @@ export default function SystemSettings(props) {
                                     ) : rotationParticipants.map((user) => {
                                         const userId = Number(user.id || 0);
                                         const checked = selectedRotationParticipantIds.includes(userId);
+                                        const mode = participantRotationMode(selectedRotationParticipantModes, userId);
 
                                         return (
-                                            <label
+                                            <div
                                                 key={userId}
-                                                className={`flex cursor-pointer items-start gap-3 rounded-2xl border px-4 py-3 transition ${
+                                                className={`rounded-2xl border px-4 py-3 transition ${
                                                     checked
                                                         ? 'border-primary/30 bg-primary/5'
                                                         : 'border-slate-200/80 bg-white hover:bg-slate-50'
                                                 }`}
                                             >
-                                                <input
-                                                    type="checkbox"
-                                                    className="mt-1 h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary"
-                                                    checked={checked}
-                                                    onChange={() => toggleRotationSelection('client_rotation_participant_user_ids', userId)}
-                                                />
-                                                <div className="min-w-0">
-                                                    <div className="text-sm font-semibold text-slate-900">{user.name || `User #${userId}`}</div>
-                                                    <div className="mt-1 text-xs text-text-muted">
-                                                        {ROLE_LABELS[String(user.role || '').toLowerCase()] || user.role || 'Nhân sự'}
-                                                        {user.email ? ` • ${user.email}` : ''}
-                                                    </div>
-                                                    <div className="mt-1 text-xs text-text-muted">
-                                                        User ID: {userId}{user.department_id ? ` • Phòng ban #${user.department_id}` : ''}
+                                                <div className="flex items-start gap-3">
+                                                    <input
+                                                        type="checkbox"
+                                                        className="mt-1 h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary"
+                                                        checked={checked}
+                                                        onChange={() => toggleRotationSelection('client_rotation_participant_user_ids', userId)}
+                                                    />
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="flex flex-wrap items-center gap-2">
+                                                            <div className="text-sm font-semibold text-slate-900">{user.name || `User #${userId}`}</div>
+                                                            {checked ? (
+                                                                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700">
+                                                                    {mode.label}
+                                                                </span>
+                                                            ) : null}
+                                                        </div>
+                                                        <div className="mt-1 text-xs text-text-muted">
+                                                            {ROLE_LABELS[String(user.role || '').toLowerCase()] || user.role || 'Nhân sự'}
+                                                            {user.email ? ` • ${user.email}` : ''}
+                                                        </div>
+                                                        <div className="mt-1 text-xs text-text-muted">
+                                                            User ID: {userId}{user.department_id ? ` • Phòng ban #${user.department_id}` : ''}
+                                                        </div>
+                                                        {checked ? (
+                                                            <>
+                                                                <div className="mt-3 flex flex-wrap gap-2">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={(event) => {
+                                                                            event.stopPropagation();
+                                                                            toggleRotationParticipantMode(userId, 'only_receive');
+                                                                        }}
+                                                                        className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                                                                            mode.onlyReceive
+                                                                                ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                                                                                : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                                                                        }`}
+                                                                    >
+                                                                        Chỉ nhận vào
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={(event) => {
+                                                                            event.stopPropagation();
+                                                                            toggleRotationParticipantMode(userId, 'only_give');
+                                                                        }}
+                                                                        className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                                                                            mode.onlyGive
+                                                                                ? 'border-amber-300 bg-amber-50 text-amber-700'
+                                                                                : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                                                                        }`}
+                                                                    >
+                                                                        Chỉ cho đi
+                                                                    </button>
+                                                                </div>
+                                                                <div className="mt-2 text-xs text-slate-500">
+                                                                    {mode.hint}
+                                                                </div>
+                                                            </>
+                                                        ) : null}
                                                     </div>
                                                 </div>
-                                            </label>
+                                            </div>
                                         );
                                     })}
                                 </div>

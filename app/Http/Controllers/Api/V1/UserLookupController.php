@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Models\AppSetting;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -153,6 +154,48 @@ class UserLookupController extends Controller
 
         $users = $query->orderBy('name')->get();
 
+        if ($purpose === 'client_rotation_staff') {
+            $participantModes = $this->participantRotationModes();
+            $users->transform(function (User $user) use ($participantModes) {
+                $mode = $participantModes[(string) ((int) $user->id)] ?? [];
+                $onlyReceive = (bool) ($mode['only_receive'] ?? false);
+                $onlyGive = (bool) ($mode['only_give'] ?? false);
+
+                $user->client_rotation_only_receive = $onlyReceive;
+                $user->client_rotation_only_give = $onlyGive;
+                $user->client_rotation_mode_label = $onlyReceive && ! $onlyGive
+                    ? 'Chỉ nhận vào'
+                    : ($onlyGive && ! $onlyReceive ? 'Chỉ cho đi' : 'Bình thường');
+
+                return $user;
+            });
+        }
+
         return response()->json(['data' => $users]);
+    }
+
+    private function participantRotationModes(): array
+    {
+        $setting = AppSetting::query()->first();
+        $value = $setting?->client_rotation_participant_modes;
+
+        if (! is_array($value)) {
+            return [];
+        }
+
+        $normalized = [];
+        foreach ($value as $rawUserId => $mode) {
+            $userId = (int) $rawUserId;
+            if ($userId <= 0 || ! is_array($mode)) {
+                continue;
+            }
+
+            $normalized[(string) $userId] = [
+                'only_receive' => (bool) ($mode['only_receive'] ?? false),
+                'only_give' => (bool) ($mode['only_give'] ?? false),
+            ];
+        }
+
+        return $normalized;
     }
 }

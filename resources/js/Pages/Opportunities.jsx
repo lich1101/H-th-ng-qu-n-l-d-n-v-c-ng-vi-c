@@ -145,6 +145,9 @@ export default function Opportunities(props) {
     const canDelete = canCreate;
 
     const canMutateOpportunityRow = (row) => {
+        if (typeof row?.can_edit === 'boolean') {
+            return row.can_edit;
+        }
         if (['admin', 'administrator', 'ke_toan', 'quan_ly'].includes(userRole)) {
             return true;
         }
@@ -155,6 +158,17 @@ export default function Opportunities(props) {
         if (!uid) return false;
         const assignedId = Number(row?.client?.assigned_staff_id ?? 0);
         return assignedId > 0 && assignedId === uid;
+    };
+
+    const isDirectAssignedClient = (client) => {
+        if (userRole !== 'nhan_vien') {
+            return true;
+        }
+        const uid = Number(currentUserId || 0);
+        if (!uid) return false;
+        const assignedStaffId = Number(client?.assigned_staff_id ?? 0);
+        const salesOwnerId = Number(client?.sales_owner_id ?? 0);
+        return assignedStaffId === uid || (assignedStaffId <= 0 && salesOwnerId === uid);
     };
 
     const [opportunities, setOpportunities] = useState([]);
@@ -446,6 +460,10 @@ export default function Opportunities(props) {
     }, [showForm, form.client_id, editingId]);
 
     const openCreateForm = () => {
+        if (!canOpenCreateOpportunityForm) {
+            toast.error('Bạn chưa có khách hàng phụ trách trực tiếp để tạo cơ hội.');
+            return;
+        }
         setEditingId(null);
         const nextForm = emptyOpportunityForm();
         if (currentUserId) {
@@ -579,6 +597,9 @@ export default function Opportunities(props) {
         }
     };
 
+    const canOpenCreateOpportunityForm = canCreate
+        && (userRole !== 'nhan_vien' || clients.some((client) => isDirectAssignedClient(client)));
+
     return (
         <PageContainer
             auth={props.auth}
@@ -587,7 +608,7 @@ export default function Opportunities(props) {
             stats={stats}
         >
             <div className="mb-4 flex flex-wrap items-center justify-end gap-3">
-                {canCreate ? (
+                {canOpenCreateOpportunityForm ? (
                     <button
                         type="button"
                         className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white"
@@ -885,6 +906,7 @@ export default function Opportunities(props) {
 
                     <Field label="Khách hàng" required>
                         <ClientSelect
+                            assignedOnly
                             className="bg-white"
                             value={form.client_id}
                             onChange={(id) => setForm((prev) => ({ ...prev, client_id: id, contract_id: '' }))}

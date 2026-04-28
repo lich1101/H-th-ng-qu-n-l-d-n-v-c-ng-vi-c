@@ -351,16 +351,43 @@ export default function CRM(props) {
 
     const canShowTransferOnClientRow = (client) => {
         if (!canUseStaffTransferApi || !client?.id) return false;
+        if (typeof client?.can_transfer === 'boolean') return client.can_transfer;
         if (['admin', 'administrator'].includes(normalizedRole)) return true;
         if (normalizedRole === 'quan_ly') return true;
         if (normalizedRole === 'nhan_vien') {
             const uid = Number(userId || 0);
+            const assignedStaffId = Number(client.assigned_staff_id || 0);
+            const salesOwnerId = Number(client.sales_owner_id || 0);
             return (
-                Number(client.assigned_staff_id || 0) === uid
-                || Number(client.sales_owner_id || 0) === uid
+                assignedStaffId === uid
+                || (assignedStaffId <= 0 && salesOwnerId === uid)
             );
         }
         return false;
+    };
+
+    const canManageClientRow = (client) => {
+        if (typeof client?.can_manage === 'boolean') {
+            return client.can_manage;
+        }
+        if (['admin', 'administrator', 'quan_ly'].includes(normalizedRole)) {
+            return true;
+        }
+        if (normalizedRole !== 'nhan_vien') {
+            return false;
+        }
+        const uid = Number(userId || 0);
+        const assignedStaffId = Number(client?.assigned_staff_id || 0);
+        const salesOwnerId = Number(client?.sales_owner_id || 0);
+        return assignedStaffId === uid || (assignedStaffId <= 0 && salesOwnerId === uid);
+    };
+
+    const canDeleteClientRow = (client) => {
+        if (typeof client?.can_delete === 'boolean') {
+            return client.can_delete;
+        }
+
+        return canDeleteClients && canManageClientRow(client);
     };
 
     const openCrmTransferModal = async (client, event) => {
@@ -510,8 +537,12 @@ export default function CRM(props) {
             });
             setClientPage(resolvedPage);
             setSelectedClientIds((prev) => {
-                const visible = new Set(rows.map((row) => Number(row.id)));
-                return prev.filter((id) => visible.has(Number(id)));
+                const actionable = new Set(
+                    rows
+                        .filter((row) => row?.can_manage === true || row?.can_delete === true)
+                        .map((row) => Number(row.id))
+                );
+                return prev.filter((id) => actionable.has(Number(id)));
             });
         } catch (error) {
             toast.error(getErrorMessage(error, 'Không tải được danh sách khách hàng.'));
@@ -679,6 +710,10 @@ export default function CRM(props) {
             const resolvedAssignedStaff = clientForm.assigned_staff_id
                 ? Number(clientForm.assigned_staff_id)
                 : null;
+            if (includeAssignment && canAssignClientOwner && !resolvedAssignedStaff) {
+                toast.error('Vui lòng chọn nhân sự phụ trách trực tiếp.');
+                return;
+            }
             const payload = {
                 name: clientForm.name,
                 company: clientForm.company || null,
@@ -697,7 +732,7 @@ export default function CRM(props) {
                 Object.assign(payload, {
                     sales_owner_id: clientForm.sales_owner_id
                         ? Number(clientForm.sales_owner_id)
-                        : resolvedAssignedStaff || userId || null,
+                        : null,
                     assigned_department_id: clientForm.assigned_department_id
                         ? Number(clientForm.assigned_department_id)
                         : null,
@@ -809,14 +844,13 @@ export default function CRM(props) {
 
     const buildClientPayload = (client, overrides = {}) => {
         const assignedStaffId = client.assigned_staff_id ? Number(client.assigned_staff_id) : null;
-        const salesOwnerId = client.sales_owner_id ? Number(client.sales_owner_id) : assignedStaffId;
         return {
             name: client.name || '',
             company: client.company || null,
             email: client.email || null,
             phone: client.phone || null,
             notes: client.notes || null,
-            sales_owner_id: salesOwnerId,
+            sales_owner_id: client.sales_owner_id ? Number(client.sales_owner_id) : null,
             assigned_department_id: client.assigned_department_id ? Number(client.assigned_department_id) : null,
             assigned_staff_id: assignedStaffId,
             care_staff_ids: normalizeCareStaffIds(client.care_staff_users || []),
@@ -838,16 +872,30 @@ export default function CRM(props) {
         [clients]
     );
 
-    const selectedClients = useMemo(
-        () => clients.filter((client) => selectedClientSet.has(Number(client.id))),
-        [clients, selectedClientSet]
+    const selectableVisibleClientIds = useMemo(
+        () => clients
+            .filter((client) => canManageClientRow(client) || canDeleteClientRow(client))
+            .map((client) => Number(client.id))
+            .filter((id) => id > 0),
+        [clients, normalizedRole, userId, canDeleteClients]
     );
 
-    const allVisibleSelected = visibleClientIds.length > 0
-        && visibleClientIds.every((id) => selectedClientSet.has(id));
+    const selectedClients = useMemo(
+        () => clients.filter((client) => (
+            selectedClientSet.has(Number(client.id))
+            && (canManageClientRow(client) || canDeleteClientRow(client))
+        )),
+        [clients, selectedClientSet, normalizedRole, userId, canDeleteClients]
+    );
+
+    const allVisibleSelected = selectableVisibleClientIds.length > 0
+        && selectableVisibleClientIds.every((id) => selectedClientSet.has(id));
 
     const toggleClientSelect = (id) => {
         const numericId = Number(id);
+        if (!selectableVisibleClientIds.includes(numericId)) {
+            return;
+        }
         setSelectedClientIds((prev) => (
             prev.includes(numericId)
                 ? prev.filter((item) => Number(item) !== numericId)
@@ -858,14 +906,14 @@ export default function CRM(props) {
     const toggleSelectAllVisibleClients = () => {
         if (allVisibleSelected) {
             setSelectedClientIds((prev) => (
-                prev.filter((id) => !visibleClientIds.includes(Number(id)))
+                prev.filter((id) => !selectableVisibleClientIds.includes(Number(id)))
             ));
             return;
         }
 
         setSelectedClientIds((prev) => {
             const merged = new Set(prev.map((id) => Number(id)));
-            visibleClientIds.forEach((id) => merged.add(Number(id)));
+            selectableVisibleClientIds.forEach((id) => merged.add(Number(id)));
             return Array.from(merged);
         });
     };
@@ -922,7 +970,6 @@ export default function CRM(props) {
             {
                 assigned_staff_id: Number(bulkForm.assigned_staff_id),
                 assigned_department_id: deptId,
-                sales_owner_id: Number(bulkForm.assigned_staff_id),
             },
             'gán phụ trách'
         );
@@ -1235,13 +1282,13 @@ export default function CRM(props) {
                                 ? 'Bạn đang ở chế độ xem toàn bộ khách hàng. Có thể phân công khách cho mọi phòng ban và nhân sự.'
                                 : isManager
                                     ? 'Bạn chỉ nhìn thấy khách hàng của nhân sự trong phòng ban mình quản lý, và có thể giao lại trong phạm vi phòng ban đó.'
-                                    : 'Bạn chỉ nhìn thấy khách hàng do chính mình phụ trách. Khi thêm khách mới, hệ thống sẽ tự gắn khách cho bạn.'}
+                                    : 'Bạn nhìn thấy khách hàng do mình phụ trách trực tiếp hoặc đang tham gia chăm sóc. Chỉ khách do mình phụ trách trực tiếp mới được sửa/chuyển phụ trách.'}
                         </div>
-                        {canBulkClientActions && selectedClientIds.length > 0 && (
+                        {canBulkClientActions && selectedClients.length > 0 && (
                             <div className="mb-4 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3">
                                 <div className="flex flex-wrap items-center gap-2 text-sm">
                                     <span className="font-semibold text-slate-900">
-                                        Đã chọn {selectedClientIds.length} khách hàng
+                                        Đã chọn {selectedClients.length} khách hàng
                                     </span>
                                     <button
                                         type="button"
@@ -1326,7 +1373,7 @@ export default function CRM(props) {
                             >
                                 <thead>
                                     <tr className="text-left text-xs uppercase tracking-wider text-text-subtle border-b border-slate-200">
-                                        {canBulkClientActions && (
+                                        {canBulkClientActions && selectableVisibleClientIds.length > 0 && (
                                             <th className="py-2 pr-2 w-10" data-az-ignore>
                                                 <input
                                                     type="checkbox"
@@ -1364,7 +1411,7 @@ export default function CRM(props) {
                                                 window.location.href = route('crm.flow', client.id);
                                             }}
                                         >
-                                            {canBulkClientActions && (
+                                            {canBulkClientActions && (canManageClientRow(client) || canDeleteClientRow(client)) && (
                                                 <td className="py-2 pr-2 align-top">
                                                     <input
                                                         type="checkbox"
@@ -1472,7 +1519,7 @@ export default function CRM(props) {
                                                             <AppIcon name="handover" className="h-4 w-4" />
                                                         </button>
                                                     )}
-                                                    {canManageClients && (
+                                                    {canManageClientRow(client) && (
                                                         <button
                                                             type="button"
                                                             className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-600 hover:bg-slate-50"
@@ -1485,7 +1532,7 @@ export default function CRM(props) {
                                                             <AppIcon name="pencil" className="h-4 w-4" />
                                                         </button>
                                                     )}
-                                                    {canDeleteClients && (
+                                                    {canDeleteClientRow(client) && (
                                                         <button
                                                             type="button"
                                                             className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-rose-200 text-rose-600 hover:bg-rose-50"

@@ -563,7 +563,10 @@ class ClientFlowController extends Controller
                 'careStaffUsers:id',
             ]);
 
-            $assignedStaffId = (int) ($client->assigned_staff_id ?: $client->sales_owner_id);
+            $assignedStaffId = (int) ($client->assigned_staff_id ?: 0);
+            if ($assignedStaffId <= 0) {
+                $assignedStaffId = (int) ($client->sales_owner_id ?: 0);
+            }
             $ownerUser = $client->assignedStaff ?: $client->salesOwner;
             $managerId = (int) optional(optional($ownerUser)->departmentRelation)->manager_id;
             $adminIds = User::query()

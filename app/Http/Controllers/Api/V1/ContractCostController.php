@@ -186,7 +186,8 @@ class ContractCostController extends Controller
         if ((int) $client->assigned_staff_id === (int) $user->id) {
             return true;
         }
-        if ((int) $client->sales_owner_id === (int) $user->id) {
+        if ((int) ($client->assigned_staff_id ?? 0) <= 0
+            && (int) ($client->sales_owner_id ?? 0) === (int) $user->id) {
             return true;
         }
 

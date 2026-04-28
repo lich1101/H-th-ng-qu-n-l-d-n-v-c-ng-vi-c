@@ -73,6 +73,8 @@ class AppSetting extends Model
         'client_rotation_lead_type_ids',
         'client_rotation_participant_user_ids',
         'client_rotation_same_department_only',
+        'client_rotation_scope_mode',
+        'client_rotation_participant_modes',
         'app_android_apk_url',
         'app_ios_testflight_url',
         'app_release_notes',
@@ -118,6 +120,8 @@ class AppSetting extends Model
         'client_rotation_lead_type_ids' => 'array',
         'client_rotation_participant_user_ids' => 'array',
         'client_rotation_same_department_only' => 'boolean',
+        'client_rotation_scope_mode' => 'string',
+        'client_rotation_participant_modes' => 'array',
     ];
 
     public static function defaults(): array
@@ -189,6 +193,8 @@ class AppSetting extends Model
             'client_rotation_lead_type_ids' => [],
             'client_rotation_participant_user_ids' => [],
             'client_rotation_same_department_only' => false,
+            'client_rotation_scope_mode' => 'global_staff',
+            'client_rotation_participant_modes' => [],
             'app_android_apk_url' => null,
             'app_ios_testflight_url' => null,
             'app_release_notes' => null,

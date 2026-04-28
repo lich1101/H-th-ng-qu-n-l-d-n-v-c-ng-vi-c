@@ -56,8 +56,9 @@ class OpportunityController extends Controller
             ->orderByDesc('id')
             ->paginate((int) $request->input('per_page', 20));
 
-        $result->getCollection()->transform(function (Opportunity $o) {
+        $result->getCollection()->transform(function (Opportunity $o) use ($viewer) {
             $this->decorateOpportunityStatus($o);
+            $this->appendOpportunityPermissions($o, $viewer);
 
             return $o;
         });
@@ -488,6 +489,7 @@ class OpportunityController extends Controller
             'contract:id,code,title,client_id,opportunity_id',
         ]);
         $this->decorateOpportunityStatus($opportunity);
+        $this->appendOpportunityPermissions($opportunity, $request->user());
 
         $this->notifyOpportunityCreated($opportunity, $request->user());
 
@@ -594,6 +596,7 @@ class OpportunityController extends Controller
             'contract:id,code,title,client_id,opportunity_id',
         ]);
         $this->decorateOpportunityStatus($opportunity);
+        $this->appendOpportunityPermissions($opportunity, request()->user());
 
         return response()->json($opportunity);
     }
@@ -662,6 +665,7 @@ class OpportunityController extends Controller
             'contract:id,code,title,client_id,opportunity_id',
         ]);
         $this->decorateOpportunityStatus($opportunity);
+        $this->appendOpportunityPermissions($opportunity, $user);
 
         return response()->json($opportunity);
     }
@@ -781,23 +785,34 @@ class OpportunityController extends Controller
             return CrmScope::canManagerAccessOpportunity($user, $opportunity);
         }
 
-        $watchers = collect((array) ($opportunity->watcher_ids ?? []))
-            ->map(function ($id) {
-                return (int) $id;
-            })
-            ->filter(function ($id) {
-                return $id > 0;
-            });
+        $client = $opportunity->client;
+        if (! $client) {
+            return false;
+        }
 
-        return ($opportunity->client && (
-            (int) $opportunity->client->assigned_staff_id === (int) $user->id
-            || (int) $opportunity->client->sales_owner_id === (int) $user->id
-            || (int) $opportunity->created_by === (int) $user->id
-            || (int) $opportunity->assigned_to === (int) $user->id
-            || $opportunity->client->careStaffUsers()
-                ->where('users.id', (int) $user->id)
-                ->exists()
-        )) || $watchers->contains((int) $user->id);
+        return CrmScope::canAccessClient($user, $client);
+    }
+
+    private function appendOpportunityPermissions(Opportunity $opportunity, User $user): Opportunity
+    {
+        $canView = $this->canAccessOpportunity($user, $opportunity);
+        $canEdit = $canView && $this->canMutateOpportunity($user, $opportunity);
+        $canDelete = $canEdit && ! $this->opportunityHasLinkedContract($opportunity);
+
+        $opportunity->setAttribute('can_view', $canView);
+        $opportunity->setAttribute('can_edit', $canEdit);
+        $opportunity->setAttribute('can_delete', $canDelete);
+
+        return $opportunity;
+    }
+
+    private function opportunityHasLinkedContract(Opportunity $opportunity): bool
+    {
+        if ($opportunity->relationLoaded('contract')) {
+            return $opportunity->contract !== null;
+        }
+
+        return $opportunity->contract()->exists();
     }
 
     private function canViewerFilterByStaff(User $viewer, int $staffId): bool

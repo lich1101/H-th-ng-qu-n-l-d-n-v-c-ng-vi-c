@@ -1905,6 +1905,7 @@ export default function ContractDetail(props) {
                             </LabeledField>
                             <LabeledField label="Khách hàng" required className="md:col-span-2">
                                 <ClientSelect
+                                    assignedOnly
                                     className="bg-white"
                                     value={editForm.client_id}
                                     onChange={(id) => setEditForm((s) => ({ ...s, client_id: id }))}

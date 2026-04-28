@@ -58,6 +58,34 @@ class CrmScope
             ->values();
     }
 
+    private static function applyEmployeeOwnedClientScope(Builder $builder, int $userId): void
+    {
+        $builder->where('assigned_staff_id', $userId)
+            ->orWhere(function (Builder $fallbackQuery) use ($userId) {
+                $fallbackQuery->whereNull('assigned_staff_id')
+                    ->where('sales_owner_id', $userId);
+            });
+    }
+
+    private static function employeeOwnsClient(User $user, Client $client): bool
+    {
+        if ((int) ($client->assigned_staff_id ?? 0) === (int) $user->id) {
+            return true;
+        }
+
+        return (int) ($client->assigned_staff_id ?? 0) <= 0
+            && (int) ($client->sales_owner_id ?? 0) === (int) $user->id;
+    }
+
+    private static function isClientCareStaff(User $user, Client $client): bool
+    {
+        $client->loadMissing('careStaffUsers:id');
+
+        return $client->careStaffUsers->contains(function ($staff) use ($user) {
+            return (int) $staff->id === (int) $user->id;
+        });
+    }
+
     public static function applyClientScope(Builder $query, User $user): Builder
     {
         if (self::hasGlobalScope($user)) {
@@ -90,16 +118,15 @@ class CrmScope
         }
 
         return $query->where(function (Builder $builder) use ($user) {
-            $builder->where('assigned_staff_id', (int) $user->id)
-                ->orWhere('sales_owner_id', (int) $user->id)
-                ->orWhereHas('careStaffUsers', function (Builder $careQuery) use ($user) {
-                    $careQuery->where('users.id', (int) $user->id);
-                });
+            self::applyEmployeeOwnedClientScope($builder, (int) $user->id);
+            $builder->orWhereHas('careStaffUsers', function (Builder $careQuery) use ($user) {
+                $careQuery->where('users.id', (int) $user->id);
+            });
         });
     }
 
     /**
-     * Nhân viên chỉ thấy khách theo phụ trách (assigned_staff / sales_owner), không theo nhóm chăm sóc.
+     * Nhân viên chỉ thấy khách theo phụ trách hiện tại; chỉ fallback sang sales_owner khi dữ liệu cũ chưa có assigned_staff.
      * Quản lý / admin / kế toán: giữ nguyên logic như applyClientScope.
      */
     public static function applyClientScopeAssignedOnly(Builder $query, User $user): Builder
@@ -113,8 +140,7 @@ class CrmScope
         }
 
         return $query->where(function (Builder $builder) use ($user) {
-            $builder->where('assigned_staff_id', (int) $user->id)
-                ->orWhere('sales_owner_id', (int) $user->id);
+            self::applyEmployeeOwnedClientScope($builder, (int) $user->id);
         });
     }
 
@@ -159,13 +185,18 @@ class CrmScope
             });
         }
 
-        // Nhân viên: không mở phạm vi theo nhóm chăm sóc trên HĐ/KH — khớp phạm vi cơ hội (phụ trách / sales / người tạo / nhân viên thu).
+        // Nhân viên: thấy hợp đồng nếu trực tiếp liên quan hoặc thuộc khách đang phụ trách/chăm sóc.
         return $query->where(function (Builder $builder) use ($user) {
             $builder->where('created_by', $user->id)
                 ->orWhere('collector_user_id', $user->id)
+                ->orWhereHas('careStaffUsers', function (Builder $careStaffQuery) use ($user) {
+                    $careStaffQuery->where('users.id', $user->id);
+                })
                 ->orWhereHas('client', function (Builder $clientQuery) use ($user) {
-                    $clientQuery->where('assigned_staff_id', $user->id)
-                        ->orWhere('sales_owner_id', $user->id);
+                    self::applyEmployeeOwnedClientScope($clientQuery, (int) $user->id);
+                    $clientQuery->orWhereHas('careStaffUsers', function (Builder $careQuery) use ($user) {
+                        $careQuery->where('users.id', (int) $user->id);
+                    });
                 });
         });
     }
@@ -185,14 +216,14 @@ class CrmScope
             });
         }
 
-        // Nhân viên: không mở phạm vi theo nhóm chăm sóc — chỉ creator/assignee trên cơ hội hoặc KH (phụ trách / sales owner).
+        // Nhân viên: chỉ thấy cơ hội thuộc khách mình đang phụ trách/chăm sóc.
         return $query->where(function (Builder $builder) use ($user) {
-            $builder->where('created_by', $user->id)
-                ->orWhere('assigned_to', $user->id)
-                ->orWhereHas('client', function (Builder $clientQuery) use ($user) {
-                    $clientQuery->where('assigned_staff_id', $user->id)
-                        ->orWhere('sales_owner_id', $user->id);
+            $builder->whereHas('client', function (Builder $clientQuery) use ($user) {
+                self::applyEmployeeOwnedClientScope($clientQuery, (int) $user->id);
+                $clientQuery->orWhereHas('careStaffUsers', function (Builder $careQuery) use ($user) {
+                    $careQuery->where('users.id', (int) $user->id);
                 });
+            });
         });
     }
 
@@ -252,18 +283,11 @@ class CrmScope
             return self::canManagerAccessClient($user, $client);
         }
 
-        if ((int) ($client->assigned_staff_id ?? 0) === (int) $user->id) {
-            return true;
-        }
-        if ((int) ($client->sales_owner_id ?? 0) === (int) $user->id) {
+        if (self::employeeOwnsClient($user, $client)) {
             return true;
         }
 
-        $client->loadMissing('careStaffUsers:id');
-
-        return $client->careStaffUsers->contains(function ($staff) use ($user) {
-            return (int) $staff->id === (int) $user->id;
-        });
+        return self::isClientCareStaff($user, $client);
     }
 
     public static function canManageClient(User $user, Client $client): bool
@@ -276,8 +300,7 @@ class CrmScope
             return self::canManagerAccessClient($user, $client);
         }
 
-        return (int) ($client->assigned_staff_id ?? 0) === (int) $user->id
-            || (int) ($client->sales_owner_id ?? 0) === (int) $user->id;
+        return self::employeeOwnsClient($user, $client);
     }
 
     public static function canManagerAccessOpportunity(User $user, Opportunity $opportunity): bool

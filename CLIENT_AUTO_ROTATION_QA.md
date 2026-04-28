@@ -10,10 +10,14 @@ Tai lieu nay dung de QA/tester test nhanh co che xoay khach hang tu dong.
 - `contract_stale_days = 90`
 - `daily_receive_limit = 5`
 - `client_rotation_same_department_only = false`
+- `client_rotation_scope_mode = global_staff`
 - Loai khach dang duoc chon trong setting: `Khach hang tiem nang`
 - Danh sach nhan su tham gia xoay: `A`, `B`, `C`, `D`
 - `A` la nguoi dang phu trach khach trong cac scenario duoi day.
 - `B`, `C`, `D` dang active, va deu nam trong danh sach xoay.
+- Mac dinh mode nhan su:
+  - `A, B, C, D` deu `binh thuong`
+  - neu scenario co ghi rieng `chi nhan vao` hoac `chi cho di` thi uu tien theo scenario do
 - Pham vi chon nguoi nhan la toan bo nhan su da duoc tick trong setting, khong con gioi han theo phong ban.
 - Thu tu dua khach vao hang cho xoay:
   - neu chon nhieu `loai khach`, he thong se xet theo thu tu loai khach da cau hinh truoc
@@ -58,6 +62,10 @@ Tai lieu nay dung de QA/tester test nhanh co che xoay khach hang tu dong.
 | S19 | `contract_stale_days = 90`, `last_contract_at = 2026-01-22 12:00`, `last_opportunity_at = 2026-01-22 12:00`, `last_comment_at = 2026-01-22 12:00`. | `2026-03-08 12:00` | `2026-04-22 12:00` | `Khong co` tai `2026-03-08` | Nhac hop dong phai bat dau khi con `45` ngay va lap lai moi `7` ngay: `2026-03-08`, `2026-03-15`, `2026-03-22`, `2026-03-29`, `2026-04-05`, `2026-04-12`, `2026-04-19`. |
 | S20 | Cung du dieu kien xoay tai mot lan cron: `C1(contract=4, opportunity=2)`, `C2(contract=4, opportunity=5)`, `C3(contract=1, opportunity=9)`, `C4(contract=0, opportunity=7)`, `C5(contract=0, opportunity=0)`, `C6(contract=0, opportunity=0)`. | `Khong ap dung` | `2026-04-23 12:00` | `Khong ap dung` | Thu tu dua vao hang cho xoay phai la `C2 -> C1 -> C3 -> C4 -> (C5/C6 random)`. Case nay chi test uu tien xep khach, khong test nguoi nhan. |
 | S21 | Chon `loai khach` theo thu tu uu tien `[Dang cham soc (#2), Khach hang tiem nang (#1), Khach hang (#5)]`. Cung du dieu kien xoay tai mot lan cron: `L2-A(contract=1, opportunity=0)`, `L1-A(contract=9, opportunity=3)`, `L5-A(contract=12, opportunity=2)`. | `Khong ap dung` | `2026-04-23 12:00` | `Khong ap dung` | Thu tu phai la `L2-A -> L1-A -> L5-A` du `L5-A` co nhieu hop dong hon, vi uu tien theo `loai khach` phai duoc ap dung truoc. Trong tung nhom loai khach, moi so sanh tiep `hop dong -> co hoi -> tie-break`. |
+| S22 | Giong `S01`, nhung `A` bat mode `chi nhan vao`. | `Khong canh bao` | `Khong xoay` | `Khong co` | Khach van duoc scan, nhung `status_label` phai hien `nhan su phu trach dang bat che do chi nhan vao nen khach khong bi xoay ra`. Khong duoc gui warning, khong duoc dua vao hang cho xoay. |
+| S23 | Giong `S01`, nhung `B` bat mode `chi cho di`, `C(hist=3, load=8, auto_today=0)`, `D(hist=4, load=5, auto_today=0)`. | `2026-04-18 12:00` | `2026-04-21 12:00` | `C` | `B` dep hon hoac bang ve ranking nhung phai bi loai khoi pool nhan vi dang `chi cho di`. He thong chi duoc xet `C`, `D`. |
+| S24 | Giong `S01`, nhung `B` bat dong thoi `chi nhan vao` va `chi cho di`. | `2026-04-18 12:00` | `2026-04-21 12:00` | `B` neu `B` dang dep nhat | Khi bat ca 2 co, he thong phai xu ly nhu `binh thuong`, tuc la `B` van co the duoc nhan vao va neu sau nay giu khach qua han thi van co the bi xoay ra. |
+| S25 | Dat `client_rotation_scope_mode = balanced_department`. `A` thuoc phong `Sales`, `B` thuoc `SEO`, `C` thuoc `Content`, `D` thuoc `Content`. Chi so phong ban truoc luc cron: `SEO(hist=1, load=12, auto_today=1)`, `Content(hist=1, load=7, auto_today=0)`. Trong phong `Content`: `C(hist=2, load=4, auto_today=0)`, `D(hist=1, load=3, auto_today=0)`. | `2026-04-18 12:00` | `2026-04-21 12:00` | `D` | Cron phai chon phong `Content` truoc vi `hist` bang nhau nhung `load` nho hon, sau do moi chon `D` trong phong `Content` vi `historical auto receive` it hon `C`. Khong duoc chuyen nguoc lai cho phong `Sales`. |
 
 ## Checklist UI/API can doi chieu nhanh
 
@@ -76,6 +84,9 @@ Tai lieu nay dung de QA/tester test nhanh co che xoay khach hang tu dong.
   - `contract_count`
   - `opportunity_count`
   - `priority_label`
+  - `current_owner_rotation_mode`
+  - `current_owner_rotation_mode_label`
+  - `thresholds.scope_mode`
 - Warning notification phai co:
   - ten khach
   - danh sach cac moc dang den lich nhac trong ngay (`comment` / `opportunity` / `contract`)

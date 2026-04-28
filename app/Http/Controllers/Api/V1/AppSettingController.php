@@ -93,6 +93,8 @@ class AppSettingController extends Controller
             'client_rotation_lead_type_ids' => ['nullable'],
             'client_rotation_participant_user_ids' => ['nullable'],
             'client_rotation_same_department_only' => ['nullable', 'boolean'],
+            'client_rotation_scope_mode' => ['nullable', 'string', 'in:same_department,global_staff,balanced_department'],
+            'client_rotation_participant_modes' => ['nullable'],
             'app_android_apk_url' => ['nullable', 'string', 'max:255'],
             'app_ios_testflight_url' => ['nullable', 'string', 'max:255'],
             'app_release_notes' => ['nullable', 'string', 'max:20000'],
@@ -115,6 +117,24 @@ class AppSettingController extends Controller
         $clientRotationParticipantUserIds = array_key_exists('client_rotation_participant_user_ids', $validated)
             ? $this->normalizeIntegerList($request->input('client_rotation_participant_user_ids'))
             : $this->extractIntegerListFromSetting($setting?->client_rotation_participant_user_ids);
+        $clientRotationScopeMode = $this->resolveClientRotationScopeMode(
+            array_key_exists('client_rotation_scope_mode', $validated)
+                ? $validated['client_rotation_scope_mode']
+                : null,
+            array_key_exists('client_rotation_same_department_only', $validated)
+                ? $validated['client_rotation_same_department_only']
+                : ($setting->client_rotation_same_department_only ?? null),
+            $setting?->client_rotation_scope_mode
+        );
+        $clientRotationParticipantModes = array_key_exists('client_rotation_participant_modes', $validated)
+            ? $this->normalizeClientRotationParticipantModes(
+                $request->input('client_rotation_participant_modes'),
+                $clientRotationParticipantUserIds
+            )
+            : $this->extractClientRotationParticipantModes(
+                $setting?->client_rotation_participant_modes,
+                $clientRotationParticipantUserIds
+            );
 
         if (! empty($clientRotationLeadTypeIds)) {
             $leadTypeCount = LeadType::query()
@@ -312,9 +332,9 @@ class AppSettingController extends Controller
                 : (int) ($setting->client_rotation_daily_receive_limit ?? 5),
             'client_rotation_lead_type_ids' => $clientRotationLeadTypeIds,
             'client_rotation_participant_user_ids' => $clientRotationParticipantUserIds,
-            'client_rotation_same_department_only' => array_key_exists('client_rotation_same_department_only', $validated)
-                ? (bool) $validated['client_rotation_same_department_only']
-                : (bool) ($setting->client_rotation_same_department_only ?? false),
+            'client_rotation_same_department_only' => $clientRotationScopeMode === 'same_department',
+            'client_rotation_scope_mode' => $clientRotationScopeMode,
+            'client_rotation_participant_modes' => $clientRotationParticipantModes,
             'app_android_apk_url' => $apkUrl,
             'app_ios_testflight_url' => $iosTestflightUrl,
             'app_release_notes' => array_key_exists('app_release_notes', $validated)
@@ -371,7 +391,12 @@ class AppSettingController extends Controller
             'client_rotation_daily_receive_limit' => $setting ? (int) ($setting->client_rotation_daily_receive_limit ?? 5) : 5,
             'client_rotation_lead_type_ids' => $this->extractIntegerListFromSetting($setting?->client_rotation_lead_type_ids),
             'client_rotation_participant_user_ids' => $this->extractIntegerListFromSetting($setting?->client_rotation_participant_user_ids),
-            'client_rotation_same_department_only' => $setting ? (bool) ($setting->client_rotation_same_department_only ?? false) : false,
+            'client_rotation_same_department_only' => $this->clientRotationScopeModeFromSetting($setting) === 'same_department',
+            'client_rotation_scope_mode' => $this->clientRotationScopeModeFromSetting($setting),
+            'client_rotation_participant_modes' => $this->extractClientRotationParticipantModes(
+                $setting?->client_rotation_participant_modes,
+                $this->extractIntegerListFromSetting($setting?->client_rotation_participant_user_ids)
+            ),
             'app_android_apk_url' => $setting ? $setting->app_android_apk_url : null,
             'app_ios_testflight_url' => $setting ? $setting->app_ios_testflight_url : null,
             'app_release_notes' => $setting ? $setting->app_release_notes : null,
@@ -486,5 +511,81 @@ class AppSettingController extends Controller
     private function extractIntegerListFromSetting($value): array
     {
         return $this->normalizeIntegerList($value);
+    }
+
+    private function resolveClientRotationScopeMode($requestedScopeMode, $requestedSameDepartmentOnly, $storedScopeMode): string
+    {
+        $scope = trim((string) ($requestedScopeMode ?? ''));
+        if (in_array($scope, ['same_department', 'global_staff', 'balanced_department'], true)) {
+            return $scope;
+        }
+
+        if (! is_null($requestedSameDepartmentOnly)) {
+            return (bool) $requestedSameDepartmentOnly ? 'same_department' : 'global_staff';
+        }
+
+        $stored = trim((string) ($storedScopeMode ?? ''));
+        if (in_array($stored, ['same_department', 'global_staff', 'balanced_department'], true)) {
+            return $stored;
+        }
+
+        return 'global_staff';
+    }
+
+    private function clientRotationScopeModeFromSetting(?AppSetting $setting): string
+    {
+        return $this->resolveClientRotationScopeMode(
+            $setting?->client_rotation_scope_mode,
+            $setting?->client_rotation_same_department_only,
+            $setting?->client_rotation_scope_mode
+        );
+    }
+
+    private function normalizeClientRotationParticipantModes($value, array $participantUserIds): array
+    {
+        if (is_string($value)) {
+            $trimmed = trim($value);
+            if ($trimmed === '') {
+                return [];
+            }
+
+            $decoded = json_decode($trimmed, true);
+            $value = json_last_error() === JSON_ERROR_NONE ? $decoded : [];
+        }
+
+        if (! is_array($value) || empty($participantUserIds)) {
+            return [];
+        }
+
+        $participantSet = array_flip($participantUserIds);
+        $normalized = [];
+
+        foreach ($value as $rawUserId => $mode) {
+            $userId = (int) $rawUserId;
+            if ($userId <= 0 || ! isset($participantSet[$userId]) || ! is_array($mode)) {
+                continue;
+            }
+
+            $onlyReceive = (bool) ($mode['only_receive'] ?? false);
+            $onlyGive = (bool) ($mode['only_give'] ?? false);
+
+            if (! $onlyReceive && ! $onlyGive) {
+                continue;
+            }
+
+            $normalized[(string) $userId] = [
+                'only_receive' => $onlyReceive,
+                'only_give' => $onlyGive,
+            ];
+        }
+
+        ksort($normalized, SORT_NATURAL);
+
+        return $normalized;
+    }
+
+    private function extractClientRotationParticipantModes($value, array $participantUserIds): array
+    {
+        return $this->normalizeClientRotationParticipantModes($value, $participantUserIds);
     }
 }

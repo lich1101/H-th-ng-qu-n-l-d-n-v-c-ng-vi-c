@@ -77,7 +77,7 @@ class ClientStaffTransferService
         $oid = (int) ($client->sales_owner_id ?? 0);
 
         return ($sid > 0 && $sid === (int) $user->id)
-            || ($oid > 0 && $oid === (int) $user->id);
+            || ($sid <= 0 && $oid > 0 && $oid === (int) $user->id);
     }
 
     public function canActOnRequest(User $user, ClientStaffTransferRequest $transfer): bool
@@ -360,7 +360,6 @@ class ClientStaffTransferService
             $preTransferInsight = $rotationService->buildClientRotationInsight($client);
 
             $client->assigned_staff_id = (int) $toUser->id;
-            $client->sales_owner_id = (int) $toUser->id;
             if ($toUser->department_id) {
                 $client->assigned_department_id = (int) $toUser->department_id;
             }

@@ -28,6 +28,12 @@ class ClientAutoRotationService
 
     private const ALLOWED_PARTICIPANT_ROLES = ['quan_ly', 'nhan_vien'];
 
+    public const SCOPE_SAME_DEPARTMENT = 'same_department';
+
+    public const SCOPE_GLOBAL_STAFF = 'global_staff';
+
+    public const SCOPE_BALANCED_DEPARTMENT = 'balanced_department';
+
     private const WARNING_SCHEDULES = [
         'comment' => [
             'window_days' => 2,
@@ -59,7 +65,18 @@ class ClientAutoRotationService
             'daily_receive_limit' => max(1, (int) ($setting->client_rotation_daily_receive_limit ?? ($defaults['client_rotation_daily_receive_limit'] ?? 5))),
             'lead_type_ids' => $this->normalizeIdList($setting?->client_rotation_lead_type_ids ?? ($defaults['client_rotation_lead_type_ids'] ?? [])),
             'participant_user_ids' => $this->normalizeIdList($setting?->client_rotation_participant_user_ids ?? ($defaults['client_rotation_participant_user_ids'] ?? [])),
-            'same_department_only' => $setting ? (bool) ($setting->client_rotation_same_department_only ?? ($defaults['client_rotation_same_department_only'] ?? false)) : (bool) ($defaults['client_rotation_same_department_only'] ?? false),
+            'scope_mode' => $this->normalizeScopeMode(
+                $setting?->client_rotation_scope_mode,
+                $setting?->client_rotation_same_department_only ?? ($defaults['client_rotation_same_department_only'] ?? false)
+            ),
+            'participant_modes' => $this->normalizeParticipantModeMap(
+                $setting?->client_rotation_participant_modes ?? ($defaults['client_rotation_participant_modes'] ?? []),
+                $this->normalizeIdList($setting?->client_rotation_participant_user_ids ?? ($defaults['client_rotation_participant_user_ids'] ?? []))
+            ),
+            'same_department_only' => $this->normalizeScopeMode(
+                $setting?->client_rotation_scope_mode,
+                $setting?->client_rotation_same_department_only ?? ($defaults['client_rotation_same_department_only'] ?? false)
+            ) === self::SCOPE_SAME_DEPARTMENT,
         ];
     }
 
@@ -245,6 +262,15 @@ class ClientAutoRotationService
         $receivedTodayCounts = $this->receivedTodayCounts($participantIds, $now);
         $historicalReceiveCounts = $this->historicalReceiveCounts($participantIds);
         $clientLoadCounts = $this->participantClientLoadCounts($participantIds, $settings['lead_type_ids']);
+        $participantDepartmentIds = $participants->pluck('department_id')
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+        $receivedTodayDepartmentCounts = $this->receivedTodayDepartmentCounts($participantDepartmentIds, $now);
+        $historicalDepartmentReceiveCounts = $this->historicalDepartmentReceiveCounts($participantDepartmentIds);
+        $departmentClientLoadCounts = $this->departmentClientLoadCounts($participants, $clientLoadCounts, $settings);
 
         foreach ($clients as $client) {
             $clientId = (int) $client->id;
@@ -355,8 +381,10 @@ class ClientAutoRotationService
                 $historicalReceiveCounts,
                 $receivedTodayCounts,
                 $clientLoadCounts,
-                $settings['daily_receive_limit'],
-                (bool) ($settings['same_department_only'] ?? false)
+                $historicalDepartmentReceiveCounts,
+                $receivedTodayDepartmentCounts,
+                $departmentClientLoadCounts,
+                $settings
             );
 
             if ($rankedRecipients->isEmpty()) {
@@ -402,6 +430,16 @@ class ClientAutoRotationService
             if ($fromStaffId > 0) {
                 $clientLoadCounts[$fromStaffId] = max(0, (int) ($clientLoadCounts[$fromStaffId] ?? 0) - 1);
             }
+            $toDepartmentId = (int) ($selectedRecipient->department_id ?? 0);
+            if ($toDepartmentId > 0) {
+                $receivedTodayDepartmentCounts[$toDepartmentId] = (int) ($receivedTodayDepartmentCounts[$toDepartmentId] ?? 0) + 1;
+                $historicalDepartmentReceiveCounts[$toDepartmentId] = (int) ($historicalDepartmentReceiveCounts[$toDepartmentId] ?? 0) + 1;
+                $departmentClientLoadCounts[$toDepartmentId] = (int) ($departmentClientLoadCounts[$toDepartmentId] ?? 0) + 1;
+            }
+            $fromDepartmentId = (int) ($insight['current_department_id'] ?? 0);
+            if ($fromDepartmentId > 0 && $this->participantCanReceive($settings, $fromStaffId)) {
+                $departmentClientLoadCounts[$fromDepartmentId] = max(0, (int) ($departmentClientLoadCounts[$fromDepartmentId] ?? 0) - 1);
+            }
 
             $this->notifyAutoRotationOutcome($result, $selectedRecipient);
         }
@@ -440,6 +478,130 @@ class ClientAutoRotationService
             ->all();
     }
 
+    private function normalizeScopeMode($value, bool $legacySameDepartmentOnly = false): string
+    {
+        $scopeMode = trim((string) $value);
+        if (in_array($scopeMode, [
+            self::SCOPE_SAME_DEPARTMENT,
+            self::SCOPE_GLOBAL_STAFF,
+            self::SCOPE_BALANCED_DEPARTMENT,
+        ], true)) {
+            return $scopeMode;
+        }
+
+        return $legacySameDepartmentOnly ? self::SCOPE_SAME_DEPARTMENT : self::SCOPE_GLOBAL_STAFF;
+    }
+
+    /**
+     * @param  array<int, int>  $participantIds
+     * @return array<string, array<string, bool>>
+     */
+    private function normalizeParticipantModeMap($value, array $participantIds): array
+    {
+        if (is_string($value)) {
+            $trimmed = trim($value);
+            if ($trimmed === '') {
+                return [];
+            }
+
+            $decoded = json_decode($trimmed, true);
+            $value = json_last_error() === JSON_ERROR_NONE ? $decoded : [];
+        }
+
+        if (! is_array($value) || empty($participantIds)) {
+            return [];
+        }
+
+        $participantSet = array_flip($participantIds);
+        $normalized = [];
+
+        foreach ($value as $rawUserId => $mode) {
+            $userId = (int) $rawUserId;
+            if ($userId <= 0 || ! isset($participantSet[$userId]) || ! is_array($mode)) {
+                continue;
+            }
+
+            $onlyReceive = (bool) ($mode['only_receive'] ?? false);
+            $onlyGive = (bool) ($mode['only_give'] ?? false);
+
+            if (! $onlyReceive && ! $onlyGive) {
+                continue;
+            }
+
+            $normalized[(string) $userId] = [
+                'only_receive' => $onlyReceive,
+                'only_give' => $onlyGive,
+            ];
+        }
+
+        ksort($normalized, SORT_NATURAL);
+
+        return $normalized;
+    }
+
+    private function rotationScopeMode(array $settings): string
+    {
+        return $this->normalizeScopeMode(
+            $settings['scope_mode'] ?? null,
+            (bool) ($settings['same_department_only'] ?? false)
+        );
+    }
+
+    /**
+     * @return array{only_receive: bool, only_give: bool, mode_key: string, label: string}
+     */
+    private function participantRotationMode(array $settings, int $userId): array
+    {
+        $mode = (int) $userId > 0
+            ? ($settings['participant_modes'][(string) $userId] ?? [])
+            : [];
+        $onlyReceive = (bool) ($mode['only_receive'] ?? false);
+        $onlyGive = (bool) ($mode['only_give'] ?? false);
+
+        $modeKey = 'normal';
+        $label = 'Bình thường';
+
+        if ($onlyReceive && ! $onlyGive) {
+            $modeKey = 'only_receive';
+            $label = 'Chỉ nhận vào';
+        } elseif ($onlyGive && ! $onlyReceive) {
+            $modeKey = 'only_give';
+            $label = 'Chỉ cho đi';
+        } elseif ($onlyGive && $onlyReceive) {
+            $modeKey = 'normal';
+            $label = 'Bật cả 2 nên xử lý như bình thường';
+        }
+
+        return [
+            'only_receive' => $onlyReceive,
+            'only_give' => $onlyGive,
+            'mode_key' => $modeKey,
+            'label' => $label,
+        ];
+    }
+
+    private function participantCanGive(array $settings, int $userId): bool
+    {
+        if ($userId <= 0 || ! in_array($userId, $settings['participant_user_ids'], true)) {
+            return false;
+        }
+
+        $mode = $this->participantRotationMode($settings, $userId);
+
+        return ! ($mode['only_receive'] && ! $mode['only_give']);
+    }
+
+    private function participantCanReceive(array $settings, int $userId): bool
+    {
+        if ($userId <= 0 || ! in_array($userId, $settings['participant_user_ids'], true)) {
+            return false;
+        }
+
+        $mode = $this->participantRotationMode($settings, $userId);
+
+        return ! ($mode['only_give'] && ! $mode['only_receive']);
+    }
+
     private function participantUsers(array $settings): Collection
     {
         return User::query()
@@ -449,7 +611,16 @@ class ClientAutoRotationService
                 $query->whereNull('is_active')->orWhere('is_active', true);
             })
             ->orderBy('name')
-            ->get(['id', 'name', 'email', 'role', 'department_id', 'is_active']);
+            ->get(['id', 'name', 'email', 'role', 'department_id', 'is_active'])
+            ->map(function (User $user) use ($settings) {
+                $mode = $this->participantRotationMode($settings, (int) $user->id);
+                $user->client_rotation_only_receive = $mode['only_receive'];
+                $user->client_rotation_only_give = $mode['only_give'];
+                $user->client_rotation_mode_key = $mode['mode_key'];
+
+                return $user;
+            })
+            ->values();
     }
 
     /**
@@ -600,15 +771,20 @@ class ClientAutoRotationService
 
         $currentOwnerId = $this->currentOwnerId($client);
         $currentDepartmentId = $this->currentDepartmentId($client);
-        $sameDepartmentOnly = (bool) ($settings['same_department_only'] ?? false);
+        $scopeMode = $this->rotationScopeMode($settings);
+        $sameDepartmentOnly = $scopeMode === self::SCOPE_SAME_DEPARTMENT;
+        $scopeRequiresDepartment = in_array($scopeMode, [self::SCOPE_SAME_DEPARTMENT, self::SCOPE_BALANCED_DEPARTMENT], true);
         $leadTypeId = (int) ($client->lead_type_id ?? 0);
         $leadTypeSelected = $leadTypeId > 0 && in_array($leadTypeId, $settings['lead_type_ids'], true);
         $leadTypePriorityRank = $this->leadTypePriorityRank($leadTypeId, $settings['lead_type_ids']);
         $ownerSelected = $currentOwnerId > 0 && in_array($currentOwnerId, $settings['participant_user_ids'], true);
+        $ownerCanGive = $ownerSelected && $this->participantCanGive($settings, $currentOwnerId);
+        $ownerMode = $this->participantRotationMode($settings, $currentOwnerId);
         $inScope = $settings['enabled']
             && $leadTypeSelected
             && $ownerSelected
-            && (! $sameDepartmentOnly || $currentDepartmentId > 0);
+            && $ownerCanGive
+            && (! $scopeRequiresDepartment || $currentDepartmentId > 0);
 
         $triggerType = $triggerRule['type'] ?? null;
         $eligible = $inScope && (bool) ($triggerRule['overdue'] ?? false);
@@ -647,7 +823,10 @@ class ClientAutoRotationService
         if (! $ownerSelected) {
             $scopeReasons[] = 'owner_not_selected';
         }
-        if ($sameDepartmentOnly && $currentDepartmentId <= 0) {
+        if ($ownerSelected && ! $ownerCanGive) {
+            $scopeReasons[] = 'owner_receive_only_locked';
+        }
+        if ($scopeRequiresDepartment && $currentDepartmentId <= 0) {
             $scopeReasons[] = 'department_missing';
         }
 
@@ -670,6 +849,10 @@ class ClientAutoRotationService
             'current_owner_id' => $currentOwnerId > 0 ? $currentOwnerId : null,
             'current_owner_name' => $this->currentOwnerName($client),
             'current_department_id' => $currentDepartmentId > 0 ? $currentDepartmentId : null,
+            'current_owner_rotation_mode' => $ownerMode['mode_key'],
+            'current_owner_rotation_mode_label' => $ownerMode['label'],
+            'current_owner_only_receive' => $ownerMode['only_receive'],
+            'current_owner_only_give' => $ownerMode['only_give'],
             'lead_type_id' => $leadTypeId > 0 ? $leadTypeId : null,
             'lead_type_name' => $client->leadType ? (string) $client->leadType->name : null,
             'lead_type_priority_rank' => $leadTypePriorityRank,
@@ -718,6 +901,7 @@ class ClientAutoRotationService
                 'contract_stale_days' => (int) $settings['contract_stale_days'],
                 'daily_receive_limit' => (int) $settings['daily_receive_limit'],
                 'same_department_only' => $sameDepartmentOnly,
+                'scope_mode' => $scopeMode,
             ],
             'status_label' => $this->rotationStatusLabel($inScope, $triggerRule, $eligible, $daysUntilRotation, $scopeReasons),
         ];
@@ -879,8 +1063,11 @@ class ClientAutoRotationService
             if (in_array('owner_not_selected', $scopeReasons, true)) {
                 return 'Nhân sự phụ trách chưa nằm trong danh sách xoay';
             }
+            if (in_array('owner_receive_only_locked', $scopeReasons, true)) {
+                return 'Nhân sự phụ trách đang bật chế độ chỉ nhận vào nên khách không bị xoay ra';
+            }
             if (in_array('department_missing', $scopeReasons, true)) {
-                return 'Thiếu phòng ban để xoay trong cùng phòng ban';
+                return 'Thiếu phòng ban để áp dụng phạm vi nhận khách đã chọn';
             }
 
             return 'Chưa đủ điều kiện cấu hình để xoay';
@@ -974,62 +1161,262 @@ class ClientAutoRotationService
             ->all();
     }
 
+    /**
+     * @param  array<int, int>  $departmentIds
+     * @return array<int, int>
+     */
+    private function receivedTodayDepartmentCounts(array $departmentIds, CarbonInterface $now): array
+    {
+        if (empty($departmentIds)) {
+            return [];
+        }
+
+        return ClientRotationHistory::query()
+            ->where('action_type', self::ACTION_AUTO_ROTATION)
+            ->whereDate('transferred_at', $now->toDateString())
+            ->whereIn('department_id', $departmentIds)
+            ->selectRaw('department_id, COUNT(*) as total')
+            ->groupBy('department_id')
+            ->pluck('total', 'department_id')
+            ->mapWithKeys(fn ($count, $departmentId) => [(int) $departmentId => (int) $count])
+            ->all();
+    }
+
+    /**
+     * @param  array<int, int>  $departmentIds
+     * @return array<int, int>
+     */
+    private function historicalDepartmentReceiveCounts(array $departmentIds): array
+    {
+        if (empty($departmentIds)) {
+            return [];
+        }
+
+        return ClientRotationHistory::query()
+            ->where('action_type', self::ACTION_AUTO_ROTATION)
+            ->whereIn('department_id', $departmentIds)
+            ->selectRaw('department_id, COUNT(*) as total')
+            ->groupBy('department_id')
+            ->pluck('total', 'department_id')
+            ->mapWithKeys(fn ($count, $departmentId) => [(int) $departmentId => (int) $count])
+            ->all();
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    private function departmentClientLoadCounts(Collection $participants, array $clientLoadCounts, array $settings): array
+    {
+        $loads = [];
+
+        foreach ($participants as $user) {
+            $userId = (int) ($user->id ?? 0);
+            $departmentId = (int) ($user->department_id ?? 0);
+
+            if ($userId <= 0 || $departmentId <= 0 || ! $this->participantCanReceive($settings, $userId)) {
+                continue;
+            }
+
+            $loads[$departmentId] = (int) ($loads[$departmentId] ?? 0) + (int) ($clientLoadCounts[$userId] ?? 0);
+        }
+
+        return $loads;
+    }
+
     private function rankRecipientsForClient(
         Client $client,
         Collection $participants,
         array $historicalReceiveCounts,
         array $receivedTodayCounts,
         array $clientLoadCounts,
-        int $dailyReceiveLimit,
-        bool $sameDepartmentOnly = false
+        array $historicalDepartmentReceiveCounts,
+        array $receivedTodayDepartmentCounts,
+        array $departmentClientLoadCounts,
+        array $settings
     ): Collection {
-        $departmentId = $sameDepartmentOnly ? $this->currentDepartmentId($client) : 0;
-        if ($sameDepartmentOnly && $departmentId <= 0) {
-            return collect();
+        $scopeMode = $this->rotationScopeMode($settings);
+        $currentDepartmentId = $this->currentDepartmentId($client);
+
+        if ($scopeMode === self::SCOPE_SAME_DEPARTMENT) {
+            if ($currentDepartmentId <= 0) {
+                return collect();
+            }
+
+            return $this->rankUsers(
+                $this->eligibleRecipientCandidatesForClient(
+                    $client,
+                    $participants,
+                    $receivedTodayCounts,
+                    (int) $settings['daily_receive_limit'],
+                    $settings,
+                    $currentDepartmentId
+                ),
+                $historicalReceiveCounts,
+                $receivedTodayCounts,
+                $clientLoadCounts
+            );
         }
 
-        /** @var Collection<int, User> $candidates */
-        $candidates = $participants
-            ->filter(function (User $user) use ($client, $receivedTodayCounts, $dailyReceiveLimit, $sameDepartmentOnly, $departmentId) {
-                return (int) $user->id !== $this->currentOwnerId($client)
-                    && in_array((string) $user->role, self::ALLOWED_PARTICIPANT_ROLES, true)
-                    && (! $sameDepartmentOnly || (int) ($user->department_id ?? 0) === $departmentId)
-                    && (int) ($receivedTodayCounts[(int) $user->id] ?? 0) < $dailyReceiveLimit;
+        if ($scopeMode === self::SCOPE_BALANCED_DEPARTMENT) {
+            if ($currentDepartmentId <= 0) {
+                return collect();
+            }
+
+            $departmentGroups = $this->eligibleRecipientCandidatesForClient(
+                $client,
+                $participants,
+                $receivedTodayCounts,
+                (int) $settings['daily_receive_limit'],
+                $settings
+            )
+                ->filter(fn (User $user) => (int) ($user->department_id ?? 0) > 0 && (int) ($user->department_id ?? 0) !== $currentDepartmentId)
+                ->groupBy(fn (User $user) => (int) ($user->department_id ?? 0));
+
+            if ($departmentGroups->isEmpty()) {
+                return collect();
+            }
+
+            return $departmentGroups
+                ->map(function (Collection $users, $departmentId) use (
+                    $historicalDepartmentReceiveCounts,
+                    $receivedTodayDepartmentCounts,
+                    $departmentClientLoadCounts,
+                    $historicalReceiveCounts,
+                    $receivedTodayCounts,
+                    $clientLoadCounts
+                ) {
+                    return [
+                        'department_id' => (int) $departmentId,
+                        'historical_received' => (int) ($historicalDepartmentReceiveCounts[(int) $departmentId] ?? 0),
+                        'received_today' => (int) ($receivedTodayDepartmentCounts[(int) $departmentId] ?? 0),
+                        'client_load' => (int) ($departmentClientLoadCounts[(int) $departmentId] ?? 0),
+                        'rand' => random_int(1, PHP_INT_MAX),
+                        'users' => $this->rankUsers(
+                            $users->values(),
+                            $historicalReceiveCounts,
+                            $receivedTodayCounts,
+                            $clientLoadCounts
+                        ),
+                    ];
+                })
+                ->sort(function (array $left, array $right) {
+                    $historicalDiff = $left['historical_received'] <=> $right['historical_received'];
+                    if ($historicalDiff !== 0) {
+                        return $historicalDiff;
+                    }
+
+                    $loadDiff = $left['client_load'] <=> $right['client_load'];
+                    if ($loadDiff !== 0) {
+                        return $loadDiff;
+                    }
+
+                    $receivedDiff = $left['received_today'] <=> $right['received_today'];
+                    if ($receivedDiff !== 0) {
+                        return $receivedDiff;
+                    }
+
+                    return $left['rand'] <=> $right['rand'];
+                })
+                ->flatMap(fn (array $entry) => $entry['users'])
+                ->values();
+        }
+
+        return $this->rankUsers(
+            $this->eligibleRecipientCandidatesForClient(
+                $client,
+                $participants,
+                $receivedTodayCounts,
+                (int) $settings['daily_receive_limit'],
+                $settings
+            ),
+            $historicalReceiveCounts,
+            $receivedTodayCounts,
+            $clientLoadCounts
+        );
+    }
+
+    private function eligibleRecipientCandidatesForClient(
+        Client $client,
+        Collection $participants,
+        array $receivedTodayCounts,
+        int $dailyReceiveLimit,
+        array $settings,
+        ?int $requiredDepartmentId = null
+    ): Collection {
+        return $participants
+            ->filter(function (User $user) use ($client, $receivedTodayCounts, $dailyReceiveLimit, $settings, $requiredDepartmentId) {
+                $userId = (int) $user->id;
+                $departmentId = (int) ($user->department_id ?? 0);
+
+                if ($userId === $this->currentOwnerId($client)) {
+                    return false;
+                }
+
+                if (! in_array((string) $user->role, self::ALLOWED_PARTICIPANT_ROLES, true)) {
+                    return false;
+                }
+
+                if (! is_null($user->is_active) && ! (bool) $user->is_active) {
+                    return false;
+                }
+
+                if (! $this->participantCanReceive($settings, $userId)) {
+                    return false;
+                }
+
+                if ((int) ($receivedTodayCounts[$userId] ?? 0) >= $dailyReceiveLimit) {
+                    return false;
+                }
+
+                if (! is_null($requiredDepartmentId) && $requiredDepartmentId > 0 && $departmentId !== $requiredDepartmentId) {
+                    return false;
+                }
+
+                return true;
             })
             ->values();
+    }
 
+    private function rankUsers(
+        Collection $candidates,
+        array $historicalReceiveCounts,
+        array $receivedTodayCounts,
+        array $clientLoadCounts
+    ): Collection {
         if ($candidates->isEmpty()) {
             return collect();
         }
 
-        $ranked = $candidates->map(function (User $user) use ($historicalReceiveCounts, $receivedTodayCounts, $clientLoadCounts) {
-            return [
-                'user' => $user,
-                'historical_received' => (int) ($historicalReceiveCounts[(int) $user->id] ?? 0),
-                'received_today' => (int) ($receivedTodayCounts[(int) $user->id] ?? 0),
-                'client_load' => (int) ($clientLoadCounts[(int) $user->id] ?? 0),
-                'rand' => random_int(1, PHP_INT_MAX),
-            ];
-        })->sort(function (array $left, array $right) {
-            $historicalDiff = $left['historical_received'] <=> $right['historical_received'];
-            if ($historicalDiff !== 0) {
-                return $historicalDiff;
-            }
+        return $candidates
+            ->map(function (User $user) use ($historicalReceiveCounts, $receivedTodayCounts, $clientLoadCounts) {
+                return [
+                    'user' => $user,
+                    'historical_received' => (int) ($historicalReceiveCounts[(int) $user->id] ?? 0),
+                    'received_today' => (int) ($receivedTodayCounts[(int) $user->id] ?? 0),
+                    'client_load' => (int) ($clientLoadCounts[(int) $user->id] ?? 0),
+                    'rand' => random_int(1, PHP_INT_MAX),
+                ];
+            })
+            ->sort(function (array $left, array $right) {
+                $historicalDiff = $left['historical_received'] <=> $right['historical_received'];
+                if ($historicalDiff !== 0) {
+                    return $historicalDiff;
+                }
 
-            $loadDiff = $left['client_load'] <=> $right['client_load'];
-            if ($loadDiff !== 0) {
-                return $loadDiff;
-            }
+                $loadDiff = $left['client_load'] <=> $right['client_load'];
+                if ($loadDiff !== 0) {
+                    return $loadDiff;
+                }
 
-            $receivedDiff = $left['received_today'] <=> $right['received_today'];
-            if ($receivedDiff !== 0) {
-                return $receivedDiff;
-            }
+                $receivedDiff = $left['received_today'] <=> $right['received_today'];
+                if ($receivedDiff !== 0) {
+                    return $receivedDiff;
+                }
 
-            return $left['rand'] <=> $right['rand'];
-        })->pluck('user')->values();
-
-        return $ranked;
+                return $left['rand'] <=> $right['rand'];
+            })
+            ->pluck('user')
+            ->values();
     }
 
     /**
@@ -1079,7 +1466,6 @@ class ClientAutoRotationService
             $fromStaffName = $this->currentOwnerName($client);
 
             $client->assigned_staff_id = (int) $recipient->id;
-            $client->sales_owner_id = (int) $recipient->id;
             if ((int) ($recipient->department_id ?? 0) > 0) {
                 $client->assigned_department_id = (int) $recipient->department_id;
             }
@@ -1139,13 +1525,26 @@ class ClientAutoRotationService
             return false;
         }
 
+        if (! $this->participantCanReceive($settings, $recipientId)) {
+            return false;
+        }
+
         if ($recipientId === $this->currentOwnerId($client)) {
             return false;
         }
 
-        if ((bool) ($settings['same_department_only'] ?? false)) {
-            $departmentId = $this->currentDepartmentId($client);
+        $scopeMode = $this->rotationScopeMode($settings);
+        $departmentId = $this->currentDepartmentId($client);
+
+        if ($scopeMode === self::SCOPE_SAME_DEPARTMENT) {
             if ($departmentId <= 0 || (int) ($recipient->department_id ?? 0) !== $departmentId) {
+                return false;
+            }
+        }
+
+        if ($scopeMode === self::SCOPE_BALANCED_DEPARTMENT) {
+            $recipientDepartmentId = (int) ($recipient->department_id ?? 0);
+            if ($departmentId <= 0 || $recipientDepartmentId <= 0 || $recipientDepartmentId === $departmentId) {
                 return false;
             }
         }

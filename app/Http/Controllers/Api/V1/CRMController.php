@@ -207,6 +207,7 @@ class CRMController extends Controller
                     'pending_staff_transfer',
                     $t ? $transferService->transferToArray($t) : null
                 );
+                $this->appendClientPermissions($client, request()->user(), $transferService);
 
                 return $client;
             });
@@ -248,6 +249,7 @@ class CRMController extends Controller
             if ($pending && $transferService->viewerMustOnlyRespondTransfer($user, $client)) {
                 $payload['crm_access_mode'] = 'transfer_receiver_pending';
             }
+            $payload = $this->appendClientPermissionsToArray($payload, $client, $user, $transferService);
 
             return response()->json($payload);
         }
@@ -264,6 +266,9 @@ class CRMController extends Controller
                 'sales_owner_id' => $client->sales_owner_id,
                 'crm_access_mode' => 'transfer_receiver_pending',
                 'pending_staff_transfer' => $transferService->transferToArray($pending),
+                'can_manage' => false,
+                'can_delete' => false,
+                'can_transfer' => false,
             ]);
         }
 
@@ -317,18 +322,10 @@ class CRMController extends Controller
             $validated['company_profiles'] = $this->normalizeClientCompanyProfiles($validated['company_profiles']);
         }
         $validated = $this->resolveClientAssignment($user, $validated);
-
-        // Always keep a concrete assignee on create to avoid orphan/invalid rows
-        // in environments where assigned_staff_id might be constrained.
-        if (empty($validated['assigned_staff_id']) && $user && $user->id) {
-            $validated['assigned_staff_id'] = (int) $user->id;
-            if (empty($validated['assigned_department_id']) && $user->department_id) {
-                $validated['assigned_department_id'] = (int) $user->department_id;
-            }
-        }
-
-        if (! empty($validated['assigned_staff_id']) && empty($validated['sales_owner_id'])) {
-            $validated['sales_owner_id'] = $validated['assigned_staff_id'];
+        if (empty($validated['assigned_staff_id'])) {
+            return response()->json([
+                'message' => 'Vui lòng chọn nhân sự phụ trách trực tiếp cho khách hàng.',
+            ], 422);
         }
 
         $phoneDup = ! empty($validated['phone'])
@@ -441,9 +438,10 @@ class CRMController extends Controller
         }
 
         $validated = $this->resolveClientAssignment($user, $validated, $client);
-
-        if (! empty($validated['assigned_staff_id']) && empty($validated['sales_owner_id'])) {
-            $validated['sales_owner_id'] = $validated['assigned_staff_id'];
+        if (empty($validated['assigned_staff_id'])) {
+            return response()->json([
+                'message' => 'Khách hàng phải luôn có nhân sự phụ trách trực tiếp.',
+            ], 422);
         }
 
         $phoneDup = ! empty($validated['phone'])
@@ -788,7 +786,7 @@ class CRMController extends Controller
                 ->all()
             : null;
 
-        if (! empty($validated['sales_owner_id']) && ! $requestedStaffId) {
+        if ($client === null && ! empty($validated['sales_owner_id']) && ! $requestedStaffId) {
             $requestedStaffId = (int) $validated['sales_owner_id'];
         }
 
@@ -838,7 +836,8 @@ class CRMController extends Controller
             $validated['assigned_staff_id'] = $requestedStaffId;
             $resolvedDepartmentId = optional($allowedUsers->get($requestedStaffId))->department_id;
             $validated['assigned_department_id'] = $resolvedDepartmentId ? (int) $resolvedDepartmentId : null;
-            $careIds = collect($requestedCareStaffIds ?? [])
+            $careSourceIds = $requestedCareStaffIds ?? $this->existingClientCareStaffIds($client);
+            $careIds = collect($careSourceIds)
                 ->filter(function ($id) use ($allowedCareStaffIds) {
                     return $allowedCareStaffIds->contains((int) $id);
                 })
@@ -862,12 +861,19 @@ class CRMController extends Controller
                 $validated['assigned_department_id'] = $resolvedDepartmentId
                     ? (int) $resolvedDepartmentId
                     : null;
+            } elseif ($client) {
+                $existingStaffId = (int) ($client->assigned_staff_id ?? 0);
+                $validated['assigned_staff_id'] = $existingStaffId > 0 ? $existingStaffId : null;
+                $validated['assigned_department_id'] = $client->assigned_department_id
+                    ? (int) $client->assigned_department_id
+                    : $requestedDepartmentId;
             } else {
                 $validated['assigned_staff_id'] = null;
                 $validated['assigned_department_id'] = $requestedDepartmentId;
             }
 
-            $careIds = collect($requestedCareStaffIds ?? [])
+            $careSourceIds = $requestedCareStaffIds ?? $this->existingClientCareStaffIds($client);
+            $careIds = collect($careSourceIds)
                 ->map(function ($id) {
                     return (int) $id;
                 })
@@ -883,6 +889,55 @@ class CRMController extends Controller
         }
 
         return $validated;
+    }
+
+    private function existingClientCareStaffIds(?Client $client): array
+    {
+        if (! $client) {
+            return [];
+        }
+
+        $client->loadMissing('careStaffUsers:id');
+
+        return $client->careStaffUsers
+            ->pluck('id')
+            ->map(function ($id) {
+                return (int) $id;
+            })
+            ->filter(function ($id) {
+                return $id > 0;
+            })
+            ->values()
+            ->all();
+    }
+
+    private function appendClientPermissions(Client $client, User $user, ?ClientStaffTransferService $transferService = null): void
+    {
+        $transferService = $transferService ?: app(ClientStaffTransferService::class);
+        $canManage = $this->canManageClient($user, $client);
+
+        $client->setAttribute('can_manage', $canManage);
+        $client->setAttribute(
+            'can_delete',
+            $canManage && in_array((string) $user->role, ['admin', 'administrator'], true)
+        );
+        $client->setAttribute('can_transfer', $transferService->canInitiate($user, $client));
+    }
+
+    private function appendClientPermissionsToArray(
+        array $payload,
+        Client $client,
+        User $user,
+        ?ClientStaffTransferService $transferService = null
+    ): array {
+        $transferService = $transferService ?: app(ClientStaffTransferService::class);
+        $canManage = $this->canManageClient($user, $client);
+
+        $payload['can_manage'] = $canManage;
+        $payload['can_delete'] = $canManage && in_array((string) $user->role, ['admin', 'administrator'], true);
+        $payload['can_transfer'] = $transferService->canInitiate($user, $client);
+
+        return $payload;
     }
 
     /**

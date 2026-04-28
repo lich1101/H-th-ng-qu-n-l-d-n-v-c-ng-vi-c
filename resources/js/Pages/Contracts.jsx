@@ -434,6 +434,7 @@ export default function Contracts(props) {
     const [projects, setProjects] = useState([]);
     const [products, setProducts] = useState([]);
     const [collectors, setCollectors] = useState([]);
+    const [hasAssignableClients, setHasAssignableClients] = useState(!isEmployee);
     const [loading, setLoading] = useState(false);
     const [savingContract, setSavingContract] = useState(false);
     const [savingPayment, setSavingPayment] = useState(false);
@@ -685,6 +686,25 @@ export default function Contracts(props) {
         }
     };
 
+    const fetchAssignableClientAvailability = async () => {
+        if (!isEmployee) {
+            setHasAssignableClients(true);
+            return;
+        }
+        try {
+            const res = await axios.get('/api/v1/crm/clients', {
+                params: {
+                    per_page: 1,
+                    page: 1,
+                    assigned_only: 1,
+                },
+            });
+            setHasAssignableClients(Number(res.data?.total || 0) > 0);
+        } catch {
+            setHasAssignableClients(false);
+        }
+    };
+
     const handleContractSearch = (val) => {
         const next = { ...filters, search: val, page: 1 };
         setFilters(next);
@@ -778,6 +798,7 @@ export default function Contracts(props) {
         fetchProjects();
         fetchProducts();
         fetchCollectors();
+        fetchAssignableClientAvailability();
         fetchContracts();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -1162,6 +1183,10 @@ export default function Contracts(props) {
     };
 
     const openCreate = () => {
+        if (canCreate && isEmployee && !hasAssignableClients) {
+            toast.error('Bạn chưa có khách hàng phụ trách trực tiếp để tạo hợp đồng.');
+            return;
+        }
         resetForm();
         setContractClientPreview(null);
         setShowForm(true);
@@ -1759,7 +1784,7 @@ export default function Contracts(props) {
         >
             <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card p-5">
                 <div className="mb-4 flex flex-wrap items-center justify-end gap-3">
-                    {canCreate && (
+                    {canCreate && (!isEmployee || hasAssignableClients) && (
                         <button
                             type="button"
                             className="rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-sm"

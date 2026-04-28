@@ -163,11 +163,8 @@ export default function ClientFlow({ auth, clientId }) {
     const userRole = String(auth?.user?.role || '').toLowerCase();
     /** Đổi phụ trách trực tiếp trên form sửa — chỉ admin & quản lý; nhân viên dùng phiếu chuyển phụ trách. */
     const canAssignClientOwner = ['admin', 'administrator', 'quan_ly'].includes(userRole);
-    const canCreateOpportunity = ['admin', 'administrator', 'quan_ly', 'nhan_vien'].includes(userRole);
-    /** Sửa / xóa: cùng nhóm có quyền tạo; API kiểm tra canAccessOpportunity. */
-    const canEditOpportunity = canCreateOpportunity;
-    const canDeleteOpportunity = canCreateOpportunity;
     const [flow, setFlow] = useState(null);
+    const canCreateOpportunity = Boolean(flow?.permissions?.can_manage_client);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('tong_quan');
     const [showEditModal, setShowEditModal] = useState(false);
@@ -481,6 +478,13 @@ export default function ClientFlow({ auth, clientId }) {
         }
         setSavingClient(true);
         try {
+            const resolvedAssignedStaffId = clientForm.assigned_staff_id
+                ? Number(clientForm.assigned_staff_id)
+                : null;
+            if (canAssignClientOwner && !resolvedAssignedStaffId) {
+                toast.error('Vui lòng chọn nhân sự phụ trách trực tiếp.');
+                return;
+            }
             const payload = {
                 name: (clientForm.name || '').trim(),
                 company: (clientForm.company || '').trim() || null,
@@ -495,7 +499,7 @@ export default function ClientFlow({ auth, clientId }) {
             if (canAssignClientOwner) {
                 Object.assign(payload, {
                     assigned_department_id: clientForm.assigned_department_id ? Number(clientForm.assigned_department_id) : null,
-                    assigned_staff_id: clientForm.assigned_staff_id ? Number(clientForm.assigned_staff_id) : null,
+                    assigned_staff_id: resolvedAssignedStaffId,
                     sales_owner_id: clientForm.sales_owner_id ? Number(clientForm.sales_owner_id) : null,
                     care_staff_ids: normalizeCareStaffIds(clientForm.care_staff_ids),
                 });
@@ -621,7 +625,7 @@ export default function ClientFlow({ auth, clientId }) {
     });
 
     const openEditOpportunityModal = async (row) => {
-        if (!row?.id || loadingLookups) return;
+        if (!row?.id || loadingLookups || !canCreateOpportunity || row?.can_edit === false) return;
         if (!staffUsers.length || !opportunityStatuses.length) {
             await fetchLookups();
         }
@@ -639,7 +643,7 @@ export default function ClientFlow({ auth, clientId }) {
     };
 
     const deleteOpportunity = async (row) => {
-        if (!row?.id || !canDeleteOpportunity) return;
+        if (!row?.id || !canCreateOpportunity || row?.can_delete === false) return;
         if (!window.confirm(`Xóa cơ hội "${row.title || `#${row.id}`}"? Hành động không hoàn tác.`)) return;
         setDeletingOpportunityId(row.id);
         try {
@@ -1060,7 +1064,7 @@ export default function ClientFlow({ auth, clientId }) {
                                             <td className="py-2.5 text-xs text-slate-600">{row.notes || '—'}</td>
                                             <td className="py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
                                                 <div className="flex flex-wrap items-center justify-end gap-1.5" data-opp-action>
-                                                    {canEditOpportunity ? (
+                                                    {canCreateOpportunity && row?.can_edit !== false ? (
                                                         <button
                                                             type="button"
                                                             data-opp-action
@@ -1070,7 +1074,7 @@ export default function ClientFlow({ auth, clientId }) {
                                                             Sửa
                                                         </button>
                                                     ) : null}
-                                                    {canDeleteOpportunity ? (
+                                                    {canCreateOpportunity && row?.can_delete !== false ? (
                                                         <button
                                                             type="button"
                                                             data-opp-action

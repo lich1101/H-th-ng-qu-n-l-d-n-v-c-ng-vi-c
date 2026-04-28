@@ -91,6 +91,9 @@ export default function OpportunityDetail({ auth, opportunityId }) {
     );
 
     const canEdit = useMemo(() => {
+        if (typeof opportunity?.can_edit === 'boolean') {
+            return opportunity.can_edit;
+        }
         if (['admin', 'administrator', 'ke_toan', 'quan_ly'].includes(userRole)) {
             return true;
         }
@@ -396,6 +399,7 @@ export default function OpportunityDetail({ auth, opportunityId }) {
                     </Field>
                     <Field label="Khách hàng" required>
                         <ClientSelect
+                            assignedOnly
                             className="bg-white"
                             value={form.client_id}
                             onChange={(id) => setForm((prev) => ({ ...prev, client_id: id }))}
