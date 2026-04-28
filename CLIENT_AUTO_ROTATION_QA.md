@@ -1,6 +1,6 @@
 # Client Auto Rotation QA Scenarios
 
-Tai lieu nay dung de QA/tester test nhanh co che xoay khach hang tu dong.
+Tai lieu nay dung de QA/tester test nhanh co che xoay khach hang tu dong theo logic moi.
 
 ## Cau hinh mac dinh dung cho bang scenario
 
@@ -9,98 +9,105 @@ Tai lieu nay dung de QA/tester test nhanh co che xoay khach hang tu dong.
 - `opportunity_stale_days = 30`
 - `contract_stale_days = 90`
 - `daily_receive_limit = 5`
-- `client_rotation_same_department_only = false`
 - `client_rotation_scope_mode = global_staff`
 - Loai khach dang duoc chon trong setting: `Khach hang tiem nang`
 - Danh sach nhan su tham gia xoay: `A`, `B`, `C`, `D`
 - `A` la nguoi dang phu trach khach trong cac scenario duoi day.
-- `B`, `C`, `D` dang active, va deu nam trong danh sach xoay.
-- Mac dinh mode nhan su:
-  - `A, B, C, D` deu `binh thuong`
-  - neu scenario co ghi rieng `chi nhan vao` hoac `chi cho di` thi uu tien theo scenario do
-- Pham vi chon nguoi nhan la toan bo nhan su da duoc tick trong setting, khong con gioi han theo phong ban.
-- Thu tu dua khach vao hang cho xoay:
-  - neu chon nhieu `loai khach`, he thong se xet theo thu tu loai khach da cau hinh truoc
-  - nhieu hop dong hon se duoc xu ly truoc
-  - neu bang so hop dong thi so co hoi nhieu hon se duoc xu ly truoc
-  - neu ca 2 cung la lead thuan (`0 hop dong`, `0 co hoi`) thi random trong nhom dong hang
-  - neu van bang nhau ma khong phai lead thuan thi moi xet tiep trigger qua han va cac tie-break con lai
-- Nhip canh bao co dinh:
-  - `comment`: con `2` ngay thi nhac moi ngay
-  - `opportunity`: con `14` ngay thi nhac moi `3` ngay
-  - `contract`: con `45` ngay thi nhac moi `7` ngay
+- `B`, `C`, `D` dang active va deu nam trong danh sach xoay.
+
+## Nguyen tac nghiep vu can nho
+
+He thong khong dem song song 3 moc nua. He thong dem tuan tu theo 3 tang:
+
+1. Tang `hop dong`: chi canh bao va theo doi moc hop dong truoc.
+2. Chi khi tang hop dong da qua han, he thong moi bat dau dem tang `co hoi`.
+3. Chi khi tang co hoi cung da qua han, he thong moi bat dau dem tang `binh luan / ghi chu`.
+4. Khach chi vao dien can chuyen nguoi phu trach khi tang cuoi cung la `binh luan / ghi chu` cung qua han.
+
+Moc dem cua tung tang:
+
+- Tang `hop dong`: tinh tu `max(last_contract_at, care_rotation_reset_at)`.
+- Tang `co hoi`: chi bat dau sau khi tang hop dong qua han, tinh tu `max(last_opportunity_at, ngay qua han tang hop dong)`.
+- Tang `binh luan`: chi bat dau sau khi tang co hoi qua han, tinh tu `max(last_comment_at, ngay qua han tang co hoi)`.
+
+Canh bao cung chi bam theo tang hien tai:
+
+- Tang `contract`: con `45` ngay thi nhac moi `7` ngay.
+- Tang `opportunity`: con `14` ngay thi nhac moi `3` ngay.
+- Tang `comment`: con `2` ngay thi nhac moi ngay.
+
+Neu khach du dieu kien xoay ma khong con nguoi nhan hop le:
+
+- khach khong o lai CRM thuong de cron ngay hom sau thu lai nua
+- khach se duoc dua vao `kho so`
+- trong `kho so` chi hien ten khach
+- nhan su bam `Nhan khach` thi moi tro thanh nguoi phu trach va moi duoc nhin day du thong tin
 
 ## Quy uoc doc bang
 
-- Cot `Canh bao` la `ngay bat dau canh bao dau tien`.
-- Neu khach van chua du dieu kien xoay, cron co the tiep tuc ban canh bao moi ngay 1 lan cho toi ngay xoay.
+- Cot `Canh bao dau tien` la ngay nhac dau tien cua tang dang hoat dong.
+- Cot `Xoay luc` la ngay du dieu kien chuyen nguoi phu trach that su.
 - Tat ca moc thoi gian hoat dong nen set dung `12:00` de tranh sai so boundary.
-- Neu cot `Nguoi nhan` ghi `Khong co`, khach phai giu lai de cron ngay hom sau xu ly tiep.
+- Neu cot `Nguoi nhan` ghi `Vao kho so`, cron phai dua khach vao pool ngay tai lan chay do.
 
 ## Bang scenario chuan
 
 | ID | Input activity / setup | Canh bao dau tien | Xoay luc | Nguoi nhan | Diem can check |
 | --- | --- | --- | --- | --- | --- |
-| S01 | `last_comment_at = 2026-04-18 12:00`, `last_opportunity_at = 2026-03-22 12:00`, `last_contract_at = 2026-01-21 12:00`. Pool nhan: `B(hist=2, load=9, auto_today=1)`, `C(hist=4, load=5, auto_today=0)`, `D(hist=2, load=11, auto_today=1)`. | `2026-04-18 12:00` | `2026-04-21 12:00` | `B` | Case baseline theo moc cham soc. Du co co hoi va hop dong con trong han, khach van bi xoay ngay khi du `3` ngay khong co binh luan/ghi chu moi. `B` duoc chon do `historical auto receive` it nhat, sau do den `client load`, roi `auto_today`. |
-| S02 | `last_comment_at = 2026-04-20 12:00`, `last_opportunity_at = 2026-03-23 12:00`, `last_contract_at = 2026-01-24 12:00`. | `2026-04-21 12:00` | `2026-04-24 12:00` | `Khong co` tai `2026-04-21` | Muc canh bao dau tien den tu moc cham soc. `status_label` phai hien `Con 3 ngay nua se cham moc cham soc` tai `2026-04-21`, sau do den `2026-04-24` thi xoay. |
-| S03 | `last_comment_at = 2026-04-21 12:00`, `last_opportunity_at = 2026-03-22 12:00`, `last_contract_at = 2026-04-15 12:00`. | `2026-04-19 12:00` | `2026-04-21 12:00` | `Khong co` tai `2026-04-19` | Du co hop dong moi gan day va comment van vua cap nhat, khach van bi xoay ngay khi du `30` ngay khong co co hoi moi. Day la case xac nhan rule `opportunity` khong bi binh luan moi chan lai. |
-| S04 | `last_comment_at = 2026-04-21 12:00`, `last_opportunity_at = 2026-04-20 12:00`, `last_contract_at = 2026-01-22 12:00`. | `2026-04-19 12:00` | `2026-04-22 12:00` | `Khong co` tai `2026-04-19` | Du co binh luan va co hoi moi sat ngay, khach van bi xoay khi du `90` ngay khong co hop dong moi. Day la case xac nhan rule `contract` co uu tien cao nhat va cham moc nay thi chac chan chuyen. |
-| S05 | Giong `S01` nhung truoc `2026-04-21 12:00` da co `staff_transfer_request` o trang thai `pending` cho chinh khach nay. | `Khong canh bao khi request con pending` | `Khong xoay khi request con pending` | `Khong co` | Cron phai bo qua ca canh bao lan auto-rotation cho den khi request duoc xu ly xong. |
-| S06 | Giong `S01`, nhung pool nhan la `B(hist=2, load=9, auto_today=1)` va `D(hist=2, load=6, auto_today=1)`. | `2026-04-18 12:00` | `2026-04-21 12:00` | `D` | Hai nguoi bang `historical auto receive`, he thong phai chon nguoi co `client load` nho hon. |
-| S07 | Giong `S01`, nhung pool nhan la `B(hist=2, load=8, auto_today=1)` va `D(hist=2, load=8, auto_today=0)`. | `2026-04-18 12:00` | `2026-04-21 12:00` | `D` | Hai nguoi bang `historical` va bang `load`, he thong phai chon nguoi co `auto_today` it hon. |
-| S08 | Giong `S01`, nhung pool nhan la `B(hist=1, load=4, auto_today=5)` va `D(hist=2, load=7, auto_today=1)`. | `2026-04-18 12:00` | `2026-04-21 12:00` | `D` | `B` dang la nguoi dep hon ve ranking nhung da cham `limit/day = 5`, nen phai bi loai va nhay sang `D`. |
-| S09 | Giong `S01`, nhung `B(auto_today=5)`, `C(auto_today=5)`, `D(auto_today=5)`. | `2026-04-18 12:00` | `2026-04-21 12:00` nhung `khong chuyen duoc` | `Khong co` | Khach da du dieu kien xoay nhung tat ca nguoi nhan deu het quota trong ngay, nen khach phai duoc giu lai va cron ngay hom sau thu lai. |
-| S10 | Giong `S01`. Truoc `2026-04-21 12:00`, `B` da nhan `4` khach auto trong ngay. Luc `09:30`, `B` nhan them `1` khach qua `manual transfer request accepted`. | `2026-04-18 12:00` | `2026-04-21 12:00` | `B` | Manual transfer khong duoc tinh vao `daily auto receive limit`. Sau hanh dong tay, `B` van chi bi tinh `auto_today = 4`, nen van duoc nhan them 1 khach auto de thanh `5`. |
-| S11 | Giong `S01`. Truoc `2026-04-21 12:00`, `B` da nhan `4` khach auto trong ngay. Luc `10:00`, admin doi phu trach truc tiep `1` khach khac sang `B` tu man sua CRM. | `2026-04-18 12:00` | `2026-04-21 12:00` | `B` | `manual_direct_assignment` cung khong duoc tinh vao `daily auto receive limit`. He thong chi dem `action_type = auto_rotation`. |
-| S12 | Giong `S01`, nhung `B` thuoc phong `Sales`, `C` thuoc phong `CSKH`, `D` thuoc phong `Backoffice`. `B(hist=2, load=9, auto_today=1)`, `C(hist=1, load=8, auto_today=0)`, `D(hist=3, load=4, auto_today=0)`. | `2026-04-18 12:00` | `2026-04-21 12:00` | `C` | Case xac nhan pham vi moi: auto-rotation duoc phep chuyen khach cho nhan su khac phong ban, mien la nguoi do da duoc chon trong setting va chua vuot quota/ngay. |
-| S13 | Giong `S12`, nhung bat them `client_rotation_same_department_only = true`. `A` va `B` cung phong `Sales`, `C` va `D` khac phong. `B(hist=2, load=9, auto_today=1)`, `C(hist=1, load=8, auto_today=0)`, `D(hist=3, load=4, auto_today=0)`. | `2026-04-18 12:00` | `2026-04-21 12:00` | `B` | Case xac nhan setting moi: du `C` dep hon ve ranking, he thong van phai bo qua `C`, `D` vi khac phong ban khi bat che do chi xoay trong cung phong. |
-| S14 | `care_rotation_reset_at = 2026-01-01 12:00`, `last_comment_at = 2026-01-02 12:00`, `last_opportunity_at = 2026-01-10 12:00`, `last_contract_at = 2026-04-20 12:00`. | `2026-04-20 12:00` | `2026-04-23 12:00` | `Khong co` tai `2026-04-20` | Hop dong moi phai reset lai toan bo moc dem. Tai `2026-04-21`, `days_since_comment`, `days_since_opportunity`, `days_since_contract` deu phai tinh tu `2026-04-20 12:00` thay vi tinh tu comment/opportunity cu. |
-| S15 | Giong `S01`, nhung khach vua duoc auto-rotate luc `2026-04-21 12:00`. Sau do khong co them hoat dong nao moi. | `2026-04-21 12:00` | `2026-04-24 12:00` | `Theo pool cua nguoi nhan moi` | Sau khi doi nguoi phu trach thanh cong, bo dem phai reset tu `2026-04-21 12:00`. Neu 3 ngay tiep theo van khong co binh luan/ghi chu moi thi khach co the vao vong xoay tiep theo rule moi. |
-| S16 | `care_rotation_reset_at = 2026-04-01 12:00`, `last_comment_at = 2026-04-05 12:00`, `last_opportunity_at = 2026-04-20 12:00`, `last_contract_at = 2026-03-01 12:00`. | `2026-04-20 12:00` | `2026-04-23 12:00` | `Khong co` tai `2026-04-20` | Co hoi moi phai reset ca moc `opportunity` va moc `comment`. Tai `2026-04-21`, `days_since_opportunity = 1` va `days_since_comment` cung phai = `1`, du comment cu nhat la `2026-04-05`. |
-| S17 | `comment_stale_days = 3`, `last_comment_at = 2026-04-20 12:00`, `last_opportunity_at = 2026-04-20 12:00`, `last_contract_at = 2026-04-20 12:00`. | `2026-04-21 12:00` | `2026-04-23 12:00` | `Khong co` tai `2026-04-21` | Nhac cham soc phai bat dau khi con `2` ngay va lap lai moi ngay. Warning can co vao `2026-04-21` (con 2 ngay) va `2026-04-22` (con 1 ngay), sau do `2026-04-23` thi vao dien xoay. |
-| S18 | `opportunity_stale_days = 30`, `last_opportunity_at = 2026-04-06 12:00`, `last_comment_at = 2026-04-06 12:00`, `last_contract_at = 2026-04-06 12:00`. | `2026-04-22 12:00` | `2026-05-06 12:00` | `Khong co` tai `2026-04-22` | Nhac co hoi phai bat dau khi con `14` ngay va lap lai moi `3` ngay: `2026-04-22`, `2026-04-25`, `2026-04-28`, `2026-05-01`, `2026-05-04`. |
-| S19 | `contract_stale_days = 90`, `last_contract_at = 2026-01-22 12:00`, `last_opportunity_at = 2026-01-22 12:00`, `last_comment_at = 2026-01-22 12:00`. | `2026-03-08 12:00` | `2026-04-22 12:00` | `Khong co` tai `2026-03-08` | Nhac hop dong phai bat dau khi con `45` ngay va lap lai moi `7` ngay: `2026-03-08`, `2026-03-15`, `2026-03-22`, `2026-03-29`, `2026-04-05`, `2026-04-12`, `2026-04-19`. |
-| S20 | Cung du dieu kien xoay tai mot lan cron: `C1(contract=4, opportunity=2)`, `C2(contract=4, opportunity=5)`, `C3(contract=1, opportunity=9)`, `C4(contract=0, opportunity=7)`, `C5(contract=0, opportunity=0)`, `C6(contract=0, opportunity=0)`. | `Khong ap dung` | `2026-04-23 12:00` | `Khong ap dung` | Thu tu dua vao hang cho xoay phai la `C2 -> C1 -> C3 -> C4 -> (C5/C6 random)`. Case nay chi test uu tien xep khach, khong test nguoi nhan. |
-| S21 | Chon `loai khach` theo thu tu uu tien `[Dang cham soc (#2), Khach hang tiem nang (#1), Khach hang (#5)]`. Cung du dieu kien xoay tai mot lan cron: `L2-A(contract=1, opportunity=0)`, `L1-A(contract=9, opportunity=3)`, `L5-A(contract=12, opportunity=2)`. | `Khong ap dung` | `2026-04-23 12:00` | `Khong ap dung` | Thu tu phai la `L2-A -> L1-A -> L5-A` du `L5-A` co nhieu hop dong hon, vi uu tien theo `loai khach` phai duoc ap dung truoc. Trong tung nhom loai khach, moi so sanh tiep `hop dong -> co hoi -> tie-break`. |
-| S22 | Giong `S01`, nhung `A` bat mode `chi nhan vao`. | `Khong canh bao` | `Khong xoay` | `Khong co` | Khach van duoc scan, nhung `status_label` phai hien `nhan su phu trach dang bat che do chi nhan vao nen khach khong bi xoay ra`. Khong duoc gui warning, khong duoc dua vao hang cho xoay. |
-| S23 | Giong `S01`, nhung `B` bat mode `chi cho di`, `C(hist=3, load=8, auto_today=0)`, `D(hist=4, load=5, auto_today=0)`. | `2026-04-18 12:00` | `2026-04-21 12:00` | `C` | `B` dep hon hoac bang ve ranking nhung phai bi loai khoi pool nhan vi dang `chi cho di`. He thong chi duoc xet `C`, `D`. |
-| S24 | Giong `S01`, nhung `B` bat dong thoi `chi nhan vao` va `chi cho di`. | `2026-04-18 12:00` | `2026-04-21 12:00` | `B` neu `B` dang dep nhat | Khi bat ca 2 co, he thong phai xu ly nhu `binh thuong`, tuc la `B` van co the duoc nhan vao va neu sau nay giu khach qua han thi van co the bi xoay ra. |
-| S25 | Dat `client_rotation_scope_mode = balanced_department`. `A` thuoc phong `Sales`, `B` thuoc `SEO`, `C` thuoc `Content`, `D` thuoc `Content`. Chi so phong ban truoc luc cron: `SEO(hist=1, load=12, auto_today=1)`, `Content(hist=1, load=7, auto_today=0)`. Trong phong `Content`: `C(hist=2, load=4, auto_today=0)`, `D(hist=1, load=3, auto_today=0)`. | `2026-04-18 12:00` | `2026-04-21 12:00` | `D` | Cron phai chon phong `Content` truoc vi `hist` bang nhau nhung `load` nho hon, sau do moi chon `D` trong phong `Content` vi `historical auto receive` it hon `C`. Khong duoc chuyen nguoc lai cho phong `Sales`. |
+| S01 | `care_rotation_reset_at = 2026-01-01 12:00`, `last_contract_at = 2026-01-25 12:00`, `last_opportunity_at = 2026-02-10 12:00`, `last_comment_at = 2026-02-12 12:00`. Pool nhan: `B(hist=2, load=9, auto_today=1)`, `C(hist=4, load=5, auto_today=0)`, `D(hist=2, load=11, auto_today=1)`. | `2026-03-11 12:00` | `2026-05-28 12:00` | `B` | Baseline theo co che tuan tu. Tang hop dong qua han luc `2026-04-25`, tang co hoi bat dau tu ngay do va qua han luc `2026-05-25`, tang binh luan bat dau tu `2026-05-25` va qua han luc `2026-05-28`. |
+| S02 | `last_contract_at = 2026-01-21 12:00`, `last_opportunity_at = 2026-04-30 12:00`, `last_comment_at = 2026-02-01 12:00`. | `2026-03-07 12:00` | `2026-06-02 12:00` | `Khong co` tai `2026-06-02` | Tang hop dong qua han luc `2026-04-21`. Vi co hoi moi xuat hien sau khi da qua tang hop dong, tang co hoi phai reset theo `2026-04-30` va qua han luc `2026-05-30`. Tang binh luan chi duoc bat dau tu `2026-05-30`, sau 3 ngay moi du dieu kien xoay. |
+| S03 | `last_contract_at = 2026-01-21 12:00`, `last_opportunity_at = 2026-02-01 12:00`, `last_comment_at = 2026-05-22 12:00`. | `2026-03-07 12:00` | `2026-05-25 12:00` | `Khong co` tai `2026-05-25` | Tang hop dong qua han luc `2026-04-21`, tang co hoi qua han luc `2026-05-21`, tang binh luan bat dau tu `2026-05-22` vi co comment moi sau khi da mo tang cuoi. |
+| S04 | Giong `S03`, nhung co them comment moi vao `2026-05-24 12:00`, `2026-05-26 12:00`, `2026-05-28 12:00`. | `2026-03-07 12:00` | `Khong xoay` khi comment van duoc cap nhat deu | `Khong co` | Day la case xac nhan mot khach co the nam mai voi 1 nhan su neu tang cuoi cung luon duoc reset bang comment moi. Moi lan co comment moi sau khi da vao tang 3, he thong phai day moc xoay ra them `3` ngay nua. |
+| S05 | Giong `S01`, nhung truoc luc den han xoay da co `staff_transfer_request` trang thai `pending` cho chinh khach nay. | `Khong canh bao khi request con pending` | `Khong xoay khi request con pending` | `Khong co` | Cron phai bo qua ca warning lan auto-rotation cho den khi request duoc xu ly xong. |
+| S06 | Giong `S01`, nhung pool nhan la `B(hist=2, load=9, auto_today=1)` va `D(hist=2, load=6, auto_today=1)`. | `2026-03-11 12:00` | `2026-05-28 12:00` | `D` | Hai nguoi bang `historical auto receive`, he thong phai chon nguoi co `client load` nho hon. |
+| S07 | Giong `S01`, nhung `B(auto_today=5)`, `C(auto_today=5)`, `D(auto_today=5)`. | `2026-03-11 12:00` | `2026-05-28 12:00` | `Vao kho so` | Khi tat ca nguoi nhan da het quota trong ngay, khach phai vao kho so ngay lap tuc. Khong duoc de lai CRM thuong de cron ngay sau xu ly tiep. |
+| S08 | Giong `S01`. Truoc lan cron xoay, `B` da nhan `4` khach auto trong ngay. Luc `09:30`, `B` nhan them `1` khach qua `manual transfer request accepted`. | `2026-03-11 12:00` | `2026-05-28 12:00` | `B` | Manual transfer khong duoc cong vao `daily auto receive limit`. Neu truoc do `auto_today` cua `B` la `4` thi `B` van duoc nhan them 1 khach auto. |
+| S09 | Giong `S01`, nhung `client_rotation_scope_mode = same_department`. `A` va `B` cung phong `Sales`, `C` va `D` khac phong. | `2026-03-11 12:00` | `2026-05-28 12:00` | `B` | Bat che do cung phong ban thi chi duoc xet nguoi nhan trong cung phong voi `A`. |
+| S10 | Giong `S01`, nhung `client_rotation_scope_mode = balanced_department`. `A` thuoc `Sales`, `B` thuoc `SEO`, `C` va `D` thuoc `Content`. Chi so phong ban: `SEO(hist=1, load=12, auto_today=1)`, `Content(hist=1, load=7, auto_today=0)`. Trong phong `Content`: `C(hist=2, load=4, auto_today=0)`, `D(hist=1, load=3, auto_today=0)`. | `2026-03-11 12:00` | `2026-05-28 12:00` | `D` | He thong phai chon phong `Content` truoc vi can bang cap phong ban tot hon `SEO`, sau do moi chia deu tiep cho nhan su trong phong `Content`. |
+| S11 | Giong `S01`, nhung `A` bat mode `chi nhan vao`. | `Khong canh bao` | `Khong xoay` | `Khong co` | Khach cua `A` van o trong CRM thuong nhung khong duoc vao warning queue va khong duoc vao hang cho xoay. |
+| S12 | Giong `S01`, nhung `B` bat mode `chi cho di`, `C(hist=3, load=8, auto_today=0)`, `D(hist=4, load=5, auto_today=0)`. | `2026-03-11 12:00` | `2026-05-28 12:00` | `C` | `B` phai bi loai khoi pool nhan vi dang `chi cho di`. |
+| S13 | Giong `S01`, nhung `B` bat dong thoi `chi nhan vao` va `chi cho di`. | `2026-03-11 12:00` | `2026-05-28 12:00` | `B` neu `B` dang dep nhat | Bat ca 2 co thi he thong phai coi nhu `binh thuong`, tuc van co the nhan vao va cung co the bi xoay ra ve sau. |
+| S14 | Khach da vao `kho so` luc `2026-05-28 12:00`. Luc `2026-05-28 14:00`, `C` bam `Nhan khach`. | `Khong ap dung` | `2026-05-28 14:00` | `C` | Sau khi nhan tu kho so, `assigned_staff_id` phai doi sang `C`, `is_in_rotation_pool = false`, `care_rotation_reset_at` reset theo thoi diem nhan, va khach moi hien lai day du trong CRM cua `C`. |
+| S15 | `last_contract_at = 2026-04-20 12:00`, `last_opportunity_at = 2026-01-10 12:00`, `last_comment_at = 2026-01-12 12:00`. | `2026-06-04 12:00` | `2026-08-21 12:00` | `Khong co` tai `2026-08-21` | Tang hop dong chua qua han cho toi `2026-07-19`, nen du co hoi va comment da cu tu truoc, he thong van chua duoc dem tang 2 va tang 3. Tang co hoi chi bat dau tu `2026-07-19` va qua han luc `2026-08-18`; tang binh luan chi bat dau tu `2026-08-18` va qua han luc `2026-08-21`. |
+| S16 | `care_rotation_reset_at = 2026-05-28 12:00` sau khi khach vua duoc auto-rotate. Khong co them hoat dong nao moi. | `2026-07-12 12:00` | `2026-09-28 12:00` | `Theo ranking cua nguoi nhan moi` | Sau moi lan doi phu trach thanh cong, chuoi dem phai bat dau lai tu `care_rotation_reset_at` moi. Tang hop dong qua han luc `2026-08-26`, tang co hoi qua han luc `2026-09-25`, tang binh luan qua han luc `2026-09-28`. |
 
 ## Checklist UI/API can doi chieu nhanh
 
 - Chi tiet khach hang phai hien dung:
-  - `days_since_comment`
-  - `days_since_opportunity`
   - `days_since_contract`
+  - `days_since_opportunity`
+  - `days_since_comment`
   - `days_until_rotation`
+  - `active_stage_type`
+  - `active_stage_remaining_days`
+  - `opportunity_stage_started`
+  - `comment_stage_started`
   - `status_label`
   - `trigger_type`
   - `rotation_anchor_at`
-  - `effective_comment_at`
-  - `effective_opportunity_at`
   - `effective_contract_at`
-  - `lead_type_priority_rank`
-  - `contract_count`
-  - `opportunity_count`
-  - `priority_label`
+  - `effective_opportunity_at`
+  - `effective_comment_at`
   - `current_owner_rotation_mode`
   - `current_owner_rotation_mode_label`
   - `thresholds.scope_mode`
+- UI phai hien:
+  - tang chua bat dau thi hien `Chua dem` / `Chua bat dau`
+  - tang dang hoat dong thi hien so ngay cua tang do
+  - tong `days_until_rotation` van la tong so ngay con lai cho den luc vao dien xoay that su
 - Warning notification phai co:
   - ten khach
-  - danh sach cac moc dang den lich nhac trong ngay (`comment` / `opportunity` / `contract`)
-  - so ngay chua co comment/ghi chu
-  - so ngay chua co opportunity moi
-  - so ngay chua co contract moi
-- Nhip nhac can dung:
-  - `comment`: con `2` ngay thi nhac moi ngay
-  - `opportunity`: con `14` ngay thi nhac moi `3` ngay
-  - `contract`: con `45` ngay thi nhac moi `7` ngay
+  - tang dang hoat dong hien tai
+  - so ngay con lai cua tang dang hoat dong
+  - khong duoc nhac dong thoi ca 3 tang trong cung 1 lan warning
 - Khi auto-rotation thanh cong:
   - nguoi mat khach nhan thong bao `khach da bi dieu chuyen`
   - nguoi nhan khach nhan thong bao `vua nhan them khach`
   - khong hien ten nguoi chuyen o 2 dau thong bao
+- Khi dua vao `kho so`:
+  - khach bien mat khoi CRM thuong
+  - trong `kho so` chi hien ten khach va nut nhan khach
+  - sau khi nhan, lich su dieu chuyen phai co action `Nhan khach tu kho so`
 - `rotation_history` chi admin/administrator moi thay.
 - `manual_transfer_request` va `manual_direct_assignment` phai reset moc dem cho chinh khach do, nhung khong duoc cong vao quota auto/day cua nguoi nhan.
 

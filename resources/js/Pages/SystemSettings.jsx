@@ -2380,7 +2380,7 @@ export default function SystemSettings(props) {
                                         vừa điều chuyển khách theo thứ tự ưu tiên <span className="font-semibold text-slate-900">nhiều hợp đồng hơn</span> →
                                         <span className="font-semibold text-slate-900"> nếu bằng nhau thì nhiều cơ hội hơn</span> →
                                         <span className="font-semibold text-slate-900"> nếu đều là lead thuần thì random</span>.
-                                        Khách chỉ vào diện xoay khi đồng thời quá hạn cả 3 tầng: bình luận, cơ hội và hợp đồng.
+                                        Khách được đếm tuần tự theo 3 tầng: quá {form.client_rotation_contract_stale_days || 0} ngày chưa có hợp đồng mới thì mới bắt đầu đếm {form.client_rotation_opportunity_stale_days || 0} ngày cho cơ hội; quá tiếp tầng cơ hội thì mới bắt đầu đếm {form.client_rotation_comment_stale_days || 0} ngày cho bình luận / ghi chú.
                                     </p>
                                 </div>
                                 <div className="w-full max-w-[320px]">
@@ -2489,7 +2489,7 @@ export default function SystemSettings(props) {
                                 <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">
                                     <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-subtle">Điều kiện xoay</div>
                                     <p className="mt-1 text-sm text-slate-700">
-                                        Chỉ khi đồng thời quá {form.client_rotation_comment_stale_days || 0} ngày không có bình luận/ghi chú mới, quá {form.client_rotation_opportunity_stale_days || 0} ngày không có cơ hội mới và quá {form.client_rotation_contract_stale_days || 0} ngày không có hợp đồng mới thì khách mới vào diện xoay.
+                                        Hệ thống đếm tuần tự: trước hết chờ quá {form.client_rotation_contract_stale_days || 0} ngày không có hợp đồng mới, sau đó mới bắt đầu đếm {form.client_rotation_opportunity_stale_days || 0} ngày không có cơ hội mới, và chỉ khi tầng cơ hội cũng quá hạn thì mới bắt đầu đếm {form.client_rotation_comment_stale_days || 0} ngày không có bình luận/ghi chú mới để quyết định xoay.
                                     </p>
                                     <p className="mt-2 text-xs text-slate-500">
                                         Bình luận mới chỉ reset mốc chăm sóc. Cơ hội mới reset cả mốc cơ hội và mốc chăm sóc. Hợp đồng mới reset cả 3 mốc: bình luận, cơ hội và hợp đồng.
