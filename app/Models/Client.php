@@ -20,6 +20,9 @@ class Client extends Model
         'notes',
         'comments_history_json',
         'care_rotation_reset_at',
+        'is_in_rotation_pool',
+        'rotation_pool_entered_at',
+        'rotation_pool_reason',
         'sales_owner_id',
         'assigned_department_id',
         'assigned_staff_id',
@@ -50,7 +53,27 @@ class Client extends Model
         'company_profiles' => 'array',
         'comments_history_json' => 'array',
         'care_rotation_reset_at' => 'datetime',
+        'is_in_rotation_pool' => 'boolean',
+        'rotation_pool_entered_at' => 'datetime',
     ];
+
+    public function scopeWithoutRotationPool($query)
+    {
+        return $query->where(function ($builder) {
+            $builder->whereNull('is_in_rotation_pool')
+                ->orWhere('is_in_rotation_pool', false);
+        });
+    }
+
+    public function scopeOnlyRotationPool($query)
+    {
+        return $query->where('is_in_rotation_pool', true);
+    }
+
+    public function inRotationPool(): bool
+    {
+        return (bool) ($this->is_in_rotation_pool ?? false);
+    }
 
     public function setPhoneAttribute($value): void
     {

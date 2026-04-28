@@ -2380,7 +2380,7 @@ export default function SystemSettings(props) {
                                         vừa điều chuyển khách theo thứ tự ưu tiên <span className="font-semibold text-slate-900">nhiều hợp đồng hơn</span> →
                                         <span className="font-semibold text-slate-900"> nếu bằng nhau thì nhiều cơ hội hơn</span> →
                                         <span className="font-semibold text-slate-900"> nếu đều là lead thuần thì random</span>.
-                                        Chạm mốc nào trước thì xoay theo mốc đó, không còn yêu cầu phải quá hạn đồng thời cả 3 tầng.
+                                        Khách chỉ vào diện xoay khi đồng thời quá hạn cả 3 tầng: bình luận, cơ hội và hợp đồng.
                                     </p>
                                 </div>
                                 <div className="w-full max-w-[320px]">
@@ -2489,10 +2489,13 @@ export default function SystemSettings(props) {
                                 <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">
                                     <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-subtle">Điều kiện xoay</div>
                                     <p className="mt-1 text-sm text-slate-700">
-                                        Chạm mốc nào trước thì điều chuyển theo mốc đó: quá {form.client_rotation_comment_stale_days || 0} ngày không có bình luận/ghi chú mới, hoặc quá {form.client_rotation_opportunity_stale_days || 0} ngày không có cơ hội mới, hoặc quá {form.client_rotation_contract_stale_days || 0} ngày không có hợp đồng mới.
+                                        Chỉ khi đồng thời quá {form.client_rotation_comment_stale_days || 0} ngày không có bình luận/ghi chú mới, quá {form.client_rotation_opportunity_stale_days || 0} ngày không có cơ hội mới và quá {form.client_rotation_contract_stale_days || 0} ngày không có hợp đồng mới thì khách mới vào diện xoay.
                                     </p>
                                     <p className="mt-2 text-xs text-slate-500">
                                         Bình luận mới chỉ reset mốc chăm sóc. Cơ hội mới reset cả mốc cơ hội và mốc chăm sóc. Hợp đồng mới reset cả 3 mốc: bình luận, cơ hội và hợp đồng.
+                                    </p>
+                                    <p className="mt-2 text-xs text-slate-500">
+                                        Nếu không còn người nhận tự động hợp lệ hoặc tất cả đã hết suất trong ngày, khách đủ điều kiện sẽ được đưa vào kho số để nhân sự nhận thủ công.
                                     </p>
                                     <p className="mt-2 text-xs text-slate-500">
                                         Nếu chọn nhiều loại khách, hệ thống sẽ xét theo đúng thứ tự loại khách bạn sắp xếp ở danh sách bên dưới, rồi mới áp dụng rule ưu tiên trong từng loại.

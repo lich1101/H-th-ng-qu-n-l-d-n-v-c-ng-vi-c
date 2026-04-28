@@ -119,7 +119,7 @@ export default function CustomerDetail({ auth, clientId }) {
                                         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-text-subtle">Theo dõi xoay khách</p>
                                         <h2 className="mt-2 text-lg font-semibold text-slate-900">{rotation.status_label || 'Chưa có trạng thái'}</h2>
                                         <p className="mt-1 text-sm text-slate-600">
-                                            {rotation.trigger_label || rotation.protecting_label || 'Chạm mốc nào trước thì xoay theo mốc đó: quá hạn bình luận, cơ hội hoặc hợp đồng đều có thể điều chuyển ngay.'}
+                                            {rotation.trigger_label || rotation.protecting_label || 'Khách chỉ bị xoay khi đồng thời quá hạn bình luận, cơ hội và hợp đồng theo cấu hình hiện tại.'}
                                         </p>
                                     </div>
                                     <div className={`rounded-full px-3 py-1 text-xs font-semibold ${

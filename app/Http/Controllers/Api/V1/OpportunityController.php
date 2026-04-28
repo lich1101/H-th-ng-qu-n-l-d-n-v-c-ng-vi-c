@@ -457,6 +457,9 @@ class OpportunityController extends Controller
         if (! $client) {
             return response()->json(['message' => 'Khách hàng không tồn tại.'], 422);
         }
+        if (CrmScope::isClientInRotationPool($client)) {
+            return response()->json(['message' => 'Khách hàng đang ở kho số nên chưa thể tạo cơ hội.'], 422);
+        }
         if (! $this->canMutateOpportunityForClient($request->user(), $client)) {
             return response()->json([
                 'message' => 'Chỉ nhân viên phụ trách khách hàng (hoặc quản lý/admin) mới được tạo cơ hội cho khách này.',
@@ -646,7 +649,17 @@ class OpportunityController extends Controller
         }
         if (array_key_exists('client_id', $validated)) {
             $targetClient = Client::query()->find((int) $validated['client_id']);
-            if (! $targetClient || ! $this->canMutateOpportunityForClient($user, $targetClient)) {
+            if (! $targetClient) {
+                return response()->json([
+                    'message' => 'Khách hàng không tồn tại.',
+                ], 422);
+            }
+            if (CrmScope::isClientInRotationPool($targetClient)) {
+                return response()->json([
+                    'message' => 'Khách hàng đang ở kho số nên chưa thể gắn cơ hội.',
+                ], 422);
+            }
+            if (! $this->canMutateOpportunityForClient($user, $targetClient)) {
                 return response()->json([
                     'message' => 'Không có quyền gắn cơ hội cho khách hàng đã chọn.',
                 ], 403);
@@ -740,6 +753,10 @@ class OpportunityController extends Controller
      */
     private function canMutateOpportunityForClient(User $user, Client $client): bool
     {
+        if (CrmScope::isClientInRotationPool($client)) {
+            return false;
+        }
+
         if (CrmScope::hasGlobalScope($user)) {
             return true;
         }
@@ -775,11 +792,14 @@ class OpportunityController extends Controller
 
     private function canAccessOpportunity(User $user, Opportunity $opportunity): bool
     {
-        if (CrmScope::hasGlobalScope($user)) {
-            return true;
-        }
         if (! $opportunity->client) {
             $opportunity->load('client');
+        }
+        if (! $opportunity->client || CrmScope::isClientInRotationPool($opportunity->client)) {
+            return false;
+        }
+        if (CrmScope::hasGlobalScope($user)) {
+            return true;
         }
         if ($user->role === 'quan_ly') {
             return CrmScope::canManagerAccessOpportunity($user, $opportunity);

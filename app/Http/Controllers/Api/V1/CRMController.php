@@ -216,6 +216,39 @@ class CRMController extends Controller
         return response()->json($paginator);
     }
 
+    public function rotationPool(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        if (! $this->canViewRotationPool($user)) {
+            return response()->json(['message' => 'Không có quyền xem kho số.'], 403);
+        }
+
+        $query = Client::query()
+            ->onlyRotationPool()
+            ->select(['id', 'name', 'rotation_pool_entered_at'])
+            ->orderByDesc('rotation_pool_entered_at')
+            ->orderByDesc('id');
+
+        if ($request->filled('search')) {
+            $search = trim((string) $request->input('search'));
+            $query->where('name', 'like', "%{$search}%");
+        }
+
+        $paginator = $query->paginate(
+            min(100, max(1, (int) $request->input('per_page', 12)))
+        );
+        $paginator->setCollection(
+            $paginator->getCollection()->map(function (Client $client) {
+                return [
+                    'id' => (int) $client->id,
+                    'name' => (string) ($client->name ?: 'Khách hàng'),
+                ];
+            })
+        );
+
+        return response()->json($paginator);
+    }
+
     /**
      * Chi tiết 1 khách (cùng cấu trúc quan hệ như danh sách) — dùng khi mở form sửa để không thiếu trường.
      */
@@ -224,6 +257,12 @@ class CRMController extends Controller
         $user = $request->user();
         $transferService = app(ClientStaffTransferService::class);
         $pending = $transferService->pendingForClient((int) $client->id);
+
+        if ($client->inRotationPool()) {
+            return response()->json([
+                'message' => 'Khách hàng đang ở kho số. Hãy nhận khách để xem chi tiết đầy đủ.',
+            ], 403);
+        }
 
         if ($this->canAccessClient($user, $client)) {
             $clientRelations = [
@@ -273,6 +312,33 @@ class CRMController extends Controller
         }
 
         return response()->json(['message' => 'Không có quyền xem khách hàng.'], 403);
+    }
+
+    public function claimRotationPoolClient(Request $request, Client $client): JsonResponse
+    {
+        $user = $request->user();
+        if (! $this->canClaimRotationPool($user)) {
+            return response()->json(['message' => 'Không có quyền nhận khách từ kho số.'], 403);
+        }
+
+        $rotationService = app(ClientAutoRotationService::class);
+        $result = $rotationService->claimClientFromRotationPool((int) $client->id, $user);
+        $status = (string) ($result['status'] ?? '');
+
+        if ($status === 'claimed') {
+            $rotationService->notifyRotationPoolClaimOutcome($result);
+
+            return response()->json([
+                'message' => 'Đã nhận khách hàng từ kho số.',
+                'client_id' => (int) ($result['client_id'] ?? 0),
+            ]);
+        }
+
+        return match ($status) {
+            'not_in_pool' => response()->json(['message' => 'Khách hàng này không còn ở kho số.'], 422),
+            'pending_transfer' => response()->json(['message' => 'Khách hàng đang có phiếu chuyển phụ trách chờ xử lý, chưa thể nhận từ kho số.'], 422),
+            default => response()->json(['message' => 'Không thể nhận khách hàng từ kho số lúc này.'], 422),
+        };
     }
 
     public function storeClient(Request $request): JsonResponse
@@ -516,7 +582,11 @@ class CRMController extends Controller
 
     public function payments(Request $request): JsonResponse
     {
-        $query = CustomerPayment::query()->with('client');
+        $query = CustomerPayment::query()
+            ->with('client')
+            ->whereHas('client', function (Builder $clientQuery) {
+                $clientQuery->withoutRotationPool();
+            });
         if ($request->filled('status')) {
             $query->where('status', (string) $request->input('status'));
         }
@@ -538,6 +608,10 @@ class CRMController extends Controller
             'invoice_no' => ['nullable', 'string', 'max:60'],
             'note' => ['nullable', 'string'],
         ]);
+        $client = Client::query()->find((int) $validated['client_id']);
+        if (! $client || $client->inRotationPool()) {
+            return response()->json(['message' => 'Khách hàng đang ở kho số nên chưa thể ghi nhận thanh toán.'], 422);
+        }
         $payment = CustomerPayment::create($validated);
         return response()->json($payment, 201);
     }
@@ -557,6 +631,10 @@ class CRMController extends Controller
             'invoice_no' => ['nullable', 'string', 'max:60'],
             'note' => ['nullable', 'string'],
         ]);
+        $client = Client::query()->find((int) $validated['client_id']);
+        if (! $client || $client->inRotationPool()) {
+            return response()->json(['message' => 'Khách hàng đang ở kho số nên chưa thể cập nhật thanh toán.'], 422);
+        }
         $payment->update($validated);
         return response()->json($payment);
     }
@@ -1130,6 +1208,25 @@ class CRMController extends Controller
         }
 
         return (string) ($client->lead_source ?: 'CRM');
+    }
+
+    private function canViewRotationPool(?User $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        return in_array((string) $user->role, ['admin', 'administrator', 'quan_ly', 'nhan_vien'], true);
+    }
+
+    private function canClaimRotationPool(?User $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        return in_array((string) $user->role, ['quan_ly', 'nhan_vien'], true)
+            && (! isset($user->is_active) || (bool) $user->is_active);
     }
 
     private function notifyClientReassignment(Client $client, int $oldAssignedStaffId, User $actor): void

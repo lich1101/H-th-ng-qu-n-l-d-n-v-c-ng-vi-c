@@ -300,6 +300,9 @@ Route::prefix('v1')->group(function () {
             ->middleware('role:admin');
 
         Route::get('/crm/clients', [CRMController::class, 'clients']);
+        Route::get('/crm/client-pool', [CRMController::class, 'rotationPool']);
+        Route::post('/crm/client-pool/{client}/claim', [CRMController::class, 'claimRotationPoolClient'])
+            ->middleware('role:quan_ly,nhan_vien');
         Route::get('/crm/staff-transfer-requests', [ClientStaffTransferController::class, 'index']);
         Route::get('/crm/staff-transfer-requests/{transfer}', [ClientStaffTransferController::class, 'show']);
         Route::post('/crm/staff-transfer-requests/{transfer}/accept', [ClientStaffTransferController::class, 'accept'])

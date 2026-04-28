@@ -67,6 +67,19 @@ class CrmScope
             });
     }
 
+    private static function applyNotInRotationPool(Builder $builder, string $qualifiedColumn = 'clients.is_in_rotation_pool'): void
+    {
+        $builder->where(function (Builder $poolQuery) use ($qualifiedColumn) {
+            $poolQuery->whereNull($qualifiedColumn)
+                ->orWhere($qualifiedColumn, false);
+        });
+    }
+
+    public static function isClientInRotationPool(Client $client): bool
+    {
+        return (bool) ($client->is_in_rotation_pool ?? false);
+    }
+
     private static function employeeOwnsClient(User $user, Client $client): bool
     {
         if ((int) ($client->assigned_staff_id ?? 0) === (int) $user->id) {
@@ -88,6 +101,8 @@ class CrmScope
 
     public static function applyClientScope(Builder $query, User $user): Builder
     {
+        self::applyNotInRotationPool($query);
+
         if (self::hasGlobalScope($user)) {
             return $query;
         }
@@ -131,6 +146,8 @@ class CrmScope
      */
     public static function applyClientScopeAssignedOnly(Builder $query, User $user): Builder
     {
+        self::applyNotInRotationPool($query);
+
         if (self::hasGlobalScope($user)) {
             return $query;
         }
@@ -146,6 +163,10 @@ class CrmScope
 
     public static function applyContractScope(Builder $query, User $user): Builder
     {
+        $query->whereHas('client', function (Builder $clientQuery) {
+            self::applyNotInRotationPool($clientQuery);
+        });
+
         if (self::hasGlobalScope($user)) {
             return $query;
         }
@@ -203,6 +224,10 @@ class CrmScope
 
     public static function applyOpportunityScope(Builder $query, User $user): Builder
     {
+        $query->whereHas('client', function (Builder $clientQuery) {
+            self::applyNotInRotationPool($clientQuery);
+        });
+
         if (self::hasGlobalScope($user)) {
             return $query;
         }
@@ -275,6 +300,10 @@ class CrmScope
 
     public static function canAccessClient(User $user, Client $client): bool
     {
+        if (self::isClientInRotationPool($client)) {
+            return false;
+        }
+
         if (self::hasGlobalScope($user)) {
             return true;
         }
@@ -292,7 +321,11 @@ class CrmScope
 
     public static function canManageClient(User $user, Client $client): bool
     {
-        if ($user->role === 'admin') {
+        if (self::isClientInRotationPool($client)) {
+            return false;
+        }
+
+        if (in_array($user->role, ['admin', 'administrator'], true)) {
             return true;
         }
 

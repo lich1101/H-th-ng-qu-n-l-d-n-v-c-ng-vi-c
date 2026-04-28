@@ -931,7 +931,7 @@ export default function ClientFlow({ auth, clientId }) {
                                         <div>
                                             <h4 className="text-sm font-semibold text-slate-900">Theo dõi xoay khách hàng</h4>
                                             <p className="mt-1 text-xs leading-5 text-slate-500">
-                                                {rotation.trigger_label || rotation.protecting_label || 'Chạm mốc nào trước thì xoay theo mốc đó: quá hạn bình luận, cơ hội hoặc hợp đồng đều có thể điều chuyển ngay.'}
+                                                {rotation.trigger_label || rotation.protecting_label || 'Khách chỉ bị xoay khi đồng thời quá hạn bình luận, cơ hội và hợp đồng theo cấu hình hiện tại.'}
                                             </p>
                                         </div>
                                         <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
