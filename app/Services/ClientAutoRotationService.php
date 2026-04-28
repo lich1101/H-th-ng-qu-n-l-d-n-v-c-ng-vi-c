@@ -17,6 +17,7 @@ use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class ClientAutoRotationService
 {
@@ -1574,6 +1575,12 @@ class ClientAutoRotationService
             }
             $client->care_rotation_reset_at = $now->toDateTimeString();
             $client->save();
+            $this->replaceClientCareStaffForAssignment(
+                $client,
+                $fromStaffId > 0 ? $fromStaffId : null,
+                (int) $recipient->id,
+                (int) $recipient->id
+            );
 
             $triggerType = (string) ($freshInsight['trigger_type'] ?? 'inactive');
             $triggerDays = (int) ($freshInsight['trigger_days_since'] ?? 0);
@@ -1652,6 +1659,7 @@ class ClientAutoRotationService
             $client->rotation_pool_entered_at = $now->toDateTimeString();
             $client->rotation_pool_reason = 'auto_rotation_no_recipient';
             $client->save();
+            $this->replaceClientCareStaffForAssignment($client, null, null);
 
             $this->recordAssignmentHistory(
                 $client,
@@ -1726,6 +1734,7 @@ class ClientAutoRotationService
             $client->rotation_pool_reason = null;
             $client->care_rotation_reset_at = $now->toDateTimeString();
             $client->save();
+            $this->replaceClientCareStaffForAssignment($client, null, $recipientId, $recipientId);
 
             $this->recordAssignmentHistory(
                 $client,
@@ -2042,6 +2051,45 @@ class ClientAutoRotationService
             'window_days' => $windowStart,
             'interval_days' => $intervalDays,
         ]];
+    }
+
+    public function replaceClientCareStaffForAssignment(
+        Client $client,
+        ?int $previousPrimaryStaffId,
+        ?int $newPrimaryStaffId,
+        ?int $assignedBy = null
+    ): void {
+        if (! Schema::hasTable('client_care_staff')
+            || ! Schema::hasColumn('client_care_staff', 'client_id')
+            || ! Schema::hasColumn('client_care_staff', 'user_id')) {
+            return;
+        }
+
+        try {
+            if ($previousPrimaryStaffId && $previousPrimaryStaffId > 0) {
+                $client->careStaffUsers()->detach([$previousPrimaryStaffId]);
+            }
+
+            if ($newPrimaryStaffId && $newPrimaryStaffId > 0) {
+                $client->careStaffUsers()->syncWithoutDetaching([
+                    $newPrimaryStaffId => [
+                        'assigned_by' => (int) ($assignedBy ?: $newPrimaryStaffId),
+                    ],
+                ]);
+            }
+
+            if ((! $newPrimaryStaffId || $newPrimaryStaffId <= 0)
+                && (! $previousPrimaryStaffId || $previousPrimaryStaffId <= 0)) {
+                $client->careStaffUsers()->sync([]);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Client care staff reassignment failed', [
+                'client_id' => (int) $client->id,
+                'previous_staff_id' => $previousPrimaryStaffId,
+                'new_staff_id' => $newPrimaryStaffId,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     private function rotationAnchorLabel(string $source): string

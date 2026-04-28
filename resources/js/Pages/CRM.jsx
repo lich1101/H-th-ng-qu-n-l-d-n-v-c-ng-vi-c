@@ -214,7 +214,6 @@ export default function CRM(props) {
     const canAssignClientOwner = ['admin', 'administrator', 'quan_ly'].includes(normalizedRole);
     const canBulkClientActions = canManageClients || canDeleteClients;
     const canViewRotationPool = ['admin', 'administrator', 'quan_ly', 'nhan_vien'].includes(normalizedRole);
-    const canClaimRotationPool = ['quan_ly', 'nhan_vien'].includes(normalizedRole);
     /** POST /crm/clients/{id}/staff-transfer-requests — khớp middleware API */
     const canUseStaffTransferApi = ['admin', 'administrator', 'quan_ly', 'nhan_vien'].includes(normalizedRole);
     const initialClientListState = useMemo(() => readInitialCrmListState(), []);
@@ -228,12 +227,6 @@ export default function CRM(props) {
     const [departments, setDepartments] = useState([]);
     const [clientMeta, setClientMeta] = useState({ current_page: 1, last_page: 1, total: 0 });
     const [clientPage, setClientPage] = useState(initialClientListState.page);
-    const [rotationPoolClients, setRotationPoolClients] = useState([]);
-    const [rotationPoolMeta, setRotationPoolMeta] = useState({ current_page: 1, last_page: 1, total: 0 });
-    const [rotationPoolPage, setRotationPoolPage] = useState(1);
-    const [rotationPoolSearch, setRotationPoolSearch] = useState('');
-    const [rotationPoolLoading, setRotationPoolLoading] = useState(false);
-    const [claimingPoolClientId, setClaimingPoolClientId] = useState(null);
     const [selectedClientIds, setSelectedClientIds] = useState([]);
     const [bulkLoading, setBulkLoading] = useState(false);
     const clientTableRef = useRef(null);
@@ -557,59 +550,6 @@ export default function CRM(props) {
         }
     };
 
-    const fetchRotationPool = async (page = 1, search = rotationPoolSearch) => {
-        if (!canViewRotationPool) {
-            setRotationPoolClients([]);
-            setRotationPoolMeta({ current_page: 1, last_page: 1, total: 0 });
-            setRotationPoolPage(1);
-            return;
-        }
-        setRotationPoolLoading(true);
-        try {
-            const res = await axios.get('/api/v1/crm/client-pool', {
-                params: {
-                    page,
-                    per_page: 12,
-                    search: String(search || '').trim() || undefined,
-                },
-            });
-            const resolvedPage = res.data.current_page || 1;
-            setRotationPoolClients(Array.isArray(res.data.data) ? res.data.data : []);
-            setRotationPoolMeta({
-                current_page: resolvedPage,
-                last_page: res.data.last_page || 1,
-                total: res.data.total || 0,
-            });
-            setRotationPoolPage(resolvedPage);
-        } catch (error) {
-            toast.error(getErrorMessage(error, 'Không tải được kho số.'));
-        } finally {
-            setRotationPoolLoading(false);
-        }
-    };
-
-    const claimRotationPoolClient = async (client) => {
-        if (!client?.id) return;
-        if (!window.confirm(`Nhận khách hàng "${client.name || 'Khách hàng'}" từ kho số?`)) {
-            return;
-        }
-
-        setClaimingPoolClientId(Number(client.id));
-        try {
-            await axios.post(`/api/v1/crm/client-pool/${client.id}/claim`);
-            toast.success('Đã nhận khách hàng từ kho số.');
-            await Promise.all([
-                fetchClients(clientPage, clientFilters),
-                fetchRotationPool(rotationPoolPage, rotationPoolSearch),
-                fetchCrmStaffFilterOptions(),
-            ]);
-        } catch (error) {
-            toast.error(getErrorMessage(error, 'Không thể nhận khách từ kho số.'));
-        } finally {
-            setClaimingPoolClientId(null);
-        }
-    };
-
     const handleClientSearch = (val) => {
         const next = { ...clientFilters, search: val };
         setClientFilters(next);
@@ -702,9 +642,6 @@ export default function CRM(props) {
         fetchCrmStaffFilterOptions();
         fetchDepartments();
         fetchClients(clientPage, clientFilters);
-        if (canViewRotationPool) {
-            fetchRotationPool(1, '');
-        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -1216,6 +1153,14 @@ export default function CRM(props) {
             title="Quản lý khách hàng"
             description="Quản lý khách hàng, trạng thái tiềm năng và phân quyền chăm sóc."
             stats={clientStats}
+            actions={canViewRotationPool ? (
+                <a
+                    href={route('crm.pool.index')}
+                    className="inline-flex items-center rounded-2xl border border-slate-200/80 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm"
+                >
+                    Mở kho số
+                </a>
+            ) : null}
         >
             <>
                     <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card p-5">
@@ -1348,81 +1293,6 @@ export default function CRM(props) {
                                     ? 'Bạn chỉ nhìn thấy khách hàng của nhân sự trong phòng ban mình quản lý, và có thể giao lại trong phạm vi phòng ban đó.'
                                     : 'Bạn nhìn thấy khách hàng do mình phụ trách trực tiếp hoặc đang tham gia chăm sóc. Chỉ khách do mình phụ trách trực tiếp mới được sửa/chuyển phụ trách.'}
                         </div>
-                        {canViewRotationPool && (
-                        <div className="mb-4 rounded-2xl border border-slate-200/80 bg-slate-50/80 px-4 py-4">
-                            <div className="flex flex-wrap items-center justify-between gap-3">
-                                <div>
-                                    <div className="text-xs font-semibold uppercase tracking-[0.14em] text-text-subtle">Kho số</div>
-                                    <p className="mt-1 text-sm text-slate-700">
-                                        Khách hàng dư sau cron xoay sẽ vào kho số. Tại đây chỉ hiện tên khách và nút nhận khách; khi nhận xong khách mới quay lại CRM thường.
-                                    </p>
-                                </div>
-                                <div className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm">
-                                    {rotationPoolMeta.total || 0} khách chờ nhận
-                                </div>
-                            </div>
-                            <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
-                                <input
-                                    type="text"
-                                    value={rotationPoolSearch}
-                                    onChange={(e) => setRotationPoolSearch(e.target.value)}
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter') {
-                                            e.preventDefault();
-                                            fetchRotationPool(1, rotationPoolSearch);
-                                        }
-                                    }}
-                                    className={filterControlClass}
-                                    placeholder="Tìm nhanh tên khách trong kho số"
-                                />
-                                <button
-                                    type="button"
-                                    className="rounded-2xl border border-slate-200/80 bg-white px-4 py-2 text-sm font-semibold text-slate-700"
-                                    onClick={() => fetchRotationPool(1, rotationPoolSearch)}
-                                    disabled={rotationPoolLoading}
-                                >
-                                    {rotationPoolLoading ? 'Đang tải...' : 'Lọc kho số'}
-                                </button>
-                            </div>
-                            <div className="mt-3 grid gap-2">
-                                {rotationPoolClients.map((poolClient) => (
-                                    <div
-                                        key={poolClient.id}
-                                        className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white px-4 py-3"
-                                    >
-                                        <div className="min-w-0 flex-1 text-sm font-semibold text-slate-900">
-                                            {poolClient.name || 'Khách hàng'}
-                                        </div>
-                                        {canClaimRotationPool ? (
-                                            <button
-                                                type="button"
-                                                className="rounded-2xl bg-primary px-4 py-2 text-xs font-semibold text-white shadow-sm disabled:opacity-60"
-                                                onClick={() => claimRotationPoolClient(poolClient)}
-                                                disabled={claimingPoolClientId === Number(poolClient.id)}
-                                            >
-                                                {claimingPoolClientId === Number(poolClient.id) ? 'Đang nhận...' : 'Nhận khách hàng'}
-                                            </button>
-                                        ) : null}
-                                    </div>
-                                ))}
-                                {rotationPoolClients.length === 0 ? (
-                                    <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-5 text-sm text-slate-500">
-                                        Kho số hiện chưa có khách hàng chờ nhận.
-                                    </div>
-                                ) : null}
-                            </div>
-                            <div className="mt-3">
-                                <PaginationControls
-                                    page={rotationPoolMeta.current_page}
-                                    lastPage={rotationPoolMeta.last_page}
-                                    total={rotationPoolMeta.total}
-                                    perPage={12}
-                                    label="khách kho số"
-                                    onPageChange={(page) => fetchRotationPool(page, rotationPoolSearch)}
-                                />
-                            </div>
-                        </div>
-                        )}
                         {canBulkClientActions && selectedClients.length > 0 && (
                             <div className="mb-4 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3">
                                 <div className="flex flex-wrap items-center gap-2 text-sm">

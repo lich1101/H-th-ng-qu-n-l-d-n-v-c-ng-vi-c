@@ -301,6 +301,8 @@ Route::prefix('v1')->group(function () {
 
         Route::get('/crm/clients', [CRMController::class, 'clients']);
         Route::get('/crm/client-pool', [CRMController::class, 'rotationPool']);
+        Route::post('/crm/client-pool', [CRMController::class, 'storeRotationPoolClient'])
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien');
         Route::post('/crm/client-pool/{client}/claim', [CRMController::class, 'claimRotationPoolClient'])
             ->middleware('role:quan_ly,nhan_vien');
         Route::get('/crm/staff-transfer-requests', [ClientStaffTransferController::class, 'index']);
@@ -447,11 +449,15 @@ Route::prefix('v1')->group(function () {
             ->middleware('role:admin,administrator');
 
         Route::post('/imports/clients', [ImportController::class, 'importClients'])
-            ->middleware('role:admin,quan_ly,nhan_vien');
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien');
+        Route::post('/imports/client-pool', [ImportController::class, 'importRotationPoolClients'])
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien');
         Route::get('/imports/jobs/{dataTransferJob}', [ImportController::class, 'showImportJob'])
-            ->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
         Route::get('/imports/clients/template', [ImportController::class, 'downloadClientsTemplate'])
-            ->middleware('role:admin,quan_ly,nhan_vien');
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien');
+        Route::get('/imports/client-pool/template', [ImportController::class, 'downloadRotationPoolClientsTemplate'])
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien');
         Route::post('/imports/contracts', [ImportController::class, 'importContracts'])
             ->middleware('role:admin,quan_ly,nhan_vien,ke_toan');
         Route::get('/imports/contracts/template', [ImportController::class, 'downloadContractsTemplate'])

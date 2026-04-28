@@ -223,6 +223,7 @@ const initialSettings = (settings) => ({
     client_rotation_contract_stale_days: settings?.client_rotation_contract_stale_days ?? 90,
     client_rotation_warning_days: settings?.client_rotation_warning_days ?? 3,
     client_rotation_daily_receive_limit: settings?.client_rotation_daily_receive_limit ?? 5,
+    client_rotation_run_time: settings?.client_rotation_run_time || '12:00',
     client_rotation_same_department_only: normalizeRotationScopeMode(settings) === 'same_department',
     client_rotation_lead_type_ids: Array.isArray(settings?.client_rotation_lead_type_ids)
         ? settings.client_rotation_lead_type_ids.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)
@@ -987,6 +988,7 @@ export default function SystemSettings(props) {
             formData.append('client_rotation_contract_stale_days', String(form.client_rotation_contract_stale_days ?? 90));
             formData.append('client_rotation_warning_days', String(form.client_rotation_warning_days ?? 3));
             formData.append('client_rotation_daily_receive_limit', String(form.client_rotation_daily_receive_limit ?? 5));
+            formData.append('client_rotation_run_time', form.client_rotation_run_time || '12:00');
             formData.append('client_rotation_scope_mode', form.client_rotation_scope_mode || 'global_staff');
             formData.append('client_rotation_same_department_only', (form.client_rotation_scope_mode || 'global_staff') === 'same_department' ? '1' : '0');
             formData.append(
@@ -2376,7 +2378,7 @@ export default function SystemSettings(props) {
                                 <div className="max-w-3xl">
                                     <h3 className="text-sm font-semibold text-slate-900">Cơ chế xoay vòng khách hàng không được chăm sóc</h3>
                                     <p className="mt-1 text-xs leading-5 text-text-muted">
-                                        Cron chạy lúc <span className="font-semibold text-slate-900">12:00 trưa mỗi ngày</span> để vừa bắn cảnh báo,
+                                        Cron chạy lúc <span className="font-semibold text-slate-900">{form.client_rotation_run_time || '12:00'} mỗi ngày</span> để vừa bắn cảnh báo,
                                         vừa điều chuyển khách theo thứ tự ưu tiên <span className="font-semibold text-slate-900">nhiều hợp đồng hơn</span> →
                                         <span className="font-semibold text-slate-900"> nếu bằng nhau thì nhiều cơ hội hơn</span> →
                                         <span className="font-semibold text-slate-900"> nếu đều là lead thuần thì random</span>.
@@ -2393,7 +2395,7 @@ export default function SystemSettings(props) {
                                 </div>
                             </div>
 
-                            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
                                 <div>
                                     <label className="text-xs text-text-muted">Quá hạn bình luận / ghi chú</label>
                                     <input
@@ -2457,6 +2459,24 @@ export default function SystemSettings(props) {
                                             client_rotation_daily_receive_limit: Number(e.target.value || 1),
                                         }))}
                                     />
+                                    <p className="mt-2 text-[11px] leading-5 text-text-muted">
+                                        Chỉ áp dụng cho lượt phân phát tự động của cron. Nhận thủ công từ kho số không bị trừ quota này.
+                                    </p>
+                                </div>
+                                <div>
+                                    <label className="text-xs text-text-muted">Giờ cron chạy mỗi ngày</label>
+                                    <input
+                                        type="time"
+                                        className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                        value={form.client_rotation_run_time || '12:00'}
+                                        onChange={(e) => setForm((s) => ({
+                                            ...s,
+                                            client_rotation_run_time: e.target.value || '12:00',
+                                        }))}
+                                    />
+                                    <p className="mt-2 text-[11px] leading-5 text-text-muted">
+                                        Hệ thống sẽ đọc giờ này khi `schedule:run` quét lịch hằng phút trên server.
+                                    </p>
                                 </div>
                             </div>
 

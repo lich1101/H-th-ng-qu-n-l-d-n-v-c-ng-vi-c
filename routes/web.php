@@ -186,6 +186,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         return Inertia::render('CRM');
     })->name('crm.index')->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
 
+    Route::get('/kho-so', function () {
+        return Inertia::render('ClientPool');
+    })->name('crm.pool.index')->middleware('role:admin,administrator,quan_ly,nhan_vien');
+
     Route::get('/khach-hang/{client}', function (Client $client) {
         return Inertia::render('CustomerDetail', [
             'clientId' => $client->id,

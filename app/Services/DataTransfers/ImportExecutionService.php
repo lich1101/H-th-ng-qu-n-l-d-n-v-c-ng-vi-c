@@ -59,6 +59,7 @@ class ImportExecutionService
 
         return match ($job->module) {
             'clients' => $this->importClientsFromPath($path, $user, $job),
+            'clients_pool' => $this->importRotationPoolClientsFromPath($path, $user, $job),
             'contracts' => $this->importContractsFromPath($path, $user, $job),
             'tasks' => $this->importTasksFromPath($path, $user, $job),
             'users' => $this->importUsersFromPath($path, $user, $job),
@@ -68,10 +69,25 @@ class ImportExecutionService
 
     public function importClientsFromPath(string $path, User $user, ?DataTransferJob $job = null): array
     {
+        return $this->importClientsFromPathInternal($path, $user, $job, false);
+    }
+
+    public function importRotationPoolClientsFromPath(string $path, User $user, ?DataTransferJob $job = null): array
+    {
+        return $this->importClientsFromPathInternal($path, $user, $job, true);
+    }
+
+    private function importClientsFromPathInternal(
+        string $path,
+        User $user,
+        ?DataTransferJob $job = null,
+        bool $toRotationPool = false
+    ): array {
         $report = $this->initReport();
         $processed = 0;
+        $poolNow = now('Asia/Ho_Chi_Minh');
 
-        $this->iterateMappedRows($path, $this->clientHeaderMap(), function (array $data, int $rowNumber) use (&$report, &$processed, $user, $job) {
+        $this->iterateMappedRows($path, $this->clientHeaderMap(), function (array $data, int $rowNumber) use (&$report, &$processed, $user, $job, $toRotationPool, $poolNow) {
             $processed++;
 
             if (empty($data['name'])) {
@@ -101,12 +117,14 @@ class ImportExecutionService
                     $assignedStaffId = $salesOwnerId;
                 }
 
-                if ($user->role === 'nhan_vien') {
+                if (! $toRotationPool && $user->role === 'nhan_vien') {
                     $assignedStaffId = (int) $user->id;
                     $salesOwnerId = (int) $user->id;
                 }
 
-                $assignedDepartmentId = $assignedStaffId ? $this->getUserDepartmentId($assignedStaffId) : null;
+                $assignedDepartmentId = (! $toRotationPool && $assignedStaffId)
+                    ? $this->getUserDepartmentId($assignedStaffId)
+                    : null;
 
                 $createdAtRaw = $data['created_at'] ?? null;
                 $createdAt = $this->parseDateTime($createdAtRaw);
@@ -127,8 +145,8 @@ class ImportExecutionService
                     'phone' => $normalizedPhone,
                     'notes' => $data['notes'] ?? null,
                     'lead_type_id' => $leadTypeId,
-                    'sales_owner_id' => $salesOwnerId,
-                    'assigned_staff_id' => $assignedStaffId,
+                    'sales_owner_id' => $toRotationPool ? null : $salesOwnerId,
+                    'assigned_staff_id' => $toRotationPool ? null : $assignedStaffId,
                     'assigned_department_id' => $assignedDepartmentId,
                     'lead_source' => $data['lead_source'] ?? null,
                     'lead_channel' => $data['lead_channel'] ?? null,
@@ -137,6 +155,10 @@ class ImportExecutionService
                     'customer_level' => $data['customer_level'] ?? null,
                     'company_size' => $data['company_size'] ?? null,
                     'product_categories' => $data['product_categories'] ?? null,
+                    'care_rotation_reset_at' => $toRotationPool ? $poolNow->toDateTimeString() : null,
+                    'is_in_rotation_pool' => $toRotationPool,
+                    'rotation_pool_entered_at' => $toRotationPool ? $poolNow->toDateTimeString() : null,
+                    'rotation_pool_reason' => $toRotationPool ? 'manual_import_pool_entry' : null,
                 ];
 
                 $client = $this->findClientByIdentity(
@@ -147,7 +169,19 @@ class ImportExecutionService
                 );
 
                 if ($client) {
-                    $client->update($this->filterNullValues($payload));
+                    if ($toRotationPool && ! $client->inRotationPool()) {
+                        $this->skipRow($report, $rowNumber, 'Khách hàng đã tồn tại trong CRM thường, không thể import thẳng vào kho số.');
+                        DB::rollBack();
+                        $this->syncJobProgress($job, $processed, $report);
+                        return;
+                    }
+
+                    $client->update($this->filterNullValues(
+                        $payload,
+                        $toRotationPool
+                            ? ['assigned_staff_id', 'sales_owner_id', 'assigned_department_id']
+                            : []
+                    ));
                     if ($createdAt && empty($client->created_at)) {
                         $client->timestamps = false;
                         $client->created_at = $createdAt;
@@ -159,7 +193,12 @@ class ImportExecutionService
                     if (empty($payload['lead_type_id'])) {
                         $payload['lead_type_id'] = $this->resolveLeadTypeId('Khách hàng tiềm năng');
                     }
-                    $client = Client::create($this->filterNullValues($payload));
+                    $client = Client::create($this->filterNullValues(
+                        $payload,
+                        $toRotationPool
+                            ? ['assigned_staff_id', 'sales_owner_id', 'assigned_department_id']
+                            : []
+                    ));
                     if ($createdAt) {
                         $client->timestamps = false;
                         $client->created_at = $createdAt;
@@ -170,11 +209,15 @@ class ImportExecutionService
                     $report['created']++;
                 }
 
-                $careStaffIds = array_values(array_filter([
-                    $assignedStaffId ? (int) $assignedStaffId : null,
-                    $salesOwnerId ? (int) $salesOwnerId : null,
-                ]));
-                $this->syncClientCareStaffFromImport($client, $careStaffIds, (int) $user->id);
+                if ($toRotationPool) {
+                    $this->clearClientCareStaffFromImport($client);
+                } else {
+                    $careStaffIds = array_values(array_filter([
+                        $assignedStaffId ? (int) $assignedStaffId : null,
+                        $salesOwnerId ? (int) $salesOwnerId : null,
+                    ]));
+                    $this->syncClientCareStaffFromImport($client, $careStaffIds, (int) $user->id);
+                }
                 $this->clientFinancialSyncService->sync($client->fresh());
 
                 DB::commit();
@@ -1403,6 +1446,11 @@ class ImportExecutionService
         })->all();
 
         $client->careStaffUsers()->syncWithoutDetaching($syncPayload);
+    }
+
+    private function clearClientCareStaffFromImport(Client $client): void
+    {
+        $client->careStaffUsers()->sync([]);
     }
 
     private function generateProjectCode(): string

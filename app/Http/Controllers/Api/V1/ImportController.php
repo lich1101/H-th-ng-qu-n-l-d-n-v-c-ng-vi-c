@@ -28,8 +28,10 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class ImportController extends Controller
 {
@@ -43,9 +45,16 @@ class ImportController extends Controller
 
     public function importClients(Request $request): JsonResponse
     {
-        $this->authorizeRoles($request, ['admin', 'quan_ly', 'nhan_vien']);
+        $this->authorizeRoles($request, ['admin', 'administrator', 'quan_ly', 'nhan_vien']);
         $file = $this->validateFile($request);
         return $this->queueImport($request, $file, 'clients');
+    }
+
+    public function importRotationPoolClients(Request $request): JsonResponse
+    {
+        $this->authorizeRoles($request, ['admin', 'administrator', 'quan_ly', 'nhan_vien']);
+        $file = $this->validateFile($request);
+        return $this->queueImport($request, $file, 'clients_pool');
     }
 
     public function importContracts(Request $request): JsonResponse
@@ -80,7 +89,7 @@ class ImportController extends Controller
 
     public function downloadClientsTemplate(Request $request)
     {
-        $this->authorizeRoles($request, ['admin', 'quan_ly', 'nhan_vien']);
+        $this->authorizeRoles($request, ['admin', 'administrator', 'quan_ly', 'nhan_vien']);
 
         return $this->streamTemplate(
             'mau-import-khach-hang.csv',
@@ -121,6 +130,45 @@ class ImportController extends Controller
                 '50-100 nhân sự',
                 'SEO tổng thể, Website Care',
                 '25000000',
+            ]
+        );
+    }
+
+    public function downloadRotationPoolClientsTemplate(Request $request)
+    {
+        $this->authorizeRoles($request, ['admin', 'administrator', 'quan_ly', 'nhan_vien']);
+
+        return $this->streamSpreadsheetTemplate(
+            'mau-import-kho-so.xlsx',
+            [
+                'Tên khách hàng',
+                'Mã khách hàng',
+                'Công ty',
+                'Email',
+                'Điện thoại',
+                'Ghi chú',
+                'Loại khách hàng',
+                'Nguồn khách',
+                'Kênh',
+                'Tình trạng',
+                'Quy mô công ty',
+                'Danh mục sản phẩm',
+                'Ngày tạo',
+            ],
+            [
+                'Công ty Dữ Liệu Mới',
+                'POOL-001',
+                'Pool Company',
+                'pool@example.com',
+                '0901234567',
+                'Khách đưa thẳng vào kho số để nhân sự tự nhận.',
+                'Khách hàng tiềm năng',
+                'Kho số nhập tay',
+                'CRM Pool',
+                'Chờ nhận',
+                '20-50 nhân sự',
+                'SEO tổng thể, Website Care',
+                '28/04/2026',
             ]
         );
     }
@@ -1140,6 +1188,21 @@ class ImportController extends Controller
             fclose($handle);
         }, $filename, [
             'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    private function streamSpreadsheetTemplate(string $filename, array $headers, array $sample)
+    {
+        return response()->streamDownload(function () use ($headers, $sample) {
+            $spreadsheet = new Spreadsheet();
+            $sheet = $spreadsheet->getActiveSheet();
+            $sheet->fromArray($headers, null, 'A1');
+            $sheet->fromArray($sample, null, 'A2');
+
+            $writer = new Xlsx($spreadsheet);
+            $writer->save('php://output');
+        }, $filename, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         ]);
     }
 

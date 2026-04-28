@@ -249,6 +249,77 @@ class CRMController extends Controller
         return response()->json($paginator);
     }
 
+    public function storeRotationPoolClient(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        if (! $this->canManageRotationPool($user)) {
+            return response()->json(['message' => 'Không có quyền thêm khách hàng vào kho số.'], 403);
+        }
+
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'external_code' => ['nullable', 'string', 'max:120'],
+            'company' => ['nullable', 'string', 'max:255'],
+            'email' => ['nullable', 'email', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:255'],
+            'notes' => ['nullable', 'string'],
+            'lead_type_id' => ['nullable', 'integer', 'exists:lead_types,id'],
+            'lead_source' => ['nullable', 'string', 'max:100'],
+            'lead_channel' => ['nullable', 'string', 'max:50'],
+            'lead_message' => ['nullable', 'string'],
+        ]);
+
+        if (empty($validated['lead_type_id'])) {
+            $validated['lead_type_id'] = $this->resolveDefaultLeadTypeId();
+        }
+
+        $phoneDup = ! empty($validated['phone'])
+            ? app(ClientPhoneDuplicateService::class)->findExistingByPhone($validated['phone'])
+            : null;
+        if ($phoneDup) {
+            return response()->json([
+                'message' => 'Khách hàng với số điện thoại này đã tồn tại. Không thể thêm trùng vào kho số.',
+                'existing_client' => [
+                    'id' => (int) $phoneDup->id,
+                    'name' => $phoneDup->name,
+                    'is_in_rotation_pool' => (bool) ($phoneDup->is_in_rotation_pool ?? false),
+                ],
+            ], 422);
+        }
+
+        $now = now('Asia/Ho_Chi_Minh');
+        $payload = [
+            'name' => trim((string) $validated['name']),
+            'external_code' => trim((string) ($validated['external_code'] ?? '')) ?: null,
+            'company' => trim((string) ($validated['company'] ?? '')) ?: null,
+            'email' => trim((string) ($validated['email'] ?? '')) ?: null,
+            'phone' => trim((string) ($validated['phone'] ?? '')) ?: null,
+            'notes' => array_key_exists('notes', $validated) ? $validated['notes'] : null,
+            'lead_type_id' => $validated['lead_type_id'] ?? null,
+            'lead_source' => trim((string) ($validated['lead_source'] ?? '')) ?: 'Kho số nhập tay',
+            'lead_channel' => trim((string) ($validated['lead_channel'] ?? '')) ?: 'CRM Pool',
+            'lead_message' => array_key_exists('lead_message', $validated) ? $validated['lead_message'] : null,
+            'assigned_staff_id' => null,
+            'assigned_department_id' => null,
+            'sales_owner_id' => null,
+            'is_in_rotation_pool' => true,
+            'rotation_pool_entered_at' => $now->toDateTimeString(),
+            'rotation_pool_reason' => 'manual_pool_entry',
+            'care_rotation_reset_at' => $now->toDateTimeString(),
+        ];
+
+        $client = Client::create($payload);
+        $this->syncClientCareStaff($client, [], (int) $user->id);
+
+        return response()->json([
+            'message' => 'Đã thêm khách hàng vào kho số.',
+            'client' => [
+                'id' => (int) $client->id,
+                'name' => (string) ($client->name ?: 'Khách hàng'),
+            ],
+        ], 201);
+    }
+
     /**
      * Chi tiết 1 khách (cùng cấu trúc quan hệ như danh sách) — dùng khi mở form sửa để không thiếu trường.
      */
@@ -549,6 +620,14 @@ class CRMController extends Controller
         if ($newAssignedStaffId !== $oldAssignedStaffId) {
             $rotationService = $rotationService ?: app(ClientAutoRotationService::class);
             $rotationService->resetClientRotationAnchor($client);
+            if (! array_key_exists('care_staff_ids', $validated)) {
+                $rotationService->replaceClientCareStaffForAssignment(
+                    $client,
+                    $oldAssignedStaffId > 0 ? $oldAssignedStaffId : null,
+                    $newAssignedStaffId > 0 ? $newAssignedStaffId : null,
+                    (int) $user->id
+                );
+            }
             $rotationService->recordAssignmentHistory(
                 $client,
                 $oldAssignedStaffId > 0 ? $oldAssignedStaffId : null,
@@ -969,6 +1048,21 @@ class CRMController extends Controller
         return $validated;
     }
 
+    private function resolveDefaultLeadTypeId(): ?int
+    {
+        $defaultLeadTypeId = LeadType::query()
+            ->where('name', 'Khách hàng tiềm năng')
+            ->value('id');
+        if (! $defaultLeadTypeId) {
+            $defaultLeadTypeId = LeadType::query()
+                ->orderBy('sort_order')
+                ->orderBy('id')
+                ->value('id');
+        }
+
+        return $defaultLeadTypeId ? (int) $defaultLeadTypeId : null;
+    }
+
     private function existingClientCareStaffIds(?Client $client): array
     {
         if (! $client) {
@@ -1226,6 +1320,16 @@ class CRMController extends Controller
         }
 
         return in_array((string) $user->role, ['quan_ly', 'nhan_vien'], true)
+            && (! isset($user->is_active) || (bool) $user->is_active);
+    }
+
+    private function canManageRotationPool(?User $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        return in_array((string) $user->role, ['admin', 'administrator', 'quan_ly', 'nhan_vien'], true)
             && (! isset($user->is_active) || (bool) $user->is_active);
     }
 

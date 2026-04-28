@@ -2,8 +2,10 @@
 
 namespace App\Console;
 
+use App\Models\AppSetting;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
+use Illuminate\Support\Facades\Schema;
 
 class Kernel extends ConsoleKernel
 {
@@ -45,7 +47,7 @@ class Kernel extends ConsoleKernel
             ->everyMinute()
             ->timezone('Asia/Ho_Chi_Minh');
         $schedule->command('clients:process-auto-rotation')
-            ->dailyAt('12:00')
+            ->dailyAt($this->resolveClientRotationRunTime())
             ->timezone('Asia/Ho_Chi_Minh')
             ->withoutOverlapping();
     }
@@ -60,5 +62,24 @@ class Kernel extends ConsoleKernel
         $this->load(__DIR__.'/Commands');
 
         require base_path('routes/console.php');
+    }
+
+    private function resolveClientRotationRunTime(): string
+    {
+        $fallback = '12:00';
+
+        try {
+            if (! Schema::hasTable('app_settings') || ! Schema::hasColumn('app_settings', 'client_rotation_run_time')) {
+                return $fallback;
+            }
+
+            $value = trim((string) AppSetting::query()->value('client_rotation_run_time'));
+
+            return preg_match('/^\d{2}:\d{2}$/', $value) === 1
+                ? $value
+                : $fallback;
+        } catch (\Throwable $e) {
+            return $fallback;
+        }
     }
 }

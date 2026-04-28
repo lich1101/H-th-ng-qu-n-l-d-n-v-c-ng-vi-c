@@ -365,6 +365,12 @@ class ClientStaffTransferService
             }
             $client->care_rotation_reset_at = $now->toDateTimeString();
             $client->save();
+            $rotationService->replaceClientCareStaffForAssignment(
+                $client,
+                $fromStaffId > 0 ? $fromStaffId : null,
+                (int) $toUser->id,
+                (int) $actor->id
+            );
 
             $transfer->update([
                 'status' => self::STATUS_ACCEPTED,
