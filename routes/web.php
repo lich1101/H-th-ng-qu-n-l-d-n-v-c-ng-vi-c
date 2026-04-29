@@ -175,8 +175,62 @@ Route::middleware(['auth', 'verified'])->group(function () {
     })->name('chatbot.assistant')->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
 
     Route::get('/cham-cong-wifi', function () {
-        return Inertia::render('AttendanceWifi');
+        return redirect()->route('attendance.personal');
     })->name('attendance.index')->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
+
+    Route::get('/cham-cong-wifi/ca-nhan', function () {
+        return Inertia::render('AttendanceWifi', [
+            'attendanceSection' => 'personal',
+        ]);
+    })->name('attendance.personal')->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
+
+    Route::get('/cham-cong-wifi/don-xin-phep', function () {
+        return Inertia::render('AttendanceWifi', [
+            'attendanceSection' => 'requests',
+        ]);
+    })->name('attendance.requests')->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
+
+    Route::get('/cham-cong-wifi/bao-cao', function () {
+        return Inertia::render('AttendanceWifi', [
+            'attendanceSection' => 'report',
+        ]);
+    })->name('attendance.report')->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
+
+    Route::get('/cham-cong-wifi/cau-hinh', function () {
+        return Inertia::render('AttendanceWifi', [
+            'attendanceSection' => 'settings',
+        ]);
+    })->name('attendance.settings')->middleware('role:admin,administrator,ke_toan');
+
+    Route::get('/cham-cong-wifi/wifi', function () {
+        return Inertia::render('AttendanceWifi', [
+            'attendanceSection' => 'wifi',
+        ]);
+    })->name('attendance.wifi')->middleware('role:admin,administrator,ke_toan');
+
+    Route::get('/cham-cong-wifi/thiet-bi', function () {
+        return Inertia::render('AttendanceWifi', [
+            'attendanceSection' => 'devices',
+        ]);
+    })->name('attendance.devices')->middleware('role:admin,administrator,ke_toan');
+
+    Route::get('/cham-cong-wifi/ngay-le', function () {
+        return Inertia::render('AttendanceWifi', [
+            'attendanceSection' => 'holidays',
+        ]);
+    })->name('attendance.holidays')->middleware('role:admin,administrator,ke_toan');
+
+    Route::get('/cham-cong-wifi/loai-cham-cong', function () {
+        return Inertia::render('AttendanceWifi', [
+            'attendanceSection' => 'work_types',
+        ]);
+    })->name('attendance.work-types')->middleware('role:admin,administrator,ke_toan');
+
+    Route::get('/cham-cong-wifi/nhan-su', function () {
+        return Inertia::render('AttendanceWifi', [
+            'attendanceSection' => 'staff',
+        ]);
+    })->name('attendance.staff')->middleware('role:admin,administrator,ke_toan');
 
     Route::get('/nhat-ky-he-thong', function () {
         return Inertia::render('ActivityLogs');

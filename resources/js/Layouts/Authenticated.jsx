@@ -357,7 +357,20 @@ export default function Authenticated({ auth, header, children }) {
                     { label: 'Đầu việc', icon: 'tasks', routeName: 'task-items.board', href: route('task-items.board'), roles: ['admin', 'quan_ly', 'nhan_vien'] },
                     { label: 'Bàn giao dự án', icon: 'handover', routeName: 'handover.index', href: route('handover.index'), roles: ['admin', 'nhan_vien'] },
                     { label: 'Lịch họp', icon: 'calendar', routeName: 'meetings.index', href: route('meetings.index'), roles: ['admin', 'quan_ly'] },
-                    { label: 'Chấm công', icon: 'alarm', routeName: 'attendance.index', href: route('attendance.index'), roles: ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'] },
+                ],
+            },
+            {
+                label: 'Chấm công',
+                items: [
+                    { label: 'Công cá nhân', icon: 'alarm', routeName: 'attendance.personal', href: route('attendance.personal'), roles: ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'] },
+                    { label: 'Đơn xin phép', icon: 'document', routeName: 'attendance.requests', href: route('attendance.requests'), roles: ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'] },
+                    { label: 'Báo cáo công', icon: 'chart', routeName: 'attendance.report', href: route('attendance.report'), roles: ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'] },
+                    { label: 'Cấu hình chấm công', icon: 'settings', routeName: 'attendance.settings', href: route('attendance.settings'), roles: ['admin', 'administrator', 'ke_toan'] },
+                    { label: 'WiFi chấm công', icon: 'wifi', routeName: 'attendance.wifi', href: route('attendance.wifi'), roles: ['admin', 'administrator', 'ke_toan'] },
+                    { label: 'Thiết bị chấm công', icon: 'mobile', routeName: 'attendance.devices', href: route('attendance.devices'), roles: ['admin', 'administrator', 'ke_toan'] },
+                    { label: 'Ngày lễ / kỳ nghỉ', icon: 'calendar', routeName: 'attendance.holidays', href: route('attendance.holidays'), roles: ['admin', 'administrator', 'ke_toan'] },
+                    { label: 'Loại chấm công', icon: 'tag', routeName: 'attendance.work-types', href: route('attendance.work-types'), roles: ['admin', 'administrator', 'ke_toan'] },
+                    { label: 'Nhân sự chấm công', icon: 'users', routeName: 'attendance.staff', href: route('attendance.staff'), roles: ['admin', 'administrator', 'ke_toan'] },
                 ],
             },
             {

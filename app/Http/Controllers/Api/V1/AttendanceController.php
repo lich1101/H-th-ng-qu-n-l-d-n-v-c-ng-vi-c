@@ -796,7 +796,7 @@ class AttendanceController extends Controller
         return response()->json([
             'message' => $record->status === 'present'
                 ? 'Chấm công thành công.'
-                : sprintf('Đã chấm công. Bạn đi muộn %d phút, hệ thống đã tự tính công tương ứng.', (int) $evaluation['minutes_late']),
+                : sprintf('Đã chấm công. Bạn đi muộn %d phút.', (int) $evaluation['minutes_late']),
             'record' => $this->recordPayload($record->fresh()),
         ]);
     }

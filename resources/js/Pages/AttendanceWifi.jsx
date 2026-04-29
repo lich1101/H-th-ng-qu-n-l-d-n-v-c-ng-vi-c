@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
+import { Link } from '@inertiajs/inertia-react';
 import FilterToolbar, {
     FILTER_GRID_RESPONSIVE,
     FILTER_GRID_SUBMIT_ROW,
@@ -22,16 +23,75 @@ import {
     todayIsoVietnam,
 } from '@/lib/vietnamTime';
 
-const attendanceTabs = {
-    personal: 'Cá nhân',
-    requests: 'Đơn xin phép',
-    settings: 'Cấu hình',
-    wifi: 'WiFi',
-    devices: 'Thiết bị',
-    holidays: 'Ngày lễ',
-    work_types: 'Loại chấm công',
-    staff: 'Nhân sự',
-    report: 'Báo cáo',
+const attendanceSections = {
+    personal: {
+        label: 'Công cá nhân',
+        routeName: 'attendance.personal',
+        description: 'Xem công của chính bạn theo khoảng ngày.',
+    },
+    requests: {
+        label: 'Đơn xin phép',
+        routeName: 'attendance.requests',
+        description: 'Gửi đơn đi muộn, nghỉ phép và theo dõi duyệt.',
+    },
+    report: {
+        label: 'Báo cáo công',
+        routeName: 'attendance.report',
+        description: 'Theo dõi bảng công tháng của nhân sự và xuất Excel.',
+    },
+    settings: {
+        label: 'Cấu hình',
+        routeName: 'attendance.settings',
+        description: 'Thiết lập giờ làm, nhắc công và rule attendance.',
+    },
+    wifi: {
+        label: 'WiFi',
+        routeName: 'attendance.wifi',
+        description: 'Quản lý SSID/BSSID được phép chấm công.',
+    },
+    devices: {
+        label: 'Thiết bị',
+        routeName: 'attendance.devices',
+        description: 'Duyệt hoặc gỡ thiết bị chấm công của nhân sự.',
+    },
+    holidays: {
+        label: 'Ngày lễ',
+        routeName: 'attendance.holidays',
+        description: 'Quản lý ngày nghỉ và kỳ nghỉ áp dụng attendance.',
+    },
+    work_types: {
+        label: 'Loại chấm công',
+        routeName: 'attendance.work-types',
+        description: 'Khai báo loại ca và số công mặc định.',
+    },
+    staff: {
+        label: 'Nhân sự',
+        routeName: 'attendance.staff',
+        description: 'Gán lịch tuần và rà attendance theo từng nhân sự.',
+    },
+};
+const attendanceSectionOrder = [
+    'personal',
+    'requests',
+    'report',
+    'settings',
+    'wifi',
+    'devices',
+    'holidays',
+    'work_types',
+    'staff',
+];
+const reportMatrixStickyWidths = {
+    name: 280,
+    role: 140,
+    department: 180,
+    total: 110,
+};
+const reportMatrixStickyLeft = {
+    name: 0,
+    role: reportMatrixStickyWidths.name,
+    department: reportMatrixStickyWidths.name + reportMatrixStickyWidths.role,
+    total: reportMatrixStickyWidths.name + reportMatrixStickyWidths.role + reportMatrixStickyWidths.department,
 };
 
 const statusLabels = {
@@ -240,7 +300,6 @@ export default function AttendanceWifi(props) {
     const canExport = canManage;
     const canViewReport = canManage || ['quan_ly', 'nhan_vien'].includes(role);
     const canManualAdjust = role === 'administrator';
-    const [activeTab, setActiveTab] = useState('personal');
     const [loading, setLoading] = useState(false);
     const [dashboard, setDashboard] = useState(null);
     const [records, setRecords] = useState([]);
@@ -311,15 +370,16 @@ export default function AttendanceWifi(props) {
     const [exportModalOpen, setExportModalOpen] = useState(false);
     const [exportRange, setExportRange] = useState(() => monthKeyToDateRange(currentMonthKey()));
 
-    const tabs = useMemo(() => {
-        const base = ['personal', 'requests'];
-        if (canManage) {
-            base.push('settings', 'wifi', 'devices', 'holidays', 'work_types', 'staff', 'report');
-        } else if (canViewReport) {
-            base.push('report');
-        }
-        return base;
+    const visibleSections = useMemo(() => {
+        return attendanceSectionOrder.filter((key) => {
+            if (key === 'report') return canViewReport;
+            if (['settings', 'wifi', 'devices', 'holidays', 'work_types', 'staff'].includes(key)) return canManage;
+            return true;
+        });
     }, [canManage, canViewReport]);
+    const activeSection = visibleSections.includes(String(props?.attendanceSection || ''))
+        ? String(props.attendanceSection)
+        : (visibleSections[0] || 'personal');
 
     const manualStaffOptions = useMemo(() => {
         const rows = [...staffRows];
@@ -698,12 +758,6 @@ export default function AttendanceWifi(props) {
     };
 
     useEffect(() => {
-        if (!tabs.includes(activeTab)) {
-            setActiveTab(tabs[0]);
-        }
-    }, [activeTab, tabs]);
-
-    useEffect(() => {
         initialLoad();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [canManage, canViewReport]);
@@ -1007,21 +1061,33 @@ export default function AttendanceWifi(props) {
             description="Check-in bằng Wi‑Fi/BSSID trên app mobile, đồng thời quản trị thiết bị, đơn xin phép, ngày lễ và báo cáo công trên web."
             stats={stats}
         >
-            <div className="mt-5 flex flex-wrap gap-2">
-                {tabs.map((key) => (
-                    <button
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {visibleSections.map((key) => {
+                    const section = attendanceSections[key];
+                    const selected = activeSection === key;
+                    return (
+                    <Link
                         key={key}
-                        type="button"
-                        onClick={() => setActiveTab(key)}
-                        className={`rounded-full px-4 py-2.5 text-sm font-semibold transition ${activeTab === key ? 'bg-primary text-white shadow-lg shadow-primary/15' : 'border border-slate-200 bg-white text-slate-700 hover:-translate-y-0.5 hover:bg-slate-50'}`}
+                        href={route(section.routeName)}
+                        className={`rounded-[24px] border px-4 py-4 text-left transition ${
+                            selected
+                                ? 'border-primary/20 bg-primary/10 shadow-lg shadow-primary/10'
+                                : 'border-slate-200 bg-white hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-50'
+                        }`}
                     >
-                        {attendanceTabs[key]}
-                    </button>
-                ))}
+                        <div className={`text-sm font-semibold ${selected ? 'text-primary' : 'text-slate-900'}`}>
+                            {section.label}
+                        </div>
+                        <div className="mt-1 text-xs leading-5 text-text-muted">
+                            {section.description}
+                        </div>
+                    </Link>
+                    );
+                })}
             </div>
 
             <div className="mt-5 space-y-5">
-                {activeTab === 'personal' && (
+                {activeSection === 'personal' && (
                     <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(280px,0.9fr)]">
                         <div className={cardClass}>
                             <div>
@@ -1104,7 +1170,7 @@ export default function AttendanceWifi(props) {
                     </div>
                 )}
 
-                {activeTab === 'requests' && (
+                {activeSection === 'requests' && (
                     <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
                         <div className={cardClass}>
                             <h3 className="text-lg font-semibold text-slate-900">Gửi đơn xin phép</h3>
@@ -1224,7 +1290,7 @@ export default function AttendanceWifi(props) {
                     </div>
                 )}
 
-                {activeTab === 'settings' && canManage && (
+                {activeSection === 'settings' && canManage && (
                     <div className={cardClass}>
                         <div className="flex items-center justify-between gap-3">
                             <div>
@@ -1265,7 +1331,7 @@ export default function AttendanceWifi(props) {
                     </div>
                 )}
 
-                {activeTab === 'wifi' && canManage && (
+                {activeSection === 'wifi' && canManage && (
                     <div className={cardClass}>
                         <div className="flex items-center justify-between gap-3">
                             <div>
@@ -1321,7 +1387,7 @@ export default function AttendanceWifi(props) {
                     </div>
                 )}
 
-                {activeTab === 'devices' && canManage && (
+                {activeSection === 'devices' && canManage && (
                     <div className={cardClass}>
                         <FilterToolbar enableSearch
                             className="mb-4"
@@ -1409,7 +1475,7 @@ export default function AttendanceWifi(props) {
                     </div>
                 )}
 
-                {activeTab === 'holidays' && canManage && (
+                {activeSection === 'holidays' && canManage && (
                     <div className={cardClass}>
                         <div className="flex items-center justify-between gap-3">
                             <div>
@@ -1440,7 +1506,7 @@ export default function AttendanceWifi(props) {
                     </div>
                 )}
 
-                {activeTab === 'work_types' && canManage && (
+                {activeSection === 'work_types' && canManage && (
                     <div className={cardClass}>
                         <div className="flex flex-wrap items-start justify-between gap-3">
                             <div>
@@ -1502,7 +1568,7 @@ export default function AttendanceWifi(props) {
                     </div>
                 )}
 
-                {activeTab === 'staff' && canManage && (
+                {activeSection === 'staff' && canManage && (
                     <div className={cardClass}>
                         <FilterToolbar
                             enableSearch
@@ -1638,7 +1704,7 @@ export default function AttendanceWifi(props) {
                     </div>
                 )}
 
-                {activeTab === 'report' && canViewReport && (
+                {activeSection === 'report' && canViewReport && (
                     <div className={cardClass}>
                         <FilterToolbar enableSearch
                             className="mb-4"
@@ -1720,16 +1786,40 @@ export default function AttendanceWifi(props) {
                                 </div>
                             </div>
                         )}
-                        <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200/80">
-                            <table className="min-w-max divide-y divide-slate-200 text-sm">
+                        <div className="mt-4 max-h-[70vh] overflow-auto rounded-2xl border border-slate-200/80">
+                            <table className="min-w-max border-separate border-spacing-0 text-sm">
                                 <thead className="bg-slate-50">
                                     <tr>
-                                        <th className="px-4 py-3 text-left font-semibold text-slate-700">Nhân sự</th>
-                                        <th className="px-4 py-3 text-left font-semibold text-slate-700">Vai trò</th>
-                                        <th className="px-4 py-3 text-left font-semibold text-slate-700">Phòng ban</th>
-                                        <th className="px-4 py-3 text-right font-semibold text-slate-700">Tổng công</th>
+                                        <th
+                                            className="sticky top-0 left-0 z-40 border-b border-r border-slate-200 bg-slate-50 px-4 py-3 text-left font-semibold text-slate-700"
+                                            style={{ minWidth: reportMatrixStickyWidths.name, width: reportMatrixStickyWidths.name, left: reportMatrixStickyLeft.name }}
+                                        >
+                                            Nhân sự
+                                        </th>
+                                        <th
+                                            className="sticky top-0 z-40 border-b border-r border-slate-200 bg-slate-50 px-4 py-3 text-left font-semibold text-slate-700"
+                                            style={{ minWidth: reportMatrixStickyWidths.role, width: reportMatrixStickyWidths.role, left: reportMatrixStickyLeft.role }}
+                                        >
+                                            Vai trò
+                                        </th>
+                                        <th
+                                            className="sticky top-0 z-40 border-b border-r border-slate-200 bg-slate-50 px-4 py-3 text-left font-semibold text-slate-700"
+                                            style={{ minWidth: reportMatrixStickyWidths.department, width: reportMatrixStickyWidths.department, left: reportMatrixStickyLeft.department }}
+                                        >
+                                            Phòng ban
+                                        </th>
+                                        <th
+                                            className="sticky top-0 z-40 border-b border-r border-slate-200 bg-slate-50 px-4 py-3 text-right font-semibold text-slate-700"
+                                            style={{ minWidth: reportMatrixStickyWidths.total, width: reportMatrixStickyWidths.total, left: reportMatrixStickyLeft.total }}
+                                        >
+                                            Tổng công
+                                        </th>
                                         {(reportMatrix.days || []).map((day) => (
-                                            <th key={day.date} className={`px-2 py-3 text-center font-semibold text-slate-700 ${day.is_weekend ? 'bg-slate-100/80' : ''}`}>
+                                            <th
+                                                key={day.date}
+                                                className={`sticky top-0 z-30 border-b border-r border-slate-200 px-2 py-3 text-center font-semibold text-slate-700 ${day.is_weekend ? 'bg-slate-100' : 'bg-slate-50'}`}
+                                                style={{ minWidth: 68, width: 68 }}
+                                            >
                                                 <div className="text-[10px] uppercase tracking-[0.12em] text-text-muted">{day.weekday}</div>
                                                 <div className="text-xs font-semibold">{String(day.day).padStart(2, '0')}</div>
                                             </th>
@@ -1746,18 +1836,37 @@ export default function AttendanceWifi(props) {
                                     )}
                                     {(reportMatrix.rows || []).map((row) => (
                                         <tr key={row.user_id}>
-                                            <td className="px-4 py-3">
+                                            <td
+                                                className="sticky left-0 z-20 border-b border-r border-slate-200 bg-white px-4 py-3"
+                                                style={{ minWidth: reportMatrixStickyWidths.name, width: reportMatrixStickyWidths.name, left: reportMatrixStickyLeft.name }}
+                                            >
                                                 <div className="font-semibold text-slate-900">{row.user_name}</div>
                                                 <div className="text-xs text-text-muted">{row.email || '—'}</div>
                                             </td>
-                                            <td className="px-4 py-3">{row.role}</td>
-                                            <td className="px-4 py-3">{row.department}</td>
-                                            <td className="px-4 py-3 text-right font-semibold text-slate-900">{row.total_work_units}</td>
+                                            <td
+                                                className="sticky z-20 border-b border-r border-slate-200 bg-white px-4 py-3"
+                                                style={{ minWidth: reportMatrixStickyWidths.role, width: reportMatrixStickyWidths.role, left: reportMatrixStickyLeft.role }}
+                                            >
+                                                {row.role}
+                                            </td>
+                                            <td
+                                                className="sticky z-20 border-b border-r border-slate-200 bg-white px-4 py-3"
+                                                style={{ minWidth: reportMatrixStickyWidths.department, width: reportMatrixStickyWidths.department, left: reportMatrixStickyLeft.department }}
+                                            >
+                                                {row.department}
+                                            </td>
+                                            <td
+                                                className="sticky z-20 border-b border-r border-slate-200 bg-white px-4 py-3 text-right font-semibold text-slate-900"
+                                                style={{ minWidth: reportMatrixStickyWidths.total, width: reportMatrixStickyWidths.total, left: reportMatrixStickyLeft.total }}
+                                            >
+                                                {row.total_work_units}
+                                            </td>
                                             {(row.cells || []).map((cell) => (
                                                 <td
                                                     key={`${row.user_id}-${cell.date}`}
-                                                    className={`px-2 py-2 text-center align-middle ${cell.has_record ? 'bg-white' : 'bg-slate-50/60'}`}
+                                                    className={`border-b border-r border-slate-100 px-2 py-2 text-center align-middle ${cell.has_record ? 'bg-white' : 'bg-slate-50/60'}`}
                                                     title={`${cell.date} • ${cell.status_label}${cell.minutes_late ? ` • Trễ ${cell.minutes_late} phút` : ''}`}
+                                                    style={{ minWidth: 68, width: 68 }}
                                                 >
                                                     <button
                                                         type="button"
