@@ -161,6 +161,218 @@ const CONTRACT_DATE_FIELD_OPTIONS = [
     { value: 'start_date', label: 'Ngày bắt đầu hiệu lực' },
     { value: 'end_date', label: 'Ngày kết thúc' },
 ];
+const CONTRACT_EXPORT_FIELD_GROUPS = [
+    {
+        key: 'contract_core',
+        title: 'Thông tin hợp đồng',
+        fields: [
+            { key: 'contract_id', label: 'ID hợp đồng' },
+            { key: 'contract_code', label: 'Mã hợp đồng' },
+            { key: 'contract_title', label: 'Tên hợp đồng' },
+            { key: 'contract_type', label: 'Loại hợp đồng' },
+            { key: 'care_schedule', label: 'Lịch chăm sóc' },
+            { key: 'duration_months', label: 'Thời hạn (tháng)' },
+            { key: 'payment_cycle', label: 'Chu kỳ thanh toán' },
+            { key: 'imported_paid_periods', label: 'Số kỳ đã thu khi import' },
+            { key: 'signed_at', label: 'Ngày ký' },
+            { key: 'start_date', label: 'Ngày bắt đầu hiệu lực' },
+            { key: 'end_date', label: 'Ngày kết thúc' },
+            { key: 'contract_notes', label: 'Ghi chú hợp đồng' },
+            { key: 'created_at', label: 'Ngày tạo' },
+            { key: 'updated_at', label: 'Ngày cập nhật' },
+        ],
+    },
+    {
+        key: 'client',
+        title: 'Khách hàng',
+        fields: [
+            { key: 'client_id', label: 'ID khách hàng' },
+            { key: 'client_code', label: 'Mã khách hàng' },
+            { key: 'client_name', label: 'Tên khách hàng' },
+            { key: 'client_company', label: 'Công ty' },
+            { key: 'client_email', label: 'Email khách hàng' },
+            { key: 'client_phone', label: 'SĐT khách hàng' },
+            { key: 'client_lead_source', label: 'Nguồn khách' },
+            { key: 'client_lead_channel', label: 'Kênh khách' },
+            { key: 'client_status_label', label: 'Trạng thái khách' },
+            { key: 'client_level', label: 'Cấp độ khách' },
+            { key: 'client_lead_type', label: 'Loại khách' },
+            { key: 'client_assigned_staff', label: 'Nhân viên phụ trách khách' },
+            { key: 'client_sales_owner', label: 'Sales owner khách' },
+            { key: 'client_care_staff', label: 'Nhóm chăm sóc khách' },
+        ],
+    },
+    {
+        key: 'opportunity_project',
+        title: 'Cơ hội và dự án',
+        fields: [
+            { key: 'opportunity_id', label: 'ID cơ hội' },
+            { key: 'opportunity_title', label: 'Tên cơ hội' },
+            { key: 'opportunity_status', label: 'Trạng thái cơ hội' },
+            { key: 'opportunity_amount', label: 'Giá trị cơ hội' },
+            { key: 'opportunity_assignee', label: 'Phụ trách cơ hội' },
+            { key: 'project_id', label: 'ID dự án' },
+            { key: 'project_code', label: 'Mã dự án' },
+            { key: 'project_name', label: 'Tên dự án' },
+            { key: 'project_website', label: 'Website dự án' },
+            { key: 'project_status', label: 'Trạng thái dự án' },
+        ],
+    },
+    {
+        key: 'finance',
+        title: 'Tài chính',
+        fields: [
+            { key: 'effective_value', label: 'Giá trị hợp đồng' },
+            { key: 'subtotal_value', label: 'Giá trị trước VAT' },
+            { key: 'vat_enabled', label: 'Có VAT' },
+            { key: 'vat_mode', label: 'Kiểu VAT' },
+            { key: 'vat_rate', label: 'Tỷ lệ VAT (%)' },
+            { key: 'vat_amount', label: 'Tiền VAT' },
+            { key: 'items_total_value', label: 'Tổng dòng sản phẩm' },
+            { key: 'payment_times', label: 'Số lần thanh toán' },
+            { key: 'payments_count', label: 'Số lần đã thu' },
+            { key: 'payments_total', label: 'Đã thu' },
+            { key: 'debt_outstanding', label: 'Công nợ' },
+            { key: 'costs_total', label: 'Chi phí' },
+            { key: 'net_revenue', label: 'Doanh thu ròng' },
+            { key: 'stored_revenue', label: 'Doanh thu lưu trong hợp đồng' },
+            { key: 'stored_debt', label: 'Công nợ lưu trong hợp đồng' },
+            { key: 'stored_cash_flow', label: 'Dòng tiền lưu trong hợp đồng' },
+        ],
+    },
+    {
+        key: 'workflow',
+        title: 'Duyệt và vận hành',
+        fields: [
+            { key: 'contract_status_label', label: 'Trạng thái vòng đời' },
+            { key: 'contract_status_code', label: 'Trạng thái vòng đời (mã)' },
+            { key: 'approval_status_label', label: 'Trạng thái duyệt' },
+            { key: 'approval_status_code', label: 'Trạng thái duyệt (mã)' },
+            { key: 'approver_name', label: 'Người duyệt' },
+            { key: 'approver_email', label: 'Email người duyệt' },
+            { key: 'approved_at', label: 'Ngày duyệt' },
+            { key: 'approval_note', label: 'Ghi chú duyệt' },
+            { key: 'handover_receive_label', label: 'Trạng thái nhận bàn giao' },
+            { key: 'handover_receive_code', label: 'Trạng thái nhận bàn giao (mã)' },
+            { key: 'handover_receiver_name', label: 'Người nhận bàn giao' },
+            { key: 'handover_received_at', label: 'Ngày nhận bàn giao' },
+        ],
+    },
+    {
+        key: 'people',
+        title: 'Nhân sự và tổng quan',
+        fields: [
+            { key: 'creator_name', label: 'Người tạo' },
+            { key: 'creator_email', label: 'Email người tạo' },
+            { key: 'collector_name', label: 'Nhân viên thu' },
+            { key: 'collector_email', label: 'Email nhân viên thu' },
+            { key: 'contract_care_staff', label: 'Nhân viên chăm sóc hợp đồng' },
+            { key: 'items_count', label: 'Số dòng sản phẩm' },
+            { key: 'files_count', label: 'Số file đính kèm' },
+        ],
+    },
+];
+const CONTRACT_EXPORT_SHEET_OPTIONS = [
+    { key: 'items', label: 'Dòng sản phẩm' },
+    { key: 'payments', label: 'Thanh toán' },
+    { key: 'costs', label: 'Chi phí' },
+    { key: 'finance_requests', label: 'Phiếu tài chính' },
+    { key: 'care_staff', label: 'Nhân sự chăm sóc' },
+    { key: 'care_notes', label: 'Ghi chú chăm sóc' },
+    { key: 'files', label: 'File đính kèm' },
+];
+const DEFAULT_CONTRACT_EXPORT_FIELD_KEYS = CONTRACT_EXPORT_FIELD_GROUPS.flatMap((group) => group.fields.map((field) => field.key));
+const DEFAULT_CONTRACT_EXPORT_SHEET_KEYS = CONTRACT_EXPORT_SHEET_OPTIONS.map((item) => item.key);
+const CONTRACT_EXPORT_STORAGE_KEY = 'contracts-export-config-v2';
+const CONTRACT_EXPORT_PRESETS = {
+    basic: [
+        'contract_code',
+        'contract_title',
+        'client_name',
+        'client_phone',
+        'project_name',
+        'collector_name',
+        'effective_value',
+        'payments_total',
+        'debt_outstanding',
+        'approval_status_label',
+        'contract_status_label',
+        'signed_at',
+        'start_date',
+        'end_date',
+    ],
+    finance: [
+        'contract_code',
+        'contract_title',
+        'client_name',
+        'effective_value',
+        'subtotal_value',
+        'vat_enabled',
+        'vat_mode',
+        'vat_rate',
+        'vat_amount',
+        'items_total_value',
+        'payment_times',
+        'payments_count',
+        'payments_total',
+        'debt_outstanding',
+        'costs_total',
+        'net_revenue',
+        'stored_revenue',
+        'stored_debt',
+        'stored_cash_flow',
+        'collector_name',
+        'approved_at',
+    ],
+    operations: [
+        'contract_code',
+        'contract_title',
+        'client_name',
+        'client_assigned_staff',
+        'client_care_staff',
+        'project_name',
+        'project_website',
+        'project_status',
+        'contract_status_label',
+        'approval_status_label',
+        'handover_receive_label',
+        'creator_name',
+        'collector_name',
+        'contract_care_staff',
+        'signed_at',
+        'start_date',
+        'end_date',
+        'created_at',
+        'updated_at',
+    ],
+};
+const sanitizeContractExportFieldKeys = (value) => {
+    const allowed = new Set(DEFAULT_CONTRACT_EXPORT_FIELD_KEYS);
+    if (!Array.isArray(value)) return DEFAULT_CONTRACT_EXPORT_FIELD_KEYS;
+    const normalized = value
+        .map((item) => String(item || ''))
+        .filter((item) => allowed.has(item));
+    return normalized.length > 0 ? Array.from(new Set(normalized)) : DEFAULT_CONTRACT_EXPORT_FIELD_KEYS;
+};
+const sanitizeContractExportSheetKeys = (value) => {
+    const allowed = new Set(DEFAULT_CONTRACT_EXPORT_SHEET_KEYS);
+    if (!Array.isArray(value)) return DEFAULT_CONTRACT_EXPORT_SHEET_KEYS;
+    return Array.from(new Set(value.map((item) => String(item || '')).filter((item) => allowed.has(item))));
+};
+const readStoredContractExportConfig = () => {
+    if (typeof window === 'undefined') return null;
+    try {
+        const raw = window.localStorage.getItem(CONTRACT_EXPORT_STORAGE_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        return {
+            contract_fields: sanitizeContractExportFieldKeys(parsed?.contract_fields),
+            include_sheets: sanitizeContractExportSheetKeys(parsed?.include_sheets),
+        };
+    } catch {
+        return null;
+    }
+};
 const emptyContractDateRanges = () => CONTRACT_DATE_FIELD_OPTIONS.reduce((accumulator, field) => ({
     ...accumulator,
     [`${field.value}_from`]: '',
@@ -514,6 +726,14 @@ export default function Contracts(props) {
     });
     const [reviewingRequestId, setReviewingRequestId] = useState(null);
     const [selectedContractIds, setSelectedContractIds] = useState([]);
+    const [showExportModal, setShowExportModal] = useState(false);
+    const storedExportConfig = readStoredContractExportConfig();
+    const [contractExportFieldKeys, setContractExportFieldKeys] = useState(
+        () => storedExportConfig?.contract_fields || DEFAULT_CONTRACT_EXPORT_FIELD_KEYS,
+    );
+    const [contractExportSheetKeys, setContractExportSheetKeys] = useState(
+        () => storedExportConfig?.include_sheets || DEFAULT_CONTRACT_EXPORT_SHEET_KEYS,
+    );
     const [bulkLoading, setBulkLoading] = useState(false);
     const [showBulkDateSyncModal, setShowBulkDateSyncModal] = useState(false);
     const [bulkDateSyncForm, setBulkDateSyncForm] = useState({
@@ -905,6 +1125,18 @@ export default function Contracts(props) {
         };
     }, [filters]);
 
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        try {
+            window.localStorage.setItem(CONTRACT_EXPORT_STORAGE_KEY, JSON.stringify({
+                contract_fields: contractExportFieldKeys,
+                include_sheets: contractExportSheetKeys,
+            }));
+        } catch {
+            // ignore storage failures
+        }
+    }, [contractExportFieldKeys, contractExportSheetKeys]);
+
     const stats = useMemo(() => {
         const total = contractMeta.total || contracts.length;
         const active = contracts.filter((c) => c.status === 'active').length;
@@ -948,6 +1180,14 @@ export default function Contracts(props) {
     const selectedContractSet = useMemo(
         () => new Set(selectedContractIds.map((id) => Number(id))),
         [selectedContractIds]
+    );
+    const selectedExportFieldSet = useMemo(
+        () => new Set(contractExportFieldKeys.map((key) => String(key))),
+        [contractExportFieldKeys]
+    );
+    const selectedExportSheetSet = useMemo(
+        () => new Set(contractExportSheetKeys.map((key) => String(key))),
+        [contractExportSheetKeys]
     );
     const allVisibleSelected = visibleContractIds.length > 0
         && visibleContractIds.every((id) => selectedContractSet.has(id));
@@ -1033,6 +1273,66 @@ export default function Contracts(props) {
         }
 
         setShowBulkDateSyncModal(true);
+    };
+
+    const openExportModal = () => {
+        if (!canExportContracts) {
+            toast.error('Bạn không có quyền xuất danh sách hợp đồng.');
+            return;
+        }
+        if (!selectedContractIds.length) {
+            toast.error('Vui lòng chọn hợp đồng cần xuất.');
+            return;
+        }
+
+        setShowExportModal(true);
+    };
+
+    const toggleContractExportField = (fieldKey) => {
+        const normalized = String(fieldKey || '');
+        if (!normalized) return;
+        setContractExportFieldKeys((prev) => (
+            prev.includes(normalized)
+                ? prev.filter((item) => item !== normalized)
+                : [...prev, normalized]
+        ));
+    };
+
+    const toggleContractExportSheet = (sheetKey) => {
+        const normalized = String(sheetKey || '');
+        if (!normalized) return;
+        setContractExportSheetKeys((prev) => (
+            prev.includes(normalized)
+                ? prev.filter((item) => item !== normalized)
+                : [...prev, normalized]
+        ));
+    };
+
+    const applyContractExportPreset = (presetKey) => {
+        const preset = CONTRACT_EXPORT_PRESETS[presetKey];
+        if (!Array.isArray(preset) || !preset.length) return;
+        setContractExportFieldKeys(Array.from(new Set(preset)));
+    };
+
+    const selectAllContractExportFields = () => {
+        setContractExportFieldKeys(DEFAULT_CONTRACT_EXPORT_FIELD_KEYS);
+    };
+
+    const clearAllContractExportFields = () => {
+        setContractExportFieldKeys([]);
+    };
+
+    const selectAllContractExportSheets = () => {
+        setContractExportSheetKeys(DEFAULT_CONTRACT_EXPORT_SHEET_KEYS);
+    };
+
+    const clearAllContractExportSheets = () => {
+        setContractExportSheetKeys([]);
+    };
+
+    const restoreDefaultContractExportConfig = () => {
+        setContractExportFieldKeys(DEFAULT_CONTRACT_EXPORT_FIELD_KEYS);
+        setContractExportSheetKeys(DEFAULT_CONTRACT_EXPORT_SHEET_KEYS);
     };
 
     const bulkSyncContractDates = async () => {
@@ -1131,11 +1431,17 @@ export default function Contracts(props) {
             toast.error('Vui lòng chọn hợp đồng cần xuất.');
             return;
         }
+        if (!contractExportFieldKeys.length) {
+            toast.error('Vui lòng chọn ít nhất một cột ở sheet hợp đồng.');
+            return;
+        }
 
         setBulkLoading(true);
         try {
             const res = await axios.post('/api/v1/contracts/export-selected', {
                 contract_ids: selectedContractIds.map((id) => Number(id)).filter((id) => id > 0),
+                contract_fields: contractExportFieldKeys,
+                include_sheets: contractExportSheetKeys,
             }, {
                 responseType: 'blob',
             });
@@ -1154,6 +1460,7 @@ export default function Contracts(props) {
             link.remove();
             window.URL.revokeObjectURL(url);
             toast.success(`Đã xuất ${selectedContractIds.length} hợp đồng ra file XLSX.`);
+            setShowExportModal(false);
         } catch (error) {
             toast.error(await getBlobErrorMessage(error, 'Không thể xuất danh sách hợp đồng đã chọn.'));
         } finally {
@@ -2132,9 +2439,9 @@ export default function Contracts(props) {
                                 <button
                                     type="button"
                                     className="rounded-xl border border-teal-300 bg-teal-100 px-3 py-2 text-xs font-semibold text-teal-900"
-                                    onClick={exportSelectedContracts}
+                                    onClick={openExportModal}
                                     disabled={bulkLoading}
-                                    title="Xuất đầy đủ trường của các hợp đồng đã chọn ra file XLSX"
+                                    title="Chọn cột và sheet cần xuất ra file XLSX"
                                 >
                                     {bulkLoading ? 'Đang xử lý...' : 'Xuất XLSX đã chọn'}
                                 </button>
@@ -3117,6 +3424,229 @@ export default function Contracts(props) {
                         </button>
                     </div>
                 </form>
+            </Modal>
+
+            <Modal
+                open={showExportModal}
+                onClose={() => {
+                    if (bulkLoading) return;
+                    setShowExportModal(false);
+                }}
+                title="Xuất Excel hợp đồng đã chọn"
+                description="Chọn cột cần xuất ở sheet hợp đồng chính và bật hoặc tắt các sheet chi tiết kèm theo."
+                size="xl"
+            >
+                <div className="space-y-4 text-sm">
+                    <div className="rounded-2xl border border-teal-100 bg-teal-50/80 px-4 py-3 text-xs text-teal-900">
+                        <div className="font-semibold">Phạm vi xuất</div>
+                        <p className="mt-1">
+                            {selectedContractIds.length} hợp đồng đang được chọn. Sheet chính luôn có cột STT cố định; các cột còn lại sẽ theo đúng lựa chọn của bạn.
+                        </p>
+                        <p className="mt-2">
+                            Hiện đang chọn <strong>{contractExportFieldKeys.length}</strong> cột và <strong>{contractExportSheetKeys.length}</strong> sheet phụ.
+                        </p>
+                        <p className="mt-2">
+                            Cấu hình xuất gần nhất sẽ được nhớ lại trên trình duyệt này để bạn không phải chọn lại từ đầu.
+                        </p>
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                                <div className="text-sm font-semibold text-slate-900">Chọn nhanh cột sheet chính</div>
+                                <div className="mt-1 text-xs text-slate-500">Bạn có thể chọn tất cả, bỏ hết, hoặc dùng preset gần đúng rồi tinh chỉnh tiếp.</div>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                <button
+                                    type="button"
+                                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
+                                    onClick={selectAllContractExportFields}
+                                    disabled={bulkLoading}
+                                >
+                                    Chọn tất cả cột
+                                </button>
+                                <button
+                                    type="button"
+                                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
+                                    onClick={clearAllContractExportFields}
+                                    disabled={bulkLoading}
+                                >
+                                    Bỏ hết cột
+                                </button>
+                                <button
+                                    type="button"
+                                    className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-800"
+                                    onClick={() => applyContractExportPreset('basic')}
+                                    disabled={bulkLoading}
+                                >
+                                    Preset cơ bản
+                                </button>
+                                <button
+                                    type="button"
+                                    className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800"
+                                    onClick={() => applyContractExportPreset('finance')}
+                                    disabled={bulkLoading}
+                                >
+                                    Preset tài chính
+                                </button>
+                                <button
+                                    type="button"
+                                    className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-800"
+                                    onClick={() => applyContractExportPreset('operations')}
+                                    disabled={bulkLoading}
+                                >
+                                    Preset vận hành
+                                </button>
+                                <button
+                                    type="button"
+                                    className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900"
+                                    onClick={restoreDefaultContractExportConfig}
+                                    disabled={bulkLoading}
+                                >
+                                    Khôi phục mặc định
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="space-y-3">
+                        {CONTRACT_EXPORT_FIELD_GROUPS.map((group) => (
+                            <div key={group.key} className="rounded-2xl border border-slate-200/80 bg-white px-4 py-4">
+                                <div className="mb-3 flex items-center justify-between gap-3">
+                                    <div>
+                                        <div className="text-sm font-semibold text-slate-900">{group.title}</div>
+                                        <div className="mt-1 text-xs text-slate-500">
+                                            {group.fields.filter((field) => selectedExportFieldSet.has(field.key)).length}/{group.fields.length} cột đang được chọn.
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button
+                                            type="button"
+                                            className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700"
+                                            onClick={() => setContractExportFieldKeys((prev) => Array.from(new Set([
+                                                ...prev,
+                                                ...group.fields.map((field) => field.key),
+                                            ])))}
+                                            disabled={bulkLoading}
+                                        >
+                                            Chọn nhóm
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700"
+                                            onClick={() => setContractExportFieldKeys((prev) => prev.filter((key) => !group.fields.some((field) => field.key === key)))}
+                                            disabled={bulkLoading}
+                                        >
+                                            Bỏ nhóm
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                                    {group.fields.map((field) => {
+                                        const checked = selectedExportFieldSet.has(field.key);
+                                        return (
+                                            <label
+                                                key={field.key}
+                                                className={`flex cursor-pointer items-start gap-3 rounded-2xl border px-3 py-2.5 transition ${
+                                                    checked
+                                                        ? 'border-teal-300 bg-teal-50/70'
+                                                        : 'border-slate-200 bg-slate-50/40 hover:border-slate-300'
+                                                }`}
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary/40"
+                                                    checked={checked}
+                                                    onChange={() => toggleContractExportField(field.key)}
+                                                    disabled={bulkLoading}
+                                                />
+                                                <span className="text-sm text-slate-800">{field.label}</span>
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-200/80 bg-white px-4 py-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                                <div className="text-sm font-semibold text-slate-900">Sheet chi tiết kèm theo</div>
+                                <div className="mt-1 text-xs text-slate-500">
+                                    Nếu bật, sheet phụ vẫn xuất đủ cấu trúc riêng của nó. Nếu tắt hết, file chỉ còn sheet hợp đồng chính với các cột bạn vừa chọn.
+                                </div>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                <button
+                                    type="button"
+                                    className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700"
+                                    onClick={selectAllContractExportSheets}
+                                    disabled={bulkLoading}
+                                >
+                                    Bật tất cả sheet
+                                </button>
+                                <button
+                                    type="button"
+                                    className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700"
+                                    onClick={clearAllContractExportSheets}
+                                    disabled={bulkLoading}
+                                >
+                                    Tắt tất cả sheet
+                                </button>
+                            </div>
+                        </div>
+                        <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                            {CONTRACT_EXPORT_SHEET_OPTIONS.map((sheet) => {
+                                const checked = selectedExportSheetSet.has(sheet.key);
+                                return (
+                                    <label
+                                        key={sheet.key}
+                                        className={`flex cursor-pointer items-start gap-3 rounded-2xl border px-3 py-2.5 transition ${
+                                            checked
+                                                ? 'border-sky-300 bg-sky-50/70'
+                                                : 'border-slate-200 bg-slate-50/40 hover:border-slate-300'
+                                        }`}
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            className="mt-0.5 h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary/40"
+                                            checked={checked}
+                                            onChange={() => toggleContractExportSheet(sheet.key)}
+                                            disabled={bulkLoading}
+                                        />
+                                        <span className="text-sm text-slate-800">{sheet.label}</span>
+                                    </label>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3 text-xs text-slate-600">
+                        {contractExportFieldKeys.length > 0
+                            ? `Sẵn sàng xuất ${contractExportFieldKeys.length} cột ở sheet chính${contractExportSheetKeys.length ? ` và ${contractExportSheetKeys.length} sheet phụ` : ''}.`
+                            : 'Bạn cần chọn ít nhất một cột ở sheet chính thì mới xuất được file.'}
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            className="flex-1 rounded-2xl bg-primary px-3 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                            onClick={exportSelectedContracts}
+                            disabled={bulkLoading || contractExportFieldKeys.length === 0}
+                        >
+                            {bulkLoading ? 'Đang xuất...' : 'Xuất file XLSX'}
+                        </button>
+                        <button
+                            type="button"
+                            className="flex-1 rounded-2xl border border-slate-200 px-3 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+                            onClick={() => setShowExportModal(false)}
+                            disabled={bulkLoading}
+                        >
+                            Hủy
+                        </button>
+                    </div>
+                </div>
             </Modal>
 
             <Modal

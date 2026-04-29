@@ -97,13 +97,20 @@ class ContractController extends Controller
 
     public function exportSelected(Request $request)
     {
+        $exportFieldKeys = array_keys($this->contractExportFieldMap());
+        $exportSheetKeys = array_keys($this->contractExportRelatedSheetMap());
         $validated = $request->validate([
             'contract_ids' => ['required', 'array', 'min:1', 'max:5000'],
             'contract_ids.*' => ['integer', 'exists:contracts,id'],
+            'contract_fields' => ['nullable', 'array', 'min:1'],
+            'contract_fields.*' => ['string', 'in:'.implode(',', $exportFieldKeys)],
+            'include_sheets' => ['nullable', 'array'],
+            'include_sheets.*' => ['string', 'in:'.implode(',', $exportSheetKeys)],
         ], [
             'contract_ids.required' => 'Vui lòng chọn hợp đồng cần xuất.',
             'contract_ids.min' => 'Vui lòng chọn ít nhất một hợp đồng.',
             'contract_ids.max' => 'Mỗi lần xuất tối đa 5000 hợp đồng.',
+            'contract_fields.min' => 'Vui lòng chọn ít nhất một cột ở sheet hợp đồng.',
         ]);
 
         $ids = collect($validated['contract_ids'] ?? [])
@@ -116,6 +123,24 @@ class ContractController extends Controller
         if (empty($ids)) {
             return response()->json(['message' => 'Vui lòng chọn hợp đồng cần xuất.'], 422);
         }
+
+        $selectedFieldKeys = collect($validated['contract_fields'] ?? $this->defaultContractExportFieldKeys())
+            ->map(fn ($key) => (string) $key)
+            ->filter(fn ($key) => in_array($key, $exportFieldKeys, true))
+            ->unique()
+            ->values()
+            ->all();
+
+        if (empty($selectedFieldKeys)) {
+            return response()->json(['message' => 'Vui lòng chọn ít nhất một cột ở sheet hợp đồng.'], 422);
+        }
+
+        $selectedSheetKeys = collect($validated['include_sheets'] ?? $this->defaultContractExportRelatedSheetKeys())
+            ->map(fn ($key) => (string) $key)
+            ->filter(fn ($key) => in_array($key, $exportSheetKeys, true))
+            ->unique()
+            ->values()
+            ->all();
 
         $query = Contract::query();
         CrmScope::applyContractScope($query, $request->user());
@@ -168,7 +193,7 @@ class ContractController extends Controller
             ], 403);
         }
 
-        $spreadsheet = $this->buildSelectedContractsSpreadsheet($contracts);
+        $spreadsheet = $this->buildSelectedContractsSpreadsheet($contracts, $selectedFieldKeys, $selectedSheetKeys);
         $fileName = 'danh-sach-hop-dong-da-chon-'.Carbon::now('Asia/Ho_Chi_Minh')->format('Ymd-His').'.xlsx';
 
         return response()->streamDownload(function () use ($spreadsheet) {
@@ -1274,193 +1299,247 @@ class ContractController extends Controller
         ]);
     }
 
-    private function buildSelectedContractsSpreadsheet($contracts): Spreadsheet
+    private function buildSelectedContractsSpreadsheet($contracts, array $fieldKeys, array $sheetKeys): Spreadsheet
     {
         $spreadsheet = new Spreadsheet();
 
-        $this->writeContractsExportSheet($spreadsheet->getActiveSheet(), $contracts);
-        $this->writeContractItemsExportSheet($spreadsheet->createSheet(), $contracts);
-        $this->writeContractPaymentsExportSheet($spreadsheet->createSheet(), $contracts);
-        $this->writeContractCostsExportSheet($spreadsheet->createSheet(), $contracts);
-        $this->writeContractFinanceRequestsExportSheet($spreadsheet->createSheet(), $contracts);
-        $this->writeContractCareStaffExportSheet($spreadsheet->createSheet(), $contracts);
-        $this->writeContractCareNotesExportSheet($spreadsheet->createSheet(), $contracts);
-        $this->writeContractFilesExportSheet($spreadsheet->createSheet(), $contracts);
+        $this->writeContractsExportSheet($spreadsheet->getActiveSheet(), $contracts, $fieldKeys);
+        if (in_array('items', $sheetKeys, true)) {
+            $this->writeContractItemsExportSheet($spreadsheet->createSheet(), $contracts);
+        }
+        if (in_array('payments', $sheetKeys, true)) {
+            $this->writeContractPaymentsExportSheet($spreadsheet->createSheet(), $contracts);
+        }
+        if (in_array('costs', $sheetKeys, true)) {
+            $this->writeContractCostsExportSheet($spreadsheet->createSheet(), $contracts);
+        }
+        if (in_array('finance_requests', $sheetKeys, true)) {
+            $this->writeContractFinanceRequestsExportSheet($spreadsheet->createSheet(), $contracts);
+        }
+        if (in_array('care_staff', $sheetKeys, true)) {
+            $this->writeContractCareStaffExportSheet($spreadsheet->createSheet(), $contracts);
+        }
+        if (in_array('care_notes', $sheetKeys, true)) {
+            $this->writeContractCareNotesExportSheet($spreadsheet->createSheet(), $contracts);
+        }
+        if (in_array('files', $sheetKeys, true)) {
+            $this->writeContractFilesExportSheet($spreadsheet->createSheet(), $contracts);
+        }
 
         $spreadsheet->setActiveSheetIndex(0);
 
         return $spreadsheet;
     }
 
-    private function writeContractsExportSheet(Worksheet $sheet, $contracts): void
+    private function writeContractsExportSheet(Worksheet $sheet, $contracts, array $fieldKeys): void
     {
         $sheet->setTitle('Hop dong');
-        $headers = [
-            'STT',
-            'ID hợp đồng',
-            'Mã hợp đồng',
-            'Tên hợp đồng',
-            'Loại hợp đồng',
-            'Lịch chăm sóc',
-            'Thời hạn (tháng)',
-            'Chu kỳ thanh toán',
-            'Số kỳ đã thu khi import',
-            'ID khách hàng',
-            'Mã khách hàng',
-            'Tên khách hàng',
-            'Công ty',
-            'Email khách hàng',
-            'SĐT khách hàng',
-            'Nguồn khách',
-            'Kênh khách',
-            'Trạng thái khách',
-            'Cấp độ khách',
-            'Loại khách',
-            'Nhân viên phụ trách khách',
-            'Sales owner khách',
-            'Nhóm chăm sóc khách',
-            'ID cơ hội',
-            'Tên cơ hội',
-            'Trạng thái cơ hội',
-            'Giá trị cơ hội',
-            'Phụ trách cơ hội',
-            'ID dự án',
-            'Mã dự án',
-            'Tên dự án',
-            'Website dự án',
-            'Trạng thái dự án',
-            'Giá trị hợp đồng',
-            'Giá trị trước VAT',
-            'Có VAT',
-            'Kiểu VAT',
-            'Tỷ lệ VAT (%)',
-            'Tiền VAT',
-            'Tổng dòng sản phẩm',
-            'Số lần thanh toán',
-            'Số lần đã thu',
-            'Đã thu',
-            'Công nợ',
-            'Chi phí',
-            'Doanh thu ròng',
-            'Doanh thu lưu trong hợp đồng',
-            'Công nợ lưu trong hợp đồng',
-            'Dòng tiền lưu trong hợp đồng',
-            'Trạng thái vòng đời',
-            'Trạng thái vòng đời (mã)',
-            'Trạng thái duyệt',
-            'Trạng thái duyệt (mã)',
-            'Người duyệt',
-            'Email người duyệt',
-            'Ngày duyệt',
-            'Ghi chú duyệt',
-            'Trạng thái nhận bàn giao',
-            'Trạng thái nhận bàn giao (mã)',
-            'Người nhận bàn giao',
-            'Ngày nhận bàn giao',
-            'Ngày ký',
-            'Ngày bắt đầu hiệu lực',
-            'Ngày kết thúc',
-            'Ghi chú hợp đồng',
-            'Người tạo',
-            'Email người tạo',
-            'Nhân viên thu',
-            'Email nhân viên thu',
-            'Nhân viên chăm sóc hợp đồng',
-            'Số dòng sản phẩm',
-            'Số file đính kèm',
-            'Ngày tạo',
-            'Ngày cập nhật',
-        ];
+        $fieldMap = $this->contractExportFieldMap();
+        $headers = array_merge(
+            ['STT'],
+            array_map(fn ($key) => (string) ($fieldMap[$key] ?? $key), $fieldKeys)
+        );
         $this->writeExportHeader($sheet, $headers);
 
         $row = 2;
         $stt = 1;
         foreach ($contracts as $contract) {
-            $client = $contract->client;
-            $opportunity = $contract->opportunity;
-            $project = $this->exportLinkedProject($contract);
-            $status = (string) ($contract->status ?? '');
-            $filesCount = $contract->relationLoaded('contractFiles') ? $contract->contractFiles->count() : 0;
-
-            $this->writeExportRow($sheet, $row++, [
-                $stt++,
-                (int) $contract->id,
-                (string) ($contract->code ?? ''),
-                (string) ($contract->title ?? ''),
-                (string) ($contract->contract_type ?? ''),
-                (string) ($contract->care_schedule ?? ''),
-                $contract->duration_months !== null ? (int) $contract->duration_months : '',
-                (string) ($contract->payment_cycle ?? ''),
-                $contract->imported_paid_periods !== null ? (int) $contract->imported_paid_periods : '',
-                $client ? (int) $client->id : '',
-                (string) ($client->external_code ?? ''),
-                (string) ($client->name ?? ''),
-                (string) ($client->company ?? ''),
-                (string) ($client->email ?? ''),
-                (string) ($client->phone ?? ''),
-                (string) ($client->lead_source ?? ''),
-                (string) ($client->lead_channel ?? ''),
-                (string) ($client->customer_status_label ?? ''),
-                (string) ($client->customer_level ?? ''),
-                (string) optional($client?->leadType)->name,
-                $this->exportUserLabel($client?->assignedStaff),
-                $this->exportUserLabel($client?->salesOwner),
-                $this->exportUsersList($client?->careStaffUsers ?? collect()),
-                $opportunity ? (int) $opportunity->id : '',
-                (string) ($opportunity->title ?? ''),
-                $this->exportOpportunityStatusLabel($opportunity),
-                $opportunity ? (float) ($opportunity->amount ?? 0) : '',
-                $this->exportUserLabel($opportunity?->assignee),
-                $project ? (int) $project->id : '',
-                (string) ($project->code ?? ''),
-                (string) ($project->name ?? ''),
-                (string) ($project->website_url ?? ''),
-                (string) ($project->status ?? ''),
-                (float) ($contract->effective_value ?? 0),
-                (float) ($contract->subtotal_value ?? 0),
-                $this->exportYesNo((bool) ($contract->vat_enabled ?? false)),
-                (string) ($contract->vat_mode ?? ''),
-                $contract->vat_rate !== null ? (float) $contract->vat_rate : '',
-                (float) ($contract->resolved_vat_amount ?? $contract->vat_amount ?? 0),
-                (float) ($contract->items_total_value ?? 0),
-                (int) ($contract->payment_times ?? 1),
-                (int) ($contract->payments_count ?? 0),
-                (float) ($contract->payments_total ?? 0),
-                (float) ($contract->debt_outstanding ?? 0),
-                (float) ($contract->costs_total ?? 0),
-                (float) ($contract->net_revenue ?? 0),
-                (float) ($contract->revenue ?? 0),
-                (float) ($contract->debt ?? 0),
-                (float) ($contract->cash_flow ?? 0),
-                $this->exportContractStatusLabel($status),
-                $status,
-                $this->exportApprovalStatusLabel((string) ($contract->approval_status ?? 'pending')),
-                (string) ($contract->approval_status ?? ''),
-                $this->exportUserLabel($contract->approver),
-                (string) optional($contract->approver)->email,
-                $this->exportDateTime($contract->approved_at),
-                (string) ($contract->approval_note ?? ''),
-                $this->exportHandoverReceiveLabel((string) ($contract->handover_receive_status ?? '')),
-                (string) ($contract->handover_receive_status ?? ''),
-                $this->exportUserLabel($contract->handoverReceiver),
-                $this->exportDateTime($contract->handover_received_at),
-                $this->exportDate($contract->signed_at),
-                $this->exportDate($contract->start_date),
-                $this->exportDate($contract->end_date),
-                (string) ($contract->notes ?? ''),
-                $this->exportUserLabel($contract->creator),
-                (string) optional($contract->creator)->email,
-                $this->exportUserLabel($contract->collector),
-                (string) optional($contract->collector)->email,
-                $this->exportUsersList($contract->careStaffUsers ?? collect()),
-                (int) ($contract->items_count ?? ($contract->relationLoaded('items') ? $contract->items->count() : 0)),
-                $filesCount,
-                $this->exportDateTime($contract->created_at),
-                $this->exportDateTime($contract->updated_at),
-            ]);
+            $values = [$stt++];
+            foreach ($fieldKeys as $fieldKey) {
+                $values[] = $this->resolveContractExportFieldValue($contract, $fieldKey);
+            }
+            $this->writeExportRow($sheet, $row++, $values);
         }
 
         $this->finishExportSheet($sheet, count($headers), $row - 1);
+    }
+
+    private function contractExportFieldMap(): array
+    {
+        return [
+            'contract_id' => 'ID hợp đồng',
+            'contract_code' => 'Mã hợp đồng',
+            'contract_title' => 'Tên hợp đồng',
+            'contract_type' => 'Loại hợp đồng',
+            'care_schedule' => 'Lịch chăm sóc',
+            'duration_months' => 'Thời hạn (tháng)',
+            'payment_cycle' => 'Chu kỳ thanh toán',
+            'imported_paid_periods' => 'Số kỳ đã thu khi import',
+            'client_id' => 'ID khách hàng',
+            'client_code' => 'Mã khách hàng',
+            'client_name' => 'Tên khách hàng',
+            'client_company' => 'Công ty',
+            'client_email' => 'Email khách hàng',
+            'client_phone' => 'SĐT khách hàng',
+            'client_lead_source' => 'Nguồn khách',
+            'client_lead_channel' => 'Kênh khách',
+            'client_status_label' => 'Trạng thái khách',
+            'client_level' => 'Cấp độ khách',
+            'client_lead_type' => 'Loại khách',
+            'client_assigned_staff' => 'Nhân viên phụ trách khách',
+            'client_sales_owner' => 'Sales owner khách',
+            'client_care_staff' => 'Nhóm chăm sóc khách',
+            'opportunity_id' => 'ID cơ hội',
+            'opportunity_title' => 'Tên cơ hội',
+            'opportunity_status' => 'Trạng thái cơ hội',
+            'opportunity_amount' => 'Giá trị cơ hội',
+            'opportunity_assignee' => 'Phụ trách cơ hội',
+            'project_id' => 'ID dự án',
+            'project_code' => 'Mã dự án',
+            'project_name' => 'Tên dự án',
+            'project_website' => 'Website dự án',
+            'project_status' => 'Trạng thái dự án',
+            'effective_value' => 'Giá trị hợp đồng',
+            'subtotal_value' => 'Giá trị trước VAT',
+            'vat_enabled' => 'Có VAT',
+            'vat_mode' => 'Kiểu VAT',
+            'vat_rate' => 'Tỷ lệ VAT (%)',
+            'vat_amount' => 'Tiền VAT',
+            'items_total_value' => 'Tổng dòng sản phẩm',
+            'payment_times' => 'Số lần thanh toán',
+            'payments_count' => 'Số lần đã thu',
+            'payments_total' => 'Đã thu',
+            'debt_outstanding' => 'Công nợ',
+            'costs_total' => 'Chi phí',
+            'net_revenue' => 'Doanh thu ròng',
+            'stored_revenue' => 'Doanh thu lưu trong hợp đồng',
+            'stored_debt' => 'Công nợ lưu trong hợp đồng',
+            'stored_cash_flow' => 'Dòng tiền lưu trong hợp đồng',
+            'contract_status_label' => 'Trạng thái vòng đời',
+            'contract_status_code' => 'Trạng thái vòng đời (mã)',
+            'approval_status_label' => 'Trạng thái duyệt',
+            'approval_status_code' => 'Trạng thái duyệt (mã)',
+            'approver_name' => 'Người duyệt',
+            'approver_email' => 'Email người duyệt',
+            'approved_at' => 'Ngày duyệt',
+            'approval_note' => 'Ghi chú duyệt',
+            'handover_receive_label' => 'Trạng thái nhận bàn giao',
+            'handover_receive_code' => 'Trạng thái nhận bàn giao (mã)',
+            'handover_receiver_name' => 'Người nhận bàn giao',
+            'handover_received_at' => 'Ngày nhận bàn giao',
+            'signed_at' => 'Ngày ký',
+            'start_date' => 'Ngày bắt đầu hiệu lực',
+            'end_date' => 'Ngày kết thúc',
+            'contract_notes' => 'Ghi chú hợp đồng',
+            'creator_name' => 'Người tạo',
+            'creator_email' => 'Email người tạo',
+            'collector_name' => 'Nhân viên thu',
+            'collector_email' => 'Email nhân viên thu',
+            'contract_care_staff' => 'Nhân viên chăm sóc hợp đồng',
+            'items_count' => 'Số dòng sản phẩm',
+            'files_count' => 'Số file đính kèm',
+            'created_at' => 'Ngày tạo',
+            'updated_at' => 'Ngày cập nhật',
+        ];
+    }
+
+    private function defaultContractExportFieldKeys(): array
+    {
+        return array_keys($this->contractExportFieldMap());
+    }
+
+    private function contractExportRelatedSheetMap(): array
+    {
+        return [
+            'items' => 'Dòng sản phẩm',
+            'payments' => 'Thanh toán',
+            'costs' => 'Chi phí',
+            'finance_requests' => 'Phiếu tài chính',
+            'care_staff' => 'Nhân sự chăm sóc',
+            'care_notes' => 'Ghi chú chăm sóc',
+            'files' => 'File đính kèm',
+        ];
+    }
+
+    private function defaultContractExportRelatedSheetKeys(): array
+    {
+        return array_keys($this->contractExportRelatedSheetMap());
+    }
+
+    private function resolveContractExportFieldValue(Contract $contract, string $field)
+    {
+        $client = $contract->client;
+        $opportunity = $contract->opportunity;
+        $project = $this->exportLinkedProject($contract);
+        $status = (string) ($contract->status ?? '');
+        $filesCount = $contract->relationLoaded('contractFiles') ? $contract->contractFiles->count() : 0;
+
+        return match ($field) {
+            'contract_id' => (int) $contract->id,
+            'contract_code' => (string) ($contract->code ?? ''),
+            'contract_title' => (string) ($contract->title ?? ''),
+            'contract_type' => (string) ($contract->contract_type ?? ''),
+            'care_schedule' => (string) ($contract->care_schedule ?? ''),
+            'duration_months' => $contract->duration_months !== null ? (int) $contract->duration_months : '',
+            'payment_cycle' => (string) ($contract->payment_cycle ?? ''),
+            'imported_paid_periods' => $contract->imported_paid_periods !== null ? (int) $contract->imported_paid_periods : '',
+            'client_id' => $client ? (int) $client->id : '',
+            'client_code' => (string) ($client->external_code ?? ''),
+            'client_name' => (string) ($client->name ?? ''),
+            'client_company' => (string) ($client->company ?? ''),
+            'client_email' => (string) ($client->email ?? ''),
+            'client_phone' => (string) ($client->phone ?? ''),
+            'client_lead_source' => (string) ($client->lead_source ?? ''),
+            'client_lead_channel' => (string) ($client->lead_channel ?? ''),
+            'client_status_label' => (string) ($client->customer_status_label ?? ''),
+            'client_level' => (string) ($client->customer_level ?? ''),
+            'client_lead_type' => (string) optional($client?->leadType)->name,
+            'client_assigned_staff' => $this->exportUserLabel($client?->assignedStaff),
+            'client_sales_owner' => $this->exportUserLabel($client?->salesOwner),
+            'client_care_staff' => $this->exportUsersList($client?->careStaffUsers ?? collect()),
+            'opportunity_id' => $opportunity ? (int) $opportunity->id : '',
+            'opportunity_title' => (string) ($opportunity->title ?? ''),
+            'opportunity_status' => $this->exportOpportunityStatusLabel($opportunity),
+            'opportunity_amount' => $opportunity ? (float) ($opportunity->amount ?? 0) : '',
+            'opportunity_assignee' => $this->exportUserLabel($opportunity?->assignee),
+            'project_id' => $project ? (int) $project->id : '',
+            'project_code' => (string) ($project->code ?? ''),
+            'project_name' => (string) ($project->name ?? ''),
+            'project_website' => (string) ($project->website_url ?? ''),
+            'project_status' => (string) ($project->status ?? ''),
+            'effective_value' => (float) ($contract->effective_value ?? 0),
+            'subtotal_value' => (float) ($contract->subtotal_value ?? 0),
+            'vat_enabled' => $this->exportYesNo((bool) ($contract->vat_enabled ?? false)),
+            'vat_mode' => (string) ($contract->vat_mode ?? ''),
+            'vat_rate' => $contract->vat_rate !== null ? (float) $contract->vat_rate : '',
+            'vat_amount' => (float) ($contract->resolved_vat_amount ?? $contract->vat_amount ?? 0),
+            'items_total_value' => (float) ($contract->items_total_value ?? 0),
+            'payment_times' => (int) ($contract->payment_times ?? 1),
+            'payments_count' => (int) ($contract->payments_count ?? 0),
+            'payments_total' => (float) ($contract->payments_total ?? 0),
+            'debt_outstanding' => (float) ($contract->debt_outstanding ?? 0),
+            'costs_total' => (float) ($contract->costs_total ?? 0),
+            'net_revenue' => (float) ($contract->net_revenue ?? 0),
+            'stored_revenue' => (float) ($contract->revenue ?? 0),
+            'stored_debt' => (float) ($contract->debt ?? 0),
+            'stored_cash_flow' => (float) ($contract->cash_flow ?? 0),
+            'contract_status_label' => $this->exportContractStatusLabel($status),
+            'contract_status_code' => $status,
+            'approval_status_label' => $this->exportApprovalStatusLabel((string) ($contract->approval_status ?? 'pending')),
+            'approval_status_code' => (string) ($contract->approval_status ?? ''),
+            'approver_name' => $this->exportUserLabel($contract->approver),
+            'approver_email' => (string) optional($contract->approver)->email,
+            'approved_at' => $this->exportDateTime($contract->approved_at),
+            'approval_note' => (string) ($contract->approval_note ?? ''),
+            'handover_receive_label' => $this->exportHandoverReceiveLabel((string) ($contract->handover_receive_status ?? '')),
+            'handover_receive_code' => (string) ($contract->handover_receive_status ?? ''),
+            'handover_receiver_name' => $this->exportUserLabel($contract->handoverReceiver),
+            'handover_received_at' => $this->exportDateTime($contract->handover_received_at),
+            'signed_at' => $this->exportDate($contract->signed_at),
+            'start_date' => $this->exportDate($contract->start_date),
+            'end_date' => $this->exportDate($contract->end_date),
+            'contract_notes' => (string) ($contract->notes ?? ''),
+            'creator_name' => $this->exportUserLabel($contract->creator),
+            'creator_email' => (string) optional($contract->creator)->email,
+            'collector_name' => $this->exportUserLabel($contract->collector),
+            'collector_email' => (string) optional($contract->collector)->email,
+            'contract_care_staff' => $this->exportUsersList($contract->careStaffUsers ?? collect()),
+            'items_count' => (int) ($contract->items_count ?? ($contract->relationLoaded('items') ? $contract->items->count() : 0)),
+            'files_count' => $filesCount,
+            'created_at' => $this->exportDateTime($contract->created_at),
+            'updated_at' => $this->exportDateTime($contract->updated_at),
+            default => '',
+        };
     }
 
     private function writeContractItemsExportSheet(Worksheet $sheet, $contracts): void
