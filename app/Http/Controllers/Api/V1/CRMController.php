@@ -408,6 +408,12 @@ class CRMController extends Controller
         return match ($status) {
             'not_in_pool' => response()->json(['message' => 'Khách hàng này không còn ở kho số.'], 422),
             'pending_transfer' => response()->json(['message' => 'Khách hàng đang có phiếu chuyển phụ trách chờ xử lý, chưa thể nhận từ kho số.'], 422),
+            'daily_limit_reached' => response()->json([
+                'message' => sprintf(
+                    'Bạn đã đạt giới hạn nhận %d khách hàng từ kho số trong ngày. Vui lòng nhận thêm vào ngày mai hoặc liên hệ administrator để tăng quota kho số.',
+                    max(1, (int) ($result['pool_claim_daily_limit'] ?? 1))
+                ),
+            ], 422),
             default => response()->json(['message' => 'Không thể nhận khách hàng từ kho số lúc này.'], 422),
         };
     }
@@ -560,6 +566,7 @@ class CRMController extends Controller
         if (array_key_exists('company_profiles', $validated)) {
             $validated['company_profiles'] = $this->normalizeClientCompanyProfiles($validated['company_profiles']);
         }
+        $careStaffIdsProvided = array_key_exists('care_staff_ids', $validated);
 
         if ($user->role === 'nhan_vien') {
             if ($this->employeeAttemptedDirectAssignmentChange($validated, $client)) {
@@ -572,6 +579,7 @@ class CRMController extends Controller
             $validated['assigned_department_id'] = $client->assigned_department_id;
             $validated['sales_owner_id'] = $client->sales_owner_id;
             unset($validated['care_staff_ids']);
+            $careStaffIdsProvided = false;
         }
 
         $validated = $this->resolveClientAssignment($user, $validated, $client);
@@ -608,7 +616,7 @@ class CRMController extends Controller
 
         $client->update($validated);
 
-        if (array_key_exists('care_staff_ids', $validated)) {
+        if ($careStaffIdsProvided && array_key_exists('care_staff_ids', $validated)) {
             $this->syncClientCareStaff(
                 $client,
                 $validated['care_staff_ids'] ?? [],
@@ -620,7 +628,7 @@ class CRMController extends Controller
         if ($newAssignedStaffId !== $oldAssignedStaffId) {
             $rotationService = $rotationService ?: app(ClientAutoRotationService::class);
             $rotationService->resetClientRotationAnchor($client);
-            if (! array_key_exists('care_staff_ids', $validated)) {
+            if (! $careStaffIdsProvided) {
                 $rotationService->replaceClientCareStaffForAssignment(
                     $client,
                     $oldAssignedStaffId > 0 ? $oldAssignedStaffId : null,

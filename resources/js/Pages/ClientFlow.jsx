@@ -992,6 +992,11 @@ export default function ClientFlow({ auth, clientId }) {
                                         </div>
                                     </div>
 
+                                    <div className="mt-4 rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-500">
+                                        Quota cron chỉ tính lượt auto-rotation: tối đa {rotation.thresholds?.daily_receive_limit ?? '—'} khách/người/ngày.
+                                        Quota kho số chỉ tính lượt nhân sự tự bấm nhận: tối đa {rotation.thresholds?.pool_claim_daily_limit ?? '—'} khách/người/ngày.
+                                    </div>
+
                                     {flow?.permissions?.can_view_rotation_history && (
                                         <div className="mt-4 rounded-2xl border border-slate-200/80 bg-slate-50 p-4">
                                             <div className="flex items-center justify-between gap-3">

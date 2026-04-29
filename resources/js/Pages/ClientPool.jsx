@@ -210,7 +210,7 @@ export default function ClientPool(props) {
         <PageContainer
             auth={props.auth}
             title="Kho số"
-            description="Khách hàng dư sau cron xoay sẽ nằm ở đây. Trang này chỉ hiện tên khách hàng và thao tác nhận khách. Khi nhân sự bấm nhận, hệ thống reset lại mốc xoay, dọn nhóm chăm sóc cũ và chuyển khách về CRM thường cho người vừa nhận."
+            description="Khách hàng dư sau cron xoay sẽ nằm ở đây. Trang này chỉ hiện tên khách hàng và thao tác nhận khách. Khi nhân sự còn quota nhận kho số bấm nhận, hệ thống reset lại mốc xoay, dọn nhóm chăm sóc cũ và chuyển khách về CRM thường cho người vừa nhận."
             actions={(
                 <div className="flex flex-wrap items-center gap-2">
                     {canManagePoolEntries ? (
@@ -260,7 +260,7 @@ export default function ClientPool(props) {
                     <div>
                         <div className="text-xs font-semibold uppercase tracking-[0.14em] text-text-subtle">Danh sách chờ nhận</div>
                         <p className="mt-1 text-sm text-slate-600">
-                            Chỉ hiện tên khách hàng để tránh lộ dữ liệu trước khi nhận. Nhận xong thì hệ thống gán lại phụ trách trực tiếp, reset mốc xoay và khách quay lại CRM thường.
+                            Chỉ hiện tên khách hàng để tránh lộ dữ liệu trước khi nhận. Nhận xong thì hệ thống gán lại phụ trách trực tiếp, reset mốc xoay và khách quay lại CRM thường. Quota nhận kho số/ngày vẫn được áp dụng để tránh một nhân sự nhận quá nhiều.
                         </p>
                     </div>
                     <div className="rounded-full bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">

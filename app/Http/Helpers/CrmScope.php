@@ -113,11 +113,17 @@ class CrmScope
 
             return $query->where(function (Builder $builder) use ($deptIds, $teamUserIds, $user) {
                 $builder->where('assigned_staff_id', (int) $user->id);
-                $builder->orWhere('sales_owner_id', (int) $user->id);
+                $builder->orWhere(function (Builder $fallbackQuery) use ($user) {
+                    $fallbackQuery->whereNull('assigned_staff_id')
+                        ->where('sales_owner_id', (int) $user->id);
+                });
 
                 if ($teamUserIds->isNotEmpty()) {
                     $builder->orWhereIn('assigned_staff_id', $teamUserIds->all())
-                        ->orWhereIn('sales_owner_id', $teamUserIds->all());
+                        ->orWhere(function (Builder $fallbackQuery) use ($teamUserIds) {
+                            $fallbackQuery->whereNull('assigned_staff_id')
+                                ->whereIn('sales_owner_id', $teamUserIds->all());
+                        });
                 }
 
                 if ($deptIds->isNotEmpty()) {
@@ -125,8 +131,12 @@ class CrmScope
                         ->orWhereHas('assignedStaff', function (Builder $staffQuery) use ($deptIds) {
                             $staffQuery->whereIn('department_id', $deptIds->all());
                         })
-                        ->orWhereHas('salesOwner', function (Builder $staffQuery) use ($deptIds) {
-                            $staffQuery->whereIn('department_id', $deptIds->all());
+                        ->orWhere(function (Builder $fallbackQuery) use ($deptIds) {
+                            $fallbackQuery->whereNull('assigned_staff_id')
+                                ->whereNull('assigned_department_id')
+                                ->whereHas('salesOwner', function (Builder $staffQuery) use ($deptIds) {
+                                    $staffQuery->whereIn('department_id', $deptIds->all());
+                                });
                         });
                 }
             });
@@ -260,15 +270,17 @@ class CrmScope
 
         $deptIds = self::managedDepartmentIds($user);
         $teamUserIds = self::managerVisibleUserIds($user);
+        $assignedStaffId = (int) ($client->assigned_staff_id ?? 0);
+        $salesOwnerId = (int) ($client->sales_owner_id ?? 0);
         if ((int) ($client->assigned_staff_id ?? 0) === (int) $user->id) {
             return true;
         }
-        if ((int) ($client->sales_owner_id ?? 0) === (int) $user->id) {
+        if ($assignedStaffId <= 0 && $salesOwnerId === (int) $user->id) {
             return true;
         }
 
-        if ($teamUserIds->contains((int) ($client->assigned_staff_id ?? 0))
-            || $teamUserIds->contains((int) ($client->sales_owner_id ?? 0))) {
+        if ($teamUserIds->contains($assignedStaffId)
+            || ($assignedStaffId <= 0 && $teamUserIds->contains($salesOwnerId))) {
             return true;
         }
 
@@ -291,7 +303,10 @@ class CrmScope
         }
 
         $salesOwnerDeptId = (int) optional($client->salesOwner)->department_id;
-        if ($salesOwnerDeptId > 0 && $deptIds->contains($salesOwnerDeptId)) {
+        if ($assignedStaffId <= 0
+            && ! $client->assigned_department_id
+            && $salesOwnerDeptId > 0
+            && $deptIds->contains($salesOwnerDeptId)) {
             return true;
         }
 
@@ -397,7 +412,10 @@ class CrmScope
 
             if ($teamUserIds->isNotEmpty()) {
                 $clientQuery->whereIn('assigned_staff_id', $teamUserIds->all())
-                    ->orWhereIn('sales_owner_id', $teamUserIds->all());
+                    ->orWhere(function (Builder $fallbackQuery) use ($teamUserIds) {
+                        $fallbackQuery->whereNull('assigned_staff_id')
+                            ->whereIn('sales_owner_id', $teamUserIds->all());
+                    });
                 $hasScope = true;
             }
 
@@ -411,8 +429,12 @@ class CrmScope
                 $clientQuery->orWhereHas('assignedStaff', function (Builder $staffQuery) use ($deptIds) {
                     $staffQuery->whereIn('department_id', $deptIds->all());
                 });
-                $clientQuery->orWhereHas('salesOwner', function (Builder $staffQuery) use ($deptIds) {
-                    $staffQuery->whereIn('department_id', $deptIds->all());
+                $clientQuery->orWhere(function (Builder $fallbackQuery) use ($deptIds) {
+                    $fallbackQuery->whereNull('assigned_staff_id')
+                        ->whereNull('assigned_department_id')
+                        ->whereHas('salesOwner', function (Builder $staffQuery) use ($deptIds) {
+                            $staffQuery->whereIn('department_id', $deptIds->all());
+                        });
                 });
 
                 $hasScope = true;

@@ -90,7 +90,8 @@ class AppSettingController extends Controller
             'client_rotation_contract_stale_days' => ['nullable', 'integer', 'min:1', 'max:3650'],
             'client_rotation_warning_days' => ['nullable', 'integer', 'min:0', 'max:60'],
             'client_rotation_daily_receive_limit' => ['nullable', 'integer', 'min:1', 'max:100'],
-            'client_rotation_run_time' => ['nullable', 'regex:/^\d{2}:\d{2}$/'],
+            'client_rotation_pool_claim_daily_limit' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'client_rotation_run_time' => ['nullable', 'regex:/^(?:[01]\d|2[0-3]):[0-5]\d$/'],
             'client_rotation_lead_type_ids' => ['nullable'],
             'client_rotation_participant_user_ids' => ['nullable'],
             'client_rotation_same_department_only' => ['nullable', 'boolean'],
@@ -331,6 +332,9 @@ class AppSettingController extends Controller
             'client_rotation_daily_receive_limit' => array_key_exists('client_rotation_daily_receive_limit', $validated)
                 ? (int) $validated['client_rotation_daily_receive_limit']
                 : (int) ($setting->client_rotation_daily_receive_limit ?? 5),
+            'client_rotation_pool_claim_daily_limit' => array_key_exists('client_rotation_pool_claim_daily_limit', $validated)
+                ? (int) $validated['client_rotation_pool_claim_daily_limit']
+                : (int) ($setting->client_rotation_pool_claim_daily_limit ?? 5),
             'client_rotation_run_time' => array_key_exists('client_rotation_run_time', $validated)
                 ? (string) $validated['client_rotation_run_time']
                 : (string) ($setting->client_rotation_run_time ?? '12:00'),
@@ -393,6 +397,7 @@ class AppSettingController extends Controller
             'client_rotation_contract_stale_days' => $setting ? (int) ($setting->client_rotation_contract_stale_days ?? 90) : 90,
             'client_rotation_warning_days' => $setting ? (int) ($setting->client_rotation_warning_days ?? 3) : 3,
             'client_rotation_daily_receive_limit' => $setting ? (int) ($setting->client_rotation_daily_receive_limit ?? 5) : 5,
+            'client_rotation_pool_claim_daily_limit' => $setting ? (int) ($setting->client_rotation_pool_claim_daily_limit ?? 5) : 5,
             'client_rotation_run_time' => $setting && $setting->client_rotation_run_time
                 ? (string) $setting->client_rotation_run_time
                 : '12:00',

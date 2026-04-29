@@ -223,6 +223,7 @@ const initialSettings = (settings) => ({
     client_rotation_contract_stale_days: settings?.client_rotation_contract_stale_days ?? 90,
     client_rotation_warning_days: settings?.client_rotation_warning_days ?? 3,
     client_rotation_daily_receive_limit: settings?.client_rotation_daily_receive_limit ?? 5,
+    client_rotation_pool_claim_daily_limit: settings?.client_rotation_pool_claim_daily_limit ?? 5,
     client_rotation_run_time: settings?.client_rotation_run_time || '12:00',
     client_rotation_same_department_only: normalizeRotationScopeMode(settings) === 'same_department',
     client_rotation_lead_type_ids: Array.isArray(settings?.client_rotation_lead_type_ids)
@@ -988,6 +989,7 @@ export default function SystemSettings(props) {
             formData.append('client_rotation_contract_stale_days', String(form.client_rotation_contract_stale_days ?? 90));
             formData.append('client_rotation_warning_days', String(form.client_rotation_warning_days ?? 3));
             formData.append('client_rotation_daily_receive_limit', String(form.client_rotation_daily_receive_limit ?? 5));
+            formData.append('client_rotation_pool_claim_daily_limit', String(form.client_rotation_pool_claim_daily_limit ?? 5));
             formData.append('client_rotation_run_time', form.client_rotation_run_time || '12:00');
             formData.append('client_rotation_scope_mode', form.client_rotation_scope_mode || 'global_staff');
             formData.append('client_rotation_same_department_only', (form.client_rotation_scope_mode || 'global_staff') === 'same_department' ? '1' : '0');
@@ -2395,7 +2397,7 @@ export default function SystemSettings(props) {
                                 </div>
                             </div>
 
-                            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+                            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-7">
                                 <div>
                                     <label className="text-xs text-text-muted">Quá hạn bình luận / ghi chú</label>
                                     <input
@@ -2447,7 +2449,7 @@ export default function SystemSettings(props) {
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="text-xs text-text-muted">Max nhận / người / ngày</label>
+                                    <label className="text-xs text-text-muted">Max nhận từ cron / người / ngày</label>
                                     <input
                                         type="number"
                                         min="1"
@@ -2460,7 +2462,24 @@ export default function SystemSettings(props) {
                                         }))}
                                     />
                                     <p className="mt-2 text-[11px] leading-5 text-text-muted">
-                                        Chỉ áp dụng cho lượt phân phát tự động của cron. Nhận thủ công từ kho số không bị trừ quota này.
+                                        Chỉ tính lượt phân phát tự động của cron. Chuyển tay, admin đổi phụ trách và nhận kho số không trừ quota này.
+                                    </p>
+                                </div>
+                                <div>
+                                    <label className="text-xs text-text-muted">Max nhận kho số / người / ngày</label>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        max="100"
+                                        className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
+                                        value={form.client_rotation_pool_claim_daily_limit}
+                                        onChange={(e) => setForm((s) => ({
+                                            ...s,
+                                            client_rotation_pool_claim_daily_limit: Number(e.target.value || 1),
+                                        }))}
+                                    />
+                                    <p className="mt-2 text-[11px] leading-5 text-text-muted">
+                                        Chỉ tính lượt nhân sự tự bấm nhận trong kho số. Cron và chuyển tay không trừ quota này.
                                     </p>
                                 </div>
                                 <div>

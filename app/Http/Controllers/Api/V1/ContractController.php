@@ -32,6 +32,14 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Carbon;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Str;
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class ContractController extends Controller
 {
@@ -85,6 +93,90 @@ class ContractController extends Controller
         $payload['aggregates']['comparison'] = $comparison;
 
         return response()->json($payload);
+    }
+
+    public function exportSelected(Request $request)
+    {
+        $validated = $request->validate([
+            'contract_ids' => ['required', 'array', 'min:1', 'max:5000'],
+            'contract_ids.*' => ['integer', 'exists:contracts,id'],
+        ], [
+            'contract_ids.required' => 'Vui lòng chọn hợp đồng cần xuất.',
+            'contract_ids.min' => 'Vui lòng chọn ít nhất một hợp đồng.',
+            'contract_ids.max' => 'Mỗi lần xuất tối đa 5000 hợp đồng.',
+        ]);
+
+        $ids = collect($validated['contract_ids'] ?? [])
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+
+        if (empty($ids)) {
+            return response()->json(['message' => 'Vui lòng chọn hợp đồng cần xuất.'], 422);
+        }
+
+        $query = Contract::query();
+        CrmScope::applyContractScope($query, $request->user());
+
+        $relations = [
+            'client',
+            'client.leadType:id,name',
+            'client.assignedStaff:id,name,email',
+            'client.salesOwner:id,name,email',
+            'client.careStaffUsers:id,name,email',
+            'project',
+            'linkedProject',
+            'opportunity.statusRelation',
+            'opportunity.assignee:id,name,email',
+            'creator:id,name,email',
+            'approver:id,name,email',
+            'collector:id,name,email',
+            'handoverReceiver:id,name,email',
+            'items.product:id,code,name,category_id',
+            'payments.creator:id,name,email',
+            'costs.creator:id,name,email',
+            'financeRequests.submitter:id,name,email',
+            'financeRequests.reviewer:id,name,email',
+            'careStaffUsers:id,name,email,department_id',
+            'careNotes.user:id,name,email',
+        ];
+
+        if (Schema::hasTable('contract_files')) {
+            $relations[] = 'contractFiles.uploader:id,name,email';
+        }
+
+        $order = array_flip($ids);
+        $contracts = $query
+            ->select('contracts.*')
+            ->selectRaw('('.$this->contractStatusSql().') as status')
+            ->whereIn('contracts.id', $ids)
+            ->with($relations)
+            ->withCount('items')
+            ->withSum('items as items_total_value', 'total_price')
+            ->withCount('payments')
+            ->withSum('payments as payments_total', 'amount')
+            ->withSum('costs as costs_total', 'amount')
+            ->get()
+            ->sortBy(fn (Contract $contract) => $order[(int) $contract->id] ?? PHP_INT_MAX)
+            ->values();
+
+        if ($contracts->count() !== count($ids)) {
+            return response()->json([
+                'message' => 'Một số hợp đồng không tồn tại hoặc không thuộc phạm vi được phép xem, nên không thể xuất file.',
+            ], 403);
+        }
+
+        $spreadsheet = $this->buildSelectedContractsSpreadsheet($contracts);
+        $fileName = 'danh-sach-hop-dong-da-chon-'.Carbon::now('Asia/Ho_Chi_Minh')->format('Ymd-His').'.xlsx';
+
+        return response()->streamDownload(function () use ($spreadsheet) {
+            $writer = new Xlsx($spreadsheet);
+            $writer->save('php://output');
+        }, $fileName, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
     }
 
     /**
@@ -1180,6 +1272,672 @@ class ContractController extends Controller
             'skipped' => $skipped,
             'failed' => $failed,
         ]);
+    }
+
+    private function buildSelectedContractsSpreadsheet($contracts): Spreadsheet
+    {
+        $spreadsheet = new Spreadsheet();
+
+        $this->writeContractsExportSheet($spreadsheet->getActiveSheet(), $contracts);
+        $this->writeContractItemsExportSheet($spreadsheet->createSheet(), $contracts);
+        $this->writeContractPaymentsExportSheet($spreadsheet->createSheet(), $contracts);
+        $this->writeContractCostsExportSheet($spreadsheet->createSheet(), $contracts);
+        $this->writeContractFinanceRequestsExportSheet($spreadsheet->createSheet(), $contracts);
+        $this->writeContractCareStaffExportSheet($spreadsheet->createSheet(), $contracts);
+        $this->writeContractCareNotesExportSheet($spreadsheet->createSheet(), $contracts);
+        $this->writeContractFilesExportSheet($spreadsheet->createSheet(), $contracts);
+
+        $spreadsheet->setActiveSheetIndex(0);
+
+        return $spreadsheet;
+    }
+
+    private function writeContractsExportSheet(Worksheet $sheet, $contracts): void
+    {
+        $sheet->setTitle('Hop dong');
+        $headers = [
+            'STT',
+            'ID hợp đồng',
+            'Mã hợp đồng',
+            'Tên hợp đồng',
+            'Loại hợp đồng',
+            'Lịch chăm sóc',
+            'Thời hạn (tháng)',
+            'Chu kỳ thanh toán',
+            'Số kỳ đã thu khi import',
+            'ID khách hàng',
+            'Mã khách hàng',
+            'Tên khách hàng',
+            'Công ty',
+            'Email khách hàng',
+            'SĐT khách hàng',
+            'Nguồn khách',
+            'Kênh khách',
+            'Trạng thái khách',
+            'Cấp độ khách',
+            'Loại khách',
+            'Nhân viên phụ trách khách',
+            'Sales owner khách',
+            'Nhóm chăm sóc khách',
+            'ID cơ hội',
+            'Tên cơ hội',
+            'Trạng thái cơ hội',
+            'Giá trị cơ hội',
+            'Phụ trách cơ hội',
+            'ID dự án',
+            'Mã dự án',
+            'Tên dự án',
+            'Website dự án',
+            'Trạng thái dự án',
+            'Giá trị hợp đồng',
+            'Giá trị trước VAT',
+            'Có VAT',
+            'Kiểu VAT',
+            'Tỷ lệ VAT (%)',
+            'Tiền VAT',
+            'Tổng dòng sản phẩm',
+            'Số lần thanh toán',
+            'Số lần đã thu',
+            'Đã thu',
+            'Công nợ',
+            'Chi phí',
+            'Doanh thu ròng',
+            'Doanh thu lưu trong hợp đồng',
+            'Công nợ lưu trong hợp đồng',
+            'Dòng tiền lưu trong hợp đồng',
+            'Trạng thái vòng đời',
+            'Trạng thái vòng đời (mã)',
+            'Trạng thái duyệt',
+            'Trạng thái duyệt (mã)',
+            'Người duyệt',
+            'Email người duyệt',
+            'Ngày duyệt',
+            'Ghi chú duyệt',
+            'Trạng thái nhận bàn giao',
+            'Trạng thái nhận bàn giao (mã)',
+            'Người nhận bàn giao',
+            'Ngày nhận bàn giao',
+            'Ngày ký',
+            'Ngày bắt đầu hiệu lực',
+            'Ngày kết thúc',
+            'Ghi chú hợp đồng',
+            'Người tạo',
+            'Email người tạo',
+            'Nhân viên thu',
+            'Email nhân viên thu',
+            'Nhân viên chăm sóc hợp đồng',
+            'Số dòng sản phẩm',
+            'Số file đính kèm',
+            'Ngày tạo',
+            'Ngày cập nhật',
+        ];
+        $this->writeExportHeader($sheet, $headers);
+
+        $row = 2;
+        $stt = 1;
+        foreach ($contracts as $contract) {
+            $client = $contract->client;
+            $opportunity = $contract->opportunity;
+            $project = $this->exportLinkedProject($contract);
+            $status = (string) ($contract->status ?? '');
+            $filesCount = $contract->relationLoaded('contractFiles') ? $contract->contractFiles->count() : 0;
+
+            $this->writeExportRow($sheet, $row++, [
+                $stt++,
+                (int) $contract->id,
+                (string) ($contract->code ?? ''),
+                (string) ($contract->title ?? ''),
+                (string) ($contract->contract_type ?? ''),
+                (string) ($contract->care_schedule ?? ''),
+                $contract->duration_months !== null ? (int) $contract->duration_months : '',
+                (string) ($contract->payment_cycle ?? ''),
+                $contract->imported_paid_periods !== null ? (int) $contract->imported_paid_periods : '',
+                $client ? (int) $client->id : '',
+                (string) ($client->external_code ?? ''),
+                (string) ($client->name ?? ''),
+                (string) ($client->company ?? ''),
+                (string) ($client->email ?? ''),
+                (string) ($client->phone ?? ''),
+                (string) ($client->lead_source ?? ''),
+                (string) ($client->lead_channel ?? ''),
+                (string) ($client->customer_status_label ?? ''),
+                (string) ($client->customer_level ?? ''),
+                (string) optional($client?->leadType)->name,
+                $this->exportUserLabel($client?->assignedStaff),
+                $this->exportUserLabel($client?->salesOwner),
+                $this->exportUsersList($client?->careStaffUsers ?? collect()),
+                $opportunity ? (int) $opportunity->id : '',
+                (string) ($opportunity->title ?? ''),
+                $this->exportOpportunityStatusLabel($opportunity),
+                $opportunity ? (float) ($opportunity->amount ?? 0) : '',
+                $this->exportUserLabel($opportunity?->assignee),
+                $project ? (int) $project->id : '',
+                (string) ($project->code ?? ''),
+                (string) ($project->name ?? ''),
+                (string) ($project->website_url ?? ''),
+                (string) ($project->status ?? ''),
+                (float) ($contract->effective_value ?? 0),
+                (float) ($contract->subtotal_value ?? 0),
+                $this->exportYesNo((bool) ($contract->vat_enabled ?? false)),
+                (string) ($contract->vat_mode ?? ''),
+                $contract->vat_rate !== null ? (float) $contract->vat_rate : '',
+                (float) ($contract->resolved_vat_amount ?? $contract->vat_amount ?? 0),
+                (float) ($contract->items_total_value ?? 0),
+                (int) ($contract->payment_times ?? 1),
+                (int) ($contract->payments_count ?? 0),
+                (float) ($contract->payments_total ?? 0),
+                (float) ($contract->debt_outstanding ?? 0),
+                (float) ($contract->costs_total ?? 0),
+                (float) ($contract->net_revenue ?? 0),
+                (float) ($contract->revenue ?? 0),
+                (float) ($contract->debt ?? 0),
+                (float) ($contract->cash_flow ?? 0),
+                $this->exportContractStatusLabel($status),
+                $status,
+                $this->exportApprovalStatusLabel((string) ($contract->approval_status ?? 'pending')),
+                (string) ($contract->approval_status ?? ''),
+                $this->exportUserLabel($contract->approver),
+                (string) optional($contract->approver)->email,
+                $this->exportDateTime($contract->approved_at),
+                (string) ($contract->approval_note ?? ''),
+                $this->exportHandoverReceiveLabel((string) ($contract->handover_receive_status ?? '')),
+                (string) ($contract->handover_receive_status ?? ''),
+                $this->exportUserLabel($contract->handoverReceiver),
+                $this->exportDateTime($contract->handover_received_at),
+                $this->exportDate($contract->signed_at),
+                $this->exportDate($contract->start_date),
+                $this->exportDate($contract->end_date),
+                (string) ($contract->notes ?? ''),
+                $this->exportUserLabel($contract->creator),
+                (string) optional($contract->creator)->email,
+                $this->exportUserLabel($contract->collector),
+                (string) optional($contract->collector)->email,
+                $this->exportUsersList($contract->careStaffUsers ?? collect()),
+                (int) ($contract->items_count ?? ($contract->relationLoaded('items') ? $contract->items->count() : 0)),
+                $filesCount,
+                $this->exportDateTime($contract->created_at),
+                $this->exportDateTime($contract->updated_at),
+            ]);
+        }
+
+        $this->finishExportSheet($sheet, count($headers), $row - 1);
+    }
+
+    private function writeContractItemsExportSheet(Worksheet $sheet, $contracts): void
+    {
+        $sheet->setTitle('Dong san pham');
+        $headers = [
+            'STT',
+            'ID hợp đồng',
+            'Mã hợp đồng',
+            'Tên hợp đồng',
+            'ID dòng',
+            'ID sản phẩm',
+            'Mã sản phẩm',
+            'Tên sản phẩm',
+            'Đơn vị',
+            'Đơn giá',
+            'Số lượng',
+            'Chiết khấu',
+            'VAT dòng',
+            'Thành tiền',
+            'Ghi chú',
+            'Ngày tạo',
+            'Ngày cập nhật',
+        ];
+        $this->writeExportHeader($sheet, $headers);
+
+        $row = 2;
+        $stt = 1;
+        foreach ($contracts as $contract) {
+            foreach ($contract->items ?? [] as $item) {
+                $this->writeExportRow($sheet, $row++, [
+                    $stt++,
+                    (int) $contract->id,
+                    (string) ($contract->code ?? ''),
+                    (string) ($contract->title ?? ''),
+                    (int) $item->id,
+                    $item->product_id ? (int) $item->product_id : '',
+                    (string) ($item->product_code ?: optional($item->product)->code),
+                    (string) ($item->product_name ?? optional($item->product)->name ?? ''),
+                    (string) ($item->unit ?? ''),
+                    (float) ($item->unit_price ?? 0),
+                    (int) ($item->quantity ?? 0),
+                    (float) ($item->discount_amount ?? 0),
+                    (float) ($item->vat_amount ?? 0),
+                    (float) ($item->total_price ?? 0),
+                    (string) ($item->note ?? ''),
+                    $this->exportDateTime($item->created_at),
+                    $this->exportDateTime($item->updated_at),
+                ]);
+            }
+        }
+
+        $this->finishExportSheet($sheet, count($headers), $row - 1);
+    }
+
+    private function writeContractPaymentsExportSheet(Worksheet $sheet, $contracts): void
+    {
+        $sheet->setTitle('Thanh toan');
+        $headers = [
+            'STT',
+            'ID hợp đồng',
+            'Mã hợp đồng',
+            'Tên hợp đồng',
+            'ID thanh toán',
+            'Số tiền',
+            'Ngày thanh toán',
+            'Phương thức',
+            'Ghi chú',
+            'Người tạo',
+            'Email người tạo',
+            'Ngày tạo',
+            'Ngày cập nhật',
+        ];
+        $this->writeExportHeader($sheet, $headers);
+
+        $row = 2;
+        $stt = 1;
+        foreach ($contracts as $contract) {
+            foreach ($contract->payments ?? [] as $payment) {
+                $this->writeExportRow($sheet, $row++, [
+                    $stt++,
+                    (int) $contract->id,
+                    (string) ($contract->code ?? ''),
+                    (string) ($contract->title ?? ''),
+                    (int) $payment->id,
+                    (float) ($payment->amount ?? 0),
+                    $this->exportDate($payment->paid_at),
+                    (string) ($payment->method ?? ''),
+                    (string) ($payment->note ?? ''),
+                    $this->exportUserLabel($payment->creator),
+                    (string) optional($payment->creator)->email,
+                    $this->exportDateTime($payment->created_at),
+                    $this->exportDateTime($payment->updated_at),
+                ]);
+            }
+        }
+
+        $this->finishExportSheet($sheet, count($headers), $row - 1);
+    }
+
+    private function writeContractCostsExportSheet(Worksheet $sheet, $contracts): void
+    {
+        $sheet->setTitle('Chi phi');
+        $headers = [
+            'STT',
+            'ID hợp đồng',
+            'Mã hợp đồng',
+            'Tên hợp đồng',
+            'ID chi phí',
+            'Loại chi phí',
+            'Số tiền',
+            'Ngày chi phí',
+            'Ghi chú',
+            'Người tạo',
+            'Email người tạo',
+            'Ngày tạo',
+            'Ngày cập nhật',
+        ];
+        $this->writeExportHeader($sheet, $headers);
+
+        $row = 2;
+        $stt = 1;
+        foreach ($contracts as $contract) {
+            foreach ($contract->costs ?? [] as $cost) {
+                $this->writeExportRow($sheet, $row++, [
+                    $stt++,
+                    (int) $contract->id,
+                    (string) ($contract->code ?? ''),
+                    (string) ($contract->title ?? ''),
+                    (int) $cost->id,
+                    (string) ($cost->cost_type ?? ''),
+                    (float) ($cost->amount ?? 0),
+                    $this->exportDate($cost->cost_date),
+                    (string) ($cost->note ?? ''),
+                    $this->exportUserLabel($cost->creator),
+                    (string) optional($cost->creator)->email,
+                    $this->exportDateTime($cost->created_at),
+                    $this->exportDateTime($cost->updated_at),
+                ]);
+            }
+        }
+
+        $this->finishExportSheet($sheet, count($headers), $row - 1);
+    }
+
+    private function writeContractFinanceRequestsExportSheet(Worksheet $sheet, $contracts): void
+    {
+        $sheet->setTitle('Phieu tai chinh');
+        $headers = [
+            'STT',
+            'ID hợp đồng',
+            'Mã hợp đồng',
+            'Tên hợp đồng',
+            'ID phiếu',
+            'Loại phiếu',
+            'Hành động',
+            'Số tiền',
+            'Ngày giao dịch',
+            'Phương thức',
+            'Loại chi phí',
+            'Ghi chú',
+            'Trạng thái',
+            'Người gửi',
+            'Người duyệt',
+            'Ngày duyệt',
+            'Ghi chú duyệt',
+            'ID thanh toán liên quan',
+            'ID chi phí liên quan',
+            'Ngày tạo',
+            'Ngày cập nhật',
+        ];
+        $this->writeExportHeader($sheet, $headers);
+
+        $row = 2;
+        $stt = 1;
+        foreach ($contracts as $contract) {
+            foreach ($contract->financeRequests ?? [] as $financeRequest) {
+                $this->writeExportRow($sheet, $row++, [
+                    $stt++,
+                    (int) $contract->id,
+                    (string) ($contract->code ?? ''),
+                    (string) ($contract->title ?? ''),
+                    (int) $financeRequest->id,
+                    (string) ($financeRequest->request_type ?? ''),
+                    (string) ($financeRequest->request_action ?? ''),
+                    (float) ($financeRequest->amount ?? 0),
+                    $this->exportDate($financeRequest->transaction_date),
+                    (string) ($financeRequest->method ?? ''),
+                    (string) ($financeRequest->cost_type ?? ''),
+                    (string) ($financeRequest->note ?? ''),
+                    (string) ($financeRequest->status ?? ''),
+                    $this->exportUserLabel($financeRequest->submitter),
+                    $this->exportUserLabel($financeRequest->reviewer),
+                    $this->exportDateTime($financeRequest->reviewed_at),
+                    (string) ($financeRequest->review_note ?? ''),
+                    $financeRequest->contract_payment_id ? (int) $financeRequest->contract_payment_id : '',
+                    $financeRequest->contract_cost_id ? (int) $financeRequest->contract_cost_id : '',
+                    $this->exportDateTime($financeRequest->created_at),
+                    $this->exportDateTime($financeRequest->updated_at),
+                ]);
+            }
+        }
+
+        $this->finishExportSheet($sheet, count($headers), $row - 1);
+    }
+
+    private function writeContractCareStaffExportSheet(Worksheet $sheet, $contracts): void
+    {
+        $sheet->setTitle('Nhan su cham soc');
+        $headers = [
+            'STT',
+            'ID hợp đồng',
+            'Mã hợp đồng',
+            'Tên hợp đồng',
+            'ID nhân sự',
+            'Tên nhân sự',
+            'Email nhân sự',
+            'ID phòng ban',
+            'ID người gán',
+            'Ngày gán',
+            'Ngày cập nhật',
+        ];
+        $this->writeExportHeader($sheet, $headers);
+
+        $row = 2;
+        $stt = 1;
+        foreach ($contracts as $contract) {
+            foreach ($contract->careStaffUsers ?? [] as $staff) {
+                $this->writeExportRow($sheet, $row++, [
+                    $stt++,
+                    (int) $contract->id,
+                    (string) ($contract->code ?? ''),
+                    (string) ($contract->title ?? ''),
+                    (int) $staff->id,
+                    (string) ($staff->name ?? ''),
+                    (string) ($staff->email ?? ''),
+                    $staff->department_id ? (int) $staff->department_id : '',
+                    $staff->pivot?->assigned_by ? (int) $staff->pivot->assigned_by : '',
+                    $this->exportDateTime($staff->pivot?->created_at),
+                    $this->exportDateTime($staff->pivot?->updated_at),
+                ]);
+            }
+        }
+
+        $this->finishExportSheet($sheet, count($headers), $row - 1);
+    }
+
+    private function writeContractCareNotesExportSheet(Worksheet $sheet, $contracts): void
+    {
+        $sheet->setTitle('Ghi chu cham soc');
+        $headers = [
+            'STT',
+            'ID hợp đồng',
+            'Mã hợp đồng',
+            'Tên hợp đồng',
+            'ID ghi chú',
+            'Tiêu đề',
+            'Nội dung',
+            'Người ghi chú',
+            'Email người ghi chú',
+            'Ngày tạo',
+            'Ngày cập nhật',
+        ];
+        $this->writeExportHeader($sheet, $headers);
+
+        $row = 2;
+        $stt = 1;
+        foreach ($contracts as $contract) {
+            foreach ($contract->careNotes ?? [] as $note) {
+                $this->writeExportRow($sheet, $row++, [
+                    $stt++,
+                    (int) $contract->id,
+                    (string) ($contract->code ?? ''),
+                    (string) ($contract->title ?? ''),
+                    (int) $note->id,
+                    (string) ($note->title ?? ''),
+                    (string) ($note->detail ?? ''),
+                    $this->exportUserLabel($note->user),
+                    (string) optional($note->user)->email,
+                    $this->exportDateTime($note->created_at),
+                    $this->exportDateTime($note->updated_at),
+                ]);
+            }
+        }
+
+        $this->finishExportSheet($sheet, count($headers), $row - 1);
+    }
+
+    private function writeContractFilesExportSheet(Worksheet $sheet, $contracts): void
+    {
+        $sheet->setTitle('File dinh kem');
+        $headers = [
+            'STT',
+            'ID hợp đồng',
+            'Mã hợp đồng',
+            'Tên hợp đồng',
+            'ID file',
+            'Tên file gốc',
+            'Tên file lưu',
+            'Loại file',
+            'Dung lượng byte',
+            'Người tải lên',
+            'Email người tải lên',
+            'Ngày tải lên',
+        ];
+        $this->writeExportHeader($sheet, $headers);
+
+        $row = 2;
+        $stt = 1;
+        foreach ($contracts as $contract) {
+            if (! $contract->relationLoaded('contractFiles')) {
+                continue;
+            }
+            foreach ($contract->contractFiles ?? [] as $file) {
+                $this->writeExportRow($sheet, $row++, [
+                    $stt++,
+                    (int) $contract->id,
+                    (string) ($contract->code ?? ''),
+                    (string) ($contract->title ?? ''),
+                    (int) $file->id,
+                    (string) ($file->original_name ?? ''),
+                    (string) ($file->stored_name ?? ''),
+                    (string) ($file->mime_type ?? ''),
+                    (int) ($file->size ?? 0),
+                    $this->exportUserLabel($file->uploader),
+                    (string) optional($file->uploader)->email,
+                    $this->exportDateTime($file->created_at),
+                ]);
+            }
+        }
+
+        $this->finishExportSheet($sheet, count($headers), $row - 1);
+    }
+
+    private function writeExportHeader(Worksheet $sheet, array $headers): void
+    {
+        foreach ($headers as $index => $header) {
+            $sheet->setCellValueByColumnAndRow($index + 1, 1, $header);
+        }
+    }
+
+    private function writeExportRow(Worksheet $sheet, int $row, array $values): void
+    {
+        foreach ($values as $index => $value) {
+            $this->setExportCellValue($sheet, $index + 1, $row, $value);
+        }
+    }
+
+    private function setExportCellValue(Worksheet $sheet, int $column, int $row, $value): void
+    {
+        $cell = Coordinate::stringFromColumnIndex($column).$row;
+
+        if (is_int($value) || is_float($value)) {
+            $sheet->setCellValue($cell, $value);
+
+            return;
+        }
+
+        $sheet->setCellValueExplicit($cell, $value === null ? '' : (string) $value, DataType::TYPE_STRING);
+    }
+
+    private function finishExportSheet(Worksheet $sheet, int $columnCount, int $lastRow): void
+    {
+        $lastRow = max(1, $lastRow);
+        $lastCol = Coordinate::stringFromColumnIndex($columnCount);
+        $range = 'A1:'.$lastCol.$lastRow;
+
+        $sheet->getStyle('A1:'.$lastCol.'1')->getFont()->setBold(true)->getColor()->setRGB('FFFFFF');
+        $sheet->getStyle('A1:'.$lastCol.'1')->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('0F766E');
+        $sheet->getStyle('A1:'.$lastCol.'1')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $sheet->getStyle('A1:'.$lastCol.'1')->getAlignment()->setVertical(Alignment::VERTICAL_CENTER);
+        $sheet->getStyle($range)->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN);
+        $sheet->getStyle($range)->getAlignment()->setVertical(Alignment::VERTICAL_TOP);
+        $sheet->getStyle($range)->getAlignment()->setWrapText(true);
+        $sheet->setAutoFilter('A1:'.$lastCol.'1');
+        $sheet->freezePane('A2');
+
+        for ($column = 1; $column <= $columnCount; $column++) {
+            $sheet->getColumnDimension(Coordinate::stringFromColumnIndex($column))->setAutoSize(true);
+        }
+    }
+
+    private function exportLinkedProject(Contract $contract): ?Project
+    {
+        if ($contract->project) {
+            return $contract->project;
+        }
+
+        return $contract->linkedProject;
+    }
+
+    private function exportUserLabel($user): string
+    {
+        if (! $user) {
+            return '';
+        }
+
+        $name = trim((string) ($user->name ?? ''));
+        $email = trim((string) ($user->email ?? ''));
+
+        if ($name !== '' && $email !== '') {
+            return $name.' <'.$email.'>';
+        }
+
+        return $name !== '' ? $name : $email;
+    }
+
+    private function exportUsersList($users): string
+    {
+        return collect($users ?? [])
+            ->map(fn ($user) => $this->exportUserLabel($user))
+            ->filter(fn ($value) => $value !== '')
+            ->values()
+            ->implode('; ');
+    }
+
+    private function exportDate($value): string
+    {
+        if (! $value) {
+            return '';
+        }
+
+        return Carbon::parse($value)->timezone('Asia/Ho_Chi_Minh')->format('Y-m-d');
+    }
+
+    private function exportDateTime($value): string
+    {
+        if (! $value) {
+            return '';
+        }
+
+        return Carbon::parse($value)->timezone('Asia/Ho_Chi_Minh')->format('Y-m-d H:i:s');
+    }
+
+    private function exportYesNo(bool $value): string
+    {
+        return $value ? 'Có' : 'Không';
+    }
+
+    private function exportContractStatusLabel(string $status): string
+    {
+        return [
+            'draft' => 'Nháp',
+            'signed' => 'Đã ký',
+            'success' => 'Thành công',
+            'active' => 'Đang hiệu lực',
+            'expired' => 'Hết hạn',
+            'cancelled' => 'Hủy',
+        ][$status] ?? $status;
+    }
+
+    private function exportApprovalStatusLabel(string $status): string
+    {
+        return [
+            'pending' => 'Chờ duyệt',
+            'approved' => 'Đã duyệt',
+            'rejected' => 'Từ chối',
+        ][$status] ?? $status;
+    }
+
+    private function exportHandoverReceiveLabel(string $status): string
+    {
+        return [
+            'chua_nhan_ban_giao' => 'Chưa nhận bàn giao',
+            'da_nhan_ban_giao' => 'Đã nhận bàn giao',
+        ][$status] ?? $status;
+    }
+
+    private function exportOpportunityStatusLabel(?Opportunity $opportunity): string
+    {
+        if (! $opportunity) {
+            return '';
+        }
+
+        $payload = $opportunity->computedStatusPayload();
+
+        return (string) ($payload['label'] ?? $opportunity->status ?? '');
     }
 
     private function contractDateFieldMap(): array

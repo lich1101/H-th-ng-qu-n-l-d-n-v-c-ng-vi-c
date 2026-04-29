@@ -187,6 +187,9 @@ export default function CustomerDetail({ auth, clientId }) {
                                         <div className="mt-1 text-xs text-slate-500">
                                             {rotation.rotation_anchor_label || 'Hệ thống lấy mốc reset hiện tại để tính lại các ngày quá hạn.'}
                                         </div>
+                                        <div className="mt-2 text-xs text-slate-500">
+                                            Cron: tối đa {rotation.thresholds?.daily_receive_limit ?? '—'} khách/người/ngày. Kho số: tối đa {rotation.thresholds?.pool_claim_daily_limit ?? '—'} khách/người/ngày.
+                                        </div>
                                     </div>
                                     <div className="rounded-2xl border border-slate-200/80 px-4 py-3">
                                         <div className="text-xs text-slate-500">Ưu tiên khi đưa vào hàng chờ xoay</div>

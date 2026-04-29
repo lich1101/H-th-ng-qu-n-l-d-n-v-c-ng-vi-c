@@ -75,7 +75,7 @@ class Kernel extends ConsoleKernel
 
             $value = trim((string) AppSetting::query()->value('client_rotation_run_time'));
 
-            return preg_match('/^\d{2}:\d{2}$/', $value) === 1
+            return preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/', $value) === 1
                 ? $value
                 : $fallback;
         } catch (\Throwable $e) {

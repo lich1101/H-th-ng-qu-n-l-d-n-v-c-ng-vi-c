@@ -342,6 +342,8 @@ Route::prefix('v1')->group(function () {
 
         Route::get('/contracts', [ContractController::class, 'index'])
             ->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
+        Route::post('/contracts/export-selected', [ContractController::class, 'exportSelected'])
+            ->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
         Route::get('/contracts/{contract}', [ContractController::class, 'show'])
             ->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
         Route::get('/contracts/{contract}/files', [ContractController::class, 'contractFiles'])

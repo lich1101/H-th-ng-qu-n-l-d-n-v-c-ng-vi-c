@@ -8,7 +8,8 @@ Tai lieu nay dung de QA/tester test nhanh co che xoay khach hang tu dong theo lo
 - `comment_stale_days = 3`
 - `opportunity_stale_days = 30`
 - `contract_stale_days = 90`
-- `daily_receive_limit = 5`
+- `daily_receive_limit = 5` cho cron auto-rotation
+- `pool_claim_daily_limit = 5` cho nhan thu cong trong kho so
 - `client_rotation_scope_mode = global_staff`
 - Loai khach dang duoc chon trong setting: `Khach hang tiem nang`
 - Danh sach nhan su tham gia xoay: `A`, `B`, `C`, `D`
@@ -60,14 +61,15 @@ Neu khach du dieu kien xoay ma khong con nguoi nhan hop le:
 | S04 | Giong `S03`, nhung co them comment moi vao `2026-05-24 12:00`, `2026-05-26 12:00`, `2026-05-28 12:00`. | `2026-03-07 12:00` | `Khong xoay` khi comment van duoc cap nhat deu | `Khong co` | Day la case xac nhan mot khach co the nam mai voi 1 nhan su neu tang cuoi cung luon duoc reset bang comment moi. Moi lan co comment moi sau khi da vao tang 3, he thong phai day moc xoay ra them `3` ngay nua. |
 | S05 | Giong `S01`, nhung truoc luc den han xoay da co `staff_transfer_request` trang thai `pending` cho chinh khach nay. | `Khong canh bao khi request con pending` | `Khong xoay khi request con pending` | `Khong co` | Cron phai bo qua ca warning lan auto-rotation cho den khi request duoc xu ly xong. |
 | S06 | Giong `S01`, nhung pool nhan la `B(hist=2, load=9, auto_today=1)` va `D(hist=2, load=6, auto_today=1)`. | `2026-03-11 12:00` | `2026-05-28 12:00` | `D` | Hai nguoi bang `historical auto receive`, he thong phai chon nguoi co `client load` nho hon. |
-| S07 | Giong `S01`, nhung `B(auto_today=5)`, `C(auto_today=5)`, `D(auto_today=5)`. | `2026-03-11 12:00` | `2026-05-28 12:00` | `Vao kho so` | Khi tat ca nguoi nhan da het quota trong ngay, khach phai vao kho so ngay lap tuc. Khong duoc de lai CRM thuong de cron ngay sau xu ly tiep. |
-| S08 | Giong `S01`. Truoc lan cron xoay, `B` da nhan `4` khach auto trong ngay. Luc `09:30`, `B` nhan them `1` khach qua `manual transfer request accepted`. | `2026-03-11 12:00` | `2026-05-28 12:00` | `B` | Manual transfer khong duoc cong vao `daily auto receive limit`. Neu truoc do `auto_today` cua `B` la `4` thi `B` van duoc nhan them 1 khach auto. |
+| S07 | Giong `S01`, nhung `B(auto_today=5)`, `C(auto_today=5)`, `D(auto_today=5)`. | `2026-03-11 12:00` | `2026-05-28 12:00` | `Vao kho so` | Khi tat ca nguoi nhan da het quota auto trong ngay, khach phai vao kho so ngay lap tuc. Khong duoc de lai CRM thuong de cron ngay sau xu ly tiep. |
+| S08 | Giong `S01`. Truoc lan cron xoay, `B` da nhan `4` khach qua auto-rotation trong ngay. Luc `09:30`, `B` nhan them `1` khach qua `manual transfer request accepted` va `1` khach tu kho so. | `2026-03-11 12:00` | `2026-05-28 12:00` | `B` | Manual transfer va nhan tu kho so khong duoc cong vao `daily_receive_limit` cua cron. Neu truoc do `auto_today` cua `B` la `4` thi `B` van duoc nhan them 1 khach tu cron. |
 | S09 | Giong `S01`, nhung `client_rotation_scope_mode = same_department`. `A` va `B` cung phong `Sales`, `C` va `D` khac phong. | `2026-03-11 12:00` | `2026-05-28 12:00` | `B` | Bat che do cung phong ban thi chi duoc xet nguoi nhan trong cung phong voi `A`. |
 | S10 | Giong `S01`, nhung `client_rotation_scope_mode = balanced_department`. `A` thuoc `Sales`, `B` thuoc `SEO`, `C` va `D` thuoc `Content`. Chi so phong ban: `SEO(hist=1, load=12, auto_today=1)`, `Content(hist=1, load=7, auto_today=0)`. Trong phong `Content`: `C(hist=2, load=4, auto_today=0)`, `D(hist=1, load=3, auto_today=0)`. | `2026-03-11 12:00` | `2026-05-28 12:00` | `D` | He thong phai chon phong `Content` truoc vi can bang cap phong ban tot hon `SEO`, sau do moi chia deu tiep cho nhan su trong phong `Content`. |
 | S11 | Giong `S01`, nhung `A` bat mode `chi nhan vao`. | `Khong canh bao` | `Khong xoay` | `Khong co` | Khach cua `A` van o trong CRM thuong nhung khong duoc vao warning queue va khong duoc vao hang cho xoay. |
 | S12 | Giong `S01`, nhung `B` bat mode `chi cho di`, `C(hist=3, load=8, auto_today=0)`, `D(hist=4, load=5, auto_today=0)`. | `2026-03-11 12:00` | `2026-05-28 12:00` | `C` | `B` phai bi loai khoi pool nhan vi dang `chi cho di`. |
 | S13 | Giong `S01`, nhung `B` bat dong thoi `chi nhan vao` va `chi cho di`. | `2026-03-11 12:00` | `2026-05-28 12:00` | `B` neu `B` dang dep nhat | Bat ca 2 co thi he thong phai coi nhu `binh thuong`, tuc van co the nhan vao va cung co the bi xoay ra ve sau. |
 | S14 | Khach da vao `kho so` luc `2026-05-28 12:00`. Luc `2026-05-28 14:00`, `C` bam `Nhan khach`. | `Khong ap dung` | `2026-05-28 14:00` | `C` | Sau khi nhan tu kho so, `assigned_staff_id` phai doi sang `C`, `is_in_rotation_pool = false`, `care_rotation_reset_at` reset theo thoi diem nhan, nhom cham soc cu phai duoc don lai de chi con nguoi vua nhan, va khach moi hien lai day du trong CRM cua `C`. |
+| S14b | Giong `S14`, nhung `C` da co `pool_claim_today=5` truoc khi bam nhan kho so. | `Khong ap dung` | `Khong duoc nhan` | `Khong co` | Nut nhan phai tra loi het quota nhan kho so/ngay. Khach van nam trong kho so de nhan su khac con quota nhan. |
 | S15 | `last_contract_at = 2026-04-20 12:00`, `last_opportunity_at = 2026-01-10 12:00`, `last_comment_at = 2026-01-12 12:00`. | `2026-06-04 12:00` | `2026-08-21 12:00` | `Khong co` tai `2026-08-21` | Tang hop dong chua qua han cho toi `2026-07-19`, nen du co hoi va comment da cu tu truoc, he thong van chua duoc dem tang 2 va tang 3. Tang co hoi chi bat dau tu `2026-07-19` va qua han luc `2026-08-18`; tang binh luan chi bat dau tu `2026-08-18` va qua han luc `2026-08-21`. |
 | S16 | `care_rotation_reset_at = 2026-05-28 12:00` sau khi khach vua duoc auto-rotate. Khong co them hoat dong nao moi. | `2026-07-12 12:00` | `2026-09-28 12:00` | `Theo ranking cua nguoi nhan moi` | Sau moi lan doi phu trach thanh cong, chuoi dem phai bat dau lai tu `care_rotation_reset_at` moi. Tang hop dong qua han luc `2026-08-26`, tang co hoi qua han luc `2026-09-25`, tang binh luan qua han luc `2026-09-28`. |
 
@@ -109,7 +111,9 @@ Neu khach du dieu kien xoay ma khong con nguoi nhan hop le:
   - trong `kho so` chi hien ten khach va nut nhan khach
   - sau khi nhan, lich su dieu chuyen phai co action `Nhan khach tu kho so`
 - `rotation_history` chi admin/administrator moi thay.
-- `manual_transfer_request` va `manual_direct_assignment` phai reset moc dem cho chinh khach do, nhung khong duoc cong vao quota auto/day cua nguoi nhan.
+- `manual_transfer_request` va `manual_direct_assignment` phai reset moc dem cho chinh khach do, nhung khong duoc cong vao quota cron/day hoac quota kho so/day cua nguoi nhan.
+- Quota cron/day chi tinh `auto_rotation`.
+- Quota kho so/day chi tinh `rotation_pool_claim`.
 
 ## Note cho QA neu muon test random tie-break
 

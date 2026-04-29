@@ -68,6 +68,7 @@ class ClientAutoRotationService
             'opportunity_stale_days' => max(1, (int) ($setting->client_rotation_opportunity_stale_days ?? ($defaults['client_rotation_opportunity_stale_days'] ?? 30))),
             'contract_stale_days' => max(1, (int) ($setting->client_rotation_contract_stale_days ?? ($defaults['client_rotation_contract_stale_days'] ?? 90))),
             'daily_receive_limit' => max(1, (int) ($setting->client_rotation_daily_receive_limit ?? ($defaults['client_rotation_daily_receive_limit'] ?? 5))),
+            'pool_claim_daily_limit' => max(1, (int) ($setting->client_rotation_pool_claim_daily_limit ?? ($defaults['client_rotation_pool_claim_daily_limit'] ?? 5))),
             'lead_type_ids' => $this->normalizeIdList($setting?->client_rotation_lead_type_ids ?? ($defaults['client_rotation_lead_type_ids'] ?? [])),
             'participant_user_ids' => $this->normalizeIdList($setting?->client_rotation_participant_user_ids ?? ($defaults['client_rotation_participant_user_ids'] ?? [])),
             'scope_mode' => $this->normalizeScopeMode(
@@ -973,6 +974,7 @@ class ClientAutoRotationService
                 'opportunity_stale_days' => (int) $settings['opportunity_stale_days'],
                 'contract_stale_days' => (int) $settings['contract_stale_days'],
                 'daily_receive_limit' => (int) $settings['daily_receive_limit'],
+                'pool_claim_daily_limit' => (int) $settings['pool_claim_daily_limit'],
                 'same_department_only' => $sameDepartmentOnly,
                 'scope_mode' => $scopeMode,
             ],
@@ -1725,6 +1727,15 @@ class ClientAutoRotationService
                 return ['status' => 'recipient_unavailable'];
             }
 
+            $settings = $this->settings();
+            $poolClaimDailyLimit = max(1, (int) ($settings['pool_claim_daily_limit'] ?? 5));
+            if ($this->receivedTodayRotationPoolClaimCountForUser($recipientId, $now) >= $poolClaimDailyLimit) {
+                return [
+                    'status' => 'daily_limit_reached',
+                    'pool_claim_daily_limit' => $poolClaimDailyLimit,
+                ];
+            }
+
             $client->assigned_staff_id = $recipientId;
             $client->assigned_department_id = (int) ($recipient->department_id ?? 0) > 0
                 ? (int) $recipient->department_id
@@ -1817,6 +1828,19 @@ class ClientAutoRotationService
 
         return (int) ClientRotationHistory::query()
             ->where('action_type', self::ACTION_AUTO_ROTATION)
+            ->where('to_staff_id', $userId)
+            ->whereDate('transferred_at', $now->toDateString())
+            ->count();
+    }
+
+    private function receivedTodayRotationPoolClaimCountForUser(int $userId, CarbonInterface $now): int
+    {
+        if ($userId <= 0) {
+            return 0;
+        }
+
+        return (int) ClientRotationHistory::query()
+            ->where('action_type', self::ACTION_ROTATION_POOL_CLAIM)
             ->where('to_staff_id', $userId)
             ->whereDate('transferred_at', $now->toDateString())
             ->count();

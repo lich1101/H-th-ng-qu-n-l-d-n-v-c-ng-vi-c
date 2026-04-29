@@ -425,6 +425,8 @@ export default function Contracts(props) {
     const canApprove = ['admin', 'administrator', 'ke_toan'].includes(userRole);
     const canFinance = ['admin', 'administrator', 'ke_toan'].includes(userRole);
     const canBulkActions = canApprove || canDelete;
+    const canExportContracts = ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'].includes(userRole);
+    const canSelectContracts = canBulkActions || canExportContracts;
     const isEmployee = userRole === 'nhan_vien';
     const canChooseCollector = ['admin', 'administrator', 'quan_ly', 'ke_toan'].includes(userRole);
     /** Mặc định khi tạo mới: người đang đăng nhập (có thể đổi nếu được phép). */
@@ -560,6 +562,33 @@ export default function Contracts(props) {
         }
 
         return fallback;
+    };
+
+    const getBlobErrorMessage = async (error, fallback) => {
+        const blob = error?.response?.data;
+        if (blob instanceof Blob) {
+            try {
+                const text = await blob.text();
+                if (text) {
+                    const parsed = JSON.parse(text);
+                    return parsed?.message || fallback;
+                }
+            } catch {
+                return fallback;
+            }
+        }
+
+        return getErrorMessage(error, fallback);
+    };
+
+    const filenameFromDisposition = (disposition, fallback) => {
+        if (!disposition) return fallback;
+        const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+        if (utf8Match?.[1]) {
+            return decodeURIComponent(utf8Match[1].replace(/"/g, ''));
+        }
+        const asciiMatch = disposition.match(/filename="?([^"]+)"?/i);
+        return asciiMatch?.[1] || fallback;
     };
 
     const readBoolean = (raw) => {
@@ -1088,6 +1117,45 @@ export default function Contracts(props) {
             await fetchContracts(filters);
         } catch (error) {
             toast.error(getErrorMessage(error, 'Không thể đồng bộ ngày hợp đồng.'));
+        } finally {
+            setBulkLoading(false);
+        }
+    };
+
+    const exportSelectedContracts = async () => {
+        if (!canExportContracts) {
+            toast.error('Bạn không có quyền xuất danh sách hợp đồng.');
+            return;
+        }
+        if (!selectedContractIds.length) {
+            toast.error('Vui lòng chọn hợp đồng cần xuất.');
+            return;
+        }
+
+        setBulkLoading(true);
+        try {
+            const res = await axios.post('/api/v1/contracts/export-selected', {
+                contract_ids: selectedContractIds.map((id) => Number(id)).filter((id) => id > 0),
+            }, {
+                responseType: 'blob',
+            });
+            const blob = new Blob([res.data], {
+                type: res.headers?.['content-type'] || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filenameFromDisposition(
+                res.headers?.['content-disposition'],
+                `danh-sach-hop-dong-da-chon-${new Date().toISOString().slice(0, 10)}.xlsx`,
+            );
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+            toast.success(`Đã xuất ${selectedContractIds.length} hợp đồng ra file XLSX.`);
+        } catch (error) {
+            toast.error(await getBlobErrorMessage(error, 'Không thể xuất danh sách hợp đồng đã chọn.'));
         } finally {
             setBulkLoading(false);
         }
@@ -2039,7 +2107,7 @@ export default function Contracts(props) {
                                 ? 'Admin và Kế toán có thể theo dõi toàn bộ hợp đồng, duyệt nhanh, gắn nhóm chăm sóc và quản lý công nợ trên cùng một màn.'
                                 : 'Theo dõi hợp đồng theo phạm vi khách hàng bạn đang quản lý.'}
                 </div>
-                {canBulkActions && selectedContractIds.length > 0 && (
+                {canSelectContracts && selectedContractIds.length > 0 && (
                     <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3">
                         <div>
                             <div className="text-sm font-medium text-cyan-900">
@@ -2060,6 +2128,17 @@ export default function Contracts(props) {
                             >
                                 Bỏ chọn
                             </button>
+                            {canExportContracts && (
+                                <button
+                                    type="button"
+                                    className="rounded-xl border border-teal-300 bg-teal-100 px-3 py-2 text-xs font-semibold text-teal-900"
+                                    onClick={exportSelectedContracts}
+                                    disabled={bulkLoading}
+                                    title="Xuất đầy đủ trường của các hợp đồng đã chọn ra file XLSX"
+                                >
+                                    {bulkLoading ? 'Đang xử lý...' : 'Xuất XLSX đã chọn'}
+                                </button>
+                            )}
                             {canManage && (
                                 <button
                                     type="button"
@@ -2104,7 +2183,7 @@ export default function Contracts(props) {
                     >
                             <thead>
                                 <tr className="text-left text-xs uppercase tracking-wider text-text-subtle border-b border-slate-200">
-                                    {canBulkActions && (
+                                    {canSelectContracts && (
                                         <th className="py-2 pr-3" data-az-ignore>
                                             <input
                                                 type="checkbox"
@@ -2140,7 +2219,7 @@ export default function Contracts(props) {
                             <tbody>
                                 {contracts.map((c) => (
                                     <tr key={c.id} className={`border-b border-slate-100 ${selectedContractSet.has(Number(c.id)) ? 'bg-primary/5' : ''}`}>
-                                        {canBulkActions && (
+                                        {canSelectContracts && (
                                             <td className="py-2 pr-3 align-top">
                                                 <input
                                                     type="checkbox"
@@ -2296,7 +2375,7 @@ export default function Contracts(props) {
                                 ))}
                                 {contracts.length === 0 && (
                                     <tr>
-                                        <td className="py-6 text-center text-sm text-text-muted" colSpan={canBulkActions ? 19 : 18}>
+                                        <td className="py-6 text-center text-sm text-text-muted" colSpan={canSelectContracts ? 21 : 20}>
                                             Chưa có hợp đồng nào.
                                         </td>
                                     </tr>
@@ -2306,7 +2385,7 @@ export default function Contracts(props) {
                                 <tfoot>
                                     <tr className="border-t-2 border-slate-200 bg-slate-50/90 text-left text-sm text-slate-800">
                                         <td
-                                            colSpan={canBulkActions ? 12 : 11}
+                                            colSpan={canSelectContracts ? 12 : 11}
                                             className="py-2.5 pr-3 text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle"
                                         >
                                             Tổng theo bộ lọc (tất cả trang)
