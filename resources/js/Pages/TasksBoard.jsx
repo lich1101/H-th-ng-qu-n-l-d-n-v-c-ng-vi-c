@@ -14,6 +14,7 @@ import Modal from '@/Components/Modal';
 import PaginationControls from '@/Components/PaginationControls';
 import TagMultiSelect from '@/Components/TagMultiSelect';
 import { useToast } from '@/Contexts/ToastContext';
+import { absoluteHttpUrl } from '@/lib/externalUrl';
 import { formatVietnamDate, formatVietnamDateTime, toDateInputValue } from '@/lib/vietnamTime';
 import { taskDefaultsFromProject, taskItemDefaults } from '@/lib/timelineDefaults';
 import { fetchStaffFilterOptions } from '@/lib/staffFilterOptions';
@@ -1499,18 +1500,19 @@ export default function TasksBoard(props) {
         [departments, form.department_id]
     );
 
-    const staffOptions = useMemo(() => {
-        return assignableUserOptions;
-    }, [assignableUserOptions]);
-
-    const itemStaffOptions = useMemo(() => {
-        return assignableUserOptions;
-    }, [assignableUserOptions]);
-
     const assignableUserOptions = useMemo(
         () => userOptions.filter((user) => !BLOCKED_ASSIGNMENT_ROLES.includes(String(user?.role || '').toLowerCase())),
         [userOptions]
     );
+
+    const staffOptions = useMemo(() => {
+        return assignableUserOptions || [];
+    }, [assignableUserOptions]);
+
+    const itemStaffOptions = useMemo(() => {
+        return assignableUserOptions || [];
+    }, [assignableUserOptions]);
+
     const assigneeFilterOptions = useMemo(() => {
         const base = taskAssigneeFilterUsers.length > 0 ? taskAssigneeFilterUsers : assignableUserOptions;
         const allowed = base.filter((user) => !BLOCKED_ASSIGNMENT_ROLES.includes(String(user?.role || '').toLowerCase()));
@@ -1887,6 +1889,7 @@ export default function TasksBoard(props) {
                                         <tr className="text-left text-xs uppercase tracking-wider text-text-subtle border-b border-slate-200">
                                             <th className="py-2">Công việc</th>
                                             <th className="py-2">Dự án</th>
+                                            <th className="py-2">Website dự án</th>
                                             <th className="py-2">Trạng thái</th>
                                             <th className="py-2">Ưu tiên</th>
                                             <th className="py-2">Hạn chót</th>
@@ -1911,6 +1914,20 @@ export default function TasksBoard(props) {
                                                     </td>
                                                     <td className="py-3 text-xs text-text-muted">
                                                         {t.project?.name || 'Chưa gán dự án'}
+                                                    </td>
+                                                    <td className="py-3 text-xs text-text-muted">
+                                                        {t.project?.website_url ? (
+                                                            <a
+                                                                className="font-semibold text-primary hover:underline"
+                                                                href={absoluteHttpUrl(t.project.website_url)}
+                                                                target="_blank"
+                                                                rel="noreferrer"
+                                                                onClick={(e) => e.stopPropagation()}
+                                                                title={absoluteHttpUrl(t.project.website_url)}
+                                                            >
+                                                                {t.project.website_url}
+                                                            </a>
+                                                        ) : '—'}
                                                     </td>
                                                     <td className="py-3">
                                                         <div className="flex flex-wrap gap-2">
@@ -1966,14 +1983,14 @@ export default function TasksBoard(props) {
                                         })}
                                         {loading && (
                                             <tr>
-                                                <td className="py-6 text-center text-sm text-text-muted" colSpan={10}>
+                                                <td className="py-6 text-center text-sm text-text-muted" colSpan={11}>
                                                     Đang tải...
                                                 </td>
                                             </tr>
                                         )}
                                         {!loading && tasks.length === 0 && (
                                             <tr>
-                                                <td className="py-6 text-center text-sm text-text-muted" colSpan={10}>
+                                                <td className="py-6 text-center text-sm text-text-muted" colSpan={11}>
                                                     Chưa có công việc theo bộ lọc.
                                                 </td>
                                             </tr>

@@ -23,7 +23,7 @@ class TaskItemController extends Controller
         $query = TaskItem::query()
             ->with([
                 'task:id,project_id,department_id,title,assignee_id,created_by,assigned_by',
-                'task.project:id,name,code',
+                'task.project:id,name,code,website_url',
                 'assignee:id,name,email,avatar_url',
                 'reviewer:id,name,email,avatar_url',
             ]);
@@ -123,7 +123,7 @@ class TaskItemController extends Controller
     {
         $item = TaskItem::with([
             'task:id,project_id,department_id,title,assignee_id,created_by,assigned_by,status,progress_percent,weight_percent,deadline',
-            'task.project:id,name,code,owner_id',
+            'task.project:id,name,code,owner_id,website_url',
             'task.project.owner:id,name,email',
             'task.department:id,name,manager_id',
             'assignee:id,name,email,avatar_url',

@@ -13,6 +13,7 @@ import PageContainer from '@/Components/PageContainer';
 import PaginationControls from '@/Components/PaginationControls';
 import TagMultiSelect from '@/Components/TagMultiSelect';
 import { useToast } from '@/Contexts/ToastContext';
+import { absoluteHttpUrl } from '@/lib/externalUrl';
 import { formatVietnamDate } from '@/lib/vietnamTime';
 import { fetchStaffFilterOptions, usersToStaffTagOptions } from '@/lib/staffFilterOptions';
 
@@ -363,6 +364,7 @@ export default function TaskItemsBoard(props) {
                                     <th className="py-2">Đầu việc</th>
                                     <th className="py-2">Công việc</th>
                                     <th className="py-2">Dự án</th>
+                                    <th className="py-2">Website dự án</th>
                                     <th className="py-2">Nhân sự</th>
                                     <th className="py-2">Trạng thái</th>
                                     <th className="py-2">Tiến độ</th>
@@ -384,6 +386,20 @@ export default function TaskItemsBoard(props) {
                                         </td>
                                         <td className="py-2.5 text-xs text-slate-600">{item.task?.title || '—'}</td>
                                         <td className="py-2.5 text-xs text-slate-600">{item.task?.project?.name || '—'}</td>
+                                        <td className="py-2.5 text-xs text-slate-600">
+                                            {item.task?.project?.website_url ? (
+                                                <a
+                                                    className="font-semibold text-primary hover:underline"
+                                                    href={absoluteHttpUrl(item.task.project.website_url)}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    title={absoluteHttpUrl(item.task.project.website_url)}
+                                                >
+                                                    {item.task.project.website_url}
+                                                </a>
+                                            ) : '—'}
+                                        </td>
                                         <td className="py-2.5 text-xs text-slate-600">{item.assignee?.name || '—'}</td>
                                         <td className="py-2.5">
                                             <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${STATUS_STYLES[item.status] || STATUS_STYLES.todo}`}>
@@ -398,12 +414,12 @@ export default function TaskItemsBoard(props) {
                                 ))}
                                 {loading && (
                                     <tr>
-                                        <td className="py-6 text-center text-sm text-slate-500" colSpan={9}>Đang tải...</td>
+                                        <td className="py-6 text-center text-sm text-slate-500" colSpan={10}>Đang tải...</td>
                                     </tr>
                                 )}
                                 {!loading && items.length === 0 && (
                                     <tr>
-                                        <td className="py-6 text-center text-sm text-slate-500" colSpan={9}>Chưa có đầu việc theo bộ lọc.</td>
+                                        <td className="py-6 text-center text-sm text-slate-500" colSpan={10}>Chưa có đầu việc theo bộ lọc.</td>
                                     </tr>
                                 )}
                             </tbody>
