@@ -210,7 +210,7 @@ export default function ClientPool(props) {
         <PageContainer
             auth={props.auth}
             title="Kho số"
-            description="Khách hàng dư sau cron xoay sẽ nằm ở đây. Trang này chỉ hiện tên khách hàng và thao tác nhận khách. Khi nhân sự còn quota nhận kho số bấm nhận, hệ thống reset lại mốc xoay, dọn nhóm chăm sóc cũ và chuyển khách về CRM thường cho người vừa nhận."
+            description="Khách hàng dư sau cron xoay sẽ nằm ở đây. Trang này chỉ hiện tên khách hàng cùng số cơ hội và số bình luận tổng hợp trước khi nhận. Khi nhân sự còn quota nhận kho số bấm nhận, hệ thống reset lại mốc xoay, dọn nhóm chăm sóc cũ và chuyển khách về CRM thường cho người vừa nhận."
             actions={(
                 <div className="flex flex-wrap items-center gap-2">
                     {canManagePoolEntries ? (
@@ -260,7 +260,7 @@ export default function ClientPool(props) {
                     <div>
                         <div className="text-xs font-semibold uppercase tracking-[0.14em] text-text-subtle">Danh sách chờ nhận</div>
                         <p className="mt-1 text-sm text-slate-600">
-                            Chỉ hiện tên khách hàng để tránh lộ dữ liệu trước khi nhận. Nhận xong thì hệ thống gán lại phụ trách trực tiếp, reset mốc xoay và khách quay lại CRM thường. Quota nhận kho số/ngày vẫn được áp dụng để tránh một nhân sự nhận quá nhiều.
+                            Chỉ hiện tên khách hàng cùng số cơ hội và số bình luận tổng hợp để tránh lộ chi tiết trước khi nhận. Nhận xong thì hệ thống gán lại phụ trách trực tiếp, reset mốc xoay và khách quay lại CRM thường. Quota nhận kho số/ngày vẫn được áp dụng để tránh một nhân sự nhận quá nhiều.
                         </p>
                     </div>
                     <div className="rounded-full bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
@@ -292,29 +292,58 @@ export default function ClientPool(props) {
                     </button>
                 </div>
 
-                <div className="mt-4 grid gap-2">
+                <div className="mt-4 hidden rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500 lg:grid lg:grid-cols-[minmax(0,1fr)_140px_140px_132px] lg:items-center">
+                    <div>Khách hàng</div>
+                    <div className="text-center">Số cơ hội</div>
+                    <div className="text-center">Số bình luận</div>
+                    <div className="text-right">Thao tác</div>
+                </div>
+
+                <div className="mt-2 grid gap-2">
                     {clients.map((client) => (
                         <div
                             key={client.id}
-                            className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3"
+                            className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3"
                         >
-                            <div className="min-w-0 flex-1 text-sm font-semibold text-slate-900">
-                                {client.name || 'Khách hàng'}
+                            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_140px_140px_132px] lg:items-center">
+                                <div className="min-w-0">
+                                    <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400 lg:hidden">Khách hàng</div>
+                                    <div className="truncate text-sm font-semibold text-slate-900">
+                                        {client.name || 'Khách hàng'}
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center justify-between gap-3 lg:block lg:text-center">
+                                    <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400 lg:hidden">Số cơ hội</div>
+                                    <div className="text-sm font-semibold tabular-nums text-slate-900">
+                                        {Number(client.opportunities_count || 0)}
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center justify-between gap-3 lg:block lg:text-center">
+                                    <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400 lg:hidden">Số bình luận</div>
+                                    <div className="text-sm font-semibold tabular-nums text-slate-900">
+                                        {Number(client.care_notes_count || 0)}
+                                    </div>
+                                </div>
+
+                                <div className="flex justify-end">
+                                    {canClaimRotationPool ? (
+                                        <button
+                                            type="button"
+                                            className="rounded-2xl bg-primary px-4 py-2 text-xs font-semibold text-white shadow-sm disabled:opacity-60"
+                                            onClick={() => claimClient(client)}
+                                            disabled={claimingClientId === Number(client.id)}
+                                        >
+                                            {claimingClientId === Number(client.id) ? 'Đang nhận...' : 'Nhận khách hàng'}
+                                        </button>
+                                    ) : (
+                                        <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-500">
+                                            Chỉ xem
+                                        </span>
+                                    )}
+                                </div>
                             </div>
-                            {canClaimRotationPool ? (
-                                <button
-                                    type="button"
-                                    className="rounded-2xl bg-primary px-4 py-2 text-xs font-semibold text-white shadow-sm disabled:opacity-60"
-                                    onClick={() => claimClient(client)}
-                                    disabled={claimingClientId === Number(client.id)}
-                                >
-                                    {claimingClientId === Number(client.id) ? 'Đang nhận...' : 'Nhận khách hàng'}
-                                </button>
-                            ) : (
-                                <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-500">
-                                    Chỉ xem
-                                </span>
-                            )}
                         </div>
                     ))}
                     {clients.length === 0 ? (

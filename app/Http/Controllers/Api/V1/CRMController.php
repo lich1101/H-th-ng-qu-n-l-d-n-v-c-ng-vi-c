@@ -226,6 +226,10 @@ class CRMController extends Controller
         $query = Client::query()
             ->onlyRotationPool()
             ->select(['id', 'name', 'rotation_pool_entered_at'])
+            ->withCount([
+                'opportunities',
+                'careNotes as care_notes_count' => fn ($careNotesQuery) => $careNotesQuery->reorder(),
+            ])
             ->orderByDesc('rotation_pool_entered_at')
             ->orderByDesc('id');
 
@@ -242,6 +246,8 @@ class CRMController extends Controller
                 return [
                     'id' => (int) $client->id,
                     'name' => (string) ($client->name ?: 'Khách hàng'),
+                    'opportunities_count' => (int) ($client->opportunities_count ?? 0),
+                    'care_notes_count' => (int) ($client->care_notes_count ?? 0),
                 ];
             })
         );
