@@ -64,11 +64,11 @@ class ClientAutoRotationService
 
         return [
             'enabled' => $setting ? (bool) ($setting->client_rotation_enabled ?? false) : false,
-            'comment_stale_days' => max(1, (int) ($setting->client_rotation_comment_stale_days ?? ($defaults['client_rotation_comment_stale_days'] ?? 3))),
-            'opportunity_stale_days' => max(1, (int) ($setting->client_rotation_opportunity_stale_days ?? ($defaults['client_rotation_opportunity_stale_days'] ?? 30))),
-            'contract_stale_days' => max(1, (int) ($setting->client_rotation_contract_stale_days ?? ($defaults['client_rotation_contract_stale_days'] ?? 90))),
-            'daily_receive_limit' => max(1, (int) ($setting->client_rotation_daily_receive_limit ?? ($defaults['client_rotation_daily_receive_limit'] ?? 5))),
-            'pool_claim_daily_limit' => max(1, (int) ($setting->client_rotation_pool_claim_daily_limit ?? ($defaults['client_rotation_pool_claim_daily_limit'] ?? 5))),
+            'comment_stale_days' => max(0, (int) ($setting->client_rotation_comment_stale_days ?? ($defaults['client_rotation_comment_stale_days'] ?? 3))),
+            'opportunity_stale_days' => max(0, (int) ($setting->client_rotation_opportunity_stale_days ?? ($defaults['client_rotation_opportunity_stale_days'] ?? 30))),
+            'contract_stale_days' => max(0, (int) ($setting->client_rotation_contract_stale_days ?? ($defaults['client_rotation_contract_stale_days'] ?? 90))),
+            'daily_receive_limit' => max(0, (int) ($setting->client_rotation_daily_receive_limit ?? ($defaults['client_rotation_daily_receive_limit'] ?? 5))),
+            'pool_claim_daily_limit' => max(0, (int) ($setting->client_rotation_pool_claim_daily_limit ?? ($defaults['client_rotation_pool_claim_daily_limit'] ?? 5))),
             'lead_type_ids' => $this->normalizeIdList($setting?->client_rotation_lead_type_ids ?? ($defaults['client_rotation_lead_type_ids'] ?? [])),
             'participant_user_ids' => $this->normalizeIdList($setting?->client_rotation_participant_user_ids ?? ($defaults['client_rotation_participant_user_ids'] ?? [])),
             'scope_mode' => $this->normalizeScopeMode(
@@ -1660,6 +1660,9 @@ class ClientAutoRotationService
             $client->is_in_rotation_pool = true;
             $client->rotation_pool_entered_at = $now->toDateTimeString();
             $client->rotation_pool_reason = 'auto_rotation_no_recipient';
+            if (Schema::hasColumn('clients', 'rotation_pool_claimed_at')) {
+                $client->rotation_pool_claimed_at = null;
+            }
             $client->save();
             $this->replaceClientCareStaffForAssignment($client, null, null);
 
@@ -1728,7 +1731,7 @@ class ClientAutoRotationService
             }
 
             $settings = $this->settings();
-            $poolClaimDailyLimit = max(1, (int) ($settings['pool_claim_daily_limit'] ?? 5));
+            $poolClaimDailyLimit = max(0, (int) ($settings['pool_claim_daily_limit'] ?? 5));
             if ($this->receivedTodayRotationPoolClaimCountForUser($recipientId, $now) >= $poolClaimDailyLimit) {
                 return [
                     'status' => 'daily_limit_reached',
@@ -1744,6 +1747,9 @@ class ClientAutoRotationService
             $client->rotation_pool_entered_at = null;
             $client->rotation_pool_reason = null;
             $client->care_rotation_reset_at = $now->toDateTimeString();
+            if (Schema::hasColumn('clients', 'rotation_pool_claimed_at')) {
+                $client->rotation_pool_claimed_at = $now->toDateTimeString();
+            }
             $client->save();
             $this->replaceClientCareStaffForAssignment($client, null, $recipientId, $recipientId);
 

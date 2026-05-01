@@ -19,6 +19,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 class ClientFlowController extends Controller
@@ -466,6 +467,7 @@ class ClientFlowController extends Controller
             'title' => trim((string) $validated['title']),
             'detail' => trim((string) $validated['detail']),
         ]);
+        $this->clearRotationPoolClaimPriority($client);
 
         return response()->json([
             'message' => 'Đã thêm ghi chú chăm sóc.',
@@ -627,5 +629,19 @@ class ClientFlowController extends Controller
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    private function clearRotationPoolClaimPriority(Client $client): void
+    {
+        if (! Schema::hasColumn('clients', 'rotation_pool_claimed_at')) {
+            return;
+        }
+
+        if ($client->rotation_pool_claimed_at === null) {
+            return;
+        }
+
+        $client->rotation_pool_claimed_at = null;
+        $client->save();
     }
 }

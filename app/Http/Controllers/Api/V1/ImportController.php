@@ -552,6 +552,7 @@ class ImportController extends Controller
             'tenkhachhang' => 'name',
             'makhachhang' => 'external_code',
             'nguonkhachhang' => 'lead_channel',
+            'kenh' => 'lead_channel',
             'nguonkhach' => 'lead_source',
             'loaikhachhang' => 'lead_type_name',
             'email' => 'email',
@@ -570,6 +571,7 @@ class ImportController extends Controller
             'doanhsoluyke' => 'total_revenue',
             'noidung' => 'lead_message',
             'company' => 'company',
+            'congty' => 'company',
         ];
     }
 
@@ -1196,11 +1198,21 @@ class ImportController extends Controller
         return response()->streamDownload(function () use ($headers, $sample) {
             $spreadsheet = new Spreadsheet();
             $sheet = $spreadsheet->getActiveSheet();
+            $sheet->setTitle('Kho so');
             $sheet->fromArray($headers, null, 'A1');
             $sheet->fromArray($sample, null, 'A2');
+            $highestColumn = $sheet->getHighestColumn();
+            $sheet->freezePane('A2');
+            $sheet->setAutoFilter("A1:{$highestColumn}1");
+            $sheet->getStyle("A1:{$highestColumn}1")->getFont()->setBold(true);
+            foreach (range('A', $highestColumn) as $column) {
+                $sheet->getColumnDimension($column)->setAutoSize(true);
+            }
 
             $writer = new Xlsx($spreadsheet);
             $writer->save('php://output');
+            $spreadsheet->disconnectWorksheets();
+            unset($spreadsheet);
         }, $filename, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         ]);

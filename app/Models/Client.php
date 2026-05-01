@@ -23,6 +23,7 @@ class Client extends Model
         'is_in_rotation_pool',
         'rotation_pool_entered_at',
         'rotation_pool_reason',
+        'rotation_pool_claimed_at',
         'sales_owner_id',
         'assigned_department_id',
         'assigned_staff_id',
@@ -55,6 +56,7 @@ class Client extends Model
         'care_rotation_reset_at' => 'datetime',
         'is_in_rotation_pool' => 'boolean',
         'rotation_pool_entered_at' => 'datetime',
+        'rotation_pool_claimed_at' => 'datetime',
     ];
 
     public function scopeWithoutRotationPool($query)

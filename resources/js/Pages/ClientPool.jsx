@@ -33,6 +33,22 @@ const EMPTY_POOL_FORM = Object.freeze({
     notes: '',
 });
 
+const formatCurrency = (value) => `${Number(value || 0).toLocaleString('vi-VN')} VNĐ`;
+
+const getDownloadFilename = (contentDisposition, fallback) => {
+    const header = String(contentDisposition || '').trim();
+    if (!header) return fallback;
+    const utf8Match = header.match(/filename\*\s*=\s*UTF-8''([^;]+)/i);
+    if (utf8Match?.[1]) {
+        try {
+            return decodeURIComponent(utf8Match[1]);
+        } catch (error) {
+        }
+    }
+    const basicMatch = header.match(/filename\s*=\s*"?([^"]+)"?/i);
+    return String(basicMatch?.[1] || '').trim() || fallback;
+};
+
 export default function ClientPool(props) {
     const toast = useToast();
     const normalizedRole = String(props?.auth?.user?.role || '').toLowerCase();
@@ -49,6 +65,7 @@ export default function ClientPool(props) {
     const [showImportModal, setShowImportModal] = useState(false);
     const [clientImportFile, setClientImportFile] = useState(null);
     const [importingClients, setImportingClients] = useState(false);
+    const [downloadingTemplate, setDownloadingTemplate] = useState(false);
     const [clientImportJob, setClientImportJob] = useState(null);
     const [clientImportReport, setClientImportReport] = useState(null);
 
@@ -206,11 +223,42 @@ export default function ClientPool(props) {
         }
     };
 
+    const downloadTemplate = async () => {
+        setDownloadingTemplate(true);
+        try {
+            const response = await axios.get('/api/v1/imports/client-pool/template', {
+                responseType: 'blob',
+            });
+            if (!response?.data || response.data.size === 0) {
+                throw new Error('empty_rotation_pool_template');
+            }
+            const blob = new Blob([response.data], {
+                type: response.headers['content-type'] || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            });
+            const downloadUrl = window.URL.createObjectURL(blob);
+            const anchor = document.createElement('a');
+            anchor.href = downloadUrl;
+            anchor.download = getDownloadFilename(
+                response.headers['content-disposition'],
+                'mau-import-kho-so.xlsx'
+            );
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+            window.setTimeout(() => window.URL.revokeObjectURL(downloadUrl), 1000);
+            toast.success('Đã tải file mẫu kho số.');
+        } catch (error) {
+            toast.error(getErrorMessage(error, 'Không tải được file mẫu kho số.'));
+        } finally {
+            setDownloadingTemplate(false);
+        }
+    };
+
     return (
         <PageContainer
             auth={props.auth}
             title="Kho số"
-            description="Khách hàng dư sau cron xoay sẽ nằm ở đây. Trang này chỉ hiện tên khách hàng cùng số cơ hội và số bình luận tổng hợp trước khi nhận. Khi nhân sự còn quota nhận kho số bấm nhận, hệ thống reset lại mốc xoay, dọn nhóm chăm sóc cũ và chuyển khách về CRM thường cho người vừa nhận."
+            description="Khách hàng dư sau cron xoay sẽ nằm ở đây. Trang này chỉ hiện tên khách hàng cùng số cơ hội, số bình luận và doanh thu tích lũy tổng hợp trước khi nhận. Khi nhân sự còn quota nhận kho số bấm nhận, hệ thống reset lại mốc xoay, dọn nhóm chăm sóc cũ và chuyển khách về CRM thường cho người vừa nhận."
             actions={(
                 <div className="flex flex-wrap items-center gap-2">
                     {canManagePoolEntries ? (
@@ -240,9 +288,10 @@ export default function ClientPool(props) {
                             <button
                                 type="button"
                                 className="inline-flex items-center rounded-2xl border border-slate-200/80 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm"
-                                onClick={() => window.open('/api/v1/imports/client-pool/template', '_blank', 'noopener,noreferrer')}
+                                onClick={downloadTemplate}
+                                disabled={downloadingTemplate}
                             >
-                                Tải file mẫu XLSX
+                                {downloadingTemplate ? 'Đang tải mẫu...' : 'Tải file mẫu XLSX'}
                             </button>
                         </>
                     ) : null}
@@ -260,7 +309,7 @@ export default function ClientPool(props) {
                     <div>
                         <div className="text-xs font-semibold uppercase tracking-[0.14em] text-text-subtle">Danh sách chờ nhận</div>
                         <p className="mt-1 text-sm text-slate-600">
-                            Chỉ hiện tên khách hàng cùng số cơ hội và số bình luận tổng hợp để tránh lộ chi tiết trước khi nhận. Nhận xong thì hệ thống gán lại phụ trách trực tiếp, reset mốc xoay và khách quay lại CRM thường. Quota nhận kho số/ngày vẫn được áp dụng để tránh một nhân sự nhận quá nhiều.
+                            Chỉ hiện tên khách hàng cùng số cơ hội, số bình luận và doanh thu tích lũy tổng hợp để tránh lộ chi tiết trước khi nhận. Nhận xong thì hệ thống gán lại phụ trách trực tiếp, reset mốc xoay và khách quay lại CRM thường. Quota nhận kho số/ngày vẫn được áp dụng để tránh một nhân sự nhận quá nhiều.
                         </p>
                     </div>
                     <div className="rounded-full bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
@@ -292,10 +341,11 @@ export default function ClientPool(props) {
                     </button>
                 </div>
 
-                <div className="mt-4 hidden rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500 lg:grid lg:grid-cols-[minmax(0,1fr)_140px_140px_132px] lg:items-center">
+                <div className="mt-4 hidden rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500 lg:grid lg:grid-cols-[minmax(0,1fr)_120px_120px_180px_132px] lg:items-center">
                     <div>Khách hàng</div>
                     <div className="text-center">Số cơ hội</div>
                     <div className="text-center">Số bình luận</div>
+                    <div className="text-center">Doanh thu tích lũy</div>
                     <div className="text-right">Thao tác</div>
                 </div>
 
@@ -305,7 +355,7 @@ export default function ClientPool(props) {
                             key={client.id}
                             className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3"
                         >
-                            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_140px_140px_132px] lg:items-center">
+                            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_120px_120px_180px_132px] lg:items-center">
                                 <div className="min-w-0">
                                     <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400 lg:hidden">Khách hàng</div>
                                     <div className="truncate text-sm font-semibold text-slate-900">
@@ -324,6 +374,13 @@ export default function ClientPool(props) {
                                     <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400 lg:hidden">Số bình luận</div>
                                     <div className="text-sm font-semibold tabular-nums text-slate-900">
                                         {Number(client.care_notes_count || 0)}
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center justify-between gap-3 lg:block lg:text-center">
+                                    <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400 lg:hidden">Doanh thu tích lũy</div>
+                                    <div className="text-sm font-semibold tabular-nums text-slate-900">
+                                        {formatCurrency(client.total_revenue || 0)}
                                     </div>
                                 </div>
 
@@ -473,9 +530,10 @@ export default function ClientPool(props) {
                         <button
                             type="button"
                             className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
-                            onClick={() => window.open('/api/v1/imports/client-pool/template', '_blank', 'noopener,noreferrer')}
+                            onClick={downloadTemplate}
+                            disabled={downloadingTemplate}
                         >
-                            Tải file mẫu XLSX
+                            {downloadingTemplate ? 'Đang tải mẫu...' : 'Tải file mẫu XLSX'}
                         </button>
                         <input
                             id="import-pool-client-file"

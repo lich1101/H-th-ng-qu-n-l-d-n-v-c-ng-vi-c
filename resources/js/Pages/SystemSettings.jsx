@@ -2379,36 +2379,29 @@ export default function SystemSettings(props) {
                             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                                 <div className="max-w-3xl">
                                     <h3 className="text-sm font-semibold text-slate-900">Cơ chế xoay vòng khách hàng không được chăm sóc</h3>
-                                    <p className="mt-1 text-xs leading-5 text-text-muted">
-                                        Cron chạy lúc <span className="font-semibold text-slate-900">{form.client_rotation_run_time || '12:00'} mỗi ngày</span> để vừa bắn cảnh báo,
-                                        vừa điều chuyển khách theo thứ tự ưu tiên <span className="font-semibold text-slate-900">nhiều hợp đồng hơn</span> →
-                                        <span className="font-semibold text-slate-900"> nếu bằng nhau thì nhiều cơ hội hơn</span> →
-                                        <span className="font-semibold text-slate-900"> nếu đều là lead thuần thì random</span>.
-                                        Khách được đếm tuần tự theo 3 tầng: quá {form.client_rotation_contract_stale_days || 0} ngày chưa có hợp đồng mới thì mới bắt đầu đếm {form.client_rotation_opportunity_stale_days || 0} ngày cho cơ hội; quá tiếp tầng cơ hội thì mới bắt đầu đếm {form.client_rotation_comment_stale_days || 0} ngày cho bình luận / ghi chú.
-                                    </p>
                                 </div>
                                 <div className="w-full max-w-[320px]">
                                     <ToggleSwitch
                                         checked={form.client_rotation_enabled}
                                         onChange={(value) => setForm((s) => ({ ...s, client_rotation_enabled: value }))}
                                         label={form.client_rotation_enabled ? 'Đang bật tự động xoay' : 'Đang tắt tự động xoay'}
-                                        description="Nếu tắt, cron vẫn có thể chạy nhưng sẽ bỏ qua toàn bộ khách hàng."
+                                        description=""
                                     />
                                 </div>
                             </div>
 
-                            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-7">
+                            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
                                 <div>
                                     <label className="text-xs text-text-muted">Quá hạn bình luận / ghi chú</label>
                                     <input
                                         type="number"
-                                        min="1"
+                                        min="0"
                                         max="3650"
                                         className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
                                         value={form.client_rotation_comment_stale_days}
                                         onChange={(e) => setForm((s) => ({
                                             ...s,
-                                            client_rotation_comment_stale_days: Number(e.target.value || 1),
+                                            client_rotation_comment_stale_days: Number(e.target.value === '' ? 0 : e.target.value),
                                         }))}
                                     />
                                 </div>
@@ -2416,13 +2409,13 @@ export default function SystemSettings(props) {
                                     <label className="text-xs text-text-muted">Quá hạn cơ hội mới</label>
                                     <input
                                         type="number"
-                                        min="1"
+                                        min="0"
                                         max="3650"
                                         className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
                                         value={form.client_rotation_opportunity_stale_days}
                                         onChange={(e) => setForm((s) => ({
                                             ...s,
-                                            client_rotation_opportunity_stale_days: Number(e.target.value || 1),
+                                            client_rotation_opportunity_stale_days: Number(e.target.value === '' ? 0 : e.target.value),
                                         }))}
                                     />
                                 </div>
@@ -2430,57 +2423,43 @@ export default function SystemSettings(props) {
                                     <label className="text-xs text-text-muted">Quá hạn hợp đồng mới</label>
                                     <input
                                         type="number"
-                                        min="1"
+                                        min="0"
                                         max="3650"
                                         className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
                                         value={form.client_rotation_contract_stale_days}
                                         onChange={(e) => setForm((s) => ({
                                             ...s,
-                                            client_rotation_contract_stale_days: Number(e.target.value || 1),
+                                            client_rotation_contract_stale_days: Number(e.target.value === '' ? 0 : e.target.value),
                                         }))}
                                     />
-                                </div>
-                                <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">
-                                    <div className="text-xs font-semibold uppercase tracking-[0.14em] text-text-subtle">Nhịp cảnh báo cố định</div>
-                                    <div className="mt-2 space-y-1 text-sm text-slate-700">
-                                        <div>Chăm sóc: còn 2 ngày thì nhắc mỗi ngày.</div>
-                                        <div>Cơ hội: còn 14 ngày thì nhắc mỗi 3 ngày.</div>
-                                        <div>Hợp đồng: còn 45 ngày thì nhắc mỗi 7 ngày.</div>
-                                    </div>
                                 </div>
                                 <div>
                                     <label className="text-xs text-text-muted">Max nhận từ cron / người / ngày</label>
                                     <input
                                         type="number"
-                                        min="1"
+                                        min="0"
                                         max="100"
                                         className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
                                         value={form.client_rotation_daily_receive_limit}
                                         onChange={(e) => setForm((s) => ({
                                             ...s,
-                                            client_rotation_daily_receive_limit: Number(e.target.value || 1),
+                                            client_rotation_daily_receive_limit: Number(e.target.value === '' ? 0 : e.target.value),
                                         }))}
                                     />
-                                    <p className="mt-2 text-[11px] leading-5 text-text-muted">
-                                        Chỉ tính lượt phân phát tự động của cron. Chuyển tay, admin đổi phụ trách và nhận kho số không trừ quota này.
-                                    </p>
                                 </div>
                                 <div>
                                     <label className="text-xs text-text-muted">Max nhận kho số / người / ngày</label>
                                     <input
                                         type="number"
-                                        min="1"
+                                        min="0"
                                         max="100"
                                         className="mt-2 w-full rounded-2xl border border-slate-200/80 px-3 py-2 text-sm"
                                         value={form.client_rotation_pool_claim_daily_limit}
                                         onChange={(e) => setForm((s) => ({
                                             ...s,
-                                            client_rotation_pool_claim_daily_limit: Number(e.target.value || 1),
+                                            client_rotation_pool_claim_daily_limit: Number(e.target.value === '' ? 0 : e.target.value),
                                         }))}
                                     />
-                                    <p className="mt-2 text-[11px] leading-5 text-text-muted">
-                                        Chỉ tính lượt nhân sự tự bấm nhận trong kho số. Cron và chuyển tay không trừ quota này.
-                                    </p>
                                 </div>
                                 <div>
                                     <label className="text-xs text-text-muted">Giờ cron chạy mỗi ngày</label>
@@ -2493,9 +2472,6 @@ export default function SystemSettings(props) {
                                             client_rotation_run_time: e.target.value || '12:00',
                                         }))}
                                     />
-                                    <p className="mt-2 text-[11px] leading-5 text-text-muted">
-                                        Hệ thống sẽ đọc giờ này khi `schedule:run` quét lịch hằng phút trên server.
-                                    </p>
                                 </div>
                             </div>
 
@@ -2518,46 +2494,8 @@ export default function SystemSettings(props) {
                                             }`}
                                         >
                                             <div className="text-sm font-semibold text-slate-900">{option.title}</div>
-                                            <div className="mt-1 text-xs text-text-muted">{option.description}</div>
                                         </button>
                                     ))}
-                                </div>
-                            </div>
-
-                            <div className="mt-4 grid gap-3 lg:grid-cols-3">
-                                <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">
-                                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-subtle">Điều kiện xoay</div>
-                                    <p className="mt-1 text-sm text-slate-700">
-                                        Hệ thống đếm tuần tự: trước hết chờ quá {form.client_rotation_contract_stale_days || 0} ngày không có hợp đồng mới, sau đó mới bắt đầu đếm {form.client_rotation_opportunity_stale_days || 0} ngày không có cơ hội mới, và chỉ khi tầng cơ hội cũng quá hạn thì mới bắt đầu đếm {form.client_rotation_comment_stale_days || 0} ngày không có bình luận/ghi chú mới để quyết định xoay.
-                                    </p>
-                                    <p className="mt-2 text-xs text-slate-500">
-                                        Bình luận mới chỉ reset mốc chăm sóc. Cơ hội mới reset cả mốc cơ hội và mốc chăm sóc. Hợp đồng mới reset cả 3 mốc: bình luận, cơ hội và hợp đồng.
-                                    </p>
-                                    <p className="mt-2 text-xs text-slate-500">
-                                        Nếu không còn người nhận tự động hợp lệ hoặc tất cả đã hết suất trong ngày, khách đủ điều kiện sẽ được đưa vào kho số để nhân sự nhận thủ công.
-                                    </p>
-                                    <p className="mt-2 text-xs text-slate-500">
-                                        Nếu chọn nhiều loại khách, hệ thống sẽ xét theo đúng thứ tự loại khách bạn sắp xếp ở danh sách bên dưới, rồi mới áp dụng rule ưu tiên trong từng loại.
-                                    </p>
-                                </div>
-                                <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">
-                                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-subtle">Chọn người nhận</div>
-                                    <p className="mt-1 text-sm text-slate-700">
-                                        {rotationScopeMode === 'same_department'
-                                            ? 'Chỉ xét nhóm nhân sự đã chọn và cùng phòng ban. Hệ thống ưu tiên người có số auto-rotation tích lũy ít nhất, rồi đến số khách đang phụ trách ít nhất, rồi đến số nhận hôm nay ít nhất, cuối cùng random khi bằng nhau.'
-                                            : rotationScopeMode === 'balanced_department'
-                                                ? 'Cron gom toàn bộ khách đủ điều kiện, chọn phòng ban nhận khác phòng ban hiện tại theo thứ tự: số auto-rotation đổ về phòng ít nhất, rồi tổng tải khách của nhóm nhận ít nhất, rồi số khách phòng ban đó đã nhận hôm nay ít nhất, cuối cùng random. Sau khi chốt phòng ban, hệ thống mới chia đều tiếp cho nhân sự trong phòng đó theo rule hiện tại.'
-                                                : 'Xét trên toàn bộ nhân sự đã chọn trong cấu hình. Hệ thống ưu tiên người có số auto-rotation tích lũy ít nhất, rồi đến số khách đang phụ trách ít nhất, rồi đến số nhận hôm nay ít nhất, cuối cùng random khi bằng nhau.'}
-                                    </p>
-                                    <p className="mt-2 text-xs text-slate-500">
-                                        Thứ tự đưa khách vào hàng chờ xoay là: số hợp đồng giảm dần, nếu bằng nhau thì số cơ hội giảm dần; nếu cả hai cùng là khách tiềm năng thuần thì random trong nhóm đồng hạng, sau đó mới xét tới mức độ quá hạn và các tie-break còn lại.
-                                    </p>
-                                </div>
-                                <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">
-                                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-subtle">Thông báo</div>
-                                    <p className="mt-1 text-sm text-slate-700">
-                                        Cảnh báo chạy theo từng tầng: chăm sóc còn 2 ngày thì nhắc mỗi ngày, cơ hội còn 14 ngày thì nhắc mỗi 3 ngày, hợp đồng còn 45 ngày thì nhắc mỗi 7 ngày. Khi có hợp đồng mới, bộ đếm sẽ reset theo hợp đồng đó; khi xoay hoặc đổi phụ trách thành công, bộ đếm cũng reset lại từ đầu.
-                                    </p>
                                 </div>
                             </div>
                         </div>
@@ -2567,9 +2505,6 @@ export default function SystemSettings(props) {
                                 <div className="flex items-start justify-between gap-3">
                                     <div>
                                         <h3 className="text-sm font-semibold text-slate-900">Loại khách áp dụng</h3>
-                                        <p className="mt-1 text-xs text-text-muted">
-                                            Chỉ các khách thuộc loại được chọn mới đi vào cơ chế xoay vòng. Nếu chọn nhiều loại, thứ tự ở danh sách ưu tiên bên dưới sẽ quyết định loại nào được xét trước.
-                                        </p>
                                     </div>
                                     <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
                                         Đã chọn {selectedRotationLeadTypeIds.length}
@@ -2581,9 +2516,6 @@ export default function SystemSettings(props) {
                                         <div className="flex items-center justify-between gap-3">
                                             <div>
                                                 <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-subtle">Thứ tự ưu tiên loại khách</div>
-                                                <p className="mt-1 text-xs text-slate-500">
-                                                    #1 là ưu tiên cao nhất. Trong cùng một loại khách, hệ thống vẫn giữ nguyên rule hiện tại: xét loại khách trước, rồi mới tới số hợp đồng, số cơ hội và các tie-break còn lại.
-                                                </p>
                                             </div>
                                         </div>
                                         <div className="mt-3 space-y-2">
@@ -2683,9 +2615,6 @@ export default function SystemSettings(props) {
                                 <div className="flex items-start justify-between gap-3">
                                     <div>
                                         <h3 className="text-sm font-semibold text-slate-900">Nhân sự tham gia xoay vòng</h3>
-                                        <p className="mt-1 text-xs text-text-muted">
-                                            Chỉ quản lý/nhân viên đang hoạt động mới hợp lệ. Người phụ trách hiện tại và người nhận đều phải nằm trong danh sách này.
-                                        </p>
                                     </div>
                                     <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
                                         Đã chọn {selectedRotationParticipantIds.length}
@@ -2765,9 +2694,6 @@ export default function SystemSettings(props) {
                                                                     >
                                                                         Chỉ cho đi
                                                                     </button>
-                                                                </div>
-                                                                <div className="mt-2 text-xs text-slate-500">
-                                                                    {mode.hint}
                                                                 </div>
                                                             </>
                                                         ) : null}

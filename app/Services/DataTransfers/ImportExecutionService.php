@@ -19,6 +19,7 @@ use App\Services\ProjectProgressService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
@@ -160,6 +161,9 @@ class ImportExecutionService
                     'rotation_pool_entered_at' => $toRotationPool ? $poolNow->toDateTimeString() : null,
                     'rotation_pool_reason' => $toRotationPool ? 'manual_import_pool_entry' : null,
                 ];
+                if (Schema::hasColumn('clients', 'rotation_pool_claimed_at')) {
+                    $payload['rotation_pool_claimed_at'] = null;
+                }
 
                 $client = $this->findClientByIdentity(
                     $data['name'],
@@ -829,6 +833,7 @@ class ImportExecutionService
             'tenkhachhang' => 'name',
             'makhachhang' => 'external_code',
             'nguonkhachhang' => 'lead_channel',
+            'kenh' => 'lead_channel',
             'nguonkhach' => 'lead_source',
             'loaikhachhang' => 'lead_type_name',
             'email' => 'email',
@@ -847,6 +852,7 @@ class ImportExecutionService
             'doanhsoluyke' => 'total_revenue',
             'noidung' => 'lead_message',
             'company' => 'company',
+            'congty' => 'company',
         ];
     }
 

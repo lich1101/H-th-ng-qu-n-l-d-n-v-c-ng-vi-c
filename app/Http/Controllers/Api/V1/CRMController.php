@@ -227,9 +227,14 @@ class CRMController extends Controller
             ->onlyRotationPool()
             ->select(['id', 'name', 'rotation_pool_entered_at'])
             ->withCount([
-                'opportunities',
+                'opportunities as opportunities_count' => fn ($opportunitiesQuery) => $opportunitiesQuery->reorder(),
                 'careNotes as care_notes_count' => fn ($careNotesQuery) => $careNotesQuery->reorder(),
             ])
+            ->withSum([
+                'contracts as approved_revenue_total' => fn ($contractsQuery) => $contractsQuery
+                    ->reorder()
+                    ->where('approval_status', 'approved'),
+            ], 'value')
             ->orderByDesc('rotation_pool_entered_at')
             ->orderByDesc('id');
 
@@ -248,6 +253,7 @@ class CRMController extends Controller
                     'name' => (string) ($client->name ?: 'Khách hàng'),
                     'opportunities_count' => (int) ($client->opportunities_count ?? 0),
                     'care_notes_count' => (int) ($client->care_notes_count ?? 0),
+                    'total_revenue' => round((float) ($client->approved_revenue_total ?? 0), 2),
                 ];
             })
         );
@@ -313,6 +319,9 @@ class CRMController extends Controller
             'rotation_pool_reason' => 'manual_pool_entry',
             'care_rotation_reset_at' => $now->toDateTimeString(),
         ];
+        if ($this->supportsRotationPoolClaimedAt()) {
+            $payload['rotation_pool_claimed_at'] = null;
+        }
 
         $client = Client::create($payload);
         $this->syncClientCareStaff($client, [], (int) $user->id);
@@ -417,7 +426,7 @@ class CRMController extends Controller
             'daily_limit_reached' => response()->json([
                 'message' => sprintf(
                     'Bạn đã đạt giới hạn nhận %d khách hàng từ kho số trong ngày. Vui lòng nhận thêm vào ngày mai hoặc liên hệ administrator để tăng quota kho số.',
-                    max(1, (int) ($result['pool_claim_daily_limit'] ?? 1))
+                    max(0, (int) ($result['pool_claim_daily_limit'] ?? 0))
                 ),
             ], 422),
             default => response()->json(['message' => 'Không thể nhận khách hàng từ kho số lúc này.'], 422),
@@ -838,6 +847,10 @@ class CRMController extends Controller
                 break;
             case 'last_activity_at':
             default:
+                if ($this->supportsRotationPoolClaimedAt() && $direction === 'desc') {
+                    $query->orderByRaw('CASE WHEN clients.rotation_pool_claimed_at IS NULL THEN 1 ELSE 0 END ASC')
+                        ->orderByDesc('clients.rotation_pool_claimed_at');
+                }
                 $query->orderByRaw("{$lastActivityExpression} {$rawDirection}");
                 break;
         }
@@ -1237,6 +1250,11 @@ class CRMController extends Controller
         return Schema::hasTable('client_care_staff')
             && Schema::hasColumn('client_care_staff', 'client_id')
             && Schema::hasColumn('client_care_staff', 'user_id');
+    }
+
+    private function supportsRotationPoolClaimedAt(): bool
+    {
+        return Schema::hasColumn('clients', 'rotation_pool_claimed_at');
     }
 
     private function canManageClientCompanyProfiles(?User $user): bool

@@ -985,6 +985,9 @@ class ContractController extends Controller
 
         $contract->refresh();
         $contract->loadMissing('client');
+        if ($contract->client) {
+            $this->clearRotationPoolClaimPriority($contract->client);
+        }
 
         if ($contract->approval_status === 'approved' && $contract->client) {
             $this->syncClientRevenue($contract->client);
@@ -3228,5 +3231,19 @@ class ContractController extends Controller
         CrmScope::applyClientScope($query, $request->user());
 
         return $query->first();
+    }
+
+    private function clearRotationPoolClaimPriority(Client $client): void
+    {
+        if (! Schema::hasColumn('clients', 'rotation_pool_claimed_at')) {
+            return;
+        }
+
+        if ($client->rotation_pool_claimed_at === null) {
+            return;
+        }
+
+        $client->rotation_pool_claimed_at = null;
+        $client->save();
     }
 }

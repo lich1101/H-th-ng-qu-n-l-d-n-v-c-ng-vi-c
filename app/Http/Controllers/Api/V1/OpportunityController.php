@@ -17,6 +17,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -482,6 +483,7 @@ class OpportunityController extends Controller
         $validated['watcher_ids'] = $this->normalizeWatcherIds($validated['watcher_ids'] ?? []);
 
         $opportunity = Opportunity::create($validated);
+        $this->clearRotationPoolClaimPriority($client);
         $this->syncOpportunityContractLink($request, $opportunity, $contractId);
         $opportunity->load([
             'client:id,name,company,email,phone,notes,assigned_staff_id',
@@ -1023,5 +1025,19 @@ class OpportunityController extends Controller
         }
 
         return $statusCode;
+    }
+
+    private function clearRotationPoolClaimPriority(Client $client): void
+    {
+        if (! Schema::hasColumn('clients', 'rotation_pool_claimed_at')) {
+            return;
+        }
+
+        if ($client->rotation_pool_claimed_at === null) {
+            return;
+        }
+
+        $client->rotation_pool_claimed_at = null;
+        $client->save();
     }
 }
