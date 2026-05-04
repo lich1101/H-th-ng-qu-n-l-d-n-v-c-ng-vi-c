@@ -159,6 +159,37 @@ function buildCrmClientsQueryParams(filtersArg, page) {
     };
 }
 
+/** Body POST /exports/clients — bộ lọc giống danh sách (xuất gồm CRM + kho số). */
+function buildClientExportRequestBody(filtersArg) {
+    const body = {};
+    const search = String(filtersArg.search || '').trim();
+    if (search) body.search = search;
+    if (filtersArg.lead_type_id) {
+        const id = Number(filtersArg.lead_type_id);
+        if (Number.isInteger(id) && id > 0) body.lead_type_id = id;
+    }
+    if (filtersArg.type === 'potential' || filtersArg.type === 'active') {
+        body.type = filtersArg.type;
+    }
+    if (filtersArg.revenue_tier_id) {
+        const id = Number(filtersArg.revenue_tier_id);
+        if (Number.isInteger(id) && id > 0) body.revenue_tier_id = id;
+    }
+    if (filtersArg.assigned_department_id) {
+        const id = Number(filtersArg.assigned_department_id);
+        if (Number.isInteger(id) && id > 0) body.assigned_department_id = id;
+    }
+    const staffIds = Array.isArray(filtersArg.assigned_staff_ids)
+        ? filtersArg.assigned_staff_ids.map((id) => Number(id)).filter((x) => Number.isInteger(x) && x > 0)
+        : [];
+    if (staffIds.length > 0) body.assigned_staff_ids = staffIds;
+    const cf = String(filtersArg.created_from || '').trim();
+    const ct = String(filtersArg.created_to || '').trim();
+    if (cf) body.created_from = cf;
+    if (ct) body.created_to = ct;
+    return body;
+}
+
 function LabeledField({ label, required = false, hint = '', className = '', children }) {
     return (
         <div className={className}>
@@ -207,6 +238,7 @@ export default function CRM(props) {
     const userDepartmentId = props?.auth?.user?.department_id || null;
     const isManager = normalizedRole === 'quan_ly';
     const isAdminRole = ['admin', 'administrator'].includes(normalizedRole);
+    const canExportClients = isAdminRole;
     const canManageClientCompanyProfiles = isAdminRole;
     const canFilterByStaff = ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'].includes(normalizedRole);
     const canManageClients = ['admin', 'administrator', 'quan_ly', 'nhan_vien'].includes(normalizedRole);
@@ -243,6 +275,8 @@ export default function CRM(props) {
     const [importingClients, setImportingClients] = useState(false);
     const [clientImportReport, setClientImportReport] = useState(null);
     const [clientImportJob, setClientImportJob] = useState(null);
+    const [clientExportJob, setClientExportJob] = useState(null);
+    const [exportingClients, setExportingClients] = useState(false);
     const [assigneeReadonlyLabel, setAssigneeReadonlyLabel] = useState('');
     const [showTransferModal, setShowTransferModal] = useState(false);
     const [transferTargetClient, setTransferTargetClient] = useState(null);
@@ -590,6 +624,87 @@ export default function CRM(props) {
             toast.error(fallbackMessage);
         }
     };
+
+    const startClientExport = useCallback(async () => {
+        if (!canExportClients) return;
+        setExportingClients(true);
+        setClientExportJob(null);
+        try {
+            const res = await axios.post('/api/v1/exports/clients', buildClientExportRequestBody(clientFilters));
+            const job = res.data?.job || null;
+            if (!job?.id) {
+                throw new Error('Không nhận được job xuất.');
+            }
+            setClientExportJob(job);
+            toast.success('Đã đưa xuất danh sách vào hàng đợi (toàn bộ CRM + kho số, áp dụng bộ lọc hiện tại).');
+        } catch (error) {
+            setExportingClients(false);
+            toast.error(getErrorMessage(error, 'Không tạo được job xuất khách hàng.'));
+        }
+    }, [canExportClients, clientFilters, toast]);
+
+    useEffect(() => {
+        const jobId = clientExportJob?.id;
+        if (!jobId) return undefined;
+
+        const poll = async () => {
+            try {
+                const res = await axios.get(`/api/v1/imports/jobs/${jobId}`);
+                const nextJob = res.data || null;
+                setClientExportJob(nextJob);
+
+                if (nextJob?.status === 'completed') {
+                    window.clearInterval(timer);
+                    setExportingClients(false);
+                    try {
+                        const downloadRes = await axios.get(`/api/v1/exports/clients/jobs/${jobId}/download`, {
+                            responseType: 'blob',
+                        });
+                        let filename = nextJob.original_name || 'khach-hang-export.xlsx';
+                        const disposition = downloadRes.headers['content-disposition'];
+                        if (disposition && disposition.includes('filename=')) {
+                            const match = /filename\*?=(?:UTF-8'')?([^;\n]+)/i.exec(disposition);
+                            if (match && match[1]) {
+                                filename = decodeURIComponent(match[1].replace(/['"]/g, '').trim());
+                            }
+                        }
+                        const blob = new Blob([downloadRes.data], {
+                            type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                        });
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = filename;
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                        window.URL.revokeObjectURL(url);
+                        toast.success(
+                            `Đã xuất ${nextJob.successful_rows ?? nextJob.processed_rows ?? 0} dòng.`,
+                        );
+                    } catch (dlErr) {
+                        toast.error(getErrorMessage(dlErr, 'Không tải được file xuất.'));
+                    }
+                    setClientExportJob(null);
+                } else if (nextJob?.status === 'failed') {
+                    window.clearInterval(timer);
+                    setExportingClients(false);
+                    toast.error(nextJob?.error_message || 'Xuất thất bại.');
+                    setClientExportJob(null);
+                }
+            } catch (error) {
+                window.clearInterval(timer);
+                setExportingClients(false);
+                toast.error(getErrorMessage(error, 'Không kiểm tra được tiến trình xuất.'));
+                setClientExportJob(null);
+            }
+        };
+
+        const timer = window.setInterval(poll, 1500);
+        poll();
+
+        return () => window.clearInterval(timer);
+    }, [clientExportJob?.id, toast]);
 
     useEffect(() => {
         if (!showClientImport || !clientImportJob?.id) return undefined;
@@ -1164,28 +1279,63 @@ export default function CRM(props) {
         >
             <>
                     <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card p-5">
-                        {(canManageClients) && (
+                        {(canManageClients || canExportClients) && (
                             <div className="mb-4 flex flex-wrap items-center justify-end gap-3">
-                                <button
-                                    type="button"
-                                    className="rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-sm"
-                                    onClick={openClientCreate}
-                                >
-                                    Thêm mới
-                                </button>
-                                <button
-                                    type="button"
-                                    className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
-                                    onClick={() => {
-                                        setClientImportReport(null);
-                                        setClientImportFile(null);
-                                        setShowClientImport(true);
-                                    }}
-                                >
-                                    Import Excel
-                                </button>
+                                {canManageClients ? (
+                                    <>
+                                        <button
+                                            type="button"
+                                            className="rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-sm"
+                                            onClick={openClientCreate}
+                                        >
+                                            Thêm mới
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+                                            onClick={() => {
+                                                setClientImportReport(null);
+                                                setClientImportFile(null);
+                                                setShowClientImport(true);
+                                            }}
+                                        >
+                                            Import Excel
+                                        </button>
+                                    </>
+                                ) : null}
+                                {canExportClients ? (
+                                    <button
+                                        type="button"
+                                        className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+                                        onClick={startClientExport}
+                                        disabled={exportingClients || !!clientExportJob}
+                                    >
+                                        {exportingClients || clientExportJob ? 'Đang xuất…' : 'Xuất Excel (XLSX)'}
+                                    </button>
+                                ) : null}
                             </div>
                         )}
+                        {clientExportJob ? (
+                            <div className="mb-4 rounded-2xl border border-slate-200/80 bg-slate-50 p-4 space-y-2">
+                                <div className="flex items-center justify-between gap-3 text-xs">
+                                    <div className="font-semibold uppercase tracking-[0.14em] text-text-subtle">
+                                        Tiến trình xuất khách hàng
+                                    </div>
+                                    <div className="font-semibold text-slate-700">
+                                        {clientExportJob.processed_rows || 0}/{clientExportJob.total_rows || 0} dòng
+                                    </div>
+                                </div>
+                                <div className="h-2.5 overflow-hidden rounded-full bg-slate-200">
+                                    <div
+                                        className={`h-full rounded-full transition-all ${clientExportJob.status === 'failed' ? 'bg-rose-500' : 'bg-primary'}`}
+                                        style={{ width: `${clientExportJob.progress_percent || 0}%` }}
+                                    />
+                                </div>
+                                <p className="text-xs text-text-muted">
+                                    Gồm toàn bộ khách CRM và kho số (áp dụng bộ lọc hiện tại). Chỉ admin mới dùng được chức năng này.
+                                </p>
+                            </div>
+                        ) : null}
                         <FilterToolbar enableSearch
                             className="mb-4 border-0 p-0 shadow-none"
                             title="Danh sách khách hàng"
