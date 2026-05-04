@@ -182,7 +182,7 @@ class ClientAutoRotationService
 
         $clientIds = Client::query()
             ->onlyRotationPool()
-            ->where(function ($query) {
+            ->where(function ($query) use ($supportsAssignedStaffAt) {
                 $query->whereNull('assigned_staff_id')
                     ->orWhere('assigned_staff_id', 0)
                     ->orWhereNull('sales_owner_id')

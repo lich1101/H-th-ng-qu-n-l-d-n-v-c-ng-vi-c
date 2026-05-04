@@ -833,8 +833,13 @@ class CRMController extends Controller
                 );
                 break;
             case 'assigned_staff_at':
-                $query->orderBy('clients.assigned_staff_at', $direction)
-                    ->orderBy('clients.id', $direction);
+                if ($this->supportsAssignedStaffAt()) {
+                    $query->orderBy('clients.assigned_staff_at', $direction)
+                        ->orderBy('clients.id', $direction);
+                } else {
+                    $query->orderBy('clients.created_at', $direction)
+                        ->orderBy('clients.id', $direction);
+                }
                 break;
             case 'care_staff':
                 $query->orderByRaw(
