@@ -614,7 +614,7 @@ export default function ClientPool(props) {
                         <input
                             id="import-pool-client-file"
                             type="file"
-                            accept=".xls,.xlsx,.csv"
+                            accept=".xls,.xlsx,.xlsm,.ods,.csv,.tsv"
                             onChange={(e) => {
                                 setClientImportFile(e.target.files?.[0] || null);
                                 setClientImportReport(null);

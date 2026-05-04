@@ -2066,14 +2066,14 @@ export default function CRM(props) {
                     setClientImportJob(null);
                 }}
                 title="Import khách hàng"
-                description="Tải file Excel (.xls/.xlsx/.csv) để nhập khách hàng."
+                description="Tải file Excel (.xls/.xlsx/.xlsm), OpenDocument (.ods), CSV hoặc TSV để nhập khách hàng."
                 size="md"
             >
                 <form className="space-y-3 text-sm" onSubmit={submitClientImport}>
                     <LabeledField
                         label="File khách hàng"
                         required
-                        hint="Hỗ trợ Excel hoặc CSV. Hệ thống sẽ tự nối theo mã khách, email, số điện thoại hoặc tên để tránh trùng dữ liệu."
+                        hint="Hỗ trợ Excel (.xls, .xlsx, .xlsm), OpenDocument (.ods), CSV, TSV. Hệ thống sẽ tự nối theo mã khách, email, số điện thoại hoặc tên để tránh trùng dữ liệu."
                     >
                         <div className="rounded-2xl border border-dashed border-slate-200/80 p-4 text-center">
                             <button
@@ -2086,7 +2086,7 @@ export default function CRM(props) {
                             <input
                                 id="import-client-file"
                                 type="file"
-                                accept=".xls,.xlsx,.csv"
+                                accept=".xls,.xlsx,.xlsm,.ods,.csv,.tsv"
                                 onChange={(e) => {
                                     setClientImportFile(e.target.files?.[0] || null);
                                     setClientImportReport(null);

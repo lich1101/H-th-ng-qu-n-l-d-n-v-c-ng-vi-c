@@ -2494,7 +2494,7 @@ export default function TasksBoard(props) {
                         <input
                             id="import-task-file"
                             type="file"
-                            accept=".xls,.xlsx,.csv"
+                            accept=".xls,.xlsx,.xlsm,.ods,.csv,.tsv"
                             onChange={(e) => {
                                 setImportFile(e.target.files?.[0] || null);
                                 setImportReport(null);

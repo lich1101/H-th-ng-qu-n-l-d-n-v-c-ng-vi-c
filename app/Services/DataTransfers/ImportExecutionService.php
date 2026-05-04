@@ -103,7 +103,9 @@ class ImportExecutionService
                 DB::beginTransaction();
 
                 $statusLabel = $data['customer_status_label'] ?? null;
-                $leadTypeId = $this->resolveLeadTypeId($statusLabel ?: ($data['lead_type_name'] ?? null));
+                $leadTypeName = $data['lead_type_name'] ?? null;
+                // Ưu tiên cột «Loại khách hàng» khớp template/file mẫu; tình trạng chỉ fallback khi không có loại.
+                $leadTypeId = $this->resolveLeadTypeId($leadTypeName ?: $statusLabel);
 
                 $salesOwnerRaw = $data['manager_name'] ?? null;
                 $salesOwnerId = $this->resolveUserId($salesOwnerRaw);
@@ -705,16 +707,25 @@ class ImportExecutionService
     {
         $extension = Str::lower(pathinfo($path, PATHINFO_EXTENSION));
 
-        if ($extension === 'csv') {
+        if ($extension === 'csv' || $extension === 'tsv') {
             $reader = IOFactory::createReader('Csv');
             $reader->setInputEncoding('UTF-8');
-            $reader->setDelimiter(',');
+            $reader->setDelimiter($extension === 'tsv' ? "\t" : ',');
             $reader->setEnclosure('"');
             $reader->setSheetIndex(0);
+
             return $reader->load($path);
         }
 
-        return IOFactory::load($path);
+        $reader = IOFactory::createReaderForFile($path);
+        if (method_exists($reader, 'setReadDataOnly')) {
+            $reader->setReadDataOnly(true);
+        }
+        if (method_exists($reader, 'setReadEmptyCells')) {
+            $reader->setReadEmptyCells(false);
+        }
+
+        return $reader->load($path);
     }
 
     private function buildHeaderMap(array $headerRow, array $patterns): array

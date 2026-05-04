@@ -456,6 +456,10 @@ Route::prefix('v1')->group(function () {
             ->middleware('role:admin,administrator,quan_ly,nhan_vien');
         Route::get('/imports/jobs/{dataTransferJob}', [ImportController::class, 'showImportJob'])
             ->middleware('role:admin,administrator,quan_ly,nhan_vien,ke_toan');
+        Route::post('/exports/clients', [ImportController::class, 'queueClientExport'])
+            ->middleware('role:admin,administrator');
+        Route::get('/exports/clients/jobs/{dataTransferJob}/download', [ImportController::class, 'downloadClientExport'])
+            ->middleware('role:admin,administrator');
         Route::get('/imports/clients/template', [ImportController::class, 'downloadClientsTemplate'])
             ->middleware('role:admin,administrator,quan_ly,nhan_vien');
         Route::get('/imports/client-pool/template', [ImportController::class, 'downloadRotationPoolClientsTemplate'])

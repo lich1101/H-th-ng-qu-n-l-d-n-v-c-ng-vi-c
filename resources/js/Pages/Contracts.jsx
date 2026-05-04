@@ -3763,7 +3763,7 @@ export default function Contracts(props) {
                             <input
                                 id="import-contract-file"
                                 type="file"
-                                accept=".xls,.xlsx,.csv"
+                                accept=".xls,.xlsx,.xlsm,.ods,.csv,.tsv"
                                 onChange={(e) => {
                                     setImportFile(e.target.files?.[0] || null);
                                     setImportReport(null);

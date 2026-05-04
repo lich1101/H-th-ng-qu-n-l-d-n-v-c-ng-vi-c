@@ -586,7 +586,7 @@ export default function UserAccountsDashboard(props) {
                             <input
                                 id="import-user-file"
                                 type="file"
-                                accept=".xls,.xlsx,.csv"
+                                accept=".xls,.xlsx,.xlsm,.ods,.csv,.tsv"
                                 onChange={(e) => {
                                     setImportFile(e.target.files?.[0] || null);
                                     setImportReport(null);

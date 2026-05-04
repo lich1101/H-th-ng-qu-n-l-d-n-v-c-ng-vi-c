@@ -15,6 +15,7 @@ use App\Models\Project;
 use App\Models\RevenueTier;
 use App\Models\Task;
 use App\Models\User;
+use App\Jobs\ProcessClientExportJob;
 use App\Jobs\ProcessImportJob;
 use App\Services\ClientPhoneDuplicateService;
 use App\Services\DataTransfers\ImportExecutionService;
@@ -22,6 +23,7 @@ use App\Services\ProjectProgressService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
@@ -66,11 +68,101 @@ class ImportController extends Controller
 
     public function showImportJob(Request $request, DataTransferJob $dataTransferJob): JsonResponse
     {
-        if ((int) $dataTransferJob->user_id !== (int) $request->user()->id && ! in_array($request->user()->role, ['admin', 'ke_toan'], true)) {
+        $user = $request->user();
+        $isOwner = (int) $dataTransferJob->user_id === (int) $user->id;
+
+        if ($dataTransferJob->type === 'export' && $dataTransferJob->module === 'clients') {
+            if (! in_array($user->role, ['admin', 'administrator'], true)) {
+                return response()->json(['message' => 'Bạn không có quyền xem tiến trình xuất khách hàng này.'], 403);
+            }
+
+            return response()->json($dataTransferJob->fresh());
+        }
+
+        if (! $isOwner && ! in_array($user->role, ['admin', 'administrator', 'ke_toan'], true)) {
             return response()->json(['message' => 'Bạn không có quyền xem tiến trình import này.'], 403);
         }
 
         return response()->json($dataTransferJob->fresh());
+    }
+
+    public function queueClientExport(Request $request): JsonResponse
+    {
+        $this->authorizeRoles($request, ['admin', 'administrator']);
+
+        $validated = $request->validate([
+            'search' => ['nullable', 'string', 'max:500'],
+            'lead_type_id' => ['nullable', 'integer'],
+            'lead_only' => ['nullable', 'boolean'],
+            'assigned_only' => ['nullable', 'boolean'],
+            'assigned_staff_ids' => ['nullable', 'array'],
+            'assigned_staff_ids.*' => ['integer'],
+            'assigned_staff_id' => ['nullable', 'integer'],
+            'assigned_department_id' => ['nullable', 'integer'],
+            'type' => ['nullable', 'in:potential,active'],
+            'revenue_tier_id' => ['nullable', 'integer'],
+            'created_from' => ['nullable', 'date'],
+            'created_to' => ['nullable', 'date'],
+            'ids' => ['nullable', 'array'],
+            'ids.*' => ['integer'],
+        ]);
+
+        $job = DataTransferJob::query()->create([
+            'user_id' => $request->user()->id,
+            'type' => 'export',
+            'module' => 'clients',
+            'status' => 'queued',
+            'disk' => 'local',
+            'file_path' => '',
+            'original_name' => 'khach-hang-export.xlsx',
+            'total_rows' => 0,
+            'processed_rows' => 0,
+            'successful_rows' => 0,
+            'failed_rows' => 0,
+            'report' => ['filters' => $validated],
+        ]);
+
+        ProcessClientExportJob::dispatch($job->id);
+
+        return response()->json([
+            'message' => 'Đã đưa xuất danh sách khách hàng vào hàng đợi xử lý.',
+            'job' => $job->fresh(),
+        ], 202);
+    }
+
+    public function downloadClientExport(Request $request, DataTransferJob $dataTransferJob): BinaryFileResponse|JsonResponse
+    {
+        $this->authorizeRoles($request, ['admin', 'administrator']);
+
+        if ((int) $dataTransferJob->user_id !== (int) $request->user()->id && ! in_array($request->user()->role, ['admin', 'administrator'], true)) {
+            return response()->json(['message' => 'Bạn không có quyền tải file xuất này.'], 403);
+        }
+
+        if ($dataTransferJob->type !== 'export' || $dataTransferJob->module !== 'clients') {
+            return response()->json(['message' => 'Job không hợp lệ.'], 404);
+        }
+
+        if ($dataTransferJob->status !== 'completed') {
+            return response()->json(['message' => 'File xuất chưa sẵn sàng. Vui lòng chờ tiến trình hoàn tất.'], 409);
+        }
+
+        $relative = (string) $dataTransferJob->file_path;
+        if ($relative === '') {
+            return response()->json(['message' => 'Không có đường dẫn file xuất.'], 404);
+        }
+
+        $path = Storage::disk('local')->path($relative);
+        if (! is_file($path)) {
+            return response()->json(['message' => 'Không tìm thấy file trên máy chủ.'], 404);
+        }
+
+        return response()->download(
+            $path,
+            $dataTransferJob->original_name ?: 'khach-hang-export.xlsx',
+            [
+                'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            ]
+        )->deleteFileAfterSend(false);
     }
 
     public function importTasks(Request $request): JsonResponse
@@ -306,10 +398,18 @@ class ImportController extends Controller
     private function validateFile(Request $request)
     {
         $validated = $request->validate([
-            'file' => ['required', 'file', 'max:51200', 'mimes:xls,xlsx,csv'],
+            'file' => ['required', 'file', 'max:51200'],
         ]);
+        $file = $validated['file'];
+        $ext = strtolower((string) $file->getClientOriginalExtension());
+        $allowed = ['xls', 'xlsx', 'xlsm', 'csv', 'tsv', 'ods'];
+        if (! in_array($ext, $allowed, true)) {
+            throw ValidationException::withMessages([
+                'file' => 'Định dạng file không hỗ trợ. Chấp nhận: Excel (.xls, .xlsx, .xlsm), OpenDocument (.ods), CSV, TSV.',
+            ]);
+        }
 
-        return $validated['file'];
+        return $file;
     }
 
     private function iterateMappedRows(string $path, array $patterns, callable $handler): void
