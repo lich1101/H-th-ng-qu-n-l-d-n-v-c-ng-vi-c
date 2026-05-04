@@ -168,6 +168,10 @@ class ImportExecutionService
                     'rotation_pool_entered_at' => $toRotationPool ? $poolNow->toDateTimeString() : null,
                     'rotation_pool_reason' => $toRotationPool ? 'manual_import_pool_entry' : null,
                 ];
+                if (! $toRotationPool && $primaryOwnerId && $this->supportsAssignedStaffAt()) {
+                    $payload['assigned_staff_at'] = ($createdAt ? Carbon::instance($createdAt) : now('Asia/Ho_Chi_Minh'))
+                        ->toDateTimeString();
+                }
                 if (Schema::hasColumn('clients', 'rotation_pool_claimed_at')) {
                     $payload['rotation_pool_claimed_at'] = null;
                 }
@@ -180,6 +184,12 @@ class ImportExecutionService
                 );
 
                 if ($client) {
+                    $existingOwnerId = $this->currentClientOwnerId($client);
+                    if (! $toRotationPool && $primaryOwnerId && $primaryOwnerId !== $existingOwnerId && $this->supportsAssignedStaffAt()) {
+                        $payload['assigned_staff_at'] = now('Asia/Ho_Chi_Minh')->toDateTimeString();
+                    } else {
+                        unset($payload['assigned_staff_at']);
+                    }
                     if ($toRotationPool && ! $client->inRotationPool()) {
                         $this->skipRow($report, $rowNumber, 'Khách hàng đã tồn tại trong CRM thường, không thể import thẳng vào kho số.');
                         DB::rollBack();
@@ -1251,8 +1261,14 @@ class ImportExecutionService
             'sales_owner_id' => $collectorId,
             'assigned_department_id' => $collectorId ? $this->getUserDepartmentId($collectorId) : null,
         ];
+        if ($collectorId && $this->supportsAssignedStaffAt()) {
+            $payload['assigned_staff_at'] = now('Asia/Ho_Chi_Minh')->toDateTimeString();
+        }
 
         if ($client) {
+            if ($collectorId && $collectorId === $this->currentClientOwnerId($client)) {
+                unset($payload['assigned_staff_at']);
+            }
             $client->update($this->filterNullValues($payload));
             return $client->fresh();
         }
@@ -1333,9 +1349,31 @@ class ImportExecutionService
             'assigned_staff_id' => $user->role === 'nhan_vien' ? $user->id : null,
             'sales_owner_id' => $user->role === 'nhan_vien' ? $user->id : null,
             'assigned_department_id' => $user->department_id ?: null,
+            'assigned_staff_at' => $user->role === 'nhan_vien' && $this->supportsAssignedStaffAt()
+                ? now('Asia/Ho_Chi_Minh')->toDateTimeString()
+                : null,
             'lead_source' => 'import_excel',
             'lead_channel' => 'task_import',
         ]);
+    }
+
+    private function currentClientOwnerId(?Client $client): int
+    {
+        if (! $client) {
+            return 0;
+        }
+
+        $assignedStaffId = (int) ($client->assigned_staff_id ?? 0);
+        if ($assignedStaffId > 0) {
+            return $assignedStaffId;
+        }
+
+        return (int) ($client->sales_owner_id ?? 0);
+    }
+
+    private function supportsAssignedStaffAt(): bool
+    {
+        return Schema::hasColumn('clients', 'assigned_staff_at');
     }
 
     private function resolveProjectForTaskImport(array $data, ?Client $client, User $user): ?Project

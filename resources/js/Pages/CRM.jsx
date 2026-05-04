@@ -17,7 +17,7 @@ import TagMultiSelect from '@/Components/TagMultiSelect';
 import FilterDateInput from '@/Components/FilterDateInput';
 import ClientStaffTransferPendingBanner from '@/Components/ClientStaffTransferPendingBanner';
 import { useToast } from '@/Contexts/ToastContext';
-import { formatVietnamDate } from '@/lib/vietnamTime';
+import { formatVietnamDate, formatVietnamDateTime } from '@/lib/vietnamTime';
 import { fetchStaffFilterOptions } from '@/lib/staffFilterOptions';
 
 const badgeStyle = (hex) => ({
@@ -1552,6 +1552,7 @@ export default function CRM(props) {
                                         <th className="py-2" data-sort-key="revenue_tier">Hạng</th>
                                         <th className="py-2" data-sort-key="department">Phòng ban</th>
                                         <th className="py-2" data-sort-key="assigned_staff">Phụ trách</th>
+                                        <th className="py-2" data-sort-key="assigned_staff_at">Ngày nhận phụ trách</th>
                                         <th className="py-2" data-sort-key="care_staff">Chăm sóc</th>
                                         <th className="py-2" data-sort-key="created_at">Ngày tạo</th>
                                         <th className="py-2" data-sort-key="product_categories">Danh mục sản phẩm</th>
@@ -1636,6 +1637,12 @@ export default function CRM(props) {
                                             </td>
                                             <td className="py-2 text-xs text-text-muted">
                                                 {client.assigned_staff?.name || client.sales_owner?.name || '—'}
+                                            </td>
+                                            <td
+                                                className="py-2 text-xs text-text-muted"
+                                                title={formatVietnamDateTime(client.assigned_staff_at, '—')}
+                                            >
+                                                {formatVietnamDate(client.assigned_staff_at)}
                                             </td>
                                             <td className="py-2 text-xs text-text-muted">
                                                 {Array.isArray(client.care_staff_users) && client.care_staff_users.length > 0

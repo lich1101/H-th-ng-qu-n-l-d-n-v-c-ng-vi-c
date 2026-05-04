@@ -26,6 +26,7 @@ use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -1086,8 +1087,14 @@ class ImportController extends Controller
             'sales_owner_id' => $collectorId,
             'assigned_department_id' => $collectorId ? $this->getUserDepartmentId($collectorId) : null,
         ];
+        if ($collectorId && $this->supportsAssignedStaffAt()) {
+            $payload['assigned_staff_at'] = now('Asia/Ho_Chi_Minh')->toDateTimeString();
+        }
 
         if ($client) {
+            if ($collectorId && $collectorId === $this->currentClientOwnerId($client)) {
+                unset($payload['assigned_staff_at']);
+            }
             $client->update($this->filterNullValues($payload));
             return $client->fresh();
         }
@@ -1168,9 +1175,31 @@ class ImportController extends Controller
             'assigned_staff_id' => $user->role === 'nhan_vien' ? $user->id : null,
             'sales_owner_id' => $user->role === 'nhan_vien' ? $user->id : null,
             'assigned_department_id' => $user->department_id ?: null,
+            'assigned_staff_at' => $user->role === 'nhan_vien' && $this->supportsAssignedStaffAt()
+                ? now('Asia/Ho_Chi_Minh')->toDateTimeString()
+                : null,
             'lead_source' => 'import_excel',
             'lead_channel' => 'task_import',
         ]);
+    }
+
+    private function currentClientOwnerId(?Client $client): int
+    {
+        if (! $client) {
+            return 0;
+        }
+
+        $assignedStaffId = (int) ($client->assigned_staff_id ?? 0);
+        if ($assignedStaffId > 0) {
+            return $assignedStaffId;
+        }
+
+        return (int) ($client->sales_owner_id ?? 0);
+    }
+
+    private function supportsAssignedStaffAt(): bool
+    {
+        return Schema::hasColumn('clients', 'assigned_staff_at');
     }
 
     private function resolveProjectForTaskImport(array $data, ?Client $client, User $user): ?Project

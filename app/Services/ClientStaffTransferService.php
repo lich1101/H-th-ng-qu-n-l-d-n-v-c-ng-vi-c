@@ -364,6 +364,9 @@ class ClientStaffTransferService
             if ($toUser->department_id) {
                 $client->assigned_department_id = (int) $toUser->department_id;
             }
+            if (DB::getSchemaBuilder()->hasColumn('clients', 'assigned_staff_at')) {
+                $client->assigned_staff_at = $now->toDateTimeString();
+            }
             $client->care_rotation_reset_at = $now->toDateTimeString();
             $client->save();
             $rotationService->replaceClientCareStaffForAssignment(

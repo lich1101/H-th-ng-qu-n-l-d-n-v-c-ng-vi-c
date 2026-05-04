@@ -58,6 +58,8 @@ class ClientAutoRotationService
         ],
     ];
 
+    private ?bool $supportsAssignedStaffAtColumnCache = null;
+
     public function settings(): array
     {
         $setting = AppSetting::query()->first();
@@ -176,6 +178,8 @@ class ClientAutoRotationService
 
     public function repairRotationPoolOwnersFromHistory(int $limit = 1000): int
     {
+        $supportsAssignedStaffAt = $this->supportsAssignedStaffAtColumn();
+
         $clientIds = Client::query()
             ->onlyRotationPool()
             ->where(function ($query) {
@@ -183,6 +187,9 @@ class ClientAutoRotationService
                     ->orWhere('assigned_staff_id', 0)
                     ->orWhereNull('sales_owner_id')
                     ->orWhere('sales_owner_id', 0);
+                if ($supportsAssignedStaffAt) {
+                    $query->orWhereNull('assigned_staff_at');
+                }
             })
             ->orderBy('id')
             ->limit(max(1, $limit))
@@ -253,6 +260,12 @@ class ClientAutoRotationService
         if ((int) ($client->assigned_department_id ?? 0) <= 0 && $ownerDepartmentId > 0) {
             $updates['assigned_department_id'] = $ownerDepartmentId;
         }
+        if ($this->supportsAssignedStaffAtColumn() && empty($client->assigned_staff_at)) {
+            $assignmentReceivedAt = $this->resolveAssignmentReceivedAtForOwner($client, $currentOwnerId);
+            if ($assignmentReceivedAt) {
+                $updates['assigned_staff_at'] = $assignmentReceivedAt->toDateTimeString();
+            }
+        }
 
         if ($updates === []) {
             return false;
@@ -261,6 +274,46 @@ class ClientAutoRotationService
         $client->forceFill($updates)->save();
 
         return true;
+    }
+
+    public function resolveAssignmentReceivedAtForOwner(Client $client, ?int $ownerId = null): ?CarbonInterface
+    {
+        $resolvedOwnerId = $ownerId && $ownerId > 0
+            ? (int) $ownerId
+            : $this->currentOwnerId($client);
+
+        if ($resolvedOwnerId > 0) {
+            $historyAt = $this->lastAssignmentReceiptAtFromHistory((int) $client->id, $resolvedOwnerId);
+            if ($historyAt) {
+                return $historyAt;
+            }
+        }
+
+        if ($client->assigned_staff_at instanceof CarbonInterface) {
+            return Carbon::instance($client->assigned_staff_at);
+        }
+
+        if (! empty($client->assigned_staff_at)) {
+            try {
+                return Carbon::parse((string) $client->assigned_staff_at, 'Asia/Ho_Chi_Minh');
+            } catch (\Throwable $e) {
+                // ignore invalid legacy value
+            }
+        }
+
+        if ($client->created_at instanceof CarbonInterface) {
+            return Carbon::instance($client->created_at);
+        }
+
+        if (! empty($client->created_at)) {
+            try {
+                return Carbon::parse((string) $client->created_at, 'Asia/Ho_Chi_Minh');
+            } catch (\Throwable $e) {
+                return null;
+            }
+        }
+
+        return null;
     }
 
     public function recordAssignmentHistory(
@@ -1686,6 +1739,9 @@ class ClientAutoRotationService
             if ((int) ($recipient->department_id ?? 0) > 0) {
                 $client->assigned_department_id = (int) $recipient->department_id;
             }
+            if ($this->supportsAssignedStaffAtColumn()) {
+                $client->assigned_staff_at = $now->toDateTimeString();
+            }
             $client->care_rotation_reset_at = $now->toDateTimeString();
             $client->save();
             $this->replaceClientCareStaffForAssignment(
@@ -1875,6 +1931,9 @@ class ClientAutoRotationService
                 $client->assigned_department_id = (int) ($recipient->department_id ?? 0) > 0
                     ? (int) $recipient->department_id
                     : null;
+                if ($this->supportsAssignedStaffAtColumn()) {
+                    $client->assigned_staff_at = $now->toDateTimeString();
+                }
             }
             $client->is_in_rotation_pool = false;
             $client->rotation_pool_entered_at = null;
@@ -2208,6 +2267,43 @@ class ClientAutoRotationService
         }
 
         return 0;
+    }
+
+    private function lastAssignmentReceiptAtFromHistory(int $clientId, int $ownerId): ?CarbonInterface
+    {
+        if ($ownerId <= 0) {
+            return null;
+        }
+
+        $row = ClientRotationHistory::query()
+            ->where('client_id', $clientId)
+            ->where('to_staff_id', $ownerId)
+            ->where(function ($query) {
+                $query->whereNull('from_staff_id')
+                    ->orWhereColumn('from_staff_id', '!=', 'to_staff_id');
+            })
+            ->orderByDesc('transferred_at')
+            ->orderByDesc('id')
+            ->first(['transferred_at']);
+
+        if (! $row?->transferred_at) {
+            return null;
+        }
+
+        return $row->transferred_at instanceof CarbonInterface
+            ? Carbon::instance($row->transferred_at)
+            : Carbon::parse((string) $row->transferred_at, 'Asia/Ho_Chi_Minh');
+    }
+
+    private function supportsAssignedStaffAtColumn(): bool
+    {
+        if ($this->supportsAssignedStaffAtColumnCache !== null) {
+            return $this->supportsAssignedStaffAtColumnCache;
+        }
+
+        $this->supportsAssignedStaffAtColumnCache = Schema::hasColumn('clients', 'assigned_staff_at');
+
+        return $this->supportsAssignedStaffAtColumnCache;
     }
 
     private function actionLabel(string $actionType): string

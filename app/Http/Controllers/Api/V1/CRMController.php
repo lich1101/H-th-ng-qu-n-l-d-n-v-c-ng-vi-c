@@ -504,6 +504,9 @@ class CRMController extends Controller
                 'message' => 'Vui lòng chọn nhân sự phụ trách trực tiếp cho khách hàng.',
             ], 422);
         }
+        if ($this->supportsAssignedStaffAt()) {
+            $validated['assigned_staff_at'] = now('Asia/Ho_Chi_Minh')->toDateTimeString();
+        }
 
         $phoneDup = ! empty($validated['phone'])
             ? app(ClientPhoneDuplicateService::class)->findExistingByPhone($validated['phone'])
@@ -643,6 +646,9 @@ class CRMController extends Controller
             ? (int) ($validated['assigned_staff_id'] ?? 0)
             : $oldAssignedStaffId;
         $willChangeAssignedStaff = $newAssignedStaffCandidateId !== $oldAssignedStaffId;
+        if ($willChangeAssignedStaff && $this->supportsAssignedStaffAt()) {
+            $validated['assigned_staff_at'] = now('Asia/Ho_Chi_Minh')->toDateTimeString();
+        }
         $rotationService = $willChangeAssignedStaff ? app(ClientAutoRotationService::class) : null;
         $preAssignmentInsight = $willChangeAssignedStaff && $rotationService
             ? $rotationService->buildClientRotationInsight($client)
@@ -825,6 +831,10 @@ class CRMController extends Controller
                         ""
                     ) ' . $rawDirection
                 );
+                break;
+            case 'assigned_staff_at':
+                $query->orderBy('clients.assigned_staff_at', $direction)
+                    ->orderBy('clients.id', $direction);
                 break;
             case 'care_staff':
                 $query->orderByRaw(
@@ -1336,6 +1346,11 @@ class CRMController extends Controller
     private function supportsRotationPoolClaimedAt(): bool
     {
         return Schema::hasColumn('clients', 'rotation_pool_claimed_at');
+    }
+
+    private function supportsAssignedStaffAt(): bool
+    {
+        return Schema::hasColumn('clients', 'assigned_staff_at');
     }
 
     private function canManageClientCompanyProfiles(?User $user): bool

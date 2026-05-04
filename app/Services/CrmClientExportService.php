@@ -36,6 +36,7 @@ class CrmClientExportService
         'Ghi chú',
         'Tình trạng',
         'Người quản lý',
+        'Ngày nhận phụ trách',
         'Cấp',
         'Công nợ',
         'Nguồn khách hàng',
@@ -243,6 +244,8 @@ class CrmClientExportService
     {
         $created = $client->created_at;
         $createdStr = $created ? $created->timezone(config('app.timezone'))->format('d/m/Y') : '';
+        $assignedStaffAt = $client->assigned_staff_at;
+        $assignedStaffAtStr = $assignedStaffAt ? $assignedStaffAt->timezone(config('app.timezone'))->format('d/m/Y H:i') : '';
         $primaryOwnerName = $client->assignedStaff?->name ?? $client->salesOwner?->name ?? '';
 
         return [
@@ -254,6 +257,7 @@ class CrmClientExportService
             $this->sanitizeCellText($client->notes ?? ''),
             $this->sanitizeCellText($client->customer_status_label ?? ''),
             $this->sanitizeCellText($primaryOwnerName),
+            $this->sanitizeCellText($assignedStaffAtStr),
             $this->sanitizeCellText($client->customer_level ?? ''),
             $this->formatMoney($client->legacy_debt_amount),
             $this->sanitizeCellText($client->lead_channel ?? ''),

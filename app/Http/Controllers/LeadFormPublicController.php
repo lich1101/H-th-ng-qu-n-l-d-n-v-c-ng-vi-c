@@ -12,6 +12,7 @@ use App\Services\LeadNotificationService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 
@@ -175,6 +176,10 @@ class LeadFormPublicController extends Controller
                 'notes' => $clientPayload['notes'],
                 'assigned_department_id' => $assignedDepartmentId,
                 'assigned_staff_id' => $assignedStaffId,
+                'sales_owner_id' => $assignedStaffId,
+                'assigned_staff_at' => $assignedStaffId && Schema::hasColumn('clients', 'assigned_staff_at')
+                    ? now('Asia/Ho_Chi_Minh')->toDateTimeString()
+                    : null,
                 'external_code' => $clientPayload['external_code'] ?? null,
                 'customer_status_label' => $clientPayload['customer_status_label'] ?? null,
                 'customer_level' => $clientPayload['customer_level'] ?? null,

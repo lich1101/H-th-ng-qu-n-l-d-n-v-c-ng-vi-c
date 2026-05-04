@@ -10,6 +10,7 @@ use App\Services\ClientPhoneDuplicateService;
 use App\Services\LeadNotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 
 class LeadCaptureController extends Controller
 {
@@ -104,6 +105,9 @@ class LeadCaptureController extends Controller
             'assigned_department_id' => $assignedDepartmentId,
             'assigned_staff_id' => $validated['assigned_staff_id'] ?? null,
             'sales_owner_id' => $validated['assigned_staff_id'] ?? null,
+            'assigned_staff_at' => ! empty($validated['assigned_staff_id']) && Schema::hasColumn('clients', 'assigned_staff_at')
+                ? now('Asia/Ho_Chi_Minh')->toDateTimeString()
+                : null,
         ]);
 
         app(LeadNotificationService::class)->notifyNewLead(

@@ -27,6 +27,7 @@ class Client extends Model
         'sales_owner_id',
         'assigned_department_id',
         'assigned_staff_id',
+        'assigned_staff_at',
         'lead_type_id',
         'revenue_tier_id',
         'total_revenue',
@@ -57,6 +58,7 @@ class Client extends Model
         'is_in_rotation_pool' => 'boolean',
         'rotation_pool_entered_at' => 'datetime',
         'rotation_pool_claimed_at' => 'datetime',
+        'assigned_staff_at' => 'datetime',
     ];
 
     public function scopeWithoutRotationPool($query)
