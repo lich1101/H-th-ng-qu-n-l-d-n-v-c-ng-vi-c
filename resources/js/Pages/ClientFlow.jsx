@@ -405,6 +405,7 @@ export default function ClientFlow({ auth, clientId }) {
 
     const hydrateClientForm = (client) => {
         if (!client) return;
+        const primaryOwnerId = client.assigned_staff_id || client.sales_owner_id || '';
         setClientForm({
             name: client.name || '',
             company: client.company || '',
@@ -416,8 +417,8 @@ export default function ClientFlow({ auth, clientId }) {
             lead_channel: client.lead_channel || '',
             lead_message: client.lead_message || '',
             assigned_department_id: client.assigned_department_id ? String(client.assigned_department_id) : '',
-            assigned_staff_id: client.assigned_staff_id ? String(client.assigned_staff_id) : '',
-            sales_owner_id: client.sales_owner_id ? String(client.sales_owner_id) : '',
+            assigned_staff_id: primaryOwnerId ? String(primaryOwnerId) : '',
+            sales_owner_id: primaryOwnerId ? String(primaryOwnerId) : '',
             care_staff_ids: normalizeCareStaffIds(client.care_staff_users || []),
         });
     };
@@ -500,7 +501,7 @@ export default function ClientFlow({ auth, clientId }) {
                 Object.assign(payload, {
                     assigned_department_id: clientForm.assigned_department_id ? Number(clientForm.assigned_department_id) : null,
                     assigned_staff_id: resolvedAssignedStaffId,
-                    sales_owner_id: clientForm.sales_owner_id ? Number(clientForm.sales_owner_id) : null,
+                    sales_owner_id: resolvedAssignedStaffId,
                     care_staff_ids: normalizeCareStaffIds(clientForm.care_staff_ids),
                 });
             }
@@ -1514,7 +1515,26 @@ export default function ClientFlow({ auth, clientId }) {
                                 <select
                                     className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
                                     value={clientForm.assigned_department_id}
-                                    onChange={(e) => setClientForm((prev) => ({ ...prev, assigned_department_id: e.target.value }))}
+                                    onChange={(e) => {
+                                        const nextDept = e.target.value;
+                                        setClientForm((prev) => {
+                                            const deptNum = Number(nextDept || 0);
+                                            let nextStaff = prev.assigned_staff_id;
+                                            if (deptNum > 0 && nextStaff) {
+                                                const selectedUser = editModalAssignedStaffOptions.find((user) => String(user.id) === String(nextStaff));
+                                                if (!selectedUser || Number(selectedUser.department_id || 0) !== deptNum) {
+                                                    nextStaff = '';
+                                                }
+                                            }
+
+                                            return {
+                                                ...prev,
+                                                assigned_department_id: nextDept,
+                                                assigned_staff_id: nextStaff,
+                                                sales_owner_id: nextStaff,
+                                            };
+                                        });
+                                    }}
                                 >
                                     <option value="">Chưa chọn</option>
                                     {departments.map((department) => (
@@ -1534,7 +1554,19 @@ export default function ClientFlow({ auth, clientId }) {
                                 <select
                                     className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
                                     value={clientForm.assigned_staff_id}
-                                    onChange={(e) => setClientForm((prev) => ({ ...prev, assigned_staff_id: e.target.value }))}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        const selectedUser = editModalAssignedStaffOptions.find((user) => String(user.id) === String(val));
+                                        const deptFromUser = selectedUser?.department_id != null && String(selectedUser.department_id) !== ''
+                                            ? String(selectedUser.department_id)
+                                            : null;
+                                        setClientForm((prev) => ({
+                                            ...prev,
+                                            assigned_staff_id: val,
+                                            sales_owner_id: val,
+                                            assigned_department_id: deptFromUser ?? prev.assigned_department_id,
+                                        }));
+                                    }}
                                 >
                                     <option value="">Chưa chọn</option>
                                     {editModalAssignedStaffOptions.map((user) => (
@@ -1546,18 +1578,19 @@ export default function ClientFlow({ auth, clientId }) {
                             </div>
                             <div>
                                 <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-text-subtle">Sales owner</label>
-                                <select
-                                    className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
-                                    value={clientForm.sales_owner_id}
-                                    onChange={(e) => setClientForm((prev) => ({ ...prev, sales_owner_id: e.target.value }))}
-                                >
-                                    <option value="">Chưa chọn</option>
-                                    {editModalAssignedStaffOptions.map((user) => (
-                                        <option key={user.id} value={user.id}>
-                                            {user.name} ({user.role})
-                                        </option>
-                                    ))}
-                                </select>
+                                <input
+                                    type="text"
+                                    className="w-full rounded-2xl border border-slate-200/80 bg-slate-50 px-3 py-2 text-slate-600"
+                                    value={
+                                        clientForm.assigned_staff_id
+                                            ? (editModalAssignedStaffOptions.find((user) => String(user.id) === String(clientForm.assigned_staff_id))?.name || 'Đang đồng bộ theo nhân sự phụ trách')
+                                            : 'Chưa có nhân sự phụ trách'
+                                    }
+                                    readOnly
+                                />
+                                <p className="mt-1 text-xs text-text-muted">
+                                    Sales owner được đồng bộ tự động theo nhân sự phụ trách trực tiếp.
+                                </p>
                             </div>
                         </div>
                     ) : (

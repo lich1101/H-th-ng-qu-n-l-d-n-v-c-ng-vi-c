@@ -1593,6 +1593,7 @@ class ClientAutoRotationService
             $fromStaffName = $this->currentOwnerName($client);
 
             $client->assigned_staff_id = (int) $recipient->id;
+            $client->sales_owner_id = (int) $recipient->id;
             if ((int) ($recipient->department_id ?? 0) > 0) {
                 $client->assigned_department_id = (int) $recipient->department_id;
             }
@@ -1682,6 +1683,7 @@ class ClientAutoRotationService
             $fromStaffName = $this->currentOwnerName($client);
 
             $client->assigned_staff_id = null;
+            $client->sales_owner_id = null;
             $client->assigned_department_id = null;
             $client->is_in_rotation_pool = true;
             $client->rotation_pool_entered_at = $now->toDateTimeString();
@@ -1771,6 +1773,7 @@ class ClientAutoRotationService
             }
 
             $client->assigned_staff_id = $recipientId;
+            $client->sales_owner_id = $recipientId;
             $client->assigned_department_id = (int) ($recipient->department_id ?? 0) > 0
                 ? (int) $recipient->department_id
                 : null;

@@ -127,8 +127,11 @@ class ImportExecutionService
                     $salesOwnerId = (int) $user->id;
                 }
 
-                $assignedDepartmentId = (! $toRotationPool && $assignedStaffId)
-                    ? $this->getUserDepartmentId($assignedStaffId)
+                $primaryOwnerId = ! $toRotationPool
+                    ? ($assignedStaffId ?: $salesOwnerId)
+                    : null;
+                $assignedDepartmentId = (! $toRotationPool && $primaryOwnerId)
+                    ? $this->getUserDepartmentId($primaryOwnerId)
                     : null;
 
                 $createdAtRaw = $data['created_at'] ?? null;
@@ -150,8 +153,8 @@ class ImportExecutionService
                     'phone' => $normalizedPhone,
                     'notes' => $data['notes'] ?? null,
                     'lead_type_id' => $leadTypeId,
-                    'sales_owner_id' => $toRotationPool ? null : $salesOwnerId,
-                    'assigned_staff_id' => $toRotationPool ? null : $assignedStaffId,
+                    'sales_owner_id' => $toRotationPool ? null : $primaryOwnerId,
+                    'assigned_staff_id' => $toRotationPool ? null : $primaryOwnerId,
                     'assigned_department_id' => $assignedDepartmentId,
                     'lead_source' => $data['lead_source'] ?? null,
                     'lead_channel' => $data['lead_channel'] ?? null,
@@ -222,8 +225,7 @@ class ImportExecutionService
                     $this->clearClientCareStaffFromImport($client);
                 } else {
                     $careStaffIds = array_values(array_filter([
-                        $assignedStaffId ? (int) $assignedStaffId : null,
-                        $salesOwnerId ? (int) $salesOwnerId : null,
+                        $primaryOwnerId ? (int) $primaryOwnerId : null,
                     ]));
                     $this->syncClientCareStaffFromImport($client, $careStaffIds, (int) $user->id);
                 }

@@ -103,6 +103,7 @@ class LeadCaptureController extends Controller
             'notes' => $validated['message'] ?? null,
             'assigned_department_id' => $assignedDepartmentId,
             'assigned_staff_id' => $validated['assigned_staff_id'] ?? null,
+            'sales_owner_id' => $validated['assigned_staff_id'] ?? null,
         ]);
 
         app(LeadNotificationService::class)->notifyNewLead(

@@ -56,8 +56,9 @@ class ProcessClientExportJob implements ShouldQueue
                 'finished_at' => now(),
                 'error_message' => $e->getMessage(),
             ]);
-
-            throw $e;
+            if (config('queue.default') !== 'sync') {
+                throw $e;
+            }
         }
     }
 }

@@ -846,9 +846,7 @@ export default function CRM(props) {
             }
             if (includeAssignment) {
                 Object.assign(payload, {
-                    sales_owner_id: clientForm.sales_owner_id
-                        ? Number(clientForm.sales_owner_id)
-                        : null,
+                    sales_owner_id: resolvedAssignedStaff,
                     assigned_department_id: clientForm.assigned_department_id
                         ? Number(clientForm.assigned_department_id)
                         : null,
@@ -872,6 +870,7 @@ export default function CRM(props) {
     };
 
     const applyClientRowToForm = (client) => {
+        const primaryOwnerId = client.assigned_staff_id || client.sales_owner_id || '';
         setClientForm({
             name: client.name || '',
             company: client.company || '',
@@ -879,9 +878,9 @@ export default function CRM(props) {
             email: client.email || '',
             phone: client.phone || '',
             notes: client.notes || '',
-            sales_owner_id: client.sales_owner_id ? String(client.sales_owner_id) : '',
+            sales_owner_id: primaryOwnerId ? String(primaryOwnerId) : '',
             assigned_department_id: client.assigned_department_id ? String(client.assigned_department_id) : '',
-            assigned_staff_id: client.assigned_staff_id ? String(client.assigned_staff_id) : '',
+            assigned_staff_id: primaryOwnerId ? String(primaryOwnerId) : '',
             care_staff_ids: normalizeCareStaffIds(client.care_staff_users || []),
             lead_type_id: client.lead_type_id ? String(client.lead_type_id) : '',
             lead_source: client.lead_source || '',
@@ -959,14 +958,18 @@ export default function CRM(props) {
     };
 
     const buildClientPayload = (client, overrides = {}) => {
-        const assignedStaffId = client.assigned_staff_id ? Number(client.assigned_staff_id) : null;
+        const assignedStaffId = Object.prototype.hasOwnProperty.call(overrides, 'assigned_staff_id')
+            ? (overrides.assigned_staff_id ? Number(overrides.assigned_staff_id) : null)
+            : (client.assigned_staff_id
+                ? Number(client.assigned_staff_id)
+                : (client.sales_owner_id ? Number(client.sales_owner_id) : null));
         return {
             name: client.name || '',
             company: client.company || null,
             email: client.email || null,
             phone: client.phone || null,
             notes: client.notes || null,
-            sales_owner_id: client.sales_owner_id ? Number(client.sales_owner_id) : null,
+            sales_owner_id: assignedStaffId,
             assigned_department_id: client.assigned_department_id ? Number(client.assigned_department_id) : null,
             assigned_staff_id: assignedStaffId,
             care_staff_ids: normalizeCareStaffIds(client.care_staff_users || []),
@@ -1957,6 +1960,7 @@ export default function CRM(props) {
                                                                 ...s,
                                                                 assigned_department_id: nextDept,
                                                                 assigned_staff_id: nextStaff,
+                                                                sales_owner_id: nextStaff,
                                                             };
                                                         });
                                                     }}
@@ -1991,6 +1995,7 @@ export default function CRM(props) {
                                                     setClientForm((s) => ({
                                                         ...s,
                                                         assigned_staff_id: val,
+                                                        sales_owner_id: val,
                                                         assigned_department_id: deptFromUser ?? s.assigned_department_id,
                                                     }));
                                                 }}

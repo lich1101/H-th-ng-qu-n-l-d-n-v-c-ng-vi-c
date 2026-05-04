@@ -991,8 +991,11 @@ class CRMController extends Controller
 
         if ($user->role === 'nhan_vien') {
             if ($client === null) {
-                $validated['assigned_staff_id'] = (int) $user->id;
-                $validated['assigned_department_id'] = (int) ($user->department_id ?: $requestedDepartmentId);
+                $validated = $this->syncPrimaryOwnerPayload(
+                    $validated,
+                    (int) $user->id,
+                    (int) ($user->department_id ?: $requestedDepartmentId)
+                );
                 $validated['care_staff_ids'] = [(int) $user->id];
 
                 return $validated;
@@ -1032,9 +1035,12 @@ class CRMController extends Controller
                 }
             }
 
-            $validated['assigned_staff_id'] = $requestedStaffId;
             $resolvedDepartmentId = optional($allowedUsers->get($requestedStaffId))->department_id;
-            $validated['assigned_department_id'] = $resolvedDepartmentId ? (int) $resolvedDepartmentId : null;
+            $validated = $this->syncPrimaryOwnerPayload(
+                $validated,
+                $requestedStaffId,
+                $resolvedDepartmentId ? (int) $resolvedDepartmentId : null
+            );
             $careSourceIds = $requestedCareStaffIds ?? $this->existingClientCareStaffIds($client);
             $careIds = collect($careSourceIds)
                 ->filter(function ($id) use ($allowedCareStaffIds) {
@@ -1053,22 +1059,25 @@ class CRMController extends Controller
 
         if (in_array((string) $user->role, ['admin', 'administrator'], true)) {
             if ($requestedStaffId) {
-                $validated['assigned_staff_id'] = $requestedStaffId;
                 $resolvedDepartmentId = User::query()
                     ->where('id', $requestedStaffId)
                     ->value('department_id');
-                $validated['assigned_department_id'] = $resolvedDepartmentId
-                    ? (int) $resolvedDepartmentId
-                    : null;
+                $validated = $this->syncPrimaryOwnerPayload(
+                    $validated,
+                    $requestedStaffId,
+                    $resolvedDepartmentId ? (int) $resolvedDepartmentId : null
+                );
             } elseif ($client) {
                 $existingStaffId = (int) ($client->assigned_staff_id ?? 0);
-                $validated['assigned_staff_id'] = $existingStaffId > 0 ? $existingStaffId : null;
-                $validated['assigned_department_id'] = $client->assigned_department_id
-                    ? (int) $client->assigned_department_id
-                    : $requestedDepartmentId;
+                $validated = $this->syncPrimaryOwnerPayload(
+                    $validated,
+                    $existingStaffId > 0 ? $existingStaffId : null,
+                    $client->assigned_department_id
+                        ? (int) $client->assigned_department_id
+                        : $requestedDepartmentId
+                );
             } else {
-                $validated['assigned_staff_id'] = null;
-                $validated['assigned_department_id'] = $requestedDepartmentId;
+                $validated = $this->syncPrimaryOwnerPayload($validated, null, $requestedDepartmentId);
             }
 
             $careSourceIds = $requestedCareStaffIds ?? $this->existingClientCareStaffIds($client);
@@ -1086,6 +1095,22 @@ class CRMController extends Controller
 
             return $validated;
         }
+
+        return $validated;
+    }
+
+    private function syncPrimaryOwnerPayload(array $validated, ?int $assignedStaffId, ?int $assignedDepartmentId = null): array
+    {
+        $resolvedStaffId = $assignedStaffId && $assignedStaffId > 0
+            ? (int) $assignedStaffId
+            : null;
+        $resolvedDepartmentId = $assignedDepartmentId && $assignedDepartmentId > 0
+            ? (int) $assignedDepartmentId
+            : null;
+
+        $validated['assigned_staff_id'] = $resolvedStaffId;
+        $validated['sales_owner_id'] = $resolvedStaffId;
+        $validated['assigned_department_id'] = $resolvedDepartmentId;
 
         return $validated;
     }
@@ -1396,9 +1421,13 @@ class CRMController extends Controller
             return;
         }
 
+        $previousAssignedStaff = $oldAssignedStaffId > 0
+            ? User::query()->find($oldAssignedStaffId, ['id', 'is_active'])
+            : null;
         $managerId = (int) optional(optional($assignedStaff->departmentRelation)->manager)->id;
         $recipientIds = collect([
             (int) $assignedStaff->id,
+            ($previousAssignedStaff && (bool) $previousAssignedStaff->is_active) ? (int) $previousAssignedStaff->id : null,
             $managerId > 0 ? $managerId : null,
         ])
             ->filter(function ($id) {

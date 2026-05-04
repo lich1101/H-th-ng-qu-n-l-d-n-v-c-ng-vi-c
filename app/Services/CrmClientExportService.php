@@ -11,8 +11,12 @@ use App\Services\ClientPhoneDuplicateService;
 use App\Services\ContractLifecycleStatusService;
 use App\Services\StaffFilterOptionsService;
 use Illuminate\Database\Eloquent\Builder;
-use OpenSpout\Common\Entity\Row;
-use OpenSpout\Writer\XLSX\Writer;
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 /**
  * Xây query + ghi XLSX xuất khách hàng. Phạm vi: toàn bộ bản ghi (CRM + kho số), chỉ gọi với user admin/administrator.
@@ -173,16 +177,23 @@ class CrmClientExportService
         }
 
         $processed = 0;
-
-        $writer = new Writer();
-        $writer->openToFile($full);
+        $spreadsheet = new Spreadsheet();
         try {
-            $writer->getCurrentSheet()->setName('Khach hang');
-            $writer->addRow(Row::fromValues(self::EXPORT_HEADERS));
+            $sheet = $spreadsheet->getActiveSheet();
+            $sheet->setTitle('Khach hang');
+            $sheet->fromArray(self::EXPORT_HEADERS, null, 'A1');
 
+            $highestColumn = Coordinate::stringFromColumnIndex(count(self::EXPORT_HEADERS));
+            $sheet->freezePane('A2');
+            $sheet->setAutoFilter("A1:{$highestColumn}1");
+            $sheet->getStyle("A1:{$highestColumn}1")->getFont()->setBold(true);
+            $sheet->getStyle("A1:{$highestColumn}1")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+
+            $rowIndex = 2;
             foreach ($query->clone()->lazyById(200) as $client) {
-                $writer->addRow(Row::fromValues($this->clientToExportRow($client)));
+                $this->writeSheetRow($sheet, $rowIndex, $this->clientToExportRow($client));
                 $processed++;
+                $rowIndex++;
 
                 if ($processed % 50 === 0 || $processed === $total) {
                     $job->forceFill([
@@ -194,8 +205,20 @@ class CrmClientExportService
                     ])->save();
                 }
             }
+
+            for ($columnIndex = 1; $columnIndex <= count(self::EXPORT_HEADERS); $columnIndex++) {
+                $sheet->getColumnDimension(Coordinate::stringFromColumnIndex($columnIndex))->setAutoSize(true);
+            }
+
+            $writer = new Xlsx($spreadsheet);
+            $writer->save($full);
+            clearstatcache(true, $full);
+            if (! is_file($full) || (int) filesize($full) <= 0) {
+                throw new \RuntimeException('Không tạo được file xuất khách hàng trên máy chủ.');
+            }
         } finally {
-            $writer->close();
+            $spreadsheet->disconnectWorksheets();
+            unset($spreadsheet);
         }
 
         $job->forceFill([
@@ -218,25 +241,61 @@ class CrmClientExportService
     {
         $created = $client->created_at;
         $createdStr = $created ? $created->timezone(config('app.timezone'))->format('d/m/Y') : '';
+        $primaryOwnerName = $client->assignedStaff?->name ?? $client->salesOwner?->name ?? '';
 
         return [
-            (string) $client->name,
-            (string) ($client->lead_source ?? ''),
-            (string) ($client->leadType?->name ?? ''),
-            (string) ($client->email ?? ''),
-            (string) ($client->phone ?? ''),
-            (string) ($client->notes ?? ''),
-            (string) ($client->customer_status_label ?? ''),
-            (string) ($client->salesOwner?->name ?? ''),
-            (string) ($client->customer_level ?? ''),
+            $this->sanitizeCellText($client->name),
+            $this->sanitizeCellText($client->lead_source ?? ''),
+            $this->sanitizeCellText($client->leadType?->name ?? ''),
+            $this->sanitizeCellText($client->email ?? ''),
+            $this->sanitizeCellText($client->phone ?? ''),
+            $this->sanitizeCellText($client->notes ?? ''),
+            $this->sanitizeCellText($client->customer_status_label ?? ''),
+            $this->sanitizeCellText($primaryOwnerName),
+            $this->sanitizeCellText($client->customer_level ?? ''),
             $this->formatMoney($client->legacy_debt_amount),
-            (string) ($client->lead_channel ?? ''),
-            $createdStr,
-            (string) ($client->assignedStaff?->name ?? ''),
-            (string) ($client->company_size ?? ''),
-            (string) ($client->product_categories ?? ''),
+            $this->sanitizeCellText($client->lead_channel ?? ''),
+            $this->sanitizeCellText($createdStr),
+            $this->sanitizeCellText($client->assignedStaff?->name ?? $primaryOwnerName),
+            $this->sanitizeCellText($client->company_size ?? ''),
+            $this->sanitizeCellText($client->product_categories ?? ''),
             $this->formatMoney($client->total_revenue),
         ];
+    }
+
+    private function sanitizeCellText($value): string
+    {
+        if ($value === null) {
+            return '';
+        }
+
+        $text = trim((string) $value);
+        if ($text === '') {
+            return '';
+        }
+
+        if (function_exists('mb_check_encoding') && ! mb_check_encoding($text, 'UTF-8')) {
+            $converted = @iconv('UTF-8', 'UTF-8//IGNORE', $text);
+            if (is_string($converted) && $converted !== '') {
+                $text = $converted;
+            }
+        }
+
+        $cleaned = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', '', $text);
+
+        return is_string($cleaned) ? $cleaned : $text;
+    }
+
+    private function writeSheetRow(Worksheet $sheet, int $rowIndex, array $values): void
+    {
+        foreach (array_values($values) as $index => $value) {
+            $column = Coordinate::stringFromColumnIndex($index + 1);
+            $sheet->setCellValueExplicit(
+                "{$column}{$rowIndex}",
+                (string) ($value ?? ''),
+                DataType::TYPE_STRING
+            );
+        }
     }
 
     private function formatMoney($value): string

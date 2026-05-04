@@ -360,6 +360,7 @@ class ClientStaffTransferService
             $preTransferInsight = $rotationService->buildClientRotationInsight($client);
 
             $client->assigned_staff_id = (int) $toUser->id;
+            $client->sales_owner_id = (int) $toUser->id;
             if ($toUser->department_id) {
                 $client->assigned_department_id = (int) $toUser->department_id;
             }
