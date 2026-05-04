@@ -227,11 +227,13 @@ class CRMController extends Controller
         }
 
         app(ClientAutoRotationService::class)->repairRotationPoolOwnersFromHistory();
+        $rotationSettings = app(ClientAutoRotationService::class)->settings();
 
         $query = Client::query()
             ->onlyRotationPool()
-            ->select(['id', 'name', 'rotation_pool_entered_at'])
+            ->select(['id', 'name', 'lead_type_id', 'created_at', 'rotation_pool_entered_at'])
             ->withCount([
+                'contracts as contracts_count' => fn ($contractsQuery) => $contractsQuery->reorder(),
                 'opportunities as opportunities_count' => fn ($opportunitiesQuery) => $opportunitiesQuery->reorder(),
                 'careNotes as care_notes_count' => fn ($careNotesQuery) => $careNotesQuery->reorder(),
             ])
@@ -239,9 +241,9 @@ class CRMController extends Controller
                 'contracts as approved_revenue_total' => fn ($contractsQuery) => $contractsQuery
                     ->reorder()
                     ->where('approval_status', 'approved'),
-            ], 'value')
-            ->orderByDesc('rotation_pool_entered_at')
-            ->orderByDesc('id');
+            ], 'value');
+
+        $this->applyRotationPoolOrdering($query, $rotationSettings);
 
         if ($request->filled('search')) {
             $search = trim((string) $request->input('search'));
@@ -878,6 +880,43 @@ class CRMController extends Controller
     private function canAccessClient(User $user, Client $client): bool
     {
         return CrmScope::canAccessClient($user, $client);
+    }
+
+    private function applyRotationPoolOrdering(Builder $query, array $rotationSettings): void
+    {
+        $leadTypePriorityCase = $this->rotationPoolLeadTypePriorityCase(
+            $rotationSettings['lead_type_ids'] ?? []
+        );
+
+        $query->orderByRaw("{$leadTypePriorityCase} ASC")
+            ->orderByDesc('contracts_count')
+            ->orderByDesc('opportunities_count')
+            ->orderBy('clients.created_at')
+            ->orderBy('clients.id');
+    }
+
+    private function rotationPoolLeadTypePriorityCase(array $leadTypeIds): string
+    {
+        $ids = collect($leadTypeIds)
+            ->map(function ($id) {
+                return (int) $id;
+            })
+            ->filter(function (int $id) {
+                return $id > 0;
+            })
+            ->values()
+            ->all();
+
+        if ($ids === []) {
+            return '0';
+        }
+
+        $clauses = [];
+        foreach ($ids as $index => $id) {
+            $clauses[] = sprintf('WHEN clients.lead_type_id = %d THEN %d', $id, $index);
+        }
+
+        return 'CASE ' . implode(' ', $clauses) . ' ELSE 999999 END';
     }
 
     private function canManageClient(User $user, Client $client): bool
