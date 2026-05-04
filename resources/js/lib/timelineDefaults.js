@@ -2,9 +2,17 @@ import { toDateInputValue } from './vietnamTime';
 
 export function contractFromProject(project) {
     if (!project) return null;
-    if (project.contract) return project.contract;
-    if (project.linked_contract) return project.linked_contract;
+    if (project.contract && Object.keys(project.contract).length > 0) return project.contract;
+    if (project.linked_contract && Object.keys(project.linked_contract).length > 0) return project.linked_contract;
     return null;
+}
+
+function firstDateInputValue(values) {
+    for (const value of values) {
+        const normalized = toDateInputValue(value);
+        if (normalized) return normalized;
+    }
+    return '';
 }
 
 /** Form tạo dự án: từ bản ghi hợp đồng (dropdown). */
@@ -16,22 +24,20 @@ export function datesFromContract(contract) {
     };
 }
 
-/** Mặc định công việc: dự án → hợp đồng. */
+/** Mặc định công việc: hợp đồng gắn dự án → dự án. */
 export function taskDefaultsFromProject(project) {
     const c = contractFromProject(project);
-    const startRaw = project?.start_date ?? c?.start_date;
-    const endRaw = project?.deadline ?? c?.end_date;
     return {
-        start: toDateInputValue(startRaw),
-        end: toDateInputValue(endRaw),
+        start: firstDateInputValue([c?.start_date, project?.start_date]),
+        end: firstDateInputValue([c?.end_date, project?.deadline]),
     };
 }
 
-/** Mặc định đầu việc: công việc → dự án → hợp đồng. */
+/** Mặc định đầu việc: hợp đồng gắn dự án → dự án → công việc. */
 export function taskItemDefaults(task, project) {
     const p = taskDefaultsFromProject(project);
     return {
-        start: toDateInputValue(task?.start_at) || p.start,
-        end: toDateInputValue(task?.deadline) || p.end,
+        start: p.start || toDateInputValue(task?.start_at),
+        end: p.end || toDateInputValue(task?.deadline),
     };
 }

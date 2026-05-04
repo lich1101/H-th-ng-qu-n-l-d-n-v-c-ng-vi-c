@@ -109,6 +109,7 @@ class TaskController extends Controller
         $validated['created_by'] = $request->user()->id;
         $validated['assigned_by'] = $validated['assigned_by'] ?? $request->user()->id;
         $this->applyOneWayAssignment($validated);
+        $this->applyDefaultTaskDatesFromProject($validated, $project);
 
         $currentWeight = Task::where('project_id', $validated['project_id'])->sum('weight_percent');
         $newWeight = isset($validated['weight_percent']) ? max(1, min(100, (int) $validated['weight_percent'])) : 100;
@@ -273,10 +274,10 @@ class TaskController extends Controller
      */
     private function assertTaskDatesWithinProject(?Project $project, $startAt, $deadline): void
     {
-        if (! $project || ! $project->deadline) {
+        $max = $this->projectTimelineEnd($project);
+        if (! $max) {
             return;
         }
-        $max = Carbon::parse($project->deadline)->startOfDay();
         $labels = [
             'Ngày bắt đầu' => $startAt,
             'Deadline công việc' => $deadline,
@@ -288,10 +289,53 @@ class TaskController extends Controller
             $d = Carbon::parse($raw)->startOfDay();
             if ($d->gt($max)) {
                 abort(response()->json([
-                    'message' => "{$label} không được sau ngày kết thúc dự án ({$max->format('d/m/Y')}).",
+                    'message' => "{$label} không được sau mốc kết thúc hợp đồng/dự án ({$max->format('d/m/Y')}).",
                 ], 422));
             }
         }
+    }
+
+    private function applyDefaultTaskDatesFromProject(array &$validated, Project $project): void
+    {
+        if (empty($validated['start_at'])) {
+            $start = $this->projectTimelineStart($project);
+            if ($start) {
+                $validated['start_at'] = $start->toDateString();
+            }
+        }
+
+        if (empty($validated['deadline'])) {
+            $end = $this->projectTimelineEnd($project);
+            if ($end) {
+                $validated['deadline'] = $end->toDateString();
+            }
+        }
+    }
+
+    private function projectTimelineStart(?Project $project): ?Carbon
+    {
+        if (! $project) {
+            return null;
+        }
+
+        $project->loadMissing(['contract', 'linkedContract']);
+        $contract = $project->contract ?: $project->linkedContract;
+        $raw = $contract?->start_date ?: $project->start_date;
+
+        return $raw ? Carbon::parse($raw)->startOfDay() : null;
+    }
+
+    private function projectTimelineEnd(?Project $project): ?Carbon
+    {
+        if (! $project) {
+            return null;
+        }
+
+        $project->loadMissing(['contract', 'linkedContract']);
+        $contract = $project->contract ?: $project->linkedContract;
+        $raw = $contract?->end_date ?: $project->deadline;
+
+        return $raw ? Carbon::parse($raw)->startOfDay() : null;
     }
 
     private function rules(bool $isUpdate = false): array

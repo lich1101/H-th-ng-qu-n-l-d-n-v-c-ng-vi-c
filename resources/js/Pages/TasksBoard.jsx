@@ -1049,13 +1049,13 @@ export default function TasksBoard(props) {
             toast.error('Vui lòng chọn nhân sự phụ trách.');
             return;
         }
-        const taskItemDateMax = itemsTask?.deadline ? toDateInputValue(itemsTask.deadline) : '';
+        const taskItemDateMax = taskItemDefaults(itemsTask, itemsTask?.project || null).end;
         if (taskItemDateMax && itemForm.start_date && String(itemForm.start_date) > taskItemDateMax) {
-            toast.error('Ngày bắt đầu đầu việc không được sau deadline công việc.');
+            toast.error('Ngày bắt đầu đầu việc không được sau mốc kết thúc hợp đồng/dự án/công việc.');
             return;
         }
         if (taskItemDateMax && itemForm.deadline && String(itemForm.deadline) > taskItemDateMax) {
-            toast.error('Hạn đầu việc không được sau deadline công việc.');
+            toast.error('Hạn đầu việc không được sau mốc kết thúc hợp đồng/dự án/công việc.');
             return;
         }
         savingItemRef.current = true;
@@ -1539,6 +1539,10 @@ export default function TasksBoard(props) {
         () => Math.max(0, 100 - siblingItemWeightTotal),
         [siblingItemWeightTotal]
     );
+    const taskItemDateMax = useMemo(
+        () => taskItemDefaults(itemsTask, itemsTask?.project || null).end,
+        [itemsTask]
+    );
 
     const fetchProjectWeightReference = async (projectId) => {
         if (!projectId) {
@@ -1595,11 +1599,11 @@ export default function TasksBoard(props) {
             return;
         }
         if (projectDeadlineInputMax && form.deadline && String(form.deadline) > projectDeadlineInputMax) {
-            toast.error('Hạn công việc không được sau hạn dự án.');
+            toast.error('Hạn công việc không được sau mốc kết thúc hợp đồng/dự án.');
             return;
         }
         if (projectDeadlineInputMax && form.start_at && String(form.start_at) > projectDeadlineInputMax) {
-            toast.error('Ngày bắt đầu không được sau hạn dự án.');
+            toast.error('Ngày bắt đầu không được sau mốc kết thúc hợp đồng/dự án.');
             return;
         }
         setSavingTask(true);
@@ -2761,7 +2765,7 @@ export default function TasksBoard(props) {
                                             <input
                                                 className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
                                                 type="date"
-                                                max={itemsTask?.deadline ? toDateInputValue(itemsTask.deadline) : undefined}
+                                                max={taskItemDateMax || undefined}
                                                 value={itemForm.start_date}
                                                 onChange={(e) => setItemForm((s) => ({ ...s, start_date: e.target.value }))}
                                             />
@@ -2797,7 +2801,7 @@ export default function TasksBoard(props) {
                                             <input
                                                 className="w-full rounded-2xl border border-slate-200/80 px-3 py-2"
                                                 type="date"
-                                                max={itemsTask?.deadline ? toDateInputValue(itemsTask.deadline) : undefined}
+                                                max={taskItemDateMax || undefined}
                                                 value={itemForm.deadline}
                                                 onChange={(e) => setItemForm((s) => ({ ...s, deadline: e.target.value }))}
                                             />

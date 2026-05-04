@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Helpers\ProjectScope;
+use App\Models\Project;
 use App\Models\Task;
 use App\Models\TaskItem;
 use App\Models\User;
@@ -186,6 +187,7 @@ class TaskItemController extends Controller
         }
 
         $this->assertAssignableAssignee($validated['assignee_id'] ?? null);
+        $this->applyDefaultTaskItemDates($validated, $task);
 
         $this->assertTaskItemDatesWithinTask(
             $task,
@@ -332,14 +334,14 @@ class TaskItemController extends Controller
     }
 
     /**
-     * Ngày bắt đầu và hạn đầu việc không được sau deadline công việc (nếu có).
+     * Ngày bắt đầu và hạn đầu việc không được sau mốc kết thúc ưu tiên.
      */
     private function assertTaskItemDatesWithinTask(Task $task, $startDate, $itemDeadline): void
     {
-        if (! $task->deadline) {
+        $max = $this->taskTimelineEnd($task);
+        if (! $max) {
             return;
         }
-        $max = Carbon::parse($task->deadline)->startOfDay();
         $labels = [
             'Ngày bắt đầu đầu việc' => $startDate,
             'Hạn đầu việc' => $itemDeadline,
@@ -351,10 +353,88 @@ class TaskItemController extends Controller
             $d = Carbon::parse($raw)->startOfDay();
             if ($d->gt($max)) {
                 abort(response()->json([
-                    'message' => "{$label} không được sau deadline công việc ({$max->format('d/m/Y')}).",
+                    'message' => "{$label} không được sau mốc kết thúc công việc/hợp đồng/dự án ({$max->format('d/m/Y')}).",
                 ], 422));
             }
         }
+    }
+
+    private function applyDefaultTaskItemDates(array &$validated, Task $task): void
+    {
+        if (empty($validated['start_date'])) {
+            $start = $this->taskTimelineStart($task);
+            if ($start) {
+                $validated['start_date'] = $start->toDateString();
+            }
+        }
+
+        if (empty($validated['deadline'])) {
+            $end = $this->taskTimelineEnd($task);
+            if ($end) {
+                $validated['deadline'] = $end->toDateString();
+            }
+        }
+    }
+
+    private function taskTimelineStart(Task $task): ?Carbon
+    {
+        $projectStart = $this->projectTimelineStart($this->taskProject($task));
+        if ($projectStart) {
+            return $projectStart;
+        }
+
+        if ($task->start_at) {
+            return Carbon::parse($task->start_at)->startOfDay();
+        }
+
+        return null;
+    }
+
+    private function taskTimelineEnd(Task $task): ?Carbon
+    {
+        $projectEnd = $this->projectTimelineEnd($this->taskProject($task));
+        if ($projectEnd) {
+            return $projectEnd;
+        }
+
+        if ($task->deadline) {
+            return Carbon::parse($task->deadline)->startOfDay();
+        }
+
+        return null;
+    }
+
+    private function taskProject(Task $task): ?Project
+    {
+        $task->loadMissing(['project.contract', 'project.linkedContract']);
+
+        return $task->project;
+    }
+
+    private function projectTimelineStart(?Project $project): ?Carbon
+    {
+        if (! $project) {
+            return null;
+        }
+
+        $project->loadMissing(['contract', 'linkedContract']);
+        $contract = $project->contract ?: $project->linkedContract;
+        $raw = $contract?->start_date ?: $project->start_date;
+
+        return $raw ? Carbon::parse($raw)->startOfDay() : null;
+    }
+
+    private function projectTimelineEnd(?Project $project): ?Carbon
+    {
+        if (! $project) {
+            return null;
+        }
+
+        $project->loadMissing(['contract', 'linkedContract']);
+        $contract = $project->contract ?: $project->linkedContract;
+        $raw = $contract?->end_date ?: $project->deadline;
+
+        return $raw ? Carbon::parse($raw)->startOfDay() : null;
     }
 
     private function assertAssignableAssignee(?int $assigneeId): void
