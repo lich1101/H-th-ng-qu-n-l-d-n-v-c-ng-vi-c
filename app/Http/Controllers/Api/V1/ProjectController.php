@@ -472,6 +472,7 @@ class ProjectController extends Controller
         }
 
         $oldWebsiteRaw = (string) ($project->website_url ?? '');
+        $projectTimelineChanged = $this->projectTimelineChanged($project, $validated);
         $project->update($validated);
         $syncService->handleWebsiteMutation($project, $oldWebsiteRaw);
 
@@ -500,10 +501,65 @@ class ProjectController extends Controller
                 ->where('project_id', $project->id)
                 ->update(['project_id' => null]);
         }
+        if ($projectTimelineChanged) {
+            $this->syncProjectTimelineToChildren($project->fresh());
+        }
 
         $project->load($this->baseRelations());
 
         return response()->json($this->transformProject($project, $request->user()));
+    }
+
+    private function projectTimelineChanged(Project $project, array $validated): bool
+    {
+        if (! array_key_exists('start_date', $validated) && ! array_key_exists('deadline', $validated)) {
+            return false;
+        }
+
+        $oldStart = $project->start_date ? $project->start_date->toDateString() : null;
+        $oldDeadline = $project->deadline ? $project->deadline->toDateString() : null;
+        $nextStart = array_key_exists('start_date', $validated)
+            ? (trim((string) ($validated['start_date'] ?? '')) ?: null)
+            : $oldStart;
+        $nextDeadline = array_key_exists('deadline', $validated)
+            ? (trim((string) ($validated['deadline'] ?? '')) ?: null)
+            : $oldDeadline;
+
+        return $oldStart !== $nextStart || $oldDeadline !== $nextDeadline;
+    }
+
+    private function syncProjectTimelineToChildren(Project $project): void
+    {
+        $project->loadMissing('tasks:id,project_id');
+
+        $taskIds = $project->tasks->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->values();
+        if ($taskIds->isEmpty()) {
+            return;
+        }
+
+        $taskStart = $project->start_date
+            ? Carbon::parse($project->start_date)->startOfDay()
+            : null;
+        $taskDeadline = $project->deadline
+            ? Carbon::parse($project->deadline)->endOfDay()
+            : null;
+
+        Task::query()
+            ->whereIn('id', $taskIds->all())
+            ->update([
+                'start_at' => $taskStart,
+                'deadline' => $taskDeadline,
+            ]);
+
+        TaskItem::query()
+            ->whereIn('task_id', $taskIds->all())
+            ->update([
+                'start_date' => $taskStart?->toDateString(),
+                'deadline' => $taskDeadline,
+            ]);
     }
 
     /**

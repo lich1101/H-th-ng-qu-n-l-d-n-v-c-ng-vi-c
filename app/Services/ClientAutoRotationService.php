@@ -11,6 +11,7 @@ use App\Models\ClientStaffTransferRequest;
 use App\Models\Contract;
 use App\Models\Opportunity;
 use App\Models\User;
+use App\Services\FirebaseService;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -1678,6 +1679,11 @@ class ClientAutoRotationService
                 'Khách đủ điều kiện xoay nhưng toàn bộ người nhận tự động đã hết suất hoặc không còn người nhận phù hợp, nên hệ thống đưa vào kho số để chờ nhân sự nhận thủ công.',
                 $now
             );
+            app(FirebaseService::class)->publishRotationPoolSignal('auto_rotation_to_pool', [
+                'client_id' => (int) $client->id,
+                'client_name' => (string) ($client->name ?: 'Khách hàng'),
+                'from_staff_id' => $fromStaffId > 0 ? $fromStaffId : null,
+            ]);
 
             return [
                 'status' => 'pooled',
@@ -1765,6 +1771,12 @@ class ClientAutoRotationService
                 'Nhân sự đã nhận khách hàng từ kho số.',
                 $now
             );
+            app(FirebaseService::class)->publishRotationPoolSignal('rotation_pool_claim', [
+                'client_id' => (int) $client->id,
+                'client_name' => (string) ($client->name ?: 'Khách hàng'),
+                'to_staff_id' => $recipientId,
+                'to_staff_name' => (string) ($recipient->name ?: 'Nhân sự'),
+            ]);
 
             return [
                 'status' => 'claimed',

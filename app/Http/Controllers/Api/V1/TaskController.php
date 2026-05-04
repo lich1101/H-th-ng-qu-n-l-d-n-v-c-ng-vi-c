@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Helpers\ProjectScope;
 use App\Models\Project;
 use App\Models\Task;
+use App\Models\TaskItem;
 use App\Models\User;
 use App\Services\NotificationService;
 use App\Services\ProjectProgressService;
@@ -214,12 +215,16 @@ class TaskController extends Controller
 
         $oldProject = $task->project;
         $oldAssigneeId = (int) ($task->assignee_id ?? 0);
+        $taskTimelineChanged = $this->taskTimelineChanged($task, $validated);
         $assigneeProvided = array_key_exists('assignee_id', $validated);
         if ($assigneeProvided && (int) ($validated['assignee_id'] ?? 0) !== $oldAssigneeId) {
             $validated['assigned_by'] = $request->user()->id;
         }
         $this->applyOneWayAssignment($validated, $task);
         $task->update($validated);
+        if ($taskTimelineChanged) {
+            $this->syncTaskTimelineToItems($task->fresh());
+        }
 
         if ($oldProject) {
             try {
@@ -310,6 +315,46 @@ class TaskController extends Controller
                 $validated['deadline'] = $end->toDateString();
             }
         }
+    }
+
+    private function taskTimelineChanged(Task $task, array $validated): bool
+    {
+        if (! array_key_exists('start_at', $validated) && ! array_key_exists('deadline', $validated)) {
+            return false;
+        }
+
+        $oldStart = $task->start_at ? Carbon::parse($task->start_at)->toDateString() : null;
+        $oldDeadline = $task->deadline ? Carbon::parse($task->deadline)->toDateString() : null;
+        $nextStart = array_key_exists('start_at', $validated)
+            ? (trim((string) ($validated['start_at'] ?? '')) ?: null)
+            : $oldStart;
+        $nextDeadline = array_key_exists('deadline', $validated)
+            ? (trim((string) ($validated['deadline'] ?? '')) ?: null)
+            : $oldDeadline;
+
+        return $oldStart !== $nextStart || $oldDeadline !== $nextDeadline;
+    }
+
+    private function syncTaskTimelineToItems(Task $task): void
+    {
+        $task->loadMissing('items:id,task_id');
+        $itemIds = $task->items->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->values();
+        if ($itemIds->isEmpty()) {
+            return;
+        }
+
+        $itemStart = $task->start_at ? Carbon::parse($task->start_at)->toDateString() : null;
+        $itemDeadline = $task->deadline ? Carbon::parse($task->deadline)->endOfDay() : null;
+
+        TaskItem::query()
+            ->whereIn('id', $itemIds->all())
+            ->update([
+                'start_date' => $itemStart,
+                'deadline' => $itemDeadline,
+            ]);
     }
 
     private function projectTimelineStart(?Project $project): ?Carbon

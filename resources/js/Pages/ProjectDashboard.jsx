@@ -629,7 +629,6 @@ export default function ProjectDashboard(props) {
             <FilterToolbar
                 enableSearch={false}
                 title="Bộ lọc dashboard dự án"
-                description="Lọc theo nhân sự phụ trách, trạng thái dự án, tình trạng so với tiến độ kỳ vọng và khoảng ngày bắt đầu. Khi vào trang sẽ mặc định theo tháng hiện tại."
                 onSubmitFilters={() => loadDashboard(draftFilters)}
             >
                 <div className={FILTER_GRID_RESPONSIVE}>

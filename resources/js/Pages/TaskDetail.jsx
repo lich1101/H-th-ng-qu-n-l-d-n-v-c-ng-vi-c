@@ -313,11 +313,10 @@ export default function TaskDetail(props) {
                                         key={tab.key}
                                         type="button"
                                         onClick={() => setActiveTab(tab.key)}
-                                        className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
-                                            activeTab === tab.key
+                                        className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${activeTab === tab.key
                                                 ? 'bg-primary text-white shadow-sm'
                                                 : 'border border-slate-200/80 bg-white text-slate-600 hover:border-primary/30 hover:text-primary'
-                                        }`}
+                                            }`}
                                     >
                                         {tab.label} ({tab.count})
                                     </button>
@@ -389,12 +388,6 @@ export default function TaskDetail(props) {
                 size="lg"
             >
                 <div className="space-y-4 text-sm">
-                    {task && (
-                        <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
-                            <strong>Lịch trình công việc cha: </strong>
-                            {task.start_date ? formatDate(task.start_date) : 'Chưa có'} — {task.deadline ? formatDate(task.deadline) : 'Chưa có'}
-                        </div>
-                    )}
                     <div className="grid gap-4 md:grid-cols-2">
                         <div className="md:col-span-2">
                             <label className="text-xs text-text-muted">Tiêu đề *</label>

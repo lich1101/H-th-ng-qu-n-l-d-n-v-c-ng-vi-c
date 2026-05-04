@@ -15,6 +15,7 @@ use App\Services\ClientAutoRotationService;
 use App\Services\ClientPhoneDuplicateService;
 use App\Services\ContractLifecycleStatusService;
 use App\Services\ClientStaffTransferService;
+use App\Services\FirebaseService;
 use App\Services\LeadNotificationService;
 use App\Services\NotificationService;
 use App\Services\StaffFilterOptionsService;
@@ -325,6 +326,10 @@ class CRMController extends Controller
 
         $client = Client::create($payload);
         $this->syncClientCareStaff($client, [], (int) $user->id);
+        app(FirebaseService::class)->publishRotationPoolSignal('manual_pool_entry', [
+            'client_id' => (int) $client->id,
+            'client_name' => (string) ($client->name ?: 'Khách hàng'),
+        ]);
 
         return response()->json([
             'message' => 'Đã thêm khách hàng vào kho số.',
@@ -421,15 +426,25 @@ class CRMController extends Controller
         }
 
         return match ($status) {
-            'not_in_pool' => response()->json(['message' => 'Khách hàng này không còn ở kho số.'], 422),
-            'pending_transfer' => response()->json(['message' => 'Khách hàng đang có phiếu chuyển phụ trách chờ xử lý, chưa thể nhận từ kho số.'], 422),
+            'not_in_pool' => response()->json([
+                'message' => 'Khách hàng này không còn ở kho số.',
+                'code' => 'rotation_pool_not_in_pool',
+            ], 409),
+            'pending_transfer' => response()->json([
+                'message' => 'Khách hàng đang có phiếu chuyển phụ trách chờ xử lý, chưa thể nhận từ kho số.',
+                'code' => 'rotation_pool_pending_transfer',
+            ], 409),
             'daily_limit_reached' => response()->json([
                 'message' => sprintf(
                     'Bạn đã đạt giới hạn nhận %d khách hàng từ kho số trong ngày. Vui lòng nhận thêm vào ngày mai hoặc liên hệ administrator để tăng quota kho số.',
                     max(0, (int) ($result['pool_claim_daily_limit'] ?? 0))
                 ),
+                'code' => 'rotation_pool_daily_limit_reached',
+            ], 429),
+            default => response()->json([
+                'message' => 'Không thể nhận khách hàng từ kho số lúc này.',
+                'code' => 'rotation_pool_claim_failed',
             ], 422),
-            default => response()->json(['message' => 'Không thể nhận khách hàng từ kho số lúc này.'], 422),
         };
     }
 

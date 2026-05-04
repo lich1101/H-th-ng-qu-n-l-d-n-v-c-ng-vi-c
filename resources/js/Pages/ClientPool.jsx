@@ -1,11 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { Link } from '@inertiajs/inertia-react';
+import { onValue, ref } from 'firebase/database';
 import Modal from '@/Components/Modal';
 import PageContainer from '@/Components/PageContainer';
 import PaginationControls from '@/Components/PaginationControls';
 import { filterControlClass } from '@/Components/FilterToolbar';
 import { useToast } from '@/Contexts/ToastContext';
+import { ensureFirebaseAuth, firebaseReady, getFirebaseDb } from '@/lib/firebase';
 
 const getErrorMessage = (error, fallback) => {
     const validationErrors = error?.response?.data?.errors;
@@ -68,9 +70,15 @@ export default function ClientPool(props) {
     const [downloadingTemplate, setDownloadingTemplate] = useState(false);
     const [clientImportJob, setClientImportJob] = useState(null);
     const [clientImportReport, setClientImportReport] = useState(null);
+    const [firebaseToken, setFirebaseToken] = useState('');
+    const lastSignalNonceRef = useRef(null);
 
-    const fetchPool = async (page = 1, searchValue = search) => {
-        setLoading(true);
+    const fetchPool = async (page = 1, searchValue = search, options = {}) => {
+        const background = options?.background === true;
+        const silentError = options?.silentError === true;
+        if (!background) {
+            setLoading(true);
+        }
         try {
             const res = await axios.get('/api/v1/crm/client-pool', {
                 params: {
@@ -88,9 +96,13 @@ export default function ClientPool(props) {
                 total: res.data.total || 0,
             });
         } catch (error) {
-            toast.error(getErrorMessage(error, 'Không tải được kho số.'));
+            if (!silentError) {
+                toast.error(getErrorMessage(error, 'Không tải được kho số.'));
+            }
         } finally {
-            setLoading(false);
+            if (!background) {
+                setLoading(false);
+            }
         }
     };
 
@@ -98,6 +110,69 @@ export default function ClientPool(props) {
         fetchPool(1, '');
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    useEffect(() => {
+        if (!firebaseReady) {
+            return undefined;
+        }
+        axios
+            .get('/api/v1/firebase/token')
+            .then((res) => setFirebaseToken(res.data?.token || ''))
+            .catch(() => setFirebaseToken(''));
+
+        return undefined;
+    }, []);
+
+    useEffect(() => {
+        if (!firebaseReady || !firebaseToken) {
+            return undefined;
+        }
+
+        let unsubscribe = () => {};
+        let active = true;
+
+        const setup = async () => {
+            const authed = await ensureFirebaseAuth(firebaseToken);
+            if (!authed || !active) {
+                return;
+            }
+            const db = getFirebaseDb();
+            if (!db) {
+                return;
+            }
+
+            unsubscribe = onValue(ref(db, 'rotation_pool/meta'), (snapshot) => {
+                if (!active) {
+                    return;
+                }
+                if (claimingClientId !== null || showCreateModal || showImportModal) {
+                    return;
+                }
+
+                const payload = snapshot.val();
+                const nonce = String(payload?.nonce || '').trim();
+                if (!nonce) {
+                    return;
+                }
+                if (lastSignalNonceRef.current === null) {
+                    lastSignalNonceRef.current = nonce;
+                    return;
+                }
+                if (lastSignalNonceRef.current === nonce) {
+                    return;
+                }
+                lastSignalNonceRef.current = nonce;
+                fetchPool(meta.current_page || 1, search, { background: true, silentError: true });
+            });
+        };
+
+        setup();
+
+        return () => {
+            active = false;
+            unsubscribe?.();
+        };
+    }, [firebaseToken, claimingClientId, meta.current_page, search, showCreateModal, showImportModal]);
 
     useEffect(() => {
         if (!showImportModal || !clientImportJob?.id) return undefined;
@@ -155,6 +230,7 @@ export default function ClientPool(props) {
             await fetchPool(meta.current_page, search);
         } catch (error) {
             toast.error(getErrorMessage(error, 'Không thể nhận khách từ kho số.'));
+            await fetchPool(meta.current_page, search, { background: true, silentError: true });
         } finally {
             setClaimingClientId(null);
         }

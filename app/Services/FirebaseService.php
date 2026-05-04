@@ -87,6 +87,32 @@ class FirebaseService
         return $response->ok();
     }
 
+    public function publishRotationPoolSignal(string $action, array $payload = []): bool
+    {
+        if (! $this->databaseEnabled()) {
+            return false;
+        }
+
+        $token = $this->getDatabaseAccessToken();
+        if (! $token) {
+            return false;
+        }
+
+        $url = rtrim((string) config('firebase.database_url'), '/')
+            .'/rotation_pool/meta.json';
+        $body = array_merge($payload, [
+            'action' => trim($action) !== '' ? trim($action) : 'updated',
+            'updated_at' => now('Asia/Ho_Chi_Minh')->toIso8601String(),
+            'nonce' => uniqid('rotation_pool_', true),
+        ]);
+
+        $response = Http::timeout(10)
+            ->withOptions(['query' => ['access_token' => $token]])
+            ->put($url, $body);
+
+        return $response->ok();
+    }
+
     public function sendPush(array $tokens, string $title, string $body, array $data = []): array
     {
         if (! $this->enabled()) {

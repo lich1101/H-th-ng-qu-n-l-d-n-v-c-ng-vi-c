@@ -15,6 +15,7 @@ use App\Models\RevenueTier;
 use App\Models\Task;
 use App\Models\User;
 use App\Services\ClientPhoneDuplicateService;
+use App\Services\FirebaseService;
 use App\Services\ProjectProgressService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -87,8 +88,9 @@ class ImportExecutionService
         $report = $this->initReport();
         $processed = 0;
         $poolNow = now('Asia/Ho_Chi_Minh');
+        $rotationPoolTouched = false;
 
-        $this->iterateMappedRows($path, $this->clientHeaderMap(), function (array $data, int $rowNumber) use (&$report, &$processed, $user, $job, $toRotationPool, $poolNow) {
+        $this->iterateMappedRows($path, $this->clientHeaderMap(), function (array $data, int $rowNumber) use (&$report, &$processed, &$rotationPoolTouched, $user, $job, $toRotationPool, $poolNow) {
             $processed++;
 
             if (empty($data['name'])) {
@@ -214,6 +216,7 @@ class ImportExecutionService
                 }
 
                 if ($toRotationPool) {
+                    $rotationPoolTouched = true;
                     $this->clearClientCareStaffFromImport($client);
                 } else {
                     $careStaffIds = array_values(array_filter([
@@ -234,6 +237,13 @@ class ImportExecutionService
         });
 
         $this->syncJobProgress($job, $processed, $report, true);
+        if ($toRotationPool && $rotationPoolTouched) {
+            app(FirebaseService::class)->publishRotationPoolSignal('rotation_pool_import', [
+                'created' => (int) ($report['created'] ?? 0),
+                'updated' => (int) ($report['updated'] ?? 0),
+                'skipped' => (int) ($report['skipped'] ?? 0),
+            ]);
+        }
 
         return $this->finalizeReport($report);
     }
