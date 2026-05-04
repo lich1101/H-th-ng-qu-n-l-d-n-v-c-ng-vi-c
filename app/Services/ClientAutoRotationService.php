@@ -688,7 +688,7 @@ class ClientAutoRotationService
         })->all();
 
         $contractRows = Contract::query()
-            ->selectRaw('client_id, MAX(COALESCE(approved_at, created_at)) as last_at, COUNT(*) as total')
+            ->selectRaw('client_id, MAX(COALESCE(start_date, approved_at, signed_at, created_at)) as last_at, COUNT(*) as total')
             ->whereIn('client_id', $clientIds)
             ->groupBy('client_id')
             ->get();
@@ -740,113 +740,109 @@ class ClientAutoRotationService
         );
         $actualOpportunityAt = $stats['opportunity_last'][$clientId] ?? null;
         $actualContractAt = $stats['contract_last'][$clientId] ?? null;
-
         $rotationAnchorAt = $resetAt;
         $rotationAnchorSource = $client->care_rotation_reset_at ? 'assignment_reset' : 'client_created';
-        if ($actualContractAt && $actualContractAt->gt($rotationAnchorAt)) {
-            $rotationAnchorAt = $actualContractAt;
-            $rotationAnchorSource = 'contract_reset';
-        }
 
-        $effectiveContractAt = $this->maxDate($actualContractAt, $resetAt) ?: $resetAt;
-        $daysSinceContract = $effectiveContractAt->diffInDays($now);
-        $remainingContract = max(0, (int) $settings['contract_stale_days'] - $daysSinceContract);
-        $contractOverdue = $daysSinceContract >= (int) $settings['contract_stale_days'];
+        $commentThreshold = max(0, (int) $settings['comment_stale_days']);
+        $opportunityThreshold = max(0, (int) $settings['opportunity_stale_days']);
+        $contractThreshold = max(0, (int) $settings['contract_stale_days']);
 
-        $contractGatePassedAt = $effectiveContractAt->copy()->addDays((int) $settings['contract_stale_days']);
+        $commentAnchorAt = $actualCommentAt ?: $resetAt;
+        $daysSinceComment = $commentAnchorAt->diffInDays($now);
+        $remainingComment = max(0, $commentThreshold - $daysSinceComment);
 
-        $opportunityStageStarted = $contractOverdue;
-        $effectiveOpportunityAt = $opportunityStageStarted
-            ? ($this->maxDate($actualOpportunityAt, $contractGatePassedAt) ?: $contractGatePassedAt)
-            : null;
-        $daysSinceOpportunity = $opportunityStageStarted && $effectiveOpportunityAt
-            ? $effectiveOpportunityAt->diffInDays($now)
-            : 0;
-        $remainingOpportunity = $opportunityStageStarted
-            ? max(0, (int) $settings['opportunity_stale_days'] - $daysSinceOpportunity)
-            : (int) $settings['opportunity_stale_days'];
-        $opportunityOverdue = $opportunityStageStarted
-            && $daysSinceOpportunity >= (int) $settings['opportunity_stale_days'];
-
-        $opportunityGatePassedAt = $effectiveOpportunityAt
-            ? $effectiveOpportunityAt->copy()->addDays((int) $settings['opportunity_stale_days'])
+        $daysSinceOpportunity = $actualOpportunityAt ? $actualOpportunityAt->diffInDays($now) : null;
+        $remainingOpportunity = $actualOpportunityAt
+            ? max(0, $opportunityThreshold - $daysSinceOpportunity)
             : null;
 
-        $commentStageStarted = $opportunityOverdue;
-        $effectiveCommentAt = $commentStageStarted
-            ? ($this->maxDate($actualCommentAt, $opportunityGatePassedAt) ?: $opportunityGatePassedAt)
+        $daysSinceContract = $actualContractAt ? $actualContractAt->diffInDays($now) : null;
+        $remainingContract = $actualContractAt
+            ? max(0, $contractThreshold - $daysSinceContract)
             : null;
-        $daysSinceComment = $commentStageStarted && $effectiveCommentAt
-            ? $effectiveCommentAt->diffInDays($now)
-            : 0;
-        $remainingComment = $commentStageStarted
-            ? max(0, (int) $settings['comment_stale_days'] - $daysSinceComment)
-            : (int) $settings['comment_stale_days'];
-        $commentOverdue = $commentStageStarted
-            && $daysSinceComment >= (int) $settings['comment_stale_days'];
 
         $rules = [
-            [
-                'type' => 'comment',
-                'label' => 'bình luận / ghi chú mới',
-                'days_since' => $daysSinceComment,
-                'threshold' => (int) $settings['comment_stale_days'],
-                'remaining_days' => $remainingComment,
-                'overdue' => $commentOverdue,
-                'priority' => 1,
-                'stage_started' => $commentStageStarted,
-                'anchor_at' => $effectiveCommentAt,
-                'due_at' => $effectiveCommentAt
-                    ? $effectiveCommentAt->copy()->addDays((int) $settings['comment_stale_days'])
-                    : null,
-            ],
-            [
-                'type' => 'opportunity',
-                'label' => 'cơ hội mới',
-                'days_since' => $daysSinceOpportunity,
-                'threshold' => (int) $settings['opportunity_stale_days'],
-                'remaining_days' => $remainingOpportunity,
-                'overdue' => $opportunityOverdue,
-                'priority' => 2,
-                'stage_started' => $opportunityStageStarted,
-                'anchor_at' => $effectiveOpportunityAt,
-                'due_at' => $effectiveOpportunityAt
-                    ? $effectiveOpportunityAt->copy()->addDays((int) $settings['opportunity_stale_days'])
-                    : $contractGatePassedAt,
-            ],
-            [
-                'type' => 'contract',
-                'label' => 'hợp đồng mới',
-                'days_since' => $daysSinceContract,
-                'threshold' => (int) $settings['contract_stale_days'],
-                'remaining_days' => $remainingContract,
-                'overdue' => $contractOverdue,
-                'priority' => 3,
-                'stage_started' => true,
-                'anchor_at' => $effectiveContractAt,
-                'due_at' => $effectiveContractAt->copy()->addDays((int) $settings['contract_stale_days']),
-            ],
+            $this->buildProtectionRule(
+                'comment',
+                'rotation_anchor',
+                'mốc reset / tạo khách gần nhất',
+                $resetAt,
+                $commentThreshold,
+                $now,
+                1
+            ),
         ];
-        $currentStageRule = ! $contractOverdue
-            ? $rules[2]
-            : (! $opportunityOverdue ? $rules[1] : $rules[0]);
-        $activeStageRemainingDays = ! $contractOverdue
-            ? $remainingContract
-            : (! $opportunityOverdue ? $remainingOpportunity : $remainingComment);
-        $eligible = $commentOverdue;
-        $eligibilityAt = $eligible && $effectiveCommentAt
-            ? $effectiveCommentAt->copy()->addDays((int) $settings['comment_stale_days'])
-            : null;
-        $eligibilityOverdueDays = $eligible && $eligibilityAt
-            ? $eligibilityAt->diffInDays($now)
-            : 0;
-        $daysUntilRotation = $eligible
+        if ($actualCommentAt) {
+            $rules[] = $this->buildProtectionRule(
+                'comment',
+                'comment',
+                'bình luận / ghi chú mới nhất',
+                $actualCommentAt,
+                $commentThreshold,
+                $now,
+                2
+            );
+        }
+        if ($actualOpportunityAt) {
+            $rules[] = $this->buildProtectionRule(
+                'opportunity',
+                'opportunity',
+                'cơ hội mới nhất',
+                $actualOpportunityAt,
+                $opportunityThreshold,
+                $now,
+                3
+            );
+        }
+        if ($actualContractAt) {
+            $rules[] = $this->buildProtectionRule(
+                'contract',
+                'contract',
+                'hợp đồng có ngày bắt đầu hiệu lực gần nhất',
+                $actualContractAt,
+                $contractThreshold,
+                $now,
+                4
+            );
+        }
+
+        $activeRule = collect($rules)
+            ->sort(function (array $left, array $right) {
+                /** @var CarbonInterface|null $leftDueAt */
+                $leftDueAt = $left['due_at'] ?? null;
+                /** @var CarbonInterface|null $rightDueAt */
+                $rightDueAt = $right['due_at'] ?? null;
+
+                $leftTimestamp = $leftDueAt ? $leftDueAt->getTimestamp() : 0;
+                $rightTimestamp = $rightDueAt ? $rightDueAt->getTimestamp() : 0;
+                if ($leftTimestamp !== $rightTimestamp) {
+                    return $rightTimestamp <=> $leftTimestamp;
+                }
+
+                $leftPriority = (int) ($left['tie_breaker'] ?? 0);
+                $rightPriority = (int) ($right['tie_breaker'] ?? 0);
+                if ($leftPriority !== $rightPriority) {
+                    return $rightPriority <=> $leftPriority;
+                }
+
+                return (int) ($right['threshold'] ?? 0) <=> (int) ($left['threshold'] ?? 0);
+            })
+            ->first();
+
+        if (! is_array($activeRule)) {
+            $activeRule = $rules[0];
+        }
+
+        $projectedRotationAt = $activeRule['due_at'] instanceof CarbonInterface
+            ? Carbon::instance($activeRule['due_at'])
+            : $resetAt->copy()->addDays($commentThreshold);
+        $eligibleByRule = $projectedRotationAt->lte($now);
+        $daysUntilRotation = $eligibleByRule
             ? 0
-            : (! $contractOverdue
-                ? $remainingContract + (int) $settings['opportunity_stale_days'] + (int) $settings['comment_stale_days']
-                : (! $opportunityOverdue
-                    ? $remainingOpportunity + (int) $settings['comment_stale_days']
-                    : $remainingComment));
+            : max(0, $now->diffInDays($projectedRotationAt, false));
+        $eligibilityOverdueDays = $eligibleByRule
+            ? $projectedRotationAt->diffInDays($now)
+            : 0;
 
         $currentOwnerId = $this->currentOwnerId($client);
         $currentDepartmentId = $this->currentDepartmentId($client);
@@ -865,10 +861,10 @@ class ClientAutoRotationService
             && $ownerCanGive
             && (! $scopeRequiresDepartment || $currentDepartmentId > 0);
 
-        $triggerType = (string) ($currentStageRule['type'] ?? '');
-        $eligible = $inScope && $eligible;
+        $triggerType = (string) ($activeRule['type'] ?? '');
+        $eligible = $inScope && $eligibleByRule;
         $warningRulesDue = $inScope
-            ? $this->buildWarningRulesDue($currentStageRule)
+            ? $this->buildWarningRulesDue($activeRule)
             : [];
         $warningDue = ! $eligible && ! empty($warningRulesDue);
 
@@ -897,21 +893,13 @@ class ClientAutoRotationService
             $actualContractAt,
             $this->maxDate($actualOpportunityAt, $actualCommentAt)
         ) ?: $rotationAnchorAt;
-        $triggerPriority = $eligible
-            ? $this->triggerPriority('comment')
-            : $this->triggerPriority($triggerType);
-        $triggerThreshold = $eligible
-            ? (int) $settings['comment_stale_days']
-            : (int) ($currentStageRule['threshold'] ?? 0);
-        $triggerDaysSince = $eligible
-            ? $daysSinceComment
-            : (int) ($currentStageRule['days_since'] ?? 0);
+        $triggerPriority = $this->triggerPriority($triggerType);
+        $triggerThreshold = (int) ($activeRule['threshold'] ?? 0);
+        $triggerDaysSince = (int) ($activeRule['days_since'] ?? 0);
         $triggerOverdueDays = $eligible
-            ? max(0, $daysSinceComment - (int) $settings['comment_stale_days'])
+            ? $eligibilityOverdueDays
             : 0;
-        $triggerEffectiveAt = $eligible
-            ? $eligibilityAt
-            : ($currentStageRule['due_at'] ?? $lastMeaningfulActivityAt);
+        $triggerEffectiveAt = $projectedRotationAt;
 
         return [
             'enabled' => (bool) $settings['enabled'],
@@ -937,9 +925,12 @@ class ClientAutoRotationService
             'last_comment_at' => $actualCommentAt?->toIso8601String(),
             'last_opportunity_at' => $actualOpportunityAt?->toIso8601String(),
             'last_contract_at' => $actualContractAt?->toIso8601String(),
-            'effective_comment_at' => $effectiveCommentAt?->toIso8601String(),
-            'effective_opportunity_at' => $effectiveOpportunityAt?->toIso8601String(),
-            'effective_contract_at' => $effectiveContractAt->toIso8601String(),
+            'effective_comment_at' => $commentAnchorAt->toIso8601String(),
+            'effective_opportunity_at' => $actualOpportunityAt?->toIso8601String(),
+            'effective_contract_at' => $actualContractAt?->toIso8601String(),
+            'comment_has_activity' => (bool) $actualCommentAt,
+            'opportunity_has_activity' => (bool) $actualOpportunityAt,
+            'contract_has_activity' => (bool) $actualContractAt,
             'days_since_comment' => $daysSinceComment,
             'days_since_opportunity' => $daysSinceOpportunity,
             'days_since_contract' => $daysSinceContract,
@@ -947,22 +938,33 @@ class ClientAutoRotationService
             'remaining_opportunity_days' => $remainingOpportunity,
             'remaining_contract_days' => $remainingContract,
             'days_until_rotation' => $daysUntilRotation,
+            'projected_rotation_at' => $projectedRotationAt->toIso8601String(),
             'active_stage_type' => $triggerType,
-            'active_stage_remaining_days' => $activeStageRemainingDays,
-            'opportunity_stage_started' => $opportunityStageStarted,
-            'comment_stage_started' => $commentStageStarted,
+            'active_stage_remaining_days' => (int) ($activeRule['remaining_days'] ?? 0),
+            'active_rule_type' => $triggerType,
+            'active_rule_source' => (string) ($activeRule['source'] ?? ''),
+            'active_rule_label' => (string) ($activeRule['label'] ?? ''),
+            'active_rule_anchor_at' => ($activeRule['anchor_at'] ?? null) instanceof CarbonInterface
+                ? Carbon::instance($activeRule['anchor_at'])->toIso8601String()
+                : null,
+            'active_rule_due_at' => ($activeRule['due_at'] ?? null) instanceof CarbonInterface
+                ? Carbon::instance($activeRule['due_at'])->toIso8601String()
+                : null,
+            'opportunity_stage_started' => (bool) $actualOpportunityAt,
+            'comment_stage_started' => true,
             'warning_due' => $warningDue,
             'warning_rules_due' => $warningRulesDue,
             'eligible_for_auto_rotation' => $eligible,
             'trigger_type' => $triggerType,
+            'trigger_source' => (string) ($activeRule['source'] ?? ''),
             'trigger_days_since' => $triggerDaysSince,
             'trigger_threshold_days' => $triggerThreshold,
             'trigger_priority' => $triggerPriority,
             'trigger_overdue_days' => $triggerOverdueDays,
             'trigger_effective_at' => $triggerEffectiveAt?->toIso8601String(),
-            'trigger_label' => $this->rotationRuleLabel($rules, $currentStageRule, $eligible, $daysUntilRotation),
-            'protecting_signal' => $currentStageRule['type'] ?? null,
-            'protecting_label' => $this->rotationRuleLabel($rules, $currentStageRule, $eligible, $daysUntilRotation),
+            'trigger_label' => $this->rotationRuleLabel($activeRule, $eligible, $daysUntilRotation, $projectedRotationAt, $eligibilityOverdueDays),
+            'protecting_signal' => $activeRule['type'] ?? null,
+            'protecting_label' => $this->rotationRuleLabel($activeRule, $eligible, $daysUntilRotation, $projectedRotationAt, $eligibilityOverdueDays),
             'priority_bucket' => $priorityBucket,
             'priority_order' => $priorityOrder,
             'contract_count' => $contractCount,
@@ -981,14 +983,43 @@ class ClientAutoRotationService
             ],
             'status_label' => $this->rotationStatusLabel(
                 $inScope,
-                $currentStageRule,
+                $activeRule,
                 $eligible,
                 $daysUntilRotation,
                 $scopeReasons,
-                $daysSinceComment,
-                $daysSinceOpportunity,
-                $daysSinceContract
+                $eligibilityOverdueDays
             ),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildProtectionRule(
+        string $type,
+        string $source,
+        string $label,
+        CarbonInterface $anchorAt,
+        int $threshold,
+        CarbonInterface $now,
+        int $tieBreaker
+    ): array {
+        $daysSince = $anchorAt->diffInDays($now);
+        $remainingDays = max(0, $threshold - $daysSince);
+        $dueAt = Carbon::instance($anchorAt)->copy()->addDays($threshold);
+
+        return [
+            'type' => $type,
+            'source' => $source,
+            'label' => $label,
+            'threshold' => $threshold,
+            'days_since' => $daysSince,
+            'remaining_days' => $remainingDays,
+            'overdue' => $daysSince >= $threshold,
+            'priority' => $this->triggerPriority($type),
+            'anchor_at' => Carbon::instance($anchorAt),
+            'due_at' => $dueAt,
+            'tie_breaker' => $tieBreaker,
         ];
     }
 
@@ -1101,52 +1132,39 @@ class ClientAutoRotationService
     }
 
     /**
-     * @param  array<int, array<string, mixed>>  $rules
-     * @param  array<string, mixed>|null  $blockingRule
+     * @param  array<string, mixed>|null  $activeRule
      */
-    private function rotationRuleLabel(array $rules, ?array $blockingRule, bool $eligible, int $daysUntilRotation): ?string
-    {
-        $indexedRules = collect($rules)
-            ->keyBy(fn (array $rule) => (string) ($rule['type'] ?? ''))
-            ->all();
-        $commentRule = $indexedRules['comment'] ?? null;
-        $opportunityRule = $indexedRules['opportunity'] ?? null;
-        $contractRule = $indexedRules['contract'] ?? null;
-
-        if (! is_array($commentRule) || ! is_array($opportunityRule) || ! is_array($contractRule)) {
+    private function rotationRuleLabel(
+        ?array $activeRule,
+        bool $eligible,
+        int $daysUntilRotation,
+        ?CarbonInterface $projectedRotationAt,
+        int $overdueDays
+    ): ?string {
+        if (! is_array($activeRule) || empty($activeRule['type'])) {
             return null;
         }
+
+        $ruleLabel = trim((string) ($activeRule['label'] ?? 'mốc hoạt động gần nhất'));
+        $threshold = (int) ($activeRule['threshold'] ?? 0);
+        $projectedLabel = $this->formatRotationDate($projectedRotationAt);
 
         if ($eligible) {
             return sprintf(
-                'Khách được đếm tuần tự theo 3 tầng: hợp đồng → cơ hội → bình luận. Hiện mốc hợp đồng đã quá hạn, mốc cơ hội cũng đã quá hạn, và tầng cuối là bình luận / ghi chú đã quá %d ngày trên mốc %d ngày nên khách đã đủ điều kiện điều chuyển.',
-                (int) ($commentRule['days_since'] ?? 0),
-                (int) ($commentRule['threshold'] ?? 0)
+                'Khách đã đủ điều kiện xoay vì mốc bảo vệ xa nhất hiện tại là %s, đặt ngày xoay ở %s và mốc này đã quá hạn %d ngày trên ngưỡng %d ngày.',
+                $ruleLabel,
+                $projectedLabel,
+                $overdueDays,
+                $threshold,
             );
         }
 
-        if (! is_array($blockingRule) || empty($blockingRule['type'])) {
-            return null;
-        }
-
-        return match ((string) ($blockingRule['type'] ?? '')) {
-            'contract' => sprintf(
-                'Đang ở tầng 1: hợp đồng. Còn %d ngày nữa sẽ quá mốc %d ngày chưa có hợp đồng mới; chỉ sau khi quá mốc này hệ thống mới bắt đầu đếm tầng cơ hội.',
-                (int) ($blockingRule['remaining_days'] ?? 0),
-                (int) ($contractRule['threshold'] ?? 0)
-            ),
-            'opportunity' => sprintf(
-                'Đang ở tầng 2: cơ hội. Mốc hợp đồng đã quá hạn; hiện còn %d ngày nữa sẽ quá mốc %d ngày chưa có cơ hội mới. Sau khi tầng cơ hội cũng quá hạn, hệ thống mới bắt đầu đếm tầng bình luận.',
-                (int) ($blockingRule['remaining_days'] ?? 0),
-                (int) ($opportunityRule['threshold'] ?? 0)
-            ),
-            'comment' => sprintf(
-                'Đang ở tầng 3: bình luận / ghi chú. Hợp đồng và cơ hội đã quá hạn; hiện còn %d ngày nữa sẽ quá mốc %d ngày chưa có cập nhật chăm sóc mới. Khi tầng cuối này cũng quá hạn, khách sẽ vào diện xoay.',
-                (int) ($blockingRule['remaining_days'] ?? 0),
-                (int) ($commentRule['threshold'] ?? 0)
-            ),
-            default => sprintf('Còn %d ngày nữa mới đủ điều kiện xoay.', $daysUntilRotation),
-        };
+        return sprintf(
+            'Ngày xoay hiện tại đang được giữ bởi %s đến %s. Nếu không có hợp đồng, cơ hội hoặc bình luận mới đẩy mốc xa hơn, khách còn %d ngày nữa sẽ vào diện xoay.',
+            $ruleLabel,
+            $projectedLabel,
+            $daysUntilRotation,
+        );
     }
 
     /**
@@ -1158,9 +1176,7 @@ class ClientAutoRotationService
         bool $eligible,
         int $daysUntilRotation,
         array $scopeReasons,
-        int $daysSinceComment,
-        int $daysSinceOpportunity,
-        int $daysSinceContract
+        int $overdueDays
     ): string {
         if (! $inScope) {
             if (in_array('settings_disabled', $scopeReasons, true)) {
@@ -1183,18 +1199,22 @@ class ClientAutoRotationService
         }
 
         if ($eligible) {
+            $ruleLabel = trim((string) ($blockingRule['label'] ?? 'mốc hoạt động gần nhất'));
+
             return sprintf(
-                'Đủ điều kiện điều chuyển vì đã đi hết tuần tự 3 tầng: hợp đồng quá hạn, cơ hội quá hạn và bình luận cuối cùng cũng quá hạn %d ngày',
-                $daysSinceComment,
+                'Đủ điều kiện điều chuyển vì %s đang là mốc bảo vệ xa nhất và đã quá hạn %d ngày',
+                $ruleLabel,
+                $overdueDays,
             );
         }
 
         $blockingType = (string) ($blockingRule['type'] ?? '');
+        $ruleLabel = trim((string) ($blockingRule['label'] ?? 'mốc hoạt động gần nhất'));
 
         return match ($blockingType) {
-            'contract' => sprintf('Đang đếm tầng hợp đồng, còn tối thiểu %d ngày nữa mới có thể vào diện xoay', $daysUntilRotation),
-            'opportunity' => sprintf('Hợp đồng đã quá hạn, đang đếm tầng cơ hội; còn tối thiểu %d ngày nữa mới có thể vào diện xoay', $daysUntilRotation),
-            'comment' => sprintf('Hợp đồng và cơ hội đã quá hạn, đang đếm tầng bình luận; còn %d ngày nữa sẽ vào diện xoay', $daysUntilRotation),
+            'contract' => sprintf('Đang được giữ bởi %s; còn %d ngày nữa tới mốc xoay hiện tại', $ruleLabel, $daysUntilRotation),
+            'opportunity' => sprintf('Đang được giữ bởi %s; còn %d ngày nữa tới mốc xoay hiện tại', $ruleLabel, $daysUntilRotation),
+            'comment' => sprintf('Đang được giữ bởi %s; còn %d ngày nữa tới mốc xoay hiện tại', $ruleLabel, $daysUntilRotation),
             default => sprintf('Còn %d ngày nữa mới đủ điều kiện xoay', $daysUntilRotation),
         };
     }
@@ -1586,8 +1606,13 @@ class ClientAutoRotationService
             );
 
             $triggerType = (string) ($freshInsight['trigger_type'] ?? 'inactive');
-            $triggerDays = (int) ($freshInsight['trigger_days_since'] ?? 0);
-            $triggerThreshold = (int) ($freshInsight['trigger_threshold_days'] ?? 0);
+            $triggerOverdueDays = (int) ($freshInsight['trigger_overdue_days'] ?? 0);
+            $activeRule = [
+                'type' => $freshInsight['active_rule_type'] ?? $triggerType,
+                'source' => $freshInsight['active_rule_source'] ?? ($freshInsight['trigger_source'] ?? ''),
+                'label' => $freshInsight['active_rule_label'] ?? '',
+                'threshold' => $freshInsight['trigger_threshold_days'] ?? 0,
+            ];
 
             $this->recordAssignmentHistory(
                 $client,
@@ -1598,7 +1623,7 @@ class ClientAutoRotationService
                 $freshInsight,
                 null,
                 $this->rotationReasonCode($triggerType),
-                $this->autoRotationNote($triggerType, $triggerDays, $triggerThreshold),
+                $this->autoRotationNote($activeRule, $triggerOverdueDays),
                 $now
             );
 
@@ -1902,11 +1927,14 @@ class ClientAutoRotationService
             ->all();
         $title = sprintf('Khách hàng "%s" đang tiến gần điều kiện xoay', $client->name ?: 'Khách hàng');
         $activeStageType = (string) ($insight['active_stage_type'] ?? '');
+        $activeRuleSource = (string) ($insight['active_rule_source'] ?? '');
         $stageContext = match ($activeStageType) {
-            'contract' => 'Hiện hệ thống đang đếm tầng 1 là hợp đồng. Khi tầng này quá hạn xong mới bắt đầu đếm tầng cơ hội.',
-            'opportunity' => 'Hiện hệ thống đang đếm tầng 2 là cơ hội vì tầng hợp đồng đã quá hạn. Khi tầng này quá hạn xong mới bắt đầu đếm tầng bình luận.',
-            'comment' => 'Hiện hệ thống đang đếm tầng 3 là bình luận vì tầng hợp đồng và cơ hội đều đã quá hạn.',
-            default => 'Hiện hệ thống đang đếm tuần tự theo các tầng xoay khách.',
+            'contract' => 'Hiện ngày xoay đang được kéo xa nhất bởi hợp đồng có ngày bắt đầu hiệu lực gần nhất.',
+            'opportunity' => 'Hiện ngày xoay đang được kéo xa nhất bởi cơ hội mới nhất.',
+            'comment' => $activeRuleSource === 'rotation_anchor'
+                ? 'Hiện chưa có hợp đồng, cơ hội hoặc bình luận nào đẩy ngày xoay ra xa hơn, nên hệ thống đang lấy mốc reset / tạo khách + ngưỡng bình luận.'
+                : 'Hiện ngày xoay đang được kéo xa nhất bởi bình luận / ghi chú mới nhất.',
+            default => 'Hiện hệ thống đang lấy mốc bảo vệ xa nhất để tính ngày xoay.',
         };
         $body = sprintf(
             '%s • %s. %s',
@@ -2137,9 +2165,8 @@ class ClientAutoRotationService
     private function rotationAnchorLabel(string $source): string
     {
         return match ($source) {
-            'contract_reset' => 'Hợp đồng mới nhất đang là mốc reset chung. Từ mốc này, hệ thống đếm tầng hợp đồng trước; chỉ khi tầng này quá hạn mới mở sang tầng cơ hội, rồi cuối cùng mới tới tầng bình luận.',
-            'assignment_reset' => 'Lần đổi phụ trách / xoay gần nhất đang là mốc reset chung. Từ mốc này, hệ thống bắt đầu lại chuỗi đếm tuần tự: hợp đồng trước, rồi cơ hội, rồi cuối cùng mới tới bình luận.',
-            default => 'Hệ thống lấy ngày tạo khách làm mốc gốc. Hợp đồng mới sẽ reset lại trục đếm; cơ hội mới chỉ tác động khi đã qua tầng hợp đồng; bình luận mới chỉ tác động khi đã qua cả tầng hợp đồng và cơ hội.',
+            'assignment_reset' => 'Lần đổi phụ trách / xoay gần nhất đang là mốc gốc. Nếu chưa có hợp đồng, cơ hội hoặc bình luận nào tạo ra ngày xoay xa hơn, hệ thống sẽ lấy mốc này + ngưỡng bình luận để tính ngày xoay.',
+            default => 'Hệ thống lấy ngày tạo khách làm mốc gốc. Nếu chưa có hợp đồng, cơ hội hoặc bình luận nào tạo ra ngày xoay xa hơn, hệ thống sẽ lấy mốc này + ngưỡng bình luận để tính ngày xoay.',
         };
     }
 
@@ -2183,13 +2210,31 @@ class ClientAutoRotationService
         };
     }
 
-    private function autoRotationNote(string $type, int $daysSince, int $threshold): string
+    private function autoRotationNote(array $rule, int $daysOverdue): string
     {
+        $type = (string) ($rule['type'] ?? '');
+        $source = (string) ($rule['source'] ?? '');
+        $threshold = (int) ($rule['threshold'] ?? 0);
+        $label = trim((string) ($rule['label'] ?? 'mốc hoạt động gần nhất'));
+
         return match ($type) {
-            'contract' => sprintf('Điều chuyển tự động vì đã %d ngày chưa có hợp đồng mới, vượt mốc %d ngày theo cấu hình.', $daysSince, $threshold),
-            'opportunity' => sprintf('Điều chuyển tự động vì đã %d ngày chưa có cơ hội mới, vượt mốc %d ngày theo cấu hình.', $daysSince, $threshold),
-            'comment' => sprintf('Điều chuyển tự động vì mốc hợp đồng và cơ hội đã quá hạn từ trước, và tầng cuối là bình luận / ghi chú cũng đã %d ngày vượt mốc %d ngày theo cấu hình.', $daysSince, $threshold),
+            'contract' => sprintf('Điều chuyển tự động vì %s đang là mốc bảo vệ xa nhất và đã quá %d ngày so với ngưỡng %d ngày theo cấu hình.', $label, $daysOverdue, $threshold),
+            'opportunity' => sprintf('Điều chuyển tự động vì %s đang là mốc bảo vệ xa nhất và đã quá %d ngày so với ngưỡng %d ngày theo cấu hình.', $label, $daysOverdue, $threshold),
+            'comment' => $source === 'rotation_anchor'
+                ? sprintf('Điều chuyển tự động vì từ mốc reset / tạo khách gần nhất đến nay đã quá %d ngày trên ngưỡng %d ngày mà không có bình luận, cơ hội hoặc hợp đồng mới đẩy ngày xoay ra xa hơn.', $daysOverdue, $threshold)
+                : sprintf('Điều chuyển tự động vì %s đang là mốc bảo vệ xa nhất và đã quá %d ngày so với ngưỡng %d ngày theo cấu hình.', $label, $daysOverdue, $threshold),
             default => 'Điều chuyển tự động do khách hàng không có hoạt động chăm sóc phù hợp theo cấu hình xoay vòng.',
         };
+    }
+
+    private function formatRotationDate(?CarbonInterface $date): string
+    {
+        if (! $date) {
+            return 'không xác định';
+        }
+
+        return Carbon::instance($date)
+            ->timezone('Asia/Ho_Chi_Minh')
+            ->format('d/m/Y H:i');
     }
 }

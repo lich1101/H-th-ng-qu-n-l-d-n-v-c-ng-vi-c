@@ -119,7 +119,7 @@ export default function CustomerDetail({ auth, clientId }) {
                                         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-text-subtle">Theo dõi xoay khách</p>
                                         <h2 className="mt-2 text-lg font-semibold text-slate-900">{rotation.status_label || 'Chưa có trạng thái'}</h2>
                                         <p className="mt-1 text-sm text-slate-600">
-                                            {rotation.trigger_label || rotation.protecting_label || 'Khách được đếm tuần tự theo 3 tầng: hợp đồng, rồi cơ hội, rồi cuối cùng mới tới bình luận / ghi chú.'}
+                                            {rotation.trigger_label || rotation.protecting_label || 'Hệ thống lấy mốc bảo vệ xa nhất giữa hợp đồng, cơ hội, bình luận và mốc reset / tạo khách để tính ngày xoay.'}
                                         </p>
                                     </div>
                                     <div className={`rounded-full px-3 py-1 text-xs font-semibold ${
@@ -145,35 +145,39 @@ export default function CustomerDetail({ auth, clientId }) {
                                     <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">
                                         <div className="text-xs text-slate-500">Bình luận / ghi chú gần nhất</div>
                                         <div className="mt-1 text-lg font-semibold text-slate-900">
-                                            {rotation.comment_stage_started ? `${rotation.days_since_comment ?? 0} ngày` : 'Chưa đếm'}
+                                            {rotation.comment_has_activity ? `${rotation.days_since_comment ?? 0} ngày` : 'Chưa có'}
                                         </div>
                                         <div className="mt-1 text-xs text-slate-500">
                                             Mốc xoay: {rotation.thresholds?.comment_stale_days ?? '—'} ngày
                                         </div>
                                         <div className="mt-1 text-xs text-slate-400">
-                                            Tính từ: {rotation.comment_stage_started && rotation.effective_comment_at ? formatVietnamDateTime(rotation.effective_comment_at) : 'Chưa bắt đầu'}
+                                            {rotation.comment_has_activity
+                                                ? `Tính từ: ${formatVietnamDateTime(rotation.effective_comment_at)}`
+                                                : `Fallback theo mốc reset: ${rotation.rotation_anchor_at ? formatVietnamDateTime(rotation.rotation_anchor_at) : '—'}`}
                                         </div>
                                     </div>
                                     <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">
                                         <div className="text-xs text-slate-500">Cơ hội gần nhất</div>
                                         <div className="mt-1 text-lg font-semibold text-slate-900">
-                                            {rotation.opportunity_stage_started ? `${rotation.days_since_opportunity ?? 0} ngày` : 'Chưa đếm'}
+                                            {rotation.opportunity_has_activity ? `${rotation.days_since_opportunity ?? 0} ngày` : 'Chưa có'}
                                         </div>
                                         <div className="mt-1 text-xs text-slate-500">
                                             Mốc xoay: {rotation.thresholds?.opportunity_stale_days ?? '—'} ngày
                                         </div>
                                         <div className="mt-1 text-xs text-slate-400">
-                                            Tính từ: {rotation.opportunity_stage_started && rotation.effective_opportunity_at ? formatVietnamDateTime(rotation.effective_opportunity_at) : 'Chưa bắt đầu'}
+                                            Tính từ: {rotation.opportunity_has_activity && rotation.effective_opportunity_at ? formatVietnamDateTime(rotation.effective_opportunity_at) : 'Chưa có cơ hội để gia hạn'}
                                         </div>
                                     </div>
                                     <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3">
                                         <div className="text-xs text-slate-500">Hợp đồng gần nhất</div>
-                                        <div className="mt-1 text-lg font-semibold text-slate-900">{rotation.days_since_contract ?? '—'} ngày</div>
+                                        <div className="mt-1 text-lg font-semibold text-slate-900">
+                                            {rotation.contract_has_activity ? `${rotation.days_since_contract ?? 0} ngày` : 'Chưa có'}
+                                        </div>
                                         <div className="mt-1 text-xs text-slate-500">
                                             Mốc xoay: {rotation.thresholds?.contract_stale_days ?? '—'} ngày
                                         </div>
                                         <div className="mt-1 text-xs text-slate-400">
-                                            Tính từ: {rotation.effective_contract_at ? formatVietnamDateTime(rotation.effective_contract_at) : '—'}
+                                            Tính từ: {rotation.contract_has_activity && rotation.effective_contract_at ? formatVietnamDateTime(rotation.effective_contract_at) : 'Chưa có hợp đồng để gia hạn'}
                                         </div>
                                     </div>
                                 </div>
@@ -192,12 +196,15 @@ export default function CustomerDetail({ auth, clientId }) {
                                         </div>
                                     </div>
                                     <div className="rounded-2xl border border-slate-200/80 px-4 py-3">
-                                        <div className="text-xs text-slate-500">Ưu tiên khi đưa vào hàng chờ xoay</div>
+                                        <div className="text-xs text-slate-500">Mốc đang giữ ngày xoay</div>
                                         <div className="mt-1 text-sm font-semibold text-slate-900">
-                                            {rotation.priority_label || 'Khách tiềm năng thuần'}
+                                            {rotation.active_rule_label || 'Mốc reset / tạo khách gần nhất'}
                                         </div>
                                         <div className="mt-1 text-xs text-slate-500">
-                                            {rotation.priority_rule_label || 'Ưu tiên số hợp đồng giảm dần, nếu bằng nhau thì xét số cơ hội; nếu cả hai đều là khách tiềm năng thì random.'}
+                                            Ngày xoay dự kiến: {rotation.projected_rotation_at ? formatVietnamDateTime(rotation.projected_rotation_at) : '—'}.
+                                        </div>
+                                        <div className="mt-2 text-xs text-slate-500">
+                                            Ưu tiên khi đưa vào hàng chờ xoay: {rotation.priority_label || 'Khách tiềm năng thuần'}. {rotation.priority_rule_label || 'Ưu tiên số hợp đồng giảm dần, nếu bằng nhau thì xét số cơ hội; nếu cả hai đều là khách tiềm năng thì random.'}
                                         </div>
                                     </div>
                                 </div>
