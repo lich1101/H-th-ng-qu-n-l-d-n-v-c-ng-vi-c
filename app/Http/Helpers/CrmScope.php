@@ -14,6 +14,11 @@ use Illuminate\Support\Collection;
  */
 class CrmScope
 {
+    public static function canViewRotationPoolClientsInCrm(User $user): bool
+    {
+        return in_array($user->role, ['admin', 'administrator'], true);
+    }
+
     public static function hasGlobalScope(User $user): bool
     {
         return in_array($user->role, ['admin', 'administrator', 'ke_toan'], true);
@@ -101,7 +106,9 @@ class CrmScope
 
     public static function applyClientScope(Builder $query, User $user): Builder
     {
-        self::applyNotInRotationPool($query);
+        if (! self::canViewRotationPoolClientsInCrm($user)) {
+            self::applyNotInRotationPool($query);
+        }
 
         if (self::hasGlobalScope($user)) {
             return $query;
@@ -156,7 +163,9 @@ class CrmScope
      */
     public static function applyClientScopeAssignedOnly(Builder $query, User $user): Builder
     {
-        self::applyNotInRotationPool($query);
+        if (! self::canViewRotationPoolClientsInCrm($user)) {
+            self::applyNotInRotationPool($query);
+        }
 
         if (self::hasGlobalScope($user)) {
             return $query;
@@ -316,7 +325,7 @@ class CrmScope
     public static function canAccessClient(User $user, Client $client): bool
     {
         if (self::isClientInRotationPool($client)) {
-            return false;
+            return self::canViewRotationPoolClientsInCrm($user);
         }
 
         if (self::hasGlobalScope($user)) {
@@ -337,7 +346,7 @@ class CrmScope
     public static function canManageClient(User $user, Client $client): bool
     {
         if (self::isClientInRotationPool($client)) {
-            return false;
+            return self::canViewRotationPoolClientsInCrm($user);
         }
 
         if (in_array($user->role, ['admin', 'administrator'], true)) {

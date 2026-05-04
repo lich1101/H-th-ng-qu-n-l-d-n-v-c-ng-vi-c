@@ -349,12 +349,6 @@ class CRMController extends Controller
         $transferService = app(ClientStaffTransferService::class);
         $pending = $transferService->pendingForClient((int) $client->id);
 
-        if ($client->inRotationPool()) {
-            return response()->json([
-                'message' => 'Khách hàng đang ở kho số. Hãy nhận khách để xem chi tiết đầy đủ.',
-            ], 403);
-        }
-
         if ($this->canAccessClient($user, $client)) {
             $clientRelations = [
                 'leadType',

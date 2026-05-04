@@ -155,7 +155,7 @@ export default function TaskDetail(props) {
         params.delete('add_item');
         const q = params.toString();
         const path = window.location.pathname;
-        window.history.replaceState({}, '', q ? `${path}?${q}` : path);
+        window.history.replaceState(window.history.state || {}, document.title, q ? `${path}?${q}` : path);
         // Chỉ cần phiên bản mới nhất của openItemForm khi task đã tải (add_item=1).
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [loading, task, canManageItems]);

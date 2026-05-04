@@ -108,7 +108,9 @@ class ClientFlowController extends Controller
 
         $opportunitiesQuery = Opportunity::query()
             ->where('client_id', $client->id);
-        CrmScope::applyOpportunityScope($opportunitiesQuery, $user);
+        if (! ($client->inRotationPool() && CrmScope::canViewRotationPoolClientsInCrm($user))) {
+            CrmScope::applyOpportunityScope($opportunitiesQuery, $user);
+        }
         $opportunities = $opportunitiesQuery
             ->with([
                 'assignee:id,name,email',

@@ -549,7 +549,7 @@ const syncContractFiltersToUrl = (filtersArg, page = 1) => {
 
     const query = params.toString();
     const nextUrl = query ? `${window.location.pathname}?${query}` : window.location.pathname;
-    window.history.replaceState({}, document.title, nextUrl);
+    window.history.replaceState(window.history.state || {}, document.title, nextUrl);
 };
 const BULK_DATE_SYNC_BATCH_SIZE = 250;
 const chunkArray = (items = [], size = BULK_DATE_SYNC_BATCH_SIZE) => {

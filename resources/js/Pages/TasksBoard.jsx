@@ -520,7 +520,7 @@ export default function TasksBoard(props) {
                     params.set('assignee_ids', nextFilters.assignee_ids.join(','));
                 }
                 const query = params.toString();
-                window.history.replaceState({}, '', query ? `/cong-viec?${query}` : '/cong-viec');
+                window.history.replaceState(window.history.state || {}, document.title, query ? `/cong-viec?${query}` : '/cong-viec');
             }
         } catch (e) {
             toast.error(e?.response?.data?.message || 'Không tải được danh sách công việc.');
@@ -1361,7 +1361,7 @@ export default function TasksBoard(props) {
             if (!params.has('chat_task_id')) return;
             params.delete('chat_task_id');
             const query = params.toString();
-            window.history.replaceState({}, '', query ? `/cong-viec?${query}` : '/cong-viec');
+            window.history.replaceState(window.history.state || {}, document.title, query ? `/cong-viec?${query}` : '/cong-viec');
         };
 
         const openFromQuery = async () => {

@@ -474,7 +474,7 @@ export default function ChatbotAssistantPanel({
         } else {
             url.searchParams.delete('bot_id');
         }
-        window.history.replaceState({}, '', url.toString());
+        window.history.replaceState(window.history.state || {}, document.title, url.toString());
         return undefined;
     }, [embedded, selectedBotId]);
 

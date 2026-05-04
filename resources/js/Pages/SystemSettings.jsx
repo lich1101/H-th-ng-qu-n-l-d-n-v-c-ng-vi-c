@@ -879,7 +879,7 @@ export default function SystemSettings(props) {
 
         const nextQuery = nextParams.toString();
         const nextUrl = nextQuery ? `${window.location.pathname}?${nextQuery}` : window.location.pathname;
-        window.history.replaceState({}, document.title, nextUrl);
+        window.history.replaceState(window.history.state || {}, document.title, nextUrl);
         void reloadSystemStatus();
         void loadAdminSettings();
         // eslint-disable-next-line react-hooks/exhaustive-deps

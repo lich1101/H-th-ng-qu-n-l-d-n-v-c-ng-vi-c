@@ -137,7 +137,7 @@ function syncCrmListStateToUrl(filtersArg, page) {
 
     const query = params.toString();
     const nextUrl = query ? `${window.location.pathname}?${query}` : window.location.pathname;
-    window.history.replaceState({}, document.title, nextUrl);
+    window.history.replaceState(window.history.state || {}, document.title, nextUrl);
 }
 
 /** Query GET: gửi assigned_staff_ids dạng "1,2" để Laravel nhận ổn định (tránh lỗi serialize mảng trên một số proxy/stack). */
