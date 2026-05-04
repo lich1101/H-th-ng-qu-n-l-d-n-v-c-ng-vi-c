@@ -827,7 +827,14 @@ export default function ClientFlow({ auth, clientId }) {
                     <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
                             <div className="text-xs uppercase tracking-[0.14em] text-text-subtle">Khách hàng</div>
-                            <h3 className="mt-1 text-xl font-semibold text-slate-900">{flow?.client?.name || '—'}</h3>
+                            <div className="mt-1 flex flex-wrap items-center gap-2">
+                                <h3 className="text-xl font-semibold text-slate-900">{flow?.client?.name || '—'}</h3>
+                                {flow?.client?.is_in_rotation_pool && (
+                                    <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+                                        Đang ở kho số
+                                    </span>
+                                )}
+                            </div>
                             <p className="mt-1 text-sm text-slate-500">{flow?.client?.company || 'Chưa có công ty'} • {flow?.client?.phone || 'Chưa có số điện thoại'}</p>
                         </div>
                         <div className="flex flex-wrap gap-2">
@@ -868,6 +875,16 @@ export default function ClientFlow({ auth, clientId }) {
                             </div>
                         ))}
                     </div>
+
+                    {flow?.client?.is_in_rotation_pool && (
+                        <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                            <p className="font-semibold">Khách hàng đang mở nhận trong kho số</p>
+                            <p className="mt-1 text-xs leading-5">
+                                Khách này vẫn giữ người phụ trách hiện tại trong CRM cho đến khi có nhân sự khác nhận từ kho số.
+                                {flow?.client?.rotation_pool_entered_at ? ` Đưa vào kho số lúc ${formatDateTime(flow.client.rotation_pool_entered_at)}.` : ''}
+                            </p>
+                        </div>
+                    )}
 
                     <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
                         <p className="font-semibold">Công thức tiến độ tổng: {summary.progressPercent}%</p>

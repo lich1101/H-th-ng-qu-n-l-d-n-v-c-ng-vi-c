@@ -33,6 +33,8 @@ class CRMController extends Controller
 
     public function clients(Request $request): JsonResponse
     {
+        app(ClientAutoRotationService::class)->repairRotationPoolOwnersFromHistory();
+
         $clientRelations = [
             'leadType',
             'salesOwner',
@@ -224,6 +226,8 @@ class CRMController extends Controller
             return response()->json(['message' => 'Không có quyền xem kho số.'], 403);
         }
 
+        app(ClientAutoRotationService::class)->repairRotationPoolOwnersFromHistory();
+
         $query = Client::query()
             ->onlyRotationPool()
             ->select(['id', 'name', 'rotation_pool_entered_at'])
@@ -346,6 +350,10 @@ class CRMController extends Controller
     public function showClient(Request $request, Client $client): JsonResponse
     {
         $user = $request->user();
+        if ($client->inRotationPool()) {
+            app(ClientAutoRotationService::class)->ensureRotationPoolOwnerState($client);
+            $client->refresh();
+        }
         $transferService = app(ClientStaffTransferService::class);
         $pending = $transferService->pendingForClient((int) $client->id);
 

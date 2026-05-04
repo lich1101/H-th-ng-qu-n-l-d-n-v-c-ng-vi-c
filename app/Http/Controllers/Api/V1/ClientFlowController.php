@@ -29,6 +29,10 @@ class ClientFlowController extends Controller
         $user = $request->user();
         $transferService = app(ClientStaffTransferService::class);
         $rotationService = app(ClientAutoRotationService::class);
+        if ($client->inRotationPool()) {
+            $rotationService->ensureRotationPoolOwnerState($client);
+            $client->refresh();
+        }
         $canViewRotationHistory = in_array($user?->role, ['admin', 'administrator'], true);
 
         if ($transferService->viewerMustOnlyRespondTransfer($user, $client)) {
@@ -108,7 +112,7 @@ class ClientFlowController extends Controller
 
         $opportunitiesQuery = Opportunity::query()
             ->where('client_id', $client->id);
-        if (! ($client->inRotationPool() && CrmScope::canViewRotationPoolClientsInCrm($user))) {
+        if (! ($client->inRotationPool() && CrmScope::canAccessRotationPoolClient($user, $client))) {
             CrmScope::applyOpportunityScope($opportunitiesQuery, $user);
         }
         $opportunities = $opportunitiesQuery
@@ -244,6 +248,9 @@ class ClientFlowController extends Controller
                     : null,
                 'assigned_staff_id' => $client->assigned_staff_id,
                 'sales_owner_id' => $client->sales_owner_id,
+                'is_in_rotation_pool' => (bool) ($client->is_in_rotation_pool ?? false),
+                'rotation_pool_entered_at' => optional($client->rotation_pool_entered_at)->toIso8601String(),
+                'rotation_pool_reason' => $client->rotation_pool_reason,
                 'lead_source' => $client->lead_source,
                 'lead_channel' => $client->lead_channel,
                 'lead_message' => $client->lead_message,
@@ -588,12 +595,19 @@ class ClientFlowController extends Controller
                 ->values()
                 ->all();
 
-            $recipientIds = collect(array_merge(
-                $adminIds,
-                [$assignedStaffId > 0 ? $assignedStaffId : null],
-                [$managerId > 0 ? $managerId : null],
-                $careStaffIds
-            ))
+            $targetIdPool = $client->inRotationPool()
+                ? array_merge(
+                    $adminIds,
+                    [$assignedStaffId > 0 ? $assignedStaffId : null]
+                )
+                : array_merge(
+                    $adminIds,
+                    [$assignedStaffId > 0 ? $assignedStaffId : null],
+                    [$managerId > 0 ? $managerId : null],
+                    $careStaffIds
+                );
+
+            $recipientIds = collect($targetIdPool)
                 ->map(function ($id) {
                     return (int) $id;
                 })

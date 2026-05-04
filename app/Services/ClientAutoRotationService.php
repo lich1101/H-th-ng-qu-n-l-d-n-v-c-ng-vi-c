@@ -174,6 +174,95 @@ class ClientAutoRotationService
         $client->save();
     }
 
+    public function repairRotationPoolOwnersFromHistory(int $limit = 1000): int
+    {
+        $clientIds = Client::query()
+            ->onlyRotationPool()
+            ->where(function ($query) {
+                $query->whereNull('assigned_staff_id')
+                    ->orWhere('assigned_staff_id', 0)
+                    ->orWhereNull('sales_owner_id')
+                    ->orWhere('sales_owner_id', 0);
+            })
+            ->orderBy('id')
+            ->limit(max(1, $limit))
+            ->pluck('id');
+
+        if ($clientIds->isEmpty()) {
+            return 0;
+        }
+
+        $repaired = 0;
+        foreach ($clientIds as $clientId) {
+            $client = Client::query()
+                ->with([
+                    'assignedStaff:id,department_id',
+                    'salesOwner:id,department_id',
+                ])
+                ->find((int) $clientId);
+
+            if ($client && $this->ensureRotationPoolOwnerState($client)) {
+                $repaired++;
+            }
+        }
+
+        return $repaired;
+    }
+
+    public function ensureRotationPoolOwnerState(Client $client): bool
+    {
+        if (! $client->inRotationPool()) {
+            return false;
+        }
+
+        $client->loadMissing([
+            'assignedStaff:id,department_id',
+            'salesOwner:id,department_id',
+        ]);
+
+        $currentOwnerId = $this->currentOwnerId($client);
+        $owner = null;
+        if ($currentOwnerId > 0) {
+            $owner = $client->assignedStaff;
+            if (! $owner || (int) $owner->id !== $currentOwnerId) {
+                $owner = $client->salesOwner;
+            }
+            if (! $owner || (int) $owner->id !== $currentOwnerId) {
+                $owner = User::query()->find($currentOwnerId);
+            }
+        } else {
+            $currentOwnerId = $this->lastKnownOwnerIdFromHistory((int) $client->id);
+            if ($currentOwnerId <= 0) {
+                return false;
+            }
+            $owner = User::query()->find($currentOwnerId);
+            if (! $owner) {
+                return false;
+            }
+        }
+
+        $updates = [];
+        if ((int) ($client->assigned_staff_id ?? 0) !== $currentOwnerId) {
+            $updates['assigned_staff_id'] = $currentOwnerId;
+        }
+        if ((int) ($client->sales_owner_id ?? 0) !== $currentOwnerId) {
+            $updates['sales_owner_id'] = $currentOwnerId;
+        }
+
+        $ownerDepartmentId = (int) ($owner->department_id ?? 0);
+        if ((int) ($client->assigned_department_id ?? 0) <= 0 && $ownerDepartmentId > 0) {
+            $updates['assigned_department_id'] = $ownerDepartmentId;
+        }
+
+        if ($updates === []) {
+            return false;
+        }
+
+        $client->forceFill($updates)->save();
+
+        return true;
+    }
+
     public function recordAssignmentHistory(
         Client $client,
         ?int $fromStaffId,
@@ -1682,9 +1771,6 @@ class ClientAutoRotationService
             $fromStaffId = $this->currentOwnerId($client);
             $fromStaffName = $this->currentOwnerName($client);
 
-            $client->assigned_staff_id = null;
-            $client->sales_owner_id = null;
-            $client->assigned_department_id = null;
             $client->is_in_rotation_pool = true;
             $client->rotation_pool_entered_at = $now->toDateTimeString();
             $client->rotation_pool_reason = 'auto_rotation_no_recipient';
@@ -1692,18 +1778,17 @@ class ClientAutoRotationService
                 $client->rotation_pool_claimed_at = null;
             }
             $client->save();
-            $this->replaceClientCareStaffForAssignment($client, null, null);
 
             $this->recordAssignmentHistory(
                 $client,
                 $fromStaffId > 0 ? $fromStaffId : null,
-                null,
+                $fromStaffId > 0 ? $fromStaffId : null,
                 self::ACTION_AUTO_ROTATION_TO_POOL,
                 null,
                 $freshInsight,
                 null,
                 'rotation_pool_overflow',
-                'Khách đủ điều kiện xoay nhưng toàn bộ người nhận tự động đã hết suất hoặc không còn người nhận phù hợp, nên hệ thống đưa vào kho số để chờ nhân sự nhận thủ công.',
+                'Khách đủ điều kiện xoay nhưng toàn bộ người nhận tự động đã hết suất hoặc không còn người nhận phù hợp, nên hệ thống đưa vào kho số để chờ nhân sự nhận thủ công. Người phụ trách hiện tại vẫn được giữ nguyên cho đến khi có nhân sự khác nhận khách.',
                 $now
             );
             app(FirebaseService::class)->publishRotationPoolSignal('auto_rotation_to_pool', [
@@ -1747,6 +1832,14 @@ class ClientAutoRotationService
                 return ['status' => 'not_in_pool'];
             }
 
+            $this->ensureRotationPoolOwnerState($client);
+            $client->refresh();
+            $client->load([
+                'leadType:id,name',
+                'assignedStaff:id,name,email,department_id,is_active',
+                'salesOwner:id,name,email,department_id,is_active',
+            ]);
+
             if (ClientStaffTransferRequest::query()
                 ->where('client_id', $clientId)
                 ->where('status', ClientStaffTransferService::STATUS_PENDING)
@@ -1772,11 +1865,17 @@ class ClientAutoRotationService
                 ];
             }
 
-            $client->assigned_staff_id = $recipientId;
-            $client->sales_owner_id = $recipientId;
-            $client->assigned_department_id = (int) ($recipient->department_id ?? 0) > 0
-                ? (int) $recipient->department_id
-                : null;
+            $fromStaffId = $this->currentOwnerId($client);
+            $fromStaffName = $this->currentOwnerName($client);
+            $ownerChanged = $recipientId !== $fromStaffId;
+
+            if ($ownerChanged || (int) ($client->assigned_staff_id ?? 0) <= 0 || (int) ($client->sales_owner_id ?? 0) <= 0) {
+                $client->assigned_staff_id = $recipientId;
+                $client->sales_owner_id = $recipientId;
+                $client->assigned_department_id = (int) ($recipient->department_id ?? 0) > 0
+                    ? (int) $recipient->department_id
+                    : null;
+            }
             $client->is_in_rotation_pool = false;
             $client->rotation_pool_entered_at = null;
             $client->rotation_pool_reason = null;
@@ -1785,18 +1884,27 @@ class ClientAutoRotationService
                 $client->rotation_pool_claimed_at = $now->toDateTimeString();
             }
             $client->save();
-            $this->replaceClientCareStaffForAssignment($client, null, $recipientId, $recipientId);
+            if ($ownerChanged) {
+                $this->replaceClientCareStaffForAssignment(
+                    $client,
+                    $fromStaffId > 0 ? $fromStaffId : null,
+                    $recipientId,
+                    $recipientId
+                );
+            }
 
             $this->recordAssignmentHistory(
                 $client,
-                null,
+                $fromStaffId > 0 ? $fromStaffId : null,
                 $recipientId,
                 self::ACTION_ROTATION_POOL_CLAIM,
                 $recipientId,
                 null,
                 null,
                 'rotation_pool_claim',
-                'Nhân sự đã nhận khách hàng từ kho số.',
+                $ownerChanged
+                    ? 'Nhân sự khác đã nhận khách hàng từ kho số và trở thành người phụ trách mới.'
+                    : 'Người phụ trách hiện tại đã nhận lại khách hàng từ kho số.',
                 $now
             );
             app(FirebaseService::class)->publishRotationPoolSignal('rotation_pool_claim', [
@@ -1810,8 +1918,11 @@ class ClientAutoRotationService
                 'status' => 'claimed',
                 'client_id' => (int) $client->id,
                 'client_name' => (string) ($client->name ?: 'Khách hàng'),
+                'from_staff_id' => $fromStaffId > 0 ? $fromStaffId : null,
+                'from_staff_name' => $fromStaffName,
                 'to_staff_id' => $recipientId,
                 'to_staff_name' => (string) ($recipient->name ?: 'Nhân sự'),
+                'owner_changed' => $ownerChanged,
             ];
         });
     }
@@ -2059,6 +2170,44 @@ class ClientAutoRotationService
                 'type' => 'crm_client_rotation_pool_claimed',
             ]
         );
+
+        $fromStaffId = (int) ($result['from_staff_id'] ?? 0);
+        $ownerChanged = (bool) ($result['owner_changed'] ?? false);
+        if ($ownerChanged && $fromStaffId > 0 && $fromStaffId !== $recipientId) {
+            app(NotificationService::class)->notifyUsers(
+                [$fromStaffId],
+                'Khách hàng đã được nhận từ kho số',
+                sprintf('Khách hàng "%s" của bạn đã được một nhân sự khác nhận từ kho số.', $clientName),
+                [
+                    'category' => 'crm_realtime',
+                    'client_id' => $clientId,
+                    'type' => 'crm_client_rotation_pool_claimed_out',
+                ]
+            );
+        }
+    }
+
+    private function lastKnownOwnerIdFromHistory(int $clientId): int
+    {
+        $rows = ClientRotationHistory::query()
+            ->where('client_id', $clientId)
+            ->orderByDesc('transferred_at')
+            ->orderByDesc('id')
+            ->get(['from_staff_id', 'to_staff_id']);
+
+        foreach ($rows as $row) {
+            $candidateTo = (int) ($row->to_staff_id ?? 0);
+            if ($candidateTo > 0) {
+                return $candidateTo;
+            }
+
+            $candidateFrom = (int) ($row->from_staff_id ?? 0);
+            if ($candidateFrom > 0) {
+                return $candidateFrom;
+            }
+        }
+
+        return 0;
     }
 
     private function actionLabel(string $actionType): string

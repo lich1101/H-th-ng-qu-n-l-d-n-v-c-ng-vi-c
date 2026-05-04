@@ -1595,7 +1595,14 @@ export default function CRM(props) {
                                                     }}
                                                     title="Mở luồng khách hàng"
                                                 >
-                                                    <div className="font-medium text-primary hover:underline">{client.name}</div>
+                                                    <div className="flex flex-wrap items-center gap-2">
+                                                        <div className="font-medium text-primary hover:underline">{client.name}</div>
+                                                        {client.is_in_rotation_pool && (
+                                                            <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
+                                                                Đang ở kho số
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                     <div className="text-xs text-text-muted">{client.company || '—'}</div>
                                                 </button>
                                             </td>

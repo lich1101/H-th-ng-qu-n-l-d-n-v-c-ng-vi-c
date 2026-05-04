@@ -72,6 +72,14 @@ class CrmScope
             });
     }
 
+    private static function applyOwnedRotationPoolClientScope(Builder $builder, int $userId, string $qualifiedColumn = 'clients.is_in_rotation_pool'): void
+    {
+        $builder->where($qualifiedColumn, true)
+            ->where(function (Builder $ownedQuery) use ($userId) {
+                self::applyEmployeeOwnedClientScope($ownedQuery, $userId);
+            });
+    }
+
     private static function applyNotInRotationPool(Builder $builder, string $qualifiedColumn = 'clients.is_in_rotation_pool'): void
     {
         $builder->where(function (Builder $poolQuery) use ($qualifiedColumn) {
@@ -83,6 +91,15 @@ class CrmScope
     public static function isClientInRotationPool(Client $client): bool
     {
         return (bool) ($client->is_in_rotation_pool ?? false);
+    }
+
+    public static function canAccessRotationPoolClient(User $user, Client $client): bool
+    {
+        if (self::canViewRotationPoolClientsInCrm($user)) {
+            return true;
+        }
+
+        return self::employeeOwnsClient($user, $client);
     }
 
     private static function employeeOwnsClient(User $user, Client $client): bool
@@ -106,11 +123,13 @@ class CrmScope
 
     public static function applyClientScope(Builder $query, User $user): Builder
     {
-        if (! self::canViewRotationPoolClientsInCrm($user)) {
-            self::applyNotInRotationPool($query);
+        if (self::canViewRotationPoolClientsInCrm($user)) {
+            return $query;
         }
 
         if (self::hasGlobalScope($user)) {
+            self::applyNotInRotationPool($query);
+
             return $query;
         }
 
@@ -118,41 +137,61 @@ class CrmScope
             $deptIds = self::managedDepartmentIds($user);
             $teamUserIds = self::managerVisibleUserIds($user);
 
-            return $query->where(function (Builder $builder) use ($deptIds, $teamUserIds, $user) {
-                $builder->where('assigned_staff_id', (int) $user->id);
-                $builder->orWhere(function (Builder $fallbackQuery) use ($user) {
-                    $fallbackQuery->whereNull('assigned_staff_id')
-                        ->where('sales_owner_id', (int) $user->id);
+            return $query->where(function (Builder $visibilityQuery) use ($deptIds, $teamUserIds, $user) {
+                $visibilityQuery->where(function (Builder $builder) use ($deptIds, $teamUserIds, $user) {
+                    self::applyNotInRotationPool($builder);
+
+                    $builder->where(function (Builder $scopeQuery) use ($deptIds, $teamUserIds, $user) {
+                        $scopeQuery->where('assigned_staff_id', (int) $user->id);
+                        $scopeQuery->orWhere(function (Builder $fallbackQuery) use ($user) {
+                            $fallbackQuery->whereNull('assigned_staff_id')
+                                ->where('sales_owner_id', (int) $user->id);
+                        });
+
+                        if ($teamUserIds->isNotEmpty()) {
+                            $scopeQuery->orWhereIn('assigned_staff_id', $teamUserIds->all())
+                                ->orWhere(function (Builder $fallbackQuery) use ($teamUserIds) {
+                                    $fallbackQuery->whereNull('assigned_staff_id')
+                                        ->whereIn('sales_owner_id', $teamUserIds->all());
+                                });
+                        }
+
+                        if ($deptIds->isNotEmpty()) {
+                            $scopeQuery->orWhereIn('assigned_department_id', $deptIds->all())
+                                ->orWhereHas('assignedStaff', function (Builder $staffQuery) use ($deptIds) {
+                                    $staffQuery->whereIn('department_id', $deptIds->all());
+                                })
+                                ->orWhere(function (Builder $fallbackQuery) use ($deptIds) {
+                                    $fallbackQuery->whereNull('assigned_staff_id')
+                                        ->whereNull('assigned_department_id')
+                                        ->whereHas('salesOwner', function (Builder $staffQuery) use ($deptIds) {
+                                            $staffQuery->whereIn('department_id', $deptIds->all());
+                                        });
+                                });
+                        }
+                    });
                 });
 
-                if ($teamUserIds->isNotEmpty()) {
-                    $builder->orWhereIn('assigned_staff_id', $teamUserIds->all())
-                        ->orWhere(function (Builder $fallbackQuery) use ($teamUserIds) {
-                            $fallbackQuery->whereNull('assigned_staff_id')
-                                ->whereIn('sales_owner_id', $teamUserIds->all());
-                        });
-                }
-
-                if ($deptIds->isNotEmpty()) {
-                    $builder->orWhereIn('assigned_department_id', $deptIds->all())
-                        ->orWhereHas('assignedStaff', function (Builder $staffQuery) use ($deptIds) {
-                            $staffQuery->whereIn('department_id', $deptIds->all());
-                        })
-                        ->orWhere(function (Builder $fallbackQuery) use ($deptIds) {
-                            $fallbackQuery->whereNull('assigned_staff_id')
-                                ->whereNull('assigned_department_id')
-                                ->whereHas('salesOwner', function (Builder $staffQuery) use ($deptIds) {
-                                    $staffQuery->whereIn('department_id', $deptIds->all());
-                                });
-                        });
-                }
+                $visibilityQuery->orWhere(function (Builder $poolQuery) use ($user) {
+                    self::applyOwnedRotationPoolClientScope($poolQuery, (int) $user->id);
+                });
             });
         }
 
-        return $query->where(function (Builder $builder) use ($user) {
-            self::applyEmployeeOwnedClientScope($builder, (int) $user->id);
-            $builder->orWhereHas('careStaffUsers', function (Builder $careQuery) use ($user) {
-                $careQuery->where('users.id', (int) $user->id);
+        return $query->where(function (Builder $visibilityQuery) use ($user) {
+            $visibilityQuery->where(function (Builder $builder) use ($user) {
+                self::applyNotInRotationPool($builder);
+
+                $builder->where(function (Builder $scopeQuery) use ($user) {
+                    self::applyEmployeeOwnedClientScope($scopeQuery, (int) $user->id);
+                    $scopeQuery->orWhereHas('careStaffUsers', function (Builder $careQuery) use ($user) {
+                        $careQuery->where('users.id', (int) $user->id);
+                    });
+                });
+            });
+
+            $visibilityQuery->orWhere(function (Builder $poolQuery) use ($user) {
+                self::applyOwnedRotationPoolClientScope($poolQuery, (int) $user->id);
             });
         });
     }
@@ -163,11 +202,13 @@ class CrmScope
      */
     public static function applyClientScopeAssignedOnly(Builder $query, User $user): Builder
     {
-        if (! self::canViewRotationPoolClientsInCrm($user)) {
-            self::applyNotInRotationPool($query);
+        if (self::canViewRotationPoolClientsInCrm($user)) {
+            return $query;
         }
 
         if (self::hasGlobalScope($user)) {
+            self::applyNotInRotationPool($query);
+
             return $query;
         }
 
@@ -175,8 +216,17 @@ class CrmScope
             return self::applyClientScope($query, $user);
         }
 
-        return $query->where(function (Builder $builder) use ($user) {
-            self::applyEmployeeOwnedClientScope($builder, (int) $user->id);
+        return $query->where(function (Builder $visibilityQuery) use ($user) {
+            $visibilityQuery->where(function (Builder $builder) use ($user) {
+                self::applyNotInRotationPool($builder);
+                $builder->where(function (Builder $scopeQuery) use ($user) {
+                    self::applyEmployeeOwnedClientScope($scopeQuery, (int) $user->id);
+                });
+            });
+
+            $visibilityQuery->orWhere(function (Builder $poolQuery) use ($user) {
+                self::applyOwnedRotationPoolClientScope($poolQuery, (int) $user->id);
+            });
         });
     }
 
@@ -325,7 +375,7 @@ class CrmScope
     public static function canAccessClient(User $user, Client $client): bool
     {
         if (self::isClientInRotationPool($client)) {
-            return self::canViewRotationPoolClientsInCrm($user);
+            return self::canAccessRotationPoolClient($user, $client);
         }
 
         if (self::hasGlobalScope($user)) {
@@ -346,7 +396,7 @@ class CrmScope
     public static function canManageClient(User $user, Client $client): bool
     {
         if (self::isClientInRotationPool($client)) {
-            return self::canViewRotationPoolClientsInCrm($user);
+            return self::canAccessRotationPoolClient($user, $client);
         }
 
         if (in_array($user->role, ['admin', 'administrator'], true)) {

@@ -48,6 +48,8 @@ class CrmClientExportService
 
     public function buildExportQuery(User $viewer, array $input): Builder
     {
+        app(ClientAutoRotationService::class)->repairRotationPoolOwnersFromHistory();
+
         $query = Client::query()
             ->with(['leadType', 'salesOwner', 'assignedStaff']);
 

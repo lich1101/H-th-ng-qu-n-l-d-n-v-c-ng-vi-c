@@ -458,7 +458,7 @@ class OpportunityController extends Controller
         if (! $client) {
             return response()->json(['message' => 'Khách hàng không tồn tại.'], 422);
         }
-        if (CrmScope::isClientInRotationPool($client)) {
+        if (CrmScope::isClientInRotationPool($client) && ! CrmScope::canAccessRotationPoolClient($request->user(), $client)) {
             return response()->json(['message' => 'Khách hàng đang ở kho số nên chưa thể tạo cơ hội.'], 422);
         }
         if (! $this->canMutateOpportunityForClient($request->user(), $client)) {
@@ -535,12 +535,19 @@ class OpportunityController extends Controller
                 ->values()
                 ->all();
 
-            $targetIds = collect(array_merge(
-                $adminIds,
-                [$assigneeId > 0 ? $assigneeId : null],
-                [$managerId > 0 ? $managerId : null],
-                $careStaffIds
-            ))
+            $targetIdPool = $client->inRotationPool()
+                ? array_merge(
+                    $adminIds,
+                    [$assigneeId > 0 ? $assigneeId : null]
+                )
+                : array_merge(
+                    $adminIds,
+                    [$assigneeId > 0 ? $assigneeId : null],
+                    [$managerId > 0 ? $managerId : null],
+                    $careStaffIds
+                );
+
+            $targetIds = collect($targetIdPool)
                 ->map(function ($id) {
                     return (int) $id;
                 })
@@ -656,7 +663,7 @@ class OpportunityController extends Controller
                     'message' => 'Khách hàng không tồn tại.',
                 ], 422);
             }
-            if (CrmScope::isClientInRotationPool($targetClient)) {
+            if (CrmScope::isClientInRotationPool($targetClient) && ! CrmScope::canAccessRotationPoolClient($user, $targetClient)) {
                 return response()->json([
                     'message' => 'Khách hàng đang ở kho số nên chưa thể gắn cơ hội.',
                 ], 422);
@@ -756,7 +763,11 @@ class OpportunityController extends Controller
     private function canMutateOpportunityForClient(User $user, Client $client): bool
     {
         if (CrmScope::isClientInRotationPool($client)) {
-            return false;
+            if (CrmScope::canViewRotationPoolClientsInCrm($user)) {
+                return true;
+            }
+
+            return (int) ($client->assigned_staff_id ?? 0) === (int) $user->id;
         }
 
         if (CrmScope::hasGlobalScope($user)) {
@@ -797,8 +808,11 @@ class OpportunityController extends Controller
         if (! $opportunity->client) {
             $opportunity->load('client');
         }
-        if (! $opportunity->client || CrmScope::isClientInRotationPool($opportunity->client)) {
+        if (! $opportunity->client) {
             return false;
+        }
+        if (CrmScope::isClientInRotationPool($opportunity->client)) {
+            return CrmScope::canAccessRotationPoolClient($user, $opportunity->client);
         }
         if (CrmScope::hasGlobalScope($user)) {
             return true;

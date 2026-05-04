@@ -921,7 +921,7 @@ class ContractController extends Controller
         if (! $client) {
             return response()->json(['message' => 'Khách hàng không tồn tại.'], 422);
         }
-        if (CrmScope::isClientInRotationPool($client)) {
+        if (CrmScope::isClientInRotationPool($client) && ! CrmScope::canAccessRotationPoolClient($request->user(), $client)) {
             return response()->json(['message' => 'Khách hàng đang ở kho số nên chưa thể tạo hợp đồng.'], 422);
         }
         if (! $this->canMutateContractForClient($request->user(), $client)) {
@@ -1035,7 +1035,7 @@ class ContractController extends Controller
         if (! $client) {
             return response()->json(['message' => 'Khách hàng không tồn tại.'], 422);
         }
-        if (CrmScope::isClientInRotationPool($client)) {
+        if (CrmScope::isClientInRotationPool($client) && ! CrmScope::canAccessRotationPoolClient($request->user(), $client)) {
             return response()->json(['message' => 'Khách hàng đang ở kho số nên chưa thể cập nhật hợp đồng.'], 422);
         }
         if (! $this->canMutateContractForClient($request->user(), $client, $contract)) {
@@ -2820,8 +2820,11 @@ class ContractController extends Controller
     private function canViewContract(User $user, Contract $contract): bool
     {
         $contract->loadMissing('client');
-        if (! $contract->client || CrmScope::isClientInRotationPool($contract->client)) {
+        if (! $contract->client) {
             return false;
+        }
+        if (CrmScope::isClientInRotationPool($contract->client)) {
+            return CrmScope::canAccessRotationPoolClient($user, $contract->client);
         }
 
         if (in_array($user->role, ['admin', 'administrator', 'ke_toan'], true)) {
@@ -2842,8 +2845,11 @@ class ContractController extends Controller
     private function canManageContract(User $user, Contract $contract): bool
     {
         $contract->loadMissing('client');
-        if (! $contract->client || CrmScope::isClientInRotationPool($contract->client)) {
+        if (! $contract->client) {
             return false;
+        }
+        if (CrmScope::isClientInRotationPool($contract->client)) {
+            return CrmScope::canAccessRotationPoolClient($user, $contract->client);
         }
 
         if (in_array($user->role, ['admin', 'administrator', 'ke_toan'], true)) {
@@ -2872,7 +2878,11 @@ class ContractController extends Controller
     private function canMutateContractForClient(User $user, Client $client, ?Contract $contract = null): bool
     {
         if (CrmScope::isClientInRotationPool($client)) {
-            return false;
+            if (CrmScope::canViewRotationPoolClientsInCrm($user)) {
+                return true;
+            }
+
+            return (int) ($client->assigned_staff_id ?? 0) === (int) $user->id;
         }
 
         if (in_array($user->role, ['admin', 'administrator', 'ke_toan'], true)) {
