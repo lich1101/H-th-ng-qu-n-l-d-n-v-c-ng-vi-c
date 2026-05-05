@@ -14,6 +14,7 @@ use App\Models\Project;
 use App\Models\RevenueTier;
 use App\Models\Task;
 use App\Models\User;
+use App\Services\ClientAutoRotationService;
 use App\Services\ClientPhoneDuplicateService;
 use App\Services\FirebaseService;
 use App\Services\ProjectProgressService;
@@ -183,18 +184,33 @@ class ImportExecutionService
                     $data['external_code'] ?? null
                 );
 
+                $preserveCareStaffOnPoolImport = false;
+
                 if ($client) {
+                    if ($toRotationPool && $client->inRotationPool()) {
+                        app(ClientAutoRotationService::class)->ensureRotationPoolOwnerState($client);
+                        $client->refresh();
+                    }
+
                     $existingOwnerId = $this->currentClientOwnerId($client);
                     if (! $toRotationPool && $primaryOwnerId && $primaryOwnerId !== $existingOwnerId && $this->supportsAssignedStaffAt()) {
                         $payload['assigned_staff_at'] = now('Asia/Ho_Chi_Minh')->toDateTimeString();
                     } else {
                         unset($payload['assigned_staff_at']);
                     }
-                    if ($toRotationPool && ! $client->inRotationPool()) {
-                        $this->skipRow($report, $rowNumber, 'Khách hàng đã tồn tại trong CRM thường, không thể import thẳng vào kho số.');
-                        DB::rollBack();
-                        $this->syncJobProgress($job, $processed, $report);
-                        return;
+
+                    if ($toRotationPool) {
+                        $payload['assigned_staff_id'] = $client->assigned_staff_id;
+                        $payload['sales_owner_id'] = $client->sales_owner_id;
+                        $payload['assigned_department_id'] = $client->assigned_department_id;
+
+                        if ($this->supportsAssignedStaffAt() && ! empty($client->assigned_staff_at)) {
+                            $payload['assigned_staff_at'] = $client->assigned_staff_at instanceof Carbon
+                                ? Carbon::instance($client->assigned_staff_at)->toDateTimeString()
+                                : (string) $client->assigned_staff_at;
+                        }
+
+                        $preserveCareStaffOnPoolImport = $existingOwnerId > 0;
                     }
 
                     $client->update($this->filterNullValues(
@@ -232,7 +248,9 @@ class ImportExecutionService
 
                 if ($toRotationPool) {
                     $rotationPoolTouched = true;
-                    $this->clearClientCareStaffFromImport($client);
+                    if (! $preserveCareStaffOnPoolImport) {
+                        $this->clearClientCareStaffFromImport($client);
+                    }
                 } else {
                     $careStaffIds = array_values(array_filter([
                         $primaryOwnerId ? (int) $primaryOwnerId : null,

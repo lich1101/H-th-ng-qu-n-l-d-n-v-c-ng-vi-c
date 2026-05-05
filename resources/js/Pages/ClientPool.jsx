@@ -598,7 +598,7 @@ export default function ClientPool(props) {
                     setClientImportReport(null);
                 }}
                 title="Import khách hàng vào kho số"
-                description="File import tại đây sẽ đẩy khách vào thẳng kho số. Nếu một dòng trùng với khách đang nằm trong CRM thường, hệ thống sẽ bỏ qua để tránh cướp khách khỏi người đang phụ trách."
+                description="File import tại đây sẽ đẩy khách vào kho số. Nếu một dòng trùng với khách đang nằm trong CRM thường, hệ thống sẽ mở khách đó trong kho số nhưng vẫn giữ nguyên người phụ trách hiện tại cho đến khi có nhân sự khác nhận."
                 size="md"
             >
                 <form className="space-y-3 text-sm" onSubmit={submitPoolImport}>
