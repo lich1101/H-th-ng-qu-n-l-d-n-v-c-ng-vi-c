@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
 use App\Models\User;
+use App\Services\AttendanceService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -31,6 +32,7 @@ class UserAccountController extends Controller
             'phone' => $validated['phone'] ?? null,
             'workload_capacity' => $validated['workload_capacity'] ?? 100,
             'is_active' => $validated['is_active'] ?? true,
+            'attendance_shift_weekdays' => AttendanceService::DEFAULT_SHIFT_WEEKDAYS,
         ]);
 
         $this->log($request, 'user_created', 'user', $user->id, [

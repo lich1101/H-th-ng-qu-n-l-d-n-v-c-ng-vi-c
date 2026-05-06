@@ -216,6 +216,14 @@ function requestTypeLabel(type) {
     return 'Đi muộn';
 }
 
+function requestDateRangeLabel(item) {
+    const start = formatVietnamDate(item?.request_date);
+    if (item?.request_type !== 'leave_request') return start;
+    if (!item?.request_end_date) return `${start} → vô thời hạn`;
+    const end = formatVietnamDate(item.request_end_date);
+    return start === end ? start : `${start} → ${end}`;
+}
+
 function todayIso() {
     return todayIsoVietnam();
 }
@@ -438,13 +446,13 @@ export default function AttendanceWifi(props) {
             ? item.attendance_shift_weekdays
                 .map((d) => Number(d))
                 .filter((d) => Number.isInteger(d) && d >= 1 && d <= 7)
-            : null;
+            : [1, 2, 3, 4, 5];
 
         const merged = { ...existing };
         weekdayOptions.forEach((day) => {
             const current = Number(merged[day.iso] || 0);
             if (current > 0) return;
-            const isWorkingDay = !shiftDays || shiftDays.length === 0 || shiftDays.includes(day.iso);
+            const isWorkingDay = shiftDays.length === 0 ? [1, 2, 3, 4, 5].includes(day.iso) : shiftDays.includes(day.iso);
             if (!isWorkingDay && fallbackOffTypeId > 0) {
                 merged[day.iso] = fallbackOffTypeId;
                 return;
@@ -811,6 +819,8 @@ export default function AttendanceWifi(props) {
         try {
             const payload = { ...requestForm };
             if (payload.request_type !== 'leave_request') {
+                delete payload.request_end_date;
+            } else if (!String(payload.request_end_date || '').trim()) {
                 delete payload.request_end_date;
             }
             await axios.post('/api/v1/attendance/requests', payload);
@@ -1187,7 +1197,7 @@ export default function AttendanceWifi(props) {
                                     <input type="date" className={inputClass} value={requestForm.request_date} onChange={(e) => setRequestForm((s) => ({ ...s, request_date: e.target.value }))} />
                                 </FormField>
                                 {requestForm.request_type === 'leave_request' ? (
-                                    <FormField label="Đến ngày" hint="Để trống nếu nghỉ 1 ngày — mặc định trùng ngày bắt đầu">
+                                    <FormField label="Đến ngày" hint="Để trống nếu nghỉ vô thời hạn">
                                         <input type="date" className={inputClass} value={requestForm.request_end_date} onChange={(e) => setRequestForm((s) => ({ ...s, request_end_date: e.target.value }))} />
                                     </FormField>
                                 ) : null}
@@ -1250,7 +1260,7 @@ export default function AttendanceWifi(props) {
                                                 </div>
                                                 <div className="mt-1 text-sm text-text-muted">
                                                     {item.user?.name ? `${item.user.name} • ` : ''}
-                                                    {formatVietnamDate(item.request_date)}
+                                                    {requestDateRangeLabel(item)}
                                                     {item.expected_check_in_time ? ` • Dự kiến vào ${item.expected_check_in_time}` : ''}
                                                 </div>
                                                 <div className="mt-2 text-sm text-slate-700 whitespace-pre-wrap">{item.content || 'Không có ghi chú thêm.'}</div>

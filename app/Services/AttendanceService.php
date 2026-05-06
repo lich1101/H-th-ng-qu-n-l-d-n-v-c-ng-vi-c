@@ -21,6 +21,7 @@ class AttendanceService
     public const WORK_SESSION_MORNING = 'morning';
     public const WORK_SESSION_AFTERNOON = 'afternoon';
     public const WORK_SESSION_OFF = 'off';
+    public const DEFAULT_SHIFT_WEEKDAYS = [1, 2, 3, 4, 5];
 
     /** @var array<int, array<string, mixed>>|null */
     private ?array $workTypesCache = null;
@@ -148,6 +149,14 @@ class AttendanceService
     }
 
     /**
+     * @return array<int>
+     */
+    public function defaultShiftWeekdaysIso(): array
+    {
+        return self::DEFAULT_SHIFT_WEEKDAYS;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function resolveWorkTypeForUserDate(User $user, Carbon $date): array
@@ -156,11 +165,19 @@ class AttendanceService
         $weeklyMap = $this->weeklyWorkTypeMap($user);
         $types = $this->workTypes(true);
 
-        if (isset($weeklyMap[$iso])) {
-            $mappedTypeId = (int) $weeklyMap[$iso];
-            if (isset($types[$mappedTypeId])) {
-                return $types[$mappedTypeId];
+        if ($weeklyMap !== []) {
+            if (isset($weeklyMap[$iso])) {
+                $mappedTypeId = (int) $weeklyMap[$iso];
+                if (isset($types[$mappedTypeId])) {
+                    return $types[$mappedTypeId];
+                }
             }
+
+            return $this->offWorkTypeFallback();
+        }
+
+        if (! in_array($iso, $this->legacyShiftWeekdaysIso($user), true)) {
+            return $this->offWorkTypeFallback();
         }
 
         $legacyCode = $this->employmentTypeForUser($user);
@@ -243,8 +260,8 @@ class AttendanceService
         // Đúng quy chuẩn: tính muộn từ (giờ bắt đầu + phút cho phép trễ)
         // VD: bắt đầu 08:30, cho phép trễ 10 phút → mốc = 08:40
         //     Check-in 08:42 → muộn 2 phút (không phải 12 phút)
-        $isOnTime = $checkedAt->lte($allowedLateUntil);
-        $minutesLate = $isOnTime ? 0 : max(0, (int) $allowedLateUntil->diffInMinutes($checkedAt, false));
+        $minutesLate = $this->calculateMinutesLate($checkedAt, $allowedLateUntil, $settings);
+        $isOnTime = $minutesLate <= 0;
 
         return [
             'employment_type' => $employmentType,
@@ -305,9 +322,9 @@ class AttendanceService
     }
 
     /**
-     * @return array<int>|null null = không giới hạn thứ trong tuần
+     * @return array<int>
      */
-    public function shiftWeekdaysIso(User $user): ?array
+    public function shiftWeekdaysIso(User $user): array
     {
         $weeklyMap = $this->weeklyWorkTypeMap($user);
         if ($weeklyMap !== []) {
@@ -325,12 +342,45 @@ class AttendanceService
             return array_values($days);
         }
 
+        return $this->legacyShiftWeekdaysIso($user);
+    }
+
+    public function calculateMinutesLate(Carbon $actualAt, Carbon $allowedLateUntil, ?array $settings = null): int
+    {
+        if ($actualAt->lte($allowedLateUntil)) {
+            return 0;
+        }
+        if ($settings === null) {
+            $settings = $this->settings();
+        }
+
+        $start = $allowedLateUntil->copy()->timezone('Asia/Ho_Chi_Minh');
+        $end = $actualAt->copy()->timezone('Asia/Ho_Chi_Minh');
+        $minutes = max(0, (int) $start->diffInMinutes($end, false));
+        [$lunchStart, $lunchEnd] = $this->lunchBreakRangeForDate($start, $settings);
+
+        if ($lunchEnd->gt($lunchStart) && $end->gt($lunchStart) && $start->lt($lunchEnd)) {
+            $overlapStart = $start->gt($lunchStart) ? $start : $lunchStart;
+            $overlapEnd = $end->lt($lunchEnd) ? $end : $lunchEnd;
+            if ($overlapEnd->gt($overlapStart)) {
+                $minutes -= max(0, (int) $overlapStart->diffInMinutes($overlapEnd, false));
+            }
+        }
+
+        return max(0, $minutes);
+    }
+
+    /**
+     * @return array<int>
+     */
+    private function legacyShiftWeekdaysIso(User $user): array
+    {
         $raw = $user->attendance_shift_weekdays;
         if ($raw === null || $raw === []) {
-            return null;
+            return self::DEFAULT_SHIFT_WEEKDAYS;
         }
         if (! is_array($raw)) {
-            return null;
+            return self::DEFAULT_SHIFT_WEEKDAYS;
         }
         $days = [];
         foreach ($raw as $d) {
@@ -340,7 +390,51 @@ class AttendanceService
             }
         }
 
-        return count($days) ? array_values($days) : null;
+        return count($days) ? array_values($days) : self::DEFAULT_SHIFT_WEEKDAYS;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function offWorkTypeFallback(): array
+    {
+        foreach ($this->workTypes(true) as $row) {
+            if (
+                (string) ($row['code'] ?? '') === 'off_day'
+                || (string) ($row['session'] ?? '') === self::WORK_SESSION_OFF
+                || (float) ($row['default_work_units'] ?? 0) <= 0
+            ) {
+                return $row;
+            }
+        }
+
+        return [
+            'id' => 0,
+            'code' => 'off_day',
+            'name' => 'Nghỉ',
+            'session' => self::WORK_SESSION_OFF,
+            'default_work_units' => 0.0,
+            'is_active' => true,
+            'is_system' => true,
+            'sort_order' => 999,
+        ];
+    }
+
+    /**
+     * @return array{0: Carbon, 1: Carbon}
+     */
+    private function lunchBreakRangeForDate(Carbon $date, array $settings): array
+    {
+        $base = $date->copy()->timezone('Asia/Ho_Chi_Minh');
+        $lunchStart = $base->copy()->setTime(12, 0, 0);
+        [$hour, $minute] = array_map('intval', explode(':', $this->normalizeTime($settings['afternoon_start_time'] ?? null, '13:30')));
+        $lunchEnd = $base->copy()->setTime($hour, $minute, 0);
+
+        if ($lunchEnd->lte($lunchStart)) {
+            $lunchEnd = $lunchStart->copy();
+        }
+
+        return [$lunchStart, $lunchEnd];
     }
 
     public function earliestCheckinAt(User $user, Carbon $date, ?array $settings = null): Carbon
@@ -408,6 +502,58 @@ class AttendanceService
         return $this->applyApprovedLateRequest($attendanceRequest, $approver, $settings);
     }
 
+    public function approvedLeaveRequestCoveringDate(User $user, Carbon $date): ?AttendanceRequest
+    {
+        $workDate = $date->copy()->timezone('Asia/Ho_Chi_Minh')->startOfDay();
+
+        return AttendanceRequest::query()
+            ->with(['user', 'decider'])
+            ->where('user_id', (int) $user->id)
+            ->where('request_type', 'leave_request')
+            ->where('status', 'approved')
+            ->whereDate('request_date', '<=', $workDate->toDateString())
+            ->where(function ($query) use ($workDate) {
+                $query->whereNull('request_end_date')
+                    ->orWhereDate('request_end_date', '>=', $workDate->toDateString());
+            })
+            ->orderByDesc('id')
+            ->first();
+    }
+
+    public function upsertApprovedLeaveRequestForDate(
+        AttendanceRequest $attendanceRequest,
+        Carbon $day,
+        ?User $approver = null
+    ): ?AttendanceRecord {
+        if ((string) $attendanceRequest->request_type !== 'leave_request') {
+            return null;
+        }
+        if ((string) $attendanceRequest->status !== 'approved') {
+            return null;
+        }
+        $user = $attendanceRequest->user;
+        if (! $user) {
+            return null;
+        }
+
+        $workDate = $day->copy()->timezone('Asia/Ho_Chi_Minh')->startOfDay();
+        $start = Carbon::parse($attendanceRequest->request_date, 'Asia/Ho_Chi_Minh')->startOfDay();
+        $end = $attendanceRequest->request_end_date
+            ? Carbon::parse($attendanceRequest->request_end_date, 'Asia/Ho_Chi_Minh')->startOfDay()
+            : null;
+        if ($workDate->lt($start) || ($end && $workDate->gt($end))) {
+            return null;
+        }
+
+        $settings = $this->settings();
+        $resolvedApprover = $approver ?: ($attendanceRequest->decider ?: $user);
+        $mode = trim((string) ($attendanceRequest->approval_mode ?? 'full_work'));
+
+        return $mode === 'no_count'
+            ? $this->upsertLeaveApprovedNoCountDay($user, $workDate, $attendanceRequest, $resolvedApprover, $settings)
+            : $this->upsertLeaveApprovedDay($user, $workDate, $attendanceRequest, $resolvedApprover, $settings);
+    }
+
     private function applyApprovedLeaveRequest(
         AttendanceRequest $attendanceRequest,
         User $approver,
@@ -418,30 +564,14 @@ class AttendanceService
             return null;
         }
 
-        $mode = trim((string) ($attendanceRequest->approval_mode ?? 'full_work'));
-        if ($mode === 'no_count') {
-            $last = null;
-            $cursor = Carbon::parse($attendanceRequest->request_date, 'Asia/Ho_Chi_Minh')->startOfDay();
-            $endRaw = $attendanceRequest->request_end_date ?? $attendanceRequest->request_date;
-            $end = Carbon::parse($endRaw, 'Asia/Ho_Chi_Minh')->startOfDay();
-            if ($end->lt($cursor)) {
-                [$cursor, $end] = [$end, $cursor];
-            }
-
-            while ($cursor->lte($end)) {
-                $last = $this->upsertLeaveApprovedNoCountDay($user, $cursor, $attendanceRequest, $approver, $settings);
-                $cursor->addDay();
-            }
-
-            return $last;
-        }
-        if ($mode !== 'full_work') {
-            $mode = 'full_work';
-        }
-
         $start = Carbon::parse($attendanceRequest->request_date, 'Asia/Ho_Chi_Minh')->startOfDay();
-        $endRaw = $attendanceRequest->request_end_date ?? $attendanceRequest->request_date;
-        $end = Carbon::parse($endRaw, 'Asia/Ho_Chi_Minh')->startOfDay();
+        $hasExplicitEnd = (bool) $attendanceRequest->request_end_date;
+        $end = $hasExplicitEnd
+            ? Carbon::parse($attendanceRequest->request_end_date, 'Asia/Ho_Chi_Minh')->startOfDay()
+            : Carbon::now('Asia/Ho_Chi_Minh')->startOfDay();
+        if (! $hasExplicitEnd && $end->lt($start)) {
+            return null;
+        }
         if ($end->lt($start)) {
             [$start, $end] = [$end, $start];
         }
@@ -449,7 +579,7 @@ class AttendanceService
         $last = null;
         $cursor = $start->copy();
         while ($cursor->lte($end)) {
-            $last = $this->upsertLeaveApprovedDay($user, $cursor, $attendanceRequest, $approver, $settings);
+            $last = $this->upsertApprovedLeaveRequestForDate($attendanceRequest, $cursor, $approver);
             $cursor->addDay();
         }
 
@@ -599,9 +729,7 @@ class AttendanceService
 
         $minutesLate = 0;
         if ($actualForLate) {
-            $minutesLate = $actualForLate->lte($allowedLateUntil)
-                ? 0
-                : max(0, (int) $allowedLateUntil->diffInMinutes($actualForLate, false));
+            $minutesLate = $this->calculateMinutesLate($actualForLate, $allowedLateUntil, $settings);
         }
 
         $workUnits = $defaultWorkUnits;

@@ -51,6 +51,12 @@ class SendAttendanceReminders extends Command
                     }
                 }
 
+                $approvedLeave = $attendance->approvedLeaveRequestCoveringDate($user, $now->copy());
+                if ($approvedLeave) {
+                    $attendance->upsertApprovedLeaveRequestForDate($approvedLeave, $now->copy());
+                    return;
+                }
+
                 $recordExists = AttendanceRecord::query()
                     ->where('user_id', $user->id)
                     ->whereDate('work_date', $today)

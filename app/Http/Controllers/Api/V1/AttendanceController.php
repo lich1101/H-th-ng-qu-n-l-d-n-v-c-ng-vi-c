@@ -45,6 +45,12 @@ class AttendanceController extends Controller
             ->get();
 
         $nowTz = Carbon::now('Asia/Ho_Chi_Minh');
+        if ($this->canTrackAttendance($user) && ! $todayRecord) {
+            $approvedLeave = $attendance->approvedLeaveRequestCoveringDate($user, $nowTz);
+            if ($approvedLeave) {
+                $todayRecord = $attendance->upsertApprovedLeaveRequestForDate($approvedLeave, $nowTz);
+            }
+        }
         $checkBlock = $this->canTrackAttendance($user)
             ? $attendance->checkInBlockedReason($user, $nowTz, $settings)
             : null;
@@ -53,6 +59,14 @@ class AttendanceController extends Controller
         }
         if ($this->canTrackAttendance($user) && $todayRecord && (string) $todayRecord->status === 'approved_no_count') {
             $checkBlock = 'Hôm nay bạn đã có đơn nghỉ được duyệt không tính công.';
+        }
+        if (
+            $this->canTrackAttendance($user)
+            && $todayRecord
+            && (string) $todayRecord->source === 'request_approval'
+            && in_array((string) $todayRecord->status, ['approved_full', 'approved_partial'], true)
+        ) {
+            $checkBlock = 'Hôm nay bạn đã có đơn nghỉ được duyệt tính công.';
         }
 
         return response()->json([
@@ -732,6 +746,19 @@ class AttendanceController extends Controller
             ]);
         }
 
+        $approvedLeave = $attendance->approvedLeaveRequestCoveringDate($user, $now);
+        if ($approvedLeave) {
+            $record = $attendance->upsertApprovedLeaveRequestForDate($approvedLeave, $now);
+            $message = $record && (string) $record->status === 'approved_no_count'
+                ? 'Bạn đã có đơn nghỉ được duyệt không tính công cho hôm nay. Nếu cần chấm công, vui lòng liên hệ Administrator để điều chỉnh.'
+                : 'Hôm nay bạn đã có đơn nghỉ được duyệt tính công, không cần chấm công WiFi.';
+
+            return response()->json([
+                'message' => $message,
+                'record' => $record ? $this->recordPayload($record) : null,
+            ], $record && (string) $record->status === 'approved_no_count' ? 422 : 200);
+        }
+
         $shiftBlock = $attendance->checkInBlockedReason($user, $now, $settings);
         if ($shiftBlock) {
             return response()->json(['message' => $shiftBlock], 422);
@@ -887,10 +914,10 @@ class AttendanceController extends Controller
         $requestType = (string) $validated['request_type'];
         $start = Carbon::parse($validated['request_date'], 'Asia/Ho_Chi_Minh')->startOfDay();
         $endRaw = trim((string) ($validated['request_end_date'] ?? ''));
-        $end = $endRaw !== ''
+        $end = $requestType === 'leave_request' && $endRaw !== ''
             ? Carbon::parse($endRaw, 'Asia/Ho_Chi_Minh')->startOfDay()
-            : $start->copy();
-        if ($end->lt($start)) {
+            : ($requestType === 'leave_request' ? null : $start->copy());
+        if ($end && $end->lt($start)) {
             return response()->json(['message' => 'Ngày kết thúc phải sau hoặc trùng ngày bắt đầu.'], 422);
         }
         if ($requestType === 'late_arrival' && empty($validated['expected_check_in_time'])) {
@@ -906,7 +933,7 @@ class AttendanceController extends Controller
             'user_id' => $user->id,
             'request_type' => $requestType,
             'request_date' => $start->toDateString(),
-            'request_end_date' => $requestType === 'leave_request' ? $end->toDateString() : null,
+            'request_end_date' => $requestType === 'leave_request' && $end ? $end->toDateString() : null,
             'expected_check_in_time' => $validated['expected_check_in_time'] ?? null,
             'title' => trim((string) $validated['title']),
             'content' => trim((string) ($validated['content'] ?? '')) ?: null,
@@ -914,14 +941,7 @@ class AttendanceController extends Controller
         ]);
 
         $requestTypeLabel = $this->attendanceRequestTypeLabel($requestType);
-        $dateLabel = $requestType === 'leave_request' && $item->request_end_date
-            && $item->request_date->toDateString() !== $item->request_end_date->toDateString()
-            ? sprintf(
-                '%s → %s',
-                Carbon::parse($item->request_date)->format('d/m/Y'),
-                Carbon::parse($item->request_end_date)->format('d/m/Y')
-            )
-            : Carbon::parse($item->request_date)->format('d/m/Y');
+        $dateLabel = $this->attendanceRequestDateLabel($item);
 
         $notifyIds = array_values(array_unique(array_merge(
             $this->attendanceManagerIds(),
@@ -991,9 +1011,12 @@ class AttendanceController extends Controller
             }
 
             $start = Carbon::parse($attendanceRequest->request_date, 'Asia/Ho_Chi_Minh')->startOfDay();
-            $end = $attendanceRequest->request_end_date
-                ? Carbon::parse($attendanceRequest->request_end_date, 'Asia/Ho_Chi_Minh')->startOfDay()
-                : $start->copy();
+            $end = $start->copy();
+            if ($requestType === 'leave_request') {
+                $end = $attendanceRequest->request_end_date
+                    ? Carbon::parse($attendanceRequest->request_end_date, 'Asia/Ho_Chi_Minh')->startOfDay()
+                    : null;
+            }
             if ($this->hasConflictingAttendanceRequest((int) $attendanceRequest->user_id, $start, $end, (int) $attendanceRequest->id)) {
                 return response()->json([
                     'message' => 'Nhân sự này đã có một đơn khác trong cùng khoảng ngày đang chờ duyệt hoặc đã được duyệt.',
@@ -1084,13 +1107,12 @@ class AttendanceController extends Controller
             $checkInAt = $workDate->copy()->setTime($hour, $minute, 0);
         }
 
-        $workUnits = $this->normalizeWorkUnits($validated['work_units']);
         $defaultWorkUnits = (float) $evaluation['default_work_units'];
+        $workUnits = min($this->normalizeWorkUnits($validated['work_units']), max(0.0, $defaultWorkUnits));
         $status = $workUnits >= $defaultWorkUnits ? 'approved_full' : 'approved_partial';
-        $minutesLate = 0;
-        if ($checkInAt && $checkInAt->gt($evaluation['allowed_late_until'])) {
-            $minutesLate = max(0, (int) $evaluation['allowed_late_until']->diffInMinutes($checkInAt, false));
-        }
+        $minutesLate = $checkInAt
+            ? $attendance->calculateMinutesLate($checkInAt, $evaluation['allowed_late_until'], $settings)
+            : 0;
 
         $record->fill([
             'check_in_at' => $checkInAt,
@@ -1550,6 +1572,22 @@ class AttendanceController extends Controller
             ->pluck('id');
         /** @var \Illuminate\Support\Collection<int, User> $trackedUsers */
         $trackedUsers = (clone $trackedUserQuery)->get();
+        $approvedLeaveRequestsByUser = collect();
+        if (! $trackedUserIds->isEmpty()) {
+            $approvedLeaveRequestsByUser = AttendanceRequestModel::query()
+                ->whereIn('user_id', $trackedUserIds->all())
+                ->where('request_type', 'leave_request')
+                ->where('status', 'approved')
+                ->whereDate('request_date', '<=', $endDate->toDateString())
+                ->where(function ($query) use ($startDate) {
+                    $query->whereNull('request_end_date')
+                        ->orWhereDate('request_end_date', '>=', $startDate->toDateString());
+                })
+                ->orderBy('request_date')
+                ->orderBy('id')
+                ->get()
+                ->groupBy('user_id');
+        }
         $todayWorkUnits = $trackedUserIds->isEmpty()
             ? 0
             : (float) AttendanceRecord::query()
@@ -1598,7 +1636,7 @@ class AttendanceController extends Controller
             $dayCursor->addDay();
         }
 
-        $matrixRows = $trackedUsers->map(function (User $user) use ($dayKeys, $recordIndex, $attendance) {
+        $matrixRows = $trackedUsers->map(function (User $user) use ($dayKeys, $recordIndex, $attendance, $approvedLeaveRequestsByUser) {
             $userRecords = $recordIndex[(int) $user->id] ?? [];
             $totalWorkUnits = 0.0;
             $lateDays = 0;
@@ -1610,6 +1648,31 @@ class AttendanceController extends Controller
                 if (! $record) {
                     $dayDate = Carbon::parse($dayKey, 'Asia/Ho_Chi_Minh');
                     $plannedUnits = $attendance->defaultWorkUnitsForUserOnDate($user, $dayDate);
+                    $approvedLeave = $this->approvedLeaveRequestForReportDate(
+                        $approvedLeaveRequestsByUser->get((int) $user->id, collect()),
+                        $dayDate
+                    );
+                    if ($approvedLeave) {
+                        $mode = trim((string) ($approvedLeave->approval_mode ?? 'full_work'));
+                        $workUnits = $mode === 'no_count' ? 0.0 : (float) $plannedUnits;
+                        $totalWorkUnits += $workUnits;
+                        $cells[] = [
+                            'date' => $dayKey,
+                            'record_id' => null,
+                            'has_record' => false,
+                            'work_units' => $workUnits,
+                            'work_units_display' => $this->formatMatrixWorkUnits($workUnits),
+                            'minutes_late' => 0,
+                            'status' => $mode === 'no_count' ? 'approved_no_count' : 'approved_full',
+                            'status_label' => $mode === 'no_count' ? 'Nghỉ đã duyệt không tính công' : 'Duyệt đủ công',
+                            'source' => 'request_approval',
+                            'source_label' => 'Duyệt đơn',
+                            'check_in_at' => '—',
+                            'note' => trim((string) ($approvedLeave->decision_note ?: $approvedLeave->content ?: $approvedLeave->title)),
+                            'tone' => $mode === 'no_count' ? 'blue' : 'emerald',
+                        ];
+                        continue;
+                    }
                     $isScheduledOff = $plannedUnits <= 0;
                     $cells[] = [
                         'date' => $dayKey,
@@ -2247,10 +2310,43 @@ class AttendanceController extends Controller
         }
     }
 
+    private function attendanceRequestDateLabel(AttendanceRequestModel $item): string
+    {
+        $start = Carbon::parse($item->request_date)->format('d/m/Y');
+        if ((string) $item->request_type !== 'leave_request') {
+            return $start;
+        }
+        if (! $item->request_end_date) {
+            return sprintf('%s → vô thời hạn', $start);
+        }
+
+        $end = Carbon::parse($item->request_end_date)->format('d/m/Y');
+        return $start === $end ? $start : sprintf('%s → %s', $start, $end);
+    }
+
+    private function approvedLeaveRequestForReportDate($requests, Carbon $date): ?AttendanceRequestModel
+    {
+        $workDate = $date->copy()->timezone('Asia/Ho_Chi_Minh')->startOfDay();
+        foreach ($requests as $item) {
+            if (! $item instanceof AttendanceRequestModel) {
+                continue;
+            }
+            $start = Carbon::parse($item->request_date, 'Asia/Ho_Chi_Minh')->startOfDay();
+            $end = $item->request_end_date
+                ? Carbon::parse($item->request_end_date, 'Asia/Ho_Chi_Minh')->startOfDay()
+                : null;
+            if ($workDate->gte($start) && (! $end || $workDate->lte($end))) {
+                return $item;
+            }
+        }
+
+        return null;
+    }
+
     private function hasConflictingAttendanceRequest(
         int $userId,
         Carbon $startDate,
-        Carbon $endDate,
+        ?Carbon $endDate,
         ?int $ignoreId = null
     ): bool {
         $query = AttendanceRequestModel::query()
@@ -2259,12 +2355,19 @@ class AttendanceController extends Controller
             ->where(function ($builder) use ($startDate, $endDate) {
                 $builder->where(function ($inner) use ($startDate, $endDate) {
                     $inner->where('request_type', 'leave_request')
-                        ->whereDate('request_date', '<=', $endDate->toDateString())
-                        ->whereDate(\Illuminate\Support\Facades\DB::raw('COALESCE(request_end_date, request_date)'), '>=', $startDate->toDateString());
+                        ->where(function ($query) use ($startDate) {
+                            $query->whereNull('request_end_date')
+                                ->orWhereDate('request_end_date', '>=', $startDate->toDateString());
+                        });
+                    if ($endDate) {
+                        $inner->whereDate('request_date', '<=', $endDate->toDateString());
+                    }
                 })->orWhere(function ($inner) use ($startDate, $endDate) {
                     $inner->where('request_type', 'late_arrival')
-                        ->whereDate('request_date', '>=', $startDate->toDateString())
-                        ->whereDate('request_date', '<=', $endDate->toDateString());
+                        ->whereDate('request_date', '>=', $startDate->toDateString());
+                    if ($endDate) {
+                        $inner->whereDate('request_date', '<=', $endDate->toDateString());
+                    }
                 });
             });
 

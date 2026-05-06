@@ -16,6 +16,7 @@ use App\Models\Task;
 use App\Models\User;
 use App\Services\ClientAutoRotationService;
 use App\Services\ClientPhoneDuplicateService;
+use App\Services\AttendanceService;
 use App\Services\FirebaseService;
 use App\Services\ProjectProgressService;
 use Carbon\Carbon;
@@ -446,7 +447,9 @@ class ImportExecutionService
                     $user->update($payload);
                     $report['updated']++;
                 } else {
-                    User::create($payload);
+                    User::create($payload + [
+                        'attendance_shift_weekdays' => AttendanceService::DEFAULT_SHIFT_WEEKDAYS,
+                    ]);
                     $report['created']++;
                 }
 
