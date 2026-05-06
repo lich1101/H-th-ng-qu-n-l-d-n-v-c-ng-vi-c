@@ -1066,6 +1066,7 @@ export default function ClientFlow({ auth, clientId }) {
                                         <th className="py-2">Trạng thái</th>
                                         <th className="py-2">Doanh số</th>
                                         <th className="py-2">Phụ trách</th>
+                                        <th className="py-2">Người tạo cơ hội</th>
                                         <th className="py-2">Dự kiến chốt</th>
                                         <th className="py-2">Ghi chú</th>
                                         <th className="py-2 w-[1%] whitespace-nowrap text-right">Thao tác</th>
@@ -1095,7 +1096,8 @@ export default function ClientFlow({ auth, clientId }) {
                                                 </span>
                                             </td>
                                             <td className="py-2.5 text-xs text-slate-600">{formatCurrency(row.amount)} VNĐ</td>
-                                            <td className="py-2.5 text-xs text-slate-600">{row.assignee?.name || row.creator?.name || '—'}</td>
+                                            <td className="py-2.5 text-xs text-slate-600">{row.assignee?.name || '—'}</td>
+                                            <td className="py-2.5 text-xs text-slate-600">{row.creator?.name || '—'}</td>
                                             <td className="py-2.5 text-xs text-slate-600">{formatDate(row.expected_close_date)}</td>
                                             <td className="py-2.5 text-xs text-slate-600">{row.notes || '—'}</td>
                                             <td className="py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
@@ -1125,7 +1127,7 @@ export default function ClientFlow({ auth, clientId }) {
                                             </td>
                                         </tr>
                                     ))}
-                                    {opportunities.length === 0 && <EmptyTable colSpan={7} message="Khách hàng chưa có cơ hội nào." />}
+                                    {opportunities.length === 0 && <EmptyTable colSpan={8} message="Khách hàng chưa có cơ hội nào." />}
                                 </tbody>
                             </table>
                             </div>

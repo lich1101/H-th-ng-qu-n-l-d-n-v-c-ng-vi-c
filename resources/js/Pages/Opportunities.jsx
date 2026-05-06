@@ -1064,6 +1064,7 @@ export default function Opportunities(props) {
                                 <th className="py-2">Doanh số</th>
                                 <th className="py-2">Nguồn</th>
                                 <th className="py-2">Phụ trách</th>
+                                <th className="py-2">Người tạo cơ hội</th>
                                 <th className="py-2">Dự kiến chốt</th>
                                 <th className="py-2 text-right">Thao tác</th>
                             </tr>
@@ -1077,7 +1078,8 @@ export default function Opportunities(props) {
                                     || statusOptionMap?.[statusCode]?.color_hex
                                     || '#64748B',
                                 );
-                                const assignee = item.assignee?.name || item.creator?.name || '—';
+                                const assignee = item.assignee?.name || '—';
+                                const creatorName = item.creator?.name || '—';
                                 const client = item.client?.name || `KH #${item.client_id}`;
                                 const clientId = Number(item.client_id || item.client?.id || 0);
                                 const watcherNames = (item.watcher_ids || [])
@@ -1164,6 +1166,7 @@ export default function Opportunities(props) {
                                                 : ''}
                                         </td>
                                         <td className="py-3 text-xs text-slate-700">{assignee}</td>
+                                        <td className="py-3 text-xs text-slate-700">{creatorName}</td>
                                         <td className="py-3 text-xs text-slate-700">
                                             {item.expected_close_date ? formatVietnamDate(item.expected_close_date) : '—'}
                                         </td>
@@ -1201,7 +1204,7 @@ export default function Opportunities(props) {
 
                             {!loading && opportunities.length === 0 ? (
                                 <tr>
-                                    <td className="py-8 text-center text-sm text-text-muted" colSpan={9}>
+                                    <td className="py-8 text-center text-sm text-text-muted" colSpan={10}>
                                         Chưa có cơ hội nào theo bộ lọc hiện tại.
                                     </td>
                                 </tr>
@@ -1209,7 +1212,7 @@ export default function Opportunities(props) {
 
                             {loading ? (
                                 <tr>
-                                    <td className="py-8 text-center text-sm text-text-muted" colSpan={9}>
+                                    <td className="py-8 text-center text-sm text-text-muted" colSpan={10}>
                                         Đang tải dữ liệu cơ hội...
                                     </td>
                                 </tr>
@@ -1224,6 +1227,7 @@ export default function Opportunities(props) {
                                     <td className="py-2.5">
                                         {Number(listAggregates.revenue_total || 0).toLocaleString('vi-VN')} VNĐ
                                     </td>
+                                    <td className="py-2.5 text-text-muted">—</td>
                                     <td className="py-2.5 text-text-muted">—</td>
                                     <td className="py-2.5 text-text-muted">—</td>
                                     <td className="py-2.5 text-text-muted">—</td>
