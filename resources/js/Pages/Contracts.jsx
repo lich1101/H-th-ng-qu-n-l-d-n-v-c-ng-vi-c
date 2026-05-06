@@ -640,7 +640,7 @@ export default function Contracts(props) {
     const canExportContracts = ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'].includes(userRole);
     const canSelectContracts = canBulkActions || canExportContracts;
     const isEmployee = userRole === 'nhan_vien';
-    const canChooseCollector = ['admin', 'administrator', 'quan_ly', 'ke_toan'].includes(userRole);
+    const canChooseCollector = ['admin', 'administrator'].includes(userRole);
     /** Mặc định khi tạo mới: người đang đăng nhập (có thể đổi nếu được phép). */
     const defaultCollectorUserId = currentUserId ? String(currentUserId) : '';
 
@@ -840,7 +840,14 @@ export default function Contracts(props) {
         if (!uid) return false;
 
         const client = contract?.client || {};
-        return Number(client?.assigned_staff_id || 0) === uid;
+        const collectorUserId = Number(contract?.collector_user_id || 0);
+        if (collectorUserId > 0 && collectorUserId === uid) {
+            return true;
+        }
+
+        const assignedStaffId = Number(client?.assigned_staff_id || 0);
+        const salesOwnerId = Number(client?.sales_owner_id || 0);
+        return assignedStaffId === uid || (assignedStaffId <= 0 && salesOwnerId === uid);
     };
 
     const canDeleteContract = (contract) => {
@@ -1992,7 +1999,9 @@ export default function Contracts(props) {
         const payload = {
             title: form.title,
             client_id: Number(form.client_id),
-            collector_user_id: form.collector_user_id ? Number(form.collector_user_id) : null,
+            ...(canChooseCollector
+                ? { collector_user_id: form.collector_user_id ? Number(form.collector_user_id) : null }
+                : {}),
             subtotal_value: contractSubtotal,
             value: contractValueTotal,
             vat_enabled: false,
@@ -2784,11 +2793,9 @@ export default function Contracts(props) {
                                 <p className="mt-1 text-xs text-text-muted">
                                     {isEmployee
                                         ? 'Nhân viên tạo hợp đồng sẽ tự gắn chính mình và không thể đổi sang người khác.'
-                                        : userRole === 'quan_ly'
-                                            ? 'Trưởng phòng mặc định là chính mình nhưng có thể chọn nhân sự trong phòng để đứng tên hợp đồng.'
-                                            : canApprove
-                                                ? 'Admin/Kế toán có thể tạo hợp đồng cho mọi nhân viên và dùng thêm nút tạo & duyệt.'
-                                                : 'Chọn nhân sự thu theo hợp đồng.'}
+                                        : canChooseCollector
+                                            ? 'Chỉ admin/administrator mới được đổi người thu theo hợp đồng.'
+                                            : 'Người thu hợp đồng sẽ được giữ nguyên; chỉ admin/administrator mới được đổi nhân sự thu.'}
                                 </p>
                             </div>
                             <select

@@ -143,6 +143,7 @@ export default function Opportunities(props) {
     const currentUserId = Number(props?.auth?.user?.id || 0) || null;
     const canCreate = ['admin', 'administrator', 'quan_ly', 'nhan_vien', 'ke_toan'].includes(userRole);
     const canDelete = canCreate;
+    const canEditOpportunityAssignee = ['admin', 'administrator'].includes(userRole);
 
     const canMutateOpportunityRow = (row) => {
         if (typeof row?.can_edit === 'boolean') {
@@ -156,12 +157,13 @@ export default function Opportunities(props) {
         }
         const uid = Number(currentUserId || 0);
         if (!uid) return false;
+        const opportunityAssigneeId = Number(row?.assigned_to ?? 0);
+        if (opportunityAssigneeId > 0 && opportunityAssigneeId === uid) {
+            return true;
+        }
         const assignedId = Number(row?.client?.assigned_staff_id ?? 0);
-        const salesId = Number(row?.client?.sales_owner_id ?? 0);
-        const ownsClient = assignedId === uid || (assignedId <= 0 && salesId === uid);
-        const createdBy = Number(row?.created_by ?? row?.creator?.id ?? 0);
-        const isCreator = createdBy > 0 && createdBy === uid;
-        return ownsClient || isCreator;
+        const salesOwnerId = Number(row?.client?.sales_owner_id ?? 0);
+        return assignedId === uid || (assignedId <= 0 && salesOwnerId === uid);
     };
 
     const isDirectAssignedClient = (client) => {
@@ -519,26 +521,17 @@ export default function Opportunities(props) {
         if (!canCreate) return;
 
         if (userRole === 'nhan_vien') {
+            const editingRow = editingId
+                ? opportunities.find((item) => Number(item.id) === Number(editingId))
+                : null;
+            const isSameClientAsCurrentOpportunity = editingRow
+                && String(editingRow.client_id || '') === String(form.client_id || '');
             const client = clients.find((c) => String(c.id) === String(form.client_id));
-            const uid = Number(currentUserId || 0);
-            if (!client || !uid) {
-                toast.error('Chỉ nhân viên phụ trách khách hàng hoặc người đã tạo cơ hội mới được tạo/sửa cơ hội tương ứng.');
+            const canEditCurrentOpportunity = editingRow ? canMutateOpportunityRow(editingRow) : false;
+            const canUseCurrentClient = isSameClientAsCurrentOpportunity && canEditCurrentOpportunity;
+            if (!canUseCurrentClient && !isDirectAssignedClient(client)) {
+                toast.error('Chỉ nhân viên phụ trách khách hàng (phụ trách KH) mới được tạo hoặc sửa cơ hội cho khách đó.');
                 return;
-            }
-            const ownsClient = isDirectAssignedClient(client);
-            if (!editingId) {
-                if (!ownsClient) {
-                    toast.error('Chỉ nhân viên phụ trách khách hàng mới được tạo cơ hội cho khách đó.');
-                    return;
-                }
-            } else {
-                const editingRow = opportunities.find((o) => Number(o.id) === Number(editingId));
-                const createdBy = Number(editingRow?.created_by ?? editingRow?.creator?.id ?? 0);
-                const isCreator = createdBy > 0 && createdBy === uid;
-                if (!ownsClient && !isCreator) {
-                    toast.error('Chỉ phụ trách khách hàng hoặc người tạo cơ hội mới được sửa bản ghi này.');
-                    return;
-                }
             }
         }
 
@@ -570,7 +563,9 @@ export default function Opportunities(props) {
             amount: amountParsed,
             success_probability: probParsed,
             product_id: form.product_id ? Number(form.product_id) : null,
-            assigned_to: form.assigned_to ? Number(form.assigned_to) : null,
+            ...(canEditOpportunityAssignee
+                ? { assigned_to: form.assigned_to ? Number(form.assigned_to) : null }
+                : {}),
             watcher_ids: (form.watcher_ids || []).map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0),
             expected_close_date: form.expected_close_date || null,
             notes: String(form.notes || '').trim() || null,
@@ -680,13 +675,13 @@ export default function Opportunities(props) {
                             placeholder="Tất cả khách hàng"
                         />
                     </FilterField>
-                    <FilterField label="Nhân sự phụ trách">
+                    <FilterField label="Nhân sự phụ trách cơ hội">
                         <TagMultiSelect
                             options={staffFilterOptions}
                             selectedIds={filters.staff_ids}
                             onChange={(selectedIds) => setFilters((prev) => ({ ...prev, staff_ids: selectedIds }))}
                             addPlaceholder="Tìm và thêm nhân sự"
-                            emptyLabel="Để trống để xem toàn bộ nhân sự trong phạm vi."
+                            emptyLabel="Để trống để xem toàn bộ nhân sự phụ trách trong phạm vi."
                         />
                     </FilterField>
                     <FilterField label="Dự kiến chốt từ">
@@ -987,19 +982,32 @@ export default function Opportunities(props) {
                         </select>
                     </Field>
 
-                    <Field label="Người quản lý/phụ trách" hint="Mặc định hệ thống gán tài khoản đang tạo cơ hội.">
-                        <select
-                            className={filterControlClass}
-                            value={form.assigned_to}
-                            onChange={(event) => setForm((prev) => ({ ...prev, assigned_to: event.target.value }))}
-                        >
-                            <option value="">Chọn nhân sự</option>
-                            {users.map((user) => (
-                                <option key={user.id} value={user.id}>
-                                    {user.name} • {user.role}
-                                </option>
-                            ))}
-                        </select>
+                    <Field
+                        label="Người quản lý/phụ trách"
+                        hint={canEditOpportunityAssignee
+                            ? 'Chỉ admin/administrator mới được đổi người phụ trách cơ hội.'
+                            : 'Người phụ trách cơ hội được giữ nguyên; chỉ admin/administrator mới được đổi.'}
+                    >
+                        {canEditOpportunityAssignee ? (
+                            <select
+                                className={filterControlClass}
+                                value={form.assigned_to}
+                                onChange={(event) => setForm((prev) => ({ ...prev, assigned_to: event.target.value }))}
+                            >
+                                <option value="">Chọn nhân sự</option>
+                                {users.map((user) => (
+                                    <option key={user.id} value={user.id}>
+                                        {user.name} • {user.role}
+                                    </option>
+                                ))}
+                            </select>
+                        ) : (
+                            <div className={`${filterControlClass} flex items-center bg-slate-50 text-slate-700`}>
+                                {userMap?.[Number(form.assigned_to || 0)]?.name
+                                    || props?.auth?.user?.name
+                                    || 'Tài khoản hiện tại'}
+                            </div>
+                        )}
                     </Field>
 
                     <div className="md:col-span-2">
@@ -1064,7 +1072,6 @@ export default function Opportunities(props) {
                                 <th className="py-2">Doanh số</th>
                                 <th className="py-2">Nguồn</th>
                                 <th className="py-2">Phụ trách</th>
-                                <th className="py-2">Người tạo cơ hội</th>
                                 <th className="py-2">Dự kiến chốt</th>
                                 <th className="py-2 text-right">Thao tác</th>
                             </tr>
@@ -1078,8 +1085,7 @@ export default function Opportunities(props) {
                                     || statusOptionMap?.[statusCode]?.color_hex
                                     || '#64748B',
                                 );
-                                const assignee = item.assignee?.name || '—';
-                                const creatorName = item.creator?.name || '—';
+                                const assignee = item.assignee?.name || item.creator?.name || '—';
                                 const client = item.client?.name || `KH #${item.client_id}`;
                                 const clientId = Number(item.client_id || item.client?.id || 0);
                                 const watcherNames = (item.watcher_ids || [])
@@ -1166,7 +1172,6 @@ export default function Opportunities(props) {
                                                 : ''}
                                         </td>
                                         <td className="py-3 text-xs text-slate-700">{assignee}</td>
-                                        <td className="py-3 text-xs text-slate-700">{creatorName}</td>
                                         <td className="py-3 text-xs text-slate-700">
                                             {item.expected_close_date ? formatVietnamDate(item.expected_close_date) : '—'}
                                         </td>
@@ -1204,7 +1209,7 @@ export default function Opportunities(props) {
 
                             {!loading && opportunities.length === 0 ? (
                                 <tr>
-                                    <td className="py-8 text-center text-sm text-text-muted" colSpan={10}>
+                                    <td className="py-8 text-center text-sm text-text-muted" colSpan={9}>
                                         Chưa có cơ hội nào theo bộ lọc hiện tại.
                                     </td>
                                 </tr>
@@ -1212,7 +1217,7 @@ export default function Opportunities(props) {
 
                             {loading ? (
                                 <tr>
-                                    <td className="py-8 text-center text-sm text-text-muted" colSpan={10}>
+                                    <td className="py-8 text-center text-sm text-text-muted" colSpan={9}>
                                         Đang tải dữ liệu cơ hội...
                                     </td>
                                 </tr>
@@ -1227,7 +1232,6 @@ export default function Opportunities(props) {
                                     <td className="py-2.5">
                                         {Number(listAggregates.revenue_total || 0).toLocaleString('vi-VN')} VNĐ
                                     </td>
-                                    <td className="py-2.5 text-text-muted">—</td>
                                     <td className="py-2.5 text-text-muted">—</td>
                                     <td className="py-2.5 text-text-muted">—</td>
                                     <td className="py-2.5 text-text-muted">—</td>

@@ -57,6 +57,7 @@ export default function OpportunityDetail({ auth, opportunityId }) {
     const toast = useToast();
     const userRole = String(auth?.user?.role || '').toLowerCase();
     const currentUserId = Number(auth?.user?.id || 0) || null;
+    const canEditOpportunityAssignee = ['admin', 'administrator'].includes(userRole);
 
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -102,12 +103,13 @@ export default function OpportunityDetail({ auth, opportunityId }) {
         }
         const uid = Number(currentUserId || 0);
         if (!uid) return false;
+        const opportunityAssigneeId = Number(opportunity?.assigned_to ?? 0);
+        if (opportunityAssigneeId > 0 && opportunityAssigneeId === uid) {
+            return true;
+        }
         const assignedId = Number(opportunity?.client?.assigned_staff_id ?? 0);
-        const salesId = Number(opportunity?.client?.sales_owner_id ?? 0);
-        const ownsClient = assignedId === uid || (assignedId <= 0 && salesId === uid);
-        const createdBy = Number(opportunity?.created_by ?? opportunity?.creator?.id ?? 0);
-        const isCreator = createdBy > 0 && createdBy === uid;
-        return ownsClient || isCreator;
+        const salesOwnerId = Number(opportunity?.client?.sales_owner_id ?? 0);
+        return assignedId === uid || (assignedId <= 0 && salesOwnerId === uid);
     }, [userRole, opportunity, currentUserId]);
 
     const stats = useMemo(() => ([
@@ -220,7 +222,9 @@ export default function OpportunityDetail({ auth, opportunityId }) {
                 amount: amountParsed,
                 success_probability: probParsed,
                 product_id: form.product_id ? Number(form.product_id) : null,
-                assigned_to: form.assigned_to ? Number(form.assigned_to) : null,
+                ...(canEditOpportunityAssignee
+                    ? { assigned_to: form.assigned_to ? Number(form.assigned_to) : null }
+                    : {}),
                 watcher_ids: (form.watcher_ids || []).map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0),
                 expected_close_date: form.expected_close_date || null,
                 notes: String(form.notes || '').trim() || null,
@@ -446,19 +450,34 @@ export default function OpportunityDetail({ auth, opportunityId }) {
                             ))}
                         </select>
                     </Field>
-                    <Field label="Người quản lý/phụ trách">
-                        <select
-                            className={filterControlClass}
-                            value={form.assigned_to}
-                            onChange={(event) => setForm((prev) => ({ ...prev, assigned_to: event.target.value }))}
-                        >
-                            <option value="">Chọn nhân sự</option>
-                            {users.map((user) => (
-                                <option key={user.id} value={user.id}>
-                                    {user.name} • {user.role}
-                                </option>
-                            ))}
-                        </select>
+                    <Field
+                        label="Người quản lý/phụ trách"
+                        hint={canEditOpportunityAssignee
+                            ? 'Chỉ admin/administrator mới được đổi người phụ trách cơ hội.'
+                            : 'Người phụ trách cơ hội được giữ nguyên; chỉ admin/administrator mới được đổi.'}
+                    >
+                        {canEditOpportunityAssignee ? (
+                            <select
+                                className={filterControlClass}
+                                value={form.assigned_to}
+                                onChange={(event) => setForm((prev) => ({ ...prev, assigned_to: event.target.value }))}
+                            >
+                                <option value="">Chọn nhân sự</option>
+                                {users.map((user) => (
+                                    <option key={user.id} value={user.id}>
+                                        {user.name} • {user.role}
+                                    </option>
+                                ))}
+                            </select>
+                        ) : (
+                            <div className={`${filterControlClass} flex items-center bg-slate-50 text-slate-700`}>
+                                {users.find((user) => String(user.id) === String(form.assigned_to || ''))?.name
+                                    || opportunity?.assignee?.name
+                                    || opportunity?.creator?.name
+                                    || auth?.user?.name
+                                    || '—'}
+                            </div>
+                        )}
                     </Field>
                     <div className="md:col-span-2">
                         <Field label="Người theo dõi">

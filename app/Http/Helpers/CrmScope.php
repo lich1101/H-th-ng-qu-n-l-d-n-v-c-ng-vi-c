@@ -102,7 +102,7 @@ class CrmScope
         return self::employeeOwnsClient($user, $client);
     }
 
-    public static function employeeOwnsClient(User $user, Client $client): bool
+    private static function employeeOwnsClient(User $user, Client $client): bool
     {
         if ((int) ($client->assigned_staff_id ?? 0) === (int) $user->id) {
             return true;
@@ -232,10 +232,6 @@ class CrmScope
 
     public static function applyContractScope(Builder $query, User $user): Builder
     {
-        $query->whereHas('client', function (Builder $clientQuery) {
-            self::applyNotInRotationPool($clientQuery);
-        });
-
         if (self::hasGlobalScope($user)) {
             return $query;
         }
@@ -275,28 +271,17 @@ class CrmScope
             });
         }
 
-        // Nhân viên: thấy hợp đồng nếu trực tiếp liên quan hoặc thuộc khách đang phụ trách/chăm sóc.
+        // Nhân viên: chỉ thấy hợp đồng mình phụ trách trực tiếp (collector) hoặc thuộc khách mình đang phụ trách.
         return $query->where(function (Builder $builder) use ($user) {
-            $builder->where('created_by', $user->id)
-                ->orWhere('collector_user_id', $user->id)
-                ->orWhereHas('careStaffUsers', function (Builder $careStaffQuery) use ($user) {
-                    $careStaffQuery->where('users.id', $user->id);
-                })
+            $builder->where('collector_user_id', $user->id)
                 ->orWhereHas('client', function (Builder $clientQuery) use ($user) {
                     self::applyEmployeeOwnedClientScope($clientQuery, (int) $user->id);
-                    $clientQuery->orWhereHas('careStaffUsers', function (Builder $careQuery) use ($user) {
-                        $careQuery->where('users.id', (int) $user->id);
-                    });
                 });
         });
     }
 
     public static function applyOpportunityScope(Builder $query, User $user): Builder
     {
-        $query->whereHas('client', function (Builder $clientQuery) {
-            self::applyNotInRotationPool($clientQuery);
-        });
-
         if (self::hasGlobalScope($user)) {
             return $query;
         }
@@ -310,13 +295,11 @@ class CrmScope
             });
         }
 
-        // Nhân viên: chỉ thấy cơ hội thuộc khách mình đang phụ trách/chăm sóc.
+        // Nhân viên: chỉ thấy cơ hội mình phụ trách trực tiếp hoặc thuộc khách mình đang phụ trách.
         return $query->where(function (Builder $builder) use ($user) {
-            $builder->whereHas('client', function (Builder $clientQuery) use ($user) {
+            $builder->where('assigned_to', (int) $user->id)
+                ->orWhereHas('client', function (Builder $clientQuery) use ($user) {
                 self::applyEmployeeOwnedClientScope($clientQuery, (int) $user->id);
-                $clientQuery->orWhereHas('careStaffUsers', function (Builder $careQuery) use ($user) {
-                    $careQuery->where('users.id', (int) $user->id);
-                });
             });
         });
     }

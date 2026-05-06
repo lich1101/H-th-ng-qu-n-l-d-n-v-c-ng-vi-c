@@ -223,6 +223,7 @@ export default function ContractDetail(props) {
     const toast = useToast();
 
     const userRole = auth?.user?.role || '';
+    const normalizedUserRole = String(userRole || '').toLowerCase();
     const currentUserId = auth?.user?.id;
 
     const [loading, setLoading] = useState(true);
@@ -624,7 +625,9 @@ export default function ContractDetail(props) {
             const payload = {
                 title: (editForm.title || '').trim(),
                 client_id: Number(editForm.client_id),
-                collector_user_id: editForm.collector_user_id ? Number(editForm.collector_user_id) : null,
+                ...(canEditCollector
+                    ? { collector_user_id: editForm.collector_user_id ? Number(editForm.collector_user_id) : null }
+                    : {}),
                 subtotal_value: editItems.length || editForm.vat_enabled
                     ? editContractSubtotal
                     : parseNumberInput(editForm.value),
@@ -926,6 +929,7 @@ export default function ContractDetail(props) {
         || Number(contract.collector_user_id || 0) === currentUserId
         || Number(contract.created_by || 0) === currentUserId;
     const canManageContract = readBoolean(contract?.can_manage) === true;
+    const canEditCollector = ['admin', 'administrator'].includes(normalizedUserRole);
     const canManageFinance = readBoolean(contract?.can_manage_finance) === true;
     const canSubmitFinanceRequest = readBoolean(contract?.can_submit_finance_request) === true;
     const canReviewFinanceRequest = readBoolean(contract?.can_review_finance_request) === true;
@@ -1921,19 +1925,15 @@ export default function ContractDetail(props) {
                             <div>
                                 <p className="text-xs uppercase tracking-[0.16em] text-text-subtle">Nhân viên thu theo hợp đồng</p>
                                 <p className="mt-1 text-xs text-text-muted">
-                                    {userRole === 'nhan_vien'
-                                        ? 'Nhân viên không thể đổi người thu hợp đồng.'
-                                        : userRole === 'quan_ly'
-                                            ? 'Trưởng phòng có thể chọn nhân sự trong phòng để đứng tên hợp đồng.'
-                                            : ['admin', 'ke_toan'].includes(userRole)
-                                                ? 'Admin/Kế toán có thể gán người thu theo nhu cầu nghiệp vụ.'
-                                                : 'Chọn nhân sự thu theo hợp đồng.'}
+                                    {canEditCollector
+                                        ? 'Chỉ admin/administrator mới được đổi nhân sự thu của hợp đồng.'
+                                        : 'Người thu hợp đồng được giữ nguyên; bạn không thể đổi sang nhân sự khác.'}
                                 </p>
                             </div>
                             <select
                                 className="min-w-[260px] rounded-xl border border-slate-200/80 bg-white px-3 py-2 text-sm"
                                 value={editForm.collector_user_id}
-                                disabled={!['admin', 'quan_ly', 'ke_toan'].includes(userRole)}
+                                disabled={!canEditCollector}
                                 onChange={(e) => setEditForm((s) => ({ ...s, collector_user_id: e.target.value }))}
                             >
                                 <option value="">Chọn nhân viên thu</option>

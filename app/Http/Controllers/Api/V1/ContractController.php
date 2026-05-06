@@ -896,6 +896,7 @@ class ContractController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        $user = $request->user();
         $rules = array_merge($this->rules(null, true), [
             'pending_payment_requests' => ['nullable', 'array', 'max:100'],
             'pending_payment_requests.*.amount' => ['required', 'numeric', 'min:0'],
@@ -921,13 +922,13 @@ class ContractController extends Controller
         if (! $client) {
             return response()->json(['message' => 'Khách hàng không tồn tại.'], 422);
         }
-        if (CrmScope::isClientInRotationPool($client) && ! CrmScope::canAccessRotationPoolClient($request->user(), $client)) {
+        if (CrmScope::isClientInRotationPool($client) && ! $this->canAccessContractClient($user, $client)) {
             return response()->json(['message' => 'Khách hàng đang ở kho số nên chưa thể tạo hợp đồng.'], 422);
         }
-        if (! $this->canMutateContractForClient($request->user(), $client)) {
+        if (! $this->canMutateContractForClient($user, $client)) {
             return response()->json(['message' => 'Chỉ nhân viên phụ trách khách hàng (hoặc quản lý/admin) mới được tạo hợp đồng cho khách này.'], 403);
         }
-        if ($error = $this->validateAssignableCareStaffIds($request->user(), $careStaffIds)) {
+        if ($error = $this->validateAssignableCareStaffIds($user, $careStaffIds)) {
             return response()->json(['message' => $error], 422);
         }
         $validated = $this->normalizeOpportunityIdInput($validated);
@@ -939,7 +940,7 @@ class ContractController extends Controller
             return response()->json(['message' => $msg], 422);
         }
         $validated['code'] = $this->generateContractCode();
-        $validated['created_by'] = $request->user()->id;
+        $validated['created_by'] = $user->id;
         unset($validated['project_id'], $validated['create_and_approve'], $validated['status']);
 
         $rawItems = $request->input('items');
@@ -1024,24 +1025,29 @@ class ContractController extends Controller
 
     public function update(Request $request, Contract $contract): JsonResponse
     {
-        if (! $this->canEditContract($request->user(), $contract)) {
+        $user = $request->user();
+        if (! $this->canEditContract($user, $contract)) {
             return response()->json(['message' => 'Không có quyền cập nhật hợp đồng.'], 403);
         }
         $wasApproved = ($contract->approval_status ?? '') === 'approved';
         $validated = $request->validate($this->rules($contract->id, true), $this->contractValidationMessages());
         unset($validated['status']);
+        if (! $this->canEditContractCollector($user)) {
+            unset($validated['collector_user_id']);
+        }
         $careStaffIds = $this->extractCareStaffIds($validated);
         $client = Client::query()->find((int) $validated['client_id']);
         if (! $client) {
             return response()->json(['message' => 'Khách hàng không tồn tại.'], 422);
         }
-        if (CrmScope::isClientInRotationPool($client) && ! CrmScope::canAccessRotationPoolClient($request->user(), $client)) {
+        $clientChanged = (int) $client->id !== (int) $contract->client_id;
+        if ($clientChanged && CrmScope::isClientInRotationPool($client) && ! $this->canAccessContractClient($user, $client)) {
             return response()->json(['message' => 'Khách hàng đang ở kho số nên chưa thể cập nhật hợp đồng.'], 422);
         }
-        if (! $this->canMutateContractForClient($request->user(), $client, $contract)) {
+        if ($clientChanged && ! $this->canMutateContractForClient($user, $client, $contract)) {
             return response()->json(['message' => 'Chỉ nhân viên phụ trách khách hàng (hoặc quản lý/admin) mới được cập nhật hợp đồng cho khách này.'], 403);
         }
-        if ($error = $this->validateAssignableCareStaffIds($request->user(), $careStaffIds)) {
+        if ($error = $this->validateAssignableCareStaffIds($user, $careStaffIds)) {
             return response()->json(['message' => $error], 422);
         }
         $validated = $this->normalizeOpportunityIdInput($validated);
@@ -2407,39 +2413,43 @@ class ContractController extends Controller
             return $requestedCollectorId;
         }
 
-        if ($user->role === 'nhan_vien') {
+        if (! $this->canEditContractCollector($user)) {
+            if ($contract) {
+                return $contract->collector_user_id ? (int) $contract->collector_user_id : null;
+            }
+
             return (int) $user->id;
+        }
+
+        $allowedIds = $this->allowedCollectorIdsForAdminAndAccounting();
+
+        if ($requestedCollectorId && in_array($requestedCollectorId, $allowedIds, true)) {
+            return $requestedCollectorId;
+        }
+
+        if ($contract && $contract->collector_user_id && in_array((int) $contract->collector_user_id, $allowedIds, true)) {
+            return (int) $contract->collector_user_id;
+        }
+
+        return null;
+    }
+
+    private function canEditContractCollector(?User $user): bool
+    {
+        return $user && in_array((string) $user->role, ['admin', 'administrator'], true);
+    }
+
+    private function canAccessContractClient(User $user, Client $client): bool
+    {
+        if (in_array((string) $user->role, ['admin', 'administrator', 'ke_toan'], true)) {
+            return true;
         }
 
         if ($user->role === 'quan_ly') {
-            $allowedIds = $this->allowedCollectorIdsForManager($user);
-
-            if ($requestedCollectorId && in_array($requestedCollectorId, $allowedIds, true)) {
-                return $requestedCollectorId;
-            }
-
-            if ($contract && $contract->collector_user_id && in_array((int) $contract->collector_user_id, $allowedIds, true)) {
-                return (int) $contract->collector_user_id;
-            }
-
-            return (int) $user->id;
+            return CrmScope::canManagerAccessClient($user, $client);
         }
 
-        if (in_array($user->role, ['admin', 'administrator', 'ke_toan'], true)) {
-            $allowedIds = $this->allowedCollectorIdsForAdminAndAccounting();
-
-            if ($requestedCollectorId && in_array($requestedCollectorId, $allowedIds, true)) {
-                return $requestedCollectorId;
-            }
-
-            if ($contract && $contract->collector_user_id && in_array((int) $contract->collector_user_id, $allowedIds, true)) {
-                return (int) $contract->collector_user_id;
-            }
-
-            return null;
-        }
-
-        return $requestedCollectorId ?: ($contract ? (int) $contract->collector_user_id : null);
+        return CrmScope::canManageClient($user, $client);
     }
 
     private function allowedCollectorIdsForManager(User $user): array
@@ -2823,9 +2833,6 @@ class ContractController extends Controller
         if (! $contract->client) {
             return false;
         }
-        if (CrmScope::isClientInRotationPool($contract->client)) {
-            return CrmScope::canAccessRotationPoolClient($user, $contract->client);
-        }
 
         if (in_array($user->role, ['admin', 'administrator', 'ke_toan'], true)) {
             return true;
@@ -2839,7 +2846,7 @@ class ContractController extends Controller
             return false;
         }
 
-        return $this->isStaffLinkedToContract($user, $contract, true, true);
+        return $this->isEmployeeAllowedForContract($user, $contract);
     }
 
     private function canManageContract(User $user, Contract $contract): bool
@@ -2847,9 +2854,6 @@ class ContractController extends Controller
         $contract->loadMissing('client');
         if (! $contract->client) {
             return false;
-        }
-        if (CrmScope::isClientInRotationPool($contract->client)) {
-            return CrmScope::canAccessRotationPoolClient($user, $contract->client);
         }
 
         if (in_array($user->role, ['admin', 'administrator', 'ke_toan'], true)) {
@@ -2916,7 +2920,7 @@ class ContractController extends Controller
             return false;
         }
 
-        return $this->canMutateContractForClient($user, $contract->client, $contract);
+        return $this->isEmployeeAllowedForContract($user, $contract);
     }
 
     private function isManagerOfContractDepartment(User $user, Contract $contract): bool
@@ -2938,18 +2942,12 @@ class ContractController extends Controller
             return false;
         }
 
-        return $this->isStaffLinkedToContract($user, $contract, true, true);
+        return $this->isEmployeeAllowedForContract($user, $contract);
     }
 
-    private function isStaffLinkedToContract(User $user, Contract $contract, bool $includeClientCareStaff, bool $includeContractCareStaff): bool
+    private function isEmployeeAllowedForContract(User $user, Contract $contract): bool
     {
-        if ((int) $contract->created_by === (int) $user->id) {
-            return true;
-        }
         if ((int) $contract->collector_user_id === (int) $user->id) {
-            return true;
-        }
-        if ($includeContractCareStaff && $this->isContractCareStaff($user, $contract)) {
             return true;
         }
 
@@ -2968,7 +2966,7 @@ class ContractController extends Controller
             return true;
         }
 
-        return $includeClientCareStaff && $this->isCareStaff($user, $client);
+        return false;
     }
 
     private function isEmployeeLinkedToClient(User $user, Client $client): bool

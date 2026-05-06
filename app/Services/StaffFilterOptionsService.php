@@ -13,8 +13,6 @@ use App\Models\TaskItem;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 
 class StaffFilterOptionsService
 {
@@ -51,45 +49,7 @@ class StaffFilterOptionsService
         $base = Contract::query();
         CrmScope::applyContractScope($base, $viewer);
 
-        $ids = collect();
-        $ids = $ids->merge((clone $base)->whereNotNull('collector_user_id')->distinct()->pluck('collector_user_id'));
-        $ids = $ids->merge((clone $base)->whereNotNull('created_by')->distinct()->pluck('created_by'));
-        $ids = $ids->merge((clone $base)->whereNotNull('handover_received_by')->distinct()->pluck('handover_received_by'));
-
-        if (Schema::hasTable('contract_care_staff')) {
-            $contractIdSub = (clone $base)->select('contracts.id');
-            $ids = $ids->merge(
-                DB::table('contract_care_staff')
-                    ->whereIn('contract_id', $contractIdSub)
-                    ->distinct()
-                    ->pluck('user_id')
-            );
-        }
-
-        $clientIdSub = (clone $base)->whereNotNull('contracts.client_id')->select('contracts.client_id')->distinct();
-        $ids = $ids->merge(
-            Client::query()
-                ->whereIn('id', $clientIdSub)
-                ->whereNotNull('assigned_staff_id')
-                ->distinct()
-                ->pluck('assigned_staff_id')
-        );
-        $ids = $ids->merge(
-            Client::query()
-                ->whereIn('id', $clientIdSub)
-                ->whereNotNull('sales_owner_id')
-                ->distinct()
-                ->pluck('sales_owner_id')
-        );
-
-        if (Schema::hasTable('client_care_staff')) {
-            $ids = $ids->merge(
-                DB::table('client_care_staff')
-                    ->whereIn('client_id', $clientIdSub)
-                    ->distinct()
-                    ->pluck('user_id')
-            );
-        }
+        $ids = (clone $base)->whereNotNull('collector_user_id')->distinct()->pluck('collector_user_id');
 
         return $this->usersFromIds($ids);
     }
@@ -121,7 +81,13 @@ class StaffFilterOptionsService
 
         $ids = collect();
         $ids = $ids->merge((clone $base)->whereNotNull('assigned_to')->distinct()->pluck('assigned_to'));
-        $ids = $ids->merge((clone $base)->whereNotNull('created_by')->distinct()->pluck('created_by'));
+        $ids = $ids->merge(
+            (clone $base)
+                ->whereNull('assigned_to')
+                ->whereNotNull('created_by')
+                ->distinct()
+                ->pluck('created_by')
+        );
 
         return $this->usersFromIds($ids);
     }

@@ -438,6 +438,7 @@ class OpportunityController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        $user = $request->user();
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:255'],
             'opportunity_type' => ['nullable', 'string', 'max:120'],
@@ -458,10 +459,10 @@ class OpportunityController extends Controller
         if (! $client) {
             return response()->json(['message' => 'Khách hàng không tồn tại.'], 422);
         }
-        if (CrmScope::isClientInRotationPool($client) && ! CrmScope::canAccessRotationPoolClient($request->user(), $client)) {
+        if (CrmScope::isClientInRotationPool($client) && ! $this->canAccessOpportunityClient($user, $client)) {
             return response()->json(['message' => 'Khách hàng đang ở kho số nên chưa thể tạo cơ hội.'], 422);
         }
-        if (! $this->canMutateOpportunityForClient($request->user(), $client)) {
+        if (! $this->canMutateOpportunityForClient($user, $client)) {
             return response()->json([
                 'message' => 'Chỉ nhân viên phụ trách khách hàng (hoặc quản lý/admin) mới được tạo cơ hội cho khách này.',
             ], 403);
@@ -475,9 +476,9 @@ class OpportunityController extends Controller
                 $contractId = null;
             }
         }
-        $validated['created_by'] = $request->user()->id;
-        if (empty($validated['assigned_to'])) {
-            $validated['assigned_to'] = (int) $request->user()->id;
+        $validated['created_by'] = $user->id;
+        if (! $this->canEditOpportunityAssignee($user) || empty($validated['assigned_to'])) {
+            $validated['assigned_to'] = (int) $user->id;
         }
         $validated['status'] = trim((string) ($validated['status'] ?? '')) ?: $this->defaultOpportunityStatusCode();
         $validated['watcher_ids'] = $this->normalizeWatcherIds($validated['watcher_ids'] ?? []);
@@ -496,7 +497,7 @@ class OpportunityController extends Controller
         $this->decorateOpportunityStatus($opportunity);
         $this->appendOpportunityPermissions($opportunity, $request->user());
 
-        $this->notifyOpportunityCreated($opportunity, $request->user());
+        $this->notifyOpportunityCreated($opportunity, $user);
 
         return response()->json($opportunity, 201);
     }
@@ -621,7 +622,7 @@ class OpportunityController extends Controller
         }
         if (! $this->canMutateOpportunity($user, $opportunity)) {
             return response()->json([
-                'message' => 'Chỉ người tạo cơ hội, phụ trách khách hàng hoặc quản lý/admin mới được sửa cơ hội này.',
+                'message' => 'Chỉ nhân viên phụ trách khách hàng (hoặc quản lý/admin) mới được sửa cơ hội này.',
             ], 403);
         }
         $validated = $request->validate([
@@ -640,6 +641,9 @@ class OpportunityController extends Controller
             'notes' => ['nullable', 'string'],
             'contract_id' => ['sometimes', 'nullable', 'integer', 'exists:contracts,id'],
         ]);
+        if (! $this->canEditOpportunityAssignee($user)) {
+            unset($validated['assigned_to']);
+        }
         $shouldSyncContract = array_key_exists('contract_id', $validated);
         $contractId = null;
         if ($shouldSyncContract) {
@@ -663,12 +667,13 @@ class OpportunityController extends Controller
                     'message' => 'Khách hàng không tồn tại.',
                 ], 422);
             }
-            if (CrmScope::isClientInRotationPool($targetClient) && ! CrmScope::canAccessRotationPoolClient($user, $targetClient)) {
+            $clientChanged = (int) $targetClient->id !== (int) $opportunity->client_id;
+            if ($clientChanged && CrmScope::isClientInRotationPool($targetClient) && ! $this->canAccessOpportunityClient($user, $targetClient)) {
                 return response()->json([
                     'message' => 'Khách hàng đang ở kho số nên chưa thể gắn cơ hội.',
                 ], 422);
             }
-            if (! $this->canMutateOpportunityForClient($user, $targetClient)) {
+            if ($clientChanged && ! $this->canMutateOpportunityForClient($user, $targetClient)) {
                 return response()->json([
                     'message' => 'Không có quyền gắn cơ hội cho khách hàng đã chọn.',
                 ], 403);
@@ -700,7 +705,7 @@ class OpportunityController extends Controller
         }
         if (! $this->canMutateOpportunity($user, $opportunity)) {
             return response()->json([
-                'message' => 'Chỉ người tạo cơ hội, phụ trách khách hàng hoặc quản lý/admin mới được xóa cơ hội này.',
+                'message' => 'Chỉ nhân viên phụ trách khách hàng (hoặc quản lý/admin) mới được xóa cơ hội này.',
             ], 403);
         }
         if ($opportunity->contract()->exists()) {
@@ -758,7 +763,7 @@ class OpportunityController extends Controller
     }
 
     /**
-     * Ghi (tạo/sửa/xóa) theo khách: admin/kế toán/QL; nhân viên khi là người phụ trách khách (assigned_staff hoặc sales_owner khi chưa gán staff).
+     * Ghi khi tạo theo khách: chỉ admin/QL hoặc nhân viên phụ trách khách.
      */
     private function canMutateOpportunityForClient(User $user, Client $client): bool
     {
@@ -767,7 +772,7 @@ class OpportunityController extends Controller
                 return true;
             }
 
-            return CrmScope::employeeOwnsClient($user, $client);
+            return (int) ($client->assigned_staff_id ?? 0) === (int) $user->id;
         }
 
         if (CrmScope::hasGlobalScope($user)) {
@@ -779,22 +784,10 @@ class OpportunityController extends Controller
         }
 
         if ($user->role === 'nhan_vien') {
-            return CrmScope::employeeOwnsClient($user, $client);
+            return (int) ($client->assigned_staff_id ?? 0) === (int) $user->id;
         }
 
         return false;
-    }
-
-    private function opportunityCreatorId(Opportunity $opportunity): int
-    {
-        return (int) ($opportunity->created_by ?? 0);
-    }
-
-    private function isOpportunityCreator(User $user, Opportunity $opportunity): bool
-    {
-        $creatorId = $this->opportunityCreatorId($opportunity);
-
-        return $creatorId > 0 && $creatorId === (int) $user->id;
     }
 
     private function canMutateOpportunity(User $user, Opportunity $opportunity): bool
@@ -807,13 +800,13 @@ class OpportunityController extends Controller
             return CrmScope::canManagerAccessOpportunity($user, $opportunity);
         }
 
-        if ($this->isOpportunityCreator($user, $opportunity)) {
-            return true;
-        }
-
         $opportunity->loadMissing('client');
         if (! $opportunity->client) {
             return false;
+        }
+
+        if ($this->isOpportunityAssignee($user, $opportunity)) {
+            return true;
         }
 
         return $this->canMutateOpportunityForClient($user, $opportunity->client);
@@ -827,14 +820,6 @@ class OpportunityController extends Controller
         if (! $opportunity->client) {
             return false;
         }
-
-        if ($this->isOpportunityCreator($user, $opportunity)) {
-            return true;
-        }
-
-        if (CrmScope::isClientInRotationPool($opportunity->client)) {
-            return CrmScope::canAccessRotationPoolClient($user, $opportunity->client);
-        }
         if (CrmScope::hasGlobalScope($user)) {
             return true;
         }
@@ -842,12 +827,8 @@ class OpportunityController extends Controller
             return CrmScope::canManagerAccessOpportunity($user, $opportunity);
         }
 
-        $client = $opportunity->client;
-        if (! $client) {
-            return false;
-        }
-
-        return CrmScope::canAccessClient($user, $client);
+        return $this->isOpportunityAssignee($user, $opportunity)
+            || $this->canAccessOpportunityClient($user, $opportunity->client);
     }
 
     private function appendOpportunityPermissions(Opportunity $opportunity, User $user): Opportunity
@@ -870,6 +851,29 @@ class OpportunityController extends Controller
         }
 
         return $opportunity->contract()->exists();
+    }
+
+    private function canEditOpportunityAssignee(?User $user): bool
+    {
+        return $user && in_array((string) $user->role, ['admin', 'administrator'], true);
+    }
+
+    private function isOpportunityAssignee(User $user, Opportunity $opportunity): bool
+    {
+        return (int) ($opportunity->assigned_to ?? 0) === (int) $user->id;
+    }
+
+    private function canAccessOpportunityClient(User $user, Client $client): bool
+    {
+        if (CrmScope::hasGlobalScope($user)) {
+            return true;
+        }
+
+        if ($user->role === 'quan_ly') {
+            return CrmScope::canManagerAccessClient($user, $client);
+        }
+
+        return CrmScope::canManageClient($user, $client);
     }
 
     private function canViewerFilterByStaff(User $viewer, int $staffId): bool

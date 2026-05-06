@@ -169,9 +169,6 @@ class ContractCostController extends Controller
 
     private function isStaffLinkedToContract(User $user, Contract $contract): bool
     {
-        if ((int) $contract->created_by === (int) $user->id) {
-            return true;
-        }
         if ((int) $contract->collector_user_id === (int) $user->id) {
             return true;
         }
@@ -191,7 +188,7 @@ class ContractCostController extends Controller
             return true;
         }
 
-        return $this->isCareStaff($user, $client) || $this->isContractCareStaff($user, $contract);
+        return false;
     }
 
     private function isCareStaff(User $user, Client $client): bool
