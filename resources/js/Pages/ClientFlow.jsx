@@ -1065,7 +1065,7 @@ export default function ClientFlow({ auth, clientId }) {
                                         <th className="py-2">Tên cơ hội</th>
                                         <th className="py-2">Trạng thái</th>
                                         <th className="py-2">Doanh số</th>
-                                        <th className="py-2">Phụ trách</th>
+                                        <th className="py-2">Phụ trách khách hàng</th>
                                         <th className="py-2">Người tạo cơ hội</th>
                                         <th className="py-2">Dự kiến chốt</th>
                                         <th className="py-2">Ghi chú</th>
