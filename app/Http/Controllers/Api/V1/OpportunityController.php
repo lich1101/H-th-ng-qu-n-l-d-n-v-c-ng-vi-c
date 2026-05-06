@@ -621,7 +621,7 @@ class OpportunityController extends Controller
         }
         if (! $this->canMutateOpportunity($user, $opportunity)) {
             return response()->json([
-                'message' => 'Chỉ nhân viên phụ trách khách hàng (hoặc quản lý/admin) mới được sửa cơ hội này.',
+                'message' => 'Chỉ người tạo cơ hội, phụ trách khách hàng hoặc quản lý/admin mới được sửa cơ hội này.',
             ], 403);
         }
         $validated = $request->validate([
@@ -700,7 +700,7 @@ class OpportunityController extends Controller
         }
         if (! $this->canMutateOpportunity($user, $opportunity)) {
             return response()->json([
-                'message' => 'Chỉ nhân viên phụ trách khách hàng (hoặc quản lý/admin) mới được xóa cơ hội này.',
+                'message' => 'Chỉ người tạo cơ hội, phụ trách khách hàng hoặc quản lý/admin mới được xóa cơ hội này.',
             ], 403);
         }
         if ($opportunity->contract()->exists()) {
@@ -758,7 +758,7 @@ class OpportunityController extends Controller
     }
 
     /**
-     * Ghi (tạo/sửa/xóa): nhân viên chỉ khi là assigned_staff của khách; admin/kế toán/QL giữ quyền rộng.
+     * Ghi (tạo/sửa/xóa) theo khách: admin/kế toán/QL; nhân viên khi là người phụ trách khách (assigned_staff hoặc sales_owner khi chưa gán staff).
      */
     private function canMutateOpportunityForClient(User $user, Client $client): bool
     {
@@ -767,7 +767,7 @@ class OpportunityController extends Controller
                 return true;
             }
 
-            return (int) ($client->assigned_staff_id ?? 0) === (int) $user->id;
+            return CrmScope::employeeOwnsClient($user, $client);
         }
 
         if (CrmScope::hasGlobalScope($user)) {
@@ -779,10 +779,22 @@ class OpportunityController extends Controller
         }
 
         if ($user->role === 'nhan_vien') {
-            return (int) ($client->assigned_staff_id ?? 0) === (int) $user->id;
+            return CrmScope::employeeOwnsClient($user, $client);
         }
 
         return false;
+    }
+
+    private function opportunityCreatorId(Opportunity $opportunity): int
+    {
+        return (int) ($opportunity->created_by ?? 0);
+    }
+
+    private function isOpportunityCreator(User $user, Opportunity $opportunity): bool
+    {
+        $creatorId = $this->opportunityCreatorId($opportunity);
+
+        return $creatorId > 0 && $creatorId === (int) $user->id;
     }
 
     private function canMutateOpportunity(User $user, Opportunity $opportunity): bool
@@ -793,6 +805,10 @@ class OpportunityController extends Controller
 
         if ($user->role === 'quan_ly') {
             return CrmScope::canManagerAccessOpportunity($user, $opportunity);
+        }
+
+        if ($this->isOpportunityCreator($user, $opportunity)) {
+            return true;
         }
 
         $opportunity->loadMissing('client');
@@ -811,6 +827,11 @@ class OpportunityController extends Controller
         if (! $opportunity->client) {
             return false;
         }
+
+        if ($this->isOpportunityCreator($user, $opportunity)) {
+            return true;
+        }
+
         if (CrmScope::isClientInRotationPool($opportunity->client)) {
             return CrmScope::canAccessRotationPoolClient($user, $opportunity->client);
         }

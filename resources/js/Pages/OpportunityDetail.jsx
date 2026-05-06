@@ -103,7 +103,11 @@ export default function OpportunityDetail({ auth, opportunityId }) {
         const uid = Number(currentUserId || 0);
         if (!uid) return false;
         const assignedId = Number(opportunity?.client?.assigned_staff_id ?? 0);
-        return assignedId > 0 && assignedId === uid;
+        const salesId = Number(opportunity?.client?.sales_owner_id ?? 0);
+        const ownsClient = assignedId === uid || (assignedId <= 0 && salesId === uid);
+        const createdBy = Number(opportunity?.created_by ?? opportunity?.creator?.id ?? 0);
+        const isCreator = createdBy > 0 && createdBy === uid;
+        return ownsClient || isCreator;
     }, [userRole, opportunity, currentUserId]);
 
     const stats = useMemo(() => ([

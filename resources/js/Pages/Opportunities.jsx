@@ -157,7 +157,11 @@ export default function Opportunities(props) {
         const uid = Number(currentUserId || 0);
         if (!uid) return false;
         const assignedId = Number(row?.client?.assigned_staff_id ?? 0);
-        return assignedId > 0 && assignedId === uid;
+        const salesId = Number(row?.client?.sales_owner_id ?? 0);
+        const ownsClient = assignedId === uid || (assignedId <= 0 && salesId === uid);
+        const createdBy = Number(row?.created_by ?? row?.creator?.id ?? 0);
+        const isCreator = createdBy > 0 && createdBy === uid;
+        return ownsClient || isCreator;
     };
 
     const isDirectAssignedClient = (client) => {
@@ -517,10 +521,24 @@ export default function Opportunities(props) {
         if (userRole === 'nhan_vien') {
             const client = clients.find((c) => String(c.id) === String(form.client_id));
             const uid = Number(currentUserId || 0);
-            const assignedId = Number(client?.assigned_staff_id ?? 0);
-            if (!client || !uid || assignedId !== uid) {
-                toast.error('Chỉ nhân viên phụ trách khách hàng (phụ trách KH) mới được tạo hoặc sửa cơ hội cho khách đó.');
+            if (!client || !uid) {
+                toast.error('Chỉ nhân viên phụ trách khách hàng hoặc người đã tạo cơ hội mới được tạo/sửa cơ hội tương ứng.');
                 return;
+            }
+            const ownsClient = isDirectAssignedClient(client);
+            if (!editingId) {
+                if (!ownsClient) {
+                    toast.error('Chỉ nhân viên phụ trách khách hàng mới được tạo cơ hội cho khách đó.');
+                    return;
+                }
+            } else {
+                const editingRow = opportunities.find((o) => Number(o.id) === Number(editingId));
+                const createdBy = Number(editingRow?.created_by ?? editingRow?.creator?.id ?? 0);
+                const isCreator = createdBy > 0 && createdBy === uid;
+                if (!ownsClient && !isCreator) {
+                    toast.error('Chỉ phụ trách khách hàng hoặc người tạo cơ hội mới được sửa bản ghi này.');
+                    return;
+                }
             }
         }
 

@@ -102,7 +102,7 @@ class CrmScope
         return self::employeeOwnsClient($user, $client);
     }
 
-    private static function employeeOwnsClient(User $user, Client $client): bool
+    public static function employeeOwnsClient(User $user, Client $client): bool
     {
         if ((int) ($client->assigned_staff_id ?? 0) === (int) $user->id) {
             return true;
